@@ -49,6 +49,19 @@ print rules live with their owning surface (`applications`, candidate detail/not
 observability, evals, feedback, and print) rather than relying on a cross-feature catch-all.
 `components/ai/AIWorkspaceView.tsx` is the shared shell for the Observability and Evals tabs.
 
+`components/admin/OpeningsPanel.tsx` owns the opening list and navigation between workflows.
+`OpeningEditor.tsx` owns the editable opening draft, notification-audience preview, publication,
+and updates. `OpeningDecisionPanel.tsx` owns household selection, permanent-decision confirmation,
+and streamed outcome-email progress. `DirectSelectionOpeningForm.tsx` owns filling a new home from
+previous applicants. Draft, selection, and progress state live in their workflow; the list owns
+the shared busy flag used to disable competing actions. Workflows report completion to the list.
+
+Eval run controls and case editing live in `components/evals/RunnableEval.tsx`. `EvalCaseList.tsx`
+owns case navigation; `EvalResults.tsx` owns result details and historical run markers.
+`evalResultPresentation.ts` defines the shared case-status and summary rules. The HTTP boundary
+keeps mode and payload correlated in both streamed summaries and saved runs. Case renderers
+receive outcomes derived from those whole-run contracts without a mode/payload type assertion.
+
 Applicant persistence is orchestrated by `useApplicantPersistence.ts`; `applicantPersistenceState.ts`
 defines its state, defaults, and typed partial updates. Each workflow updates related fields in
 one patch beside the operation that owns them; functional patches read the latest state when needed.
@@ -112,7 +125,7 @@ email ledger. Role changes do not resend invitations, and delivery failure does 
 
 Email templates and delivery orchestration are provider-neutral. Templates are grouped by
 recipient journey under `services/email/templates/`; `layout.py` owns the branded primitives
-used by applicant, access, and opening messages. `email_sender.py` translates `OutboundEmail` into
+used by applicant, access, and opening messages. `services/email/sender.py` translates `OutboundEmail` into
 SocketLabs requests at the final adapter boundary.
 
 `EMAIL_DELIVERY_MODE` has three values:
@@ -130,6 +143,8 @@ quota failures retain a small semantic retry intent, not the rendered body. Cred
 rebuilt with a fresh, immediately usable token for each attempt; an unsuccessful attempt revokes
 that token. A newer credential request supersedes an older queued one for the same identity and
 purpose.
+`services/email/retry_intents.py` defines the credential-free JSON shapes shared by initial sends,
+opening notifications, and the outbox worker. The ledger stores those same shapes as JSON.
 
 Accepted deliveries clear any targetless recipient address from the application ledger. An accepted
 list-only vacancy delivery is deleted with its consumed subscription. Queued and unexpectedly failed
@@ -229,6 +244,12 @@ The main AI modules are:
 
 Orchestration is deterministic code. Models never decide which pass runs next, and ranking is
 pure weighted math over cached scores.
+
+`services/ranking/criteria.py` runs discovery, decomposition, and matching, returning their audits,
+costs, and durations with the settled report. `pipeline.py` loads prior state, streams the worker's
+reasoning and stage changes, and writes the completed result on the request thread.
+The criteria phase event carries `discoveryWorkers`; scoring progress carries `processed` and
+`total` candidate counts. Frontend progress types distinguish those phases explicitly.
 
 ## Data model
 

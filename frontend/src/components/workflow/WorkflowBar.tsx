@@ -13,18 +13,14 @@ import type {
   WorkflowState,
 } from "../../types";
 
-// Labels for the criteria phase's sub-stages (the sequential model calls under its
-// one banner), keyed by the backend's stage names. Fan-out width isn't known here, so
-// "discoveries" stays plural-generic rather than naming K.
+// Labels for the sequential criteria stages. Discovery can also name its worker count.
 const CRITERIA_STAGE_LABELS: Record<CriteriaStage, string> = {
   discovering: "Running parallel discovery passes…",
   settling: "Settling into one set of criteria…",
   matching: "Matching criteria to past analyses…",
 };
 
-// The green criteria-stage label. Discovering names its fan-out width K (carried on the
-// criteria phase event's `total`) — "Running K parallel discovery passes…" — falling back
-// to the count-less phrasing if K wasn't reported.
+// Discovery names its worker count; other criteria stages have no item count.
 function criteriaStageLabel(stage: CriteriaStage, k: number): string {
   if (stage === "discovering" && k > 0) return `Running ${k} parallel discovery passes…`;
   return CRITERIA_STAGE_LABELS[stage];
@@ -131,12 +127,8 @@ function WorkflowStep(props: {
   );
 }
 
-// The ordered screening workflow band: Screen and Rank, the shared opening view scope,
-// and the confirm + progress cards for the two AI runs. The opening scope filters the
-// application and ranking views; it does
-// not narrow the reusable AI analysis pool. Rank is one button that runs the whole criteria → scores
-// chain under one combined cost estimate. Later steps stay hard-gated until the
-// previous has run; "done" flags come from the backend, so gating survives reload.
+// Screen and Rank operate on the selected opening's shared eligible pool. This band
+// owns their confirmation and progress cards; backend workflow state gates the steps.
 export function WorkflowBar(props: {
   workflow: WorkflowState;
   coverage: Coverage;
@@ -155,11 +147,8 @@ export function WorkflowBar(props: {
   scoreCurrentEstimate: ScoreCurrentEstimateResponse | null;
   hasCurrentCriteria: boolean;
   rankProgress: RankProgress | null;
-  // The model's live reasoning, streamed and shown as "thinking" for the opaque
-  // calls that have no per-item progress: the criteria phase (discovery + match)
-  // and post-score consolidation. Accumulates across the whole run and persists
-  // through scoring once it has any text.
-  criteriaThinking: string;
+  // Streamed reasoning from criteria passes and post-score consolidation.
+  rankThinking: string;
   // Free-text axes this member proposed since the last Rank. A proposal does nothing
   // until a discovery run grounds it in the pool, and nothing else about the workflow
   // changes when one is added — so without this the Rank step looks up to date and the
@@ -291,9 +280,7 @@ export function WorkflowBar(props: {
                 ? "You proposed new criteria — run Rank to discover and apply them."
                 : "The applicant pool changed — score missing applicants or discover fresh criteria."
             }
-            // Only scoring has a candidate count. Criteria's total is the discovery
-            // fan-out width, not "candidates processed", and consolidation is one
-            // opaque call, so neither should render a misleading 0/5-style fraction.
+            // Only scoring reports per-candidate progress.
             progress={rankProgress?.phase === "scores" ? rankProgress : null}
             last
           />
@@ -504,7 +491,7 @@ export function WorkflowBar(props: {
           <div className="run-progress-label">
             {rankProgress
               ? rankProgress.phase === "criteria"
-                ? criteriaStageLabel(rankProgress.stage ?? "discovering", rankProgress.total)
+                ? criteriaStageLabel(rankProgress.stage ?? "discovering", rankProgress.discoveryWorkers)
                 : rankProgress.phase === "consolidate"
                   ? "Consolidating duplicate criteria…"
                   : `Scoring candidates… ${rankProgress.processed}/${rankProgress.total}` +
@@ -536,7 +523,7 @@ export function WorkflowBar(props: {
           {/* Only the opaque pool-level calls stream reasoning. Per-candidate scoring
               has rationale/evidence in its structured result but no live narrative. */}
           {!rankProgress || rankProgress.phase !== "scores" ? (
-            <CriteriaThinking text={props.criteriaThinking} />
+            <RankThinking text={props.rankThinking} />
           ) : null}
         </div>
       ) : null}
@@ -547,7 +534,7 @@ export function WorkflowBar(props: {
 // Auto-scrolling panel for the streamed discovery/match reasoning. Before the first
 // delta arrives it shows an expectation line, so the wait is framed even if the
 // model is briefly silent at the start.
-function CriteriaThinking(props: { text: string }): ReactNode {
+function RankThinking(props: { text: string }): ReactNode {
   const boxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Keep the newest text in view as it streams in.

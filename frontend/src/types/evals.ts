@@ -26,39 +26,10 @@ export type EvalRunOption = {
 export type EvalFixtureKey =
   | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
 
-// The run mode is the discriminator for case results, but it lives beside the payload rather
-// than inside it. The shared optional fields let generic list/status renderers work across
-// modes; the named result types below make each mode's required wire shape explicit.
-type EvalCaseDisplayFields = {
-  key: string;
-  marker?: string;
-  contested?: boolean;
-  verdict?: string;
-  expected?: string;
-  passed?: boolean;
-  score?: number;
-  confidence?: string;
-  evidence?: string;
-  failures?: string[];
-  reason?: string;
-  categories?: string[];
-  fires?: string[];
-  absent?: string[];
-  agreement?: number;
-  tally?: Record<string, number>;
-  scoreMin?: number;
-  scoreMax?: number;
-  runs?: { outcome: string; detail: string }[];
-  humanLabel?: string;
-  judgeLabel?: string;
-  detail?: string;
-  labelRationale?: string;
-  passName?: string;
-  majority?: string;
-  flipped?: boolean;
-};
+// Each mode owns its required case fields. UI outcomes carry the mode beside the payload.
+type EvalCaseBase = { key: string };
 
-export type ScoringEvalCaseResult = EvalCaseDisplayFields & {
+export type ScoringEvalCaseResult = EvalCaseBase & {
   passed: boolean;
   score: number;
   confidence: string;
@@ -66,7 +37,7 @@ export type ScoringEvalCaseResult = EvalCaseDisplayFields & {
   failures: string[];
 };
 
-export type CategoricalEvalCaseResult = EvalCaseDisplayFields & {
+export type CategoricalEvalCaseResult = EvalCaseBase & {
   passed: boolean;
   verdict: string;
   expected: string;
@@ -75,7 +46,7 @@ export type CategoricalEvalCaseResult = EvalCaseDisplayFields & {
   failures: string[];
 };
 
-export type ScreeningEvalCaseResult = EvalCaseDisplayFields & {
+export type ScreeningEvalCaseResult = EvalCaseBase & {
   passed: boolean;
   categories: string[];
   fires: string[];
@@ -85,7 +56,7 @@ export type ScreeningEvalCaseResult = EvalCaseDisplayFields & {
   failures: string[];
 };
 
-export type StabilityEvalCaseResult = EvalCaseDisplayFields & {
+export type StabilityEvalCaseResult = EvalCaseBase & {
   marker: string;
   agreement: number;
   tally: Record<string, number>;
@@ -97,7 +68,7 @@ export type ScoringStabilityEvalCaseResult = StabilityEvalCaseResult & {
   scoreMax: number;
 };
 
-export type JudgeEvalCaseResult = EvalCaseDisplayFields & {
+export type JudgeEvalCaseResult = EvalCaseBase & {
   marker: string;
   humanLabel: string;
   judgeLabel: string;
@@ -122,12 +93,17 @@ export type EvalCaseResultByMode = {
 };
 
 export type EvalCaseResult = EvalCaseResultByMode[EvalRunMode];
+export type EvalCaseOutcome = {
+  [Mode in EvalRunMode]: { mode: Mode; result: EvalCaseResultByMode[Mode] }
+}[EvalRunMode];
+export type EvalCaseOutcomesByMode = Partial<Record<EvalRunMode, EvalCaseOutcome>>;
 
 // A whole run's summary (the NDJSON `summary` payload, also what LastEvalRun.result carries):
-// the per-case results plus run-level aggregates. `agreement` is the judge's calibration block
+// the per-case results plus run-level aggregates. The HTTP boundary attaches the requested mode
+// before results reach case renderers. `agreement` is the judge's calibration block
 // (Cohen's κ + failure-recall); `model`/`scoringModel`/`judgeModel` name the model that mode used.
-export type EvalRunResult = {
-  cases?: EvalCaseResult[];
+export type EvalRunResult<Mode extends EvalRunMode = EvalRunMode> = {
+  cases?: EvalCaseResultByMode[Mode][];
   agreement?: {
     kappa: number | null;
     failureRecall: number | null;
@@ -139,11 +115,16 @@ export type EvalRunResult = {
   judgeModel?: string;
 };
 
+// The discriminator and payload travel together for both live and saved runs.
+export type EvalRunSummary = {
+  [Mode in EvalRunMode]: { eval: Mode; result: EvalRunResult<Mode> }
+}[EvalRunMode];
+
 export type EvalStreamEvent =
   | ThinkingEvent
   | ErrorEvent
   | PingEvent
-  | { type: "summary"; eval: string; savedPath: string | null; result: EvalRunResult };
+  | ({ type: "summary"; savedPath: string | null } & EvalRunSummary);
 
 export type JudgeBackground = { passName: string; background: string; caseCount: number };
 
@@ -159,7 +140,6 @@ export type EvalDescriptor = {
 // `result` is the same shape the streaming summary carries for that evalKey; no thinking
 // narration is restored.
 export type LastEvalRun = {
-  evalKey: EvalKey;
   ranAt: string;
   promptVersion: string;
   currentPromptVersion: string;
@@ -171,8 +151,9 @@ export type LastEvalRun = {
   promptStale: boolean;
   modelStale: boolean;
   reasoningStale: boolean;
-  result: EvalRunResult;
-};
+} & {
+  [Mode in EvalRunMode]: { evalKey: Mode; result: EvalRunResult<Mode> }
+}[EvalRunMode];
 
 export type InvariantOut = { check: string; description: string; passed: boolean; violations: string[] };
 export type InvariantsResult = {

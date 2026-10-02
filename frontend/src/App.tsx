@@ -149,7 +149,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     scoreCurrentEstimate,
     rankRunning,
     rankProgress,
-    criteriaThinking,
+    rankThinking,
     requestScreeningEstimate,
     runScreening,
     cancelScreeningEstimate,
@@ -403,7 +403,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
             scoreCurrentEstimate={scoreCurrentEstimate}
             hasCurrentCriteria={rankingRun !== null}
             rankProgress={rankProgress}
-            criteriaThinking={criteriaThinking}
+            rankThinking={rankThinking}
             pendingProposals={rankingRun?.proposedDimensions ?? []}
             onRequestRank={requestRankEstimate}
             onRunRank={runRank}

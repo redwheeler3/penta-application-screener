@@ -65,19 +65,17 @@ export type AppFilter = {
 
 // Live progress emitted by the streaming Rank chain. `stage` is the current sub-step
 // within the criteria phase (discovery → decompose → match), set by "stage" events so
-// the UI can name which opaque step is running; null in phases without sub-steps.
+// the UI can name which opaque step is running. Other phases carry only their own fields.
 export type CriteriaStage = "discovering" | "settling" | "matching";
-export type RankProgress = {
-  phase: "criteria" | "scores" | "consolidate";
-  processed: number;
-  total: number;
-  stage?: CriteriaStage | null;
-};
+export type RankProgress =
+  | { phase: "criteria"; discoveryWorkers: number; stage?: CriteriaStage }
+  | { phase: "scores"; processed: number; total: number }
+  | { phase: "consolidate" };
 
 type PhaseEvent = { type: "phase"; phase: string; total: number | null };
 type ProgressEvent = { type: "progress"; phase: string; processed: number; total: number };
 export type ThinkingEvent = { type: "thinking"; phase: string; text: string };
-type StageEvent = { type: "stage"; phase: string; stage: CriteriaStage };
+type StageEvent = { type: "stage"; phase: "criteria"; stage: CriteriaStage };
 type NoticeEvent = {
   type: "notice";
   phase: string;
@@ -110,8 +108,9 @@ export type ScreeningStreamEvent =
       totalCostUsd: number;
     };
 export type RankingStreamEvent =
-  | PhaseEvent
-  | ProgressEvent
+  | { type: "phase"; phase: "criteria"; discoveryWorkers: number }
+  | { type: "phase"; phase: "scores" | "consolidate"; total: number | null }
+  | { type: "progress"; phase: "scores"; processed: number; total: number }
   | ThinkingEvent
   | StageEvent
   | NoticeEvent

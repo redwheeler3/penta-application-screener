@@ -1,5 +1,7 @@
 import type {
+  EvalCaseOutcome,
   EvalDescriptor,
+  EvalRunSummary,
   EvalRunMode,
   InvariantsResult,
   JudgeBackground,
@@ -40,7 +42,7 @@ export function saveJudgeBackground(passName: string, background: string): Promi
 
 // The most recent persisted run among `keys` (comma-joined), to restore a tab on remount.
 // Result JSON only (no thinking narration); identifies prompt and model drift separately.
-export const fetchLastEvalRun = (keys: string[]) =>
+export const fetchLastEvalRun = (keys: EvalRunMode[]) =>
   getJson<{ runs: LastEvalRun[] }>(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`);
 
 // Upsert one case (by its `key`) into the eval's fixture FILE. Validated server-side;
@@ -75,3 +77,54 @@ export function runEval(
   return streamRequest(`/evals/${basePass}${q}`);
 }
 
+
+/** Narrow the whole run before attaching its mode to individual case results. */
+export function caseOutcomes(run: EvalRunSummary): EvalCaseOutcome[] {
+  switch (run.eval) {
+    case "scoring":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    case "scoring_stability":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    case "screening":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    case "judge":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    case "consolidation":
+    case "matching":
+    case "decomposition":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    default:
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+  }
+}
+
+/** Saved runs use evalKey; streamed summaries use eval. Keep the payload correlation
+ * while adapting those wire names, without asserting an independently paired payload. */
+export function savedRunSummary(run: LastEvalRun): EvalRunSummary {
+  switch (run.evalKey) {
+    case "scoring":
+      return { eval: run.evalKey, result: run.result };
+    case "scoring_stability":
+      return { eval: run.evalKey, result: run.result };
+    case "screening":
+      return { eval: run.evalKey, result: run.result };
+    case "screening_stability":
+      return { eval: run.evalKey, result: run.result };
+    case "judge":
+      return { eval: run.evalKey, result: run.result };
+    case "stability":
+      return { eval: run.evalKey, result: run.result };
+    case "consolidation":
+      return { eval: run.evalKey, result: run.result };
+    case "consolidation_stability":
+      return { eval: run.evalKey, result: run.result };
+    case "matching":
+      return { eval: run.evalKey, result: run.result };
+    case "matching_stability":
+      return { eval: run.evalKey, result: run.result };
+    case "decomposition":
+      return { eval: run.evalKey, result: run.result };
+    case "decomposition_stability":
+      return { eval: run.evalKey, result: run.result };
+  }
+}

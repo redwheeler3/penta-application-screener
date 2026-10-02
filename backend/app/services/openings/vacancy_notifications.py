@@ -17,6 +17,10 @@ from app.db.models import (
     VacancySubscription,
 )
 from app.services.email.delivery import queue_email
+from app.services.email.retry_intents import (
+    ApplicationOpeningRetryIntent,
+    VacancyOpeningRetryIntent,
+)
 from app.services.email.templates import (
     ApplicationOpeningTimeline,
     application_opening_email,
@@ -73,11 +77,9 @@ def queue_opening_notifications(
             message,
             recipient_kind=PasswordlessIdentityKind.APPLICANT,
             idempotency_key=f"opening:{opening.id}:subscription:{subscription.id}",
-            retry_intent={
-                "type": "vacancy_opening",
-                "opening_id": opening.id,
-                "subscription_id": subscription.id,
-            },
+            retry_intent=VacancyOpeningRetryIntent(
+                type="vacancy_opening", opening_id=opening.id, subscription_id=subscription.id,
+            ),
         )
     for application in audience.application_only:
         _queue_application_notice(db, opening, application, None, details=details)
@@ -109,10 +111,7 @@ def _queue_application_notice(
         settings=get_settings(),
         **details,
     )
-    intent: dict[str, object] = {
-        "type": "application_opening",
-        "opening_id": opening.id,
-    }
+    intent = ApplicationOpeningRetryIntent(type="application_opening", opening_id=opening.id)
     if subscription is not None:
         intent["subscription_id"] = subscription.id
     queue_email(

@@ -1,16 +1,14 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { saveEvalCase } from "../../api/evals";
-import { AI_PASS_PIPELINE_ORDER } from "../../constants";
-import { formatPacificDate, reasoningEffortLabel } from "../../format";
 import type {
-  EvalCaseResult,
+  EvalCaseOutcome,
   EvalFixtureKey,
   EvalRunMode,
   EvalRunOption,
-  EvalRunResult,
-  LastEvalRun,
 } from "../../types";
+import { EvalCaseList } from "./EvalCaseList";
+import { EvalCaseResultView, EvalRunHistoryMarker } from "./EvalResults";
 import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
 import { InlineConfirm } from "./InlineConfirm";
@@ -62,7 +60,6 @@ export function RunnableEval(props: {
   const { cases, setCases, run, caseResults, restored, runMode } = useEvalRunner({
     caseEvalKey,
     runKeys: props.runKeys,
-    initialMode: modes[0].evalKey,
   });
   const thinkingRef = useRef<HTMLDivElement>(null);
 
@@ -159,14 +156,14 @@ export function RunnableEval(props: {
         // is one self-contained line (label · result · when · prompt · model).
         <div className="eval-runinfo">
           {Object.values(restored).map((r) => (
-            <RestoredMarker key={r.evalKey} run={r} totalCases={cases?.length ?? 0} />
+            <EvalRunHistoryMarker key={r.evalKey} run={r} totalCases={cases?.length ?? 0} />
           ))}
         </div>
       ) : null}
 
       <div className="eval-master-detail">
         <div className="eval-master">
-          <CaseList
+          <EvalCaseList
             cases={cases}
             groupBy={props.groupBy}
             selected={selected}
@@ -219,9 +216,9 @@ export function RunnableEval(props: {
               {selectedResult
                 ? modes
                     .map((m) => ({ m, result: selectedResult[m.evalKey] }))
-                    .filter((x): x is { m: RunMode; result: EvalCaseResult } => !!x.result)
+                    .filter((x): x is { m: RunMode; result: EvalCaseOutcome } => !!x.result)
                     .map(({ m, result }) => (
-                      <CaseResult key={m.evalKey} evalKey={m.evalKey} result={result} />
+                      <EvalCaseResultView key={m.evalKey} outcome={result} />
                     ))
                 : null}
               <EvalCaseDetail evalCase={selectedCase} />
@@ -233,360 +230,6 @@ export function RunnableEval(props: {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// One mode's result read as a dot. Contested cases are never red (both verdicts defensible),
-// but they aren't always amber either: on a SINGLE run, agreeing with the leaning is the
-// fine, unremarkable outcome (green) — only a DIVERGENCE from the leaning is review-worthy
-// (amber). A stability run that actually wobbled ([contested-split]) stays amber — the
-// wobble IS the review event.
-// The categorical dimension-comparison live passes share one result shape (passed / verdict /
-// expected / contested / reason / judgeVerdict), so every renderer branch treats them alike.
-const CATEGORICAL = new Set(["consolidation", "matching", "decomposition"]);
-
-// The judge's per-pass case groups render in pipeline order (see AI_PASS_PIPELINE_ORDER) so
-// they read the way the app runs and match the eval subtabs — not alphabetically.
-const PASS_PIPELINE_ORDER = AI_PASS_PIPELINE_ORDER;
-
-function dotFor(mode: EvalRunMode, result: EvalCaseResult): "ok" | "fail" | "contested" {
-  if (result.marker === "[contested-split]") return "contested";  // stability wobble
-  // Judge run: a contested case is a PASS with review treatment (amber, both labels
-  // defensible), never red — even when the blind judge diverges from the human leaning.
-  // [ok] = agreed with the label (green); [review] = a real disagreement on a non-contested
-  // case (red, worth investigating).
-  if (mode === "judge") {
-    if (result.marker === "[contested]" || result.contested) return "contested";
-    return result.marker === "[ok]" ? "ok" : "fail";
-  }
-  if (CATEGORICAL.has(mode) && result.contested) {
-    return result.verdict === result.expected ? "ok" : "contested";  // agree = green, diverge = amber
-  }
-  // Screening: a contested case grades its expectation normally (fires/absent/pets), but a
-  // MISS is expected/defensible here — so green when it passed, amber (not red) when it
-  // failed. `contested` is a plain bool, same as the categorical passes.
-  if (mode === "screening" && result.contested) {
-    return resultOk(mode, result) ? "ok" : "contested";
-  }
-  return resultOk(mode, result) ? "ok" : "fail";
-}
-
-// The case list, optionally grouped by a field (judge: by production pass).
-function CaseList(props: {
-  cases: Record<string, unknown>[] | null;
-  groupBy?: string;
-  selected: string | null;
-  caseResults: Record<string, Partial<Record<EvalRunMode, EvalCaseResult>>>;
-  // The tab's run modes, in button order — one dot per mode so live + stability read as two
-  // distinct indicators (not one aggregate that hides which check is in what state).
-  modes: RunMode[];
-  onSelect: (key: string) => void;
-}): ReactNode {
-  const { cases } = props;
-  if (cases === null) return <p className="eval-hint">Loading…</p>;
-  if (!cases.length) return <p className="eval-hint">No cases yet.</p>;
-
-  // The grouping/label fields (pass, expected) live in the harness-only `metadata` block.
-  const meta = (c: Record<string, unknown>) => (c.metadata ?? {}) as Record<string, unknown>;
-
-  // Cases within a group (or the whole flat list) read alphabetically by key, so a case is easy
-  // to find regardless of file order.
-  const byKey = (items: Record<string, unknown>[]) =>
-    [...items].sort((a, b) => String(a.key).localeCompare(String(b.key)));
-
-  const groups: { heading: string | null; items: Record<string, unknown>[] }[] = [];
-  if (props.groupBy) {
-    const byGroup = new Map<string, Record<string, unknown>[]>();
-    for (const c of cases) {
-      const g = String(meta(c)[props.groupBy] ?? "consolidation"); // judge default pass
-      (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(c);
-    }
-    // Order groups by PIPELINE order (matches the eval subtabs + how the app runs), not
-    // alphabetically — so the judge's per-pass groups read screening → decomposition → matching
-    // → scoring → consolidation. Any group not in the list sorts after, alphabetically.
-    const order = (h: string) => {
-      const i = (PASS_PIPELINE_ORDER as readonly string[]).indexOf(h);
-      return i === -1 ? PASS_PIPELINE_ORDER.length : i;
-    };
-    const sorted = [...byGroup.entries()].sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b));
-    for (const [heading, items] of sorted) groups.push({ heading, items: byKey(items) });
-  } else {
-    groups.push({ heading: null, items: byKey(cases) });
-  }
-
-  return (
-    <div className="eval-case-list">
-      {groups.map((g) => (
-        <div key={g.heading ?? "all"} className="eval-case-group">
-          {g.heading ? <div className="eval-case-group-head">{g.heading}</div> : null}
-          {g.items.map((c) => {
-            const key = String(c.key);
-            const modeMap = props.caseResults[key] ?? {};
-            // ALWAYS one dot per mode, in button order (left = first mode, e.g. live; right =
-            // stability). A mode not yet run shows grey, so position tells you which ran: e.g.
-            // green+grey = live passed, stability not run yet. Only render the cluster once a
-            // tab has >1 mode OR any result exists (a single-mode tab with no runs stays clean).
-            const showDots = props.modes.length > 1 || props.modes.some((m) => modeMap[m.evalKey]);
-            return (
-              <button
-                key={key}
-                type="button"
-                className={`eval-case-item${props.selected === key ? " selected" : ""}`}
-                onClick={() => props.onSelect(key)}
-              >
-                {showDots ? (
-                  <span className="eval-case-dots">
-                    {props.modes.map((m) => {
-                      const result = modeMap[m.evalKey];
-                      const dot = result ? dotFor(m.evalKey, result) : "empty";
-                      return (
-                        <span
-                          key={m.evalKey}
-                          className={`eval-case-dot ${dot}`}
-                          title={`${m.label}: ${result ? dot : "not run"}`}
-                        />
-                      );
-                    })}
-                  </span>
-                ) : null}
-                <span className="eval-case-item-key">{key}</span>
-                {meta(c).expected !== undefined ? (
-                  <span className="eval-case-item-expected">{expectedLabel(meta(c).expected)}</span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// A compact label for a case's `metadata.expected` chip. Categorical labels are strings;
-// scoring is a band ({score_min, score_max, confidence?}); screening is {fires, absent}.
-// Mirrors the backend _seed_str so a case reads the same in the list and the run marker.
-function expectedLabel(expected: unknown): string {
-  if (typeof expected === "string") return expected;
-  if (expected && typeof expected === "object") {
-    const e = expected as Record<string, unknown>;
-    if ("fires" in e || "absent" in e) {
-      const parts: string[] = [];
-      const fires = e.fires as string[] | undefined;
-      const absent = e.absent as string[] | undefined;
-      if (fires?.length) parts.push(`fires: ${fires.join(", ")}`);
-      if (absent?.length) parts.push(`absent: ${absent.join(", ")}`);
-      return parts.join(" · ") || "clean";
-    }
-    if ("score_min" in e || "score_max" in e || "confidence" in e) {
-      const lo = e.score_min ?? "-1";
-      const hi = e.score_max ?? "1";
-      const conf = e.confidence ? ` ${e.confidence}` : "";
-      return `[${lo}, ${hi}]${conf}`;
-    }
-  }
-  return String(expected);
-}
-
-function resultOk(ranMode: EvalRunMode, r: EvalCaseResult): boolean {
-  if (ranMode === "scoring" || ranMode === "screening" || CATEGORICAL.has(ranMode)) return !!r.passed;
-  if (ranMode.endsWith("_stability") || ranMode === "stability") return r.marker === "[stable]";
-  return r.marker === "[ok]";
-}
-
-// Marks a REHYDRATED result as history (not a fresh run): which eval, when it ran + which
-// prompt/model identity, and an amber warning when either no longer matches the current
-// configuration (so a stale result is never read as live). A tab with two evals shows one
-// marker each; the label names the pass + mode ("Matching", "Matching stability") so each
-// marker is self-describing.
-function restoredLabel(evalKey: string): string {
-  const stability = evalKey.endsWith("_stability");
-  const base = evalKey.replace(/_stability$/, "");
-  const pass = base === "stability" ? "judge" : base;  // judge's stability key is bare "stability"
-  const name = pass.charAt(0).toUpperCase() + pass.slice(1);
-  return stability || evalKey === "stability" ? `${name} stability` : name;
-}
-
-// The one-line RESULT summary for a run mode. The NUMERATOR counts the run's per-case results
-// the SAME way the dots do (via dotFor), so it always matches the green dots — including a
-// per-case run and contested-agree cases (green, counted ok) which the backend's passed/total
-// excludes. The DENOMINATOR is the TOTAL case count (every dot slot in the list), not how many
-// have a result yet — so a partial run reads "4/5", not "4/4". Graded: "X/Y passed"; stability:
-// "X/Y stable"; the judge adds its agreement block. Empty ⇒ no summary segment.
-function runSummary(evalKey: EvalRunMode, result: EvalRunResult, totalCases: number): string {
-  if (!result) return "";
-  const cases = result.cases ?? [];
-  const total = totalCases || cases.length;  // fall back to run-cases if the list isn't loaded
-  const stab = evalKey.endsWith("_stability") || evalKey === "stability";
-  if (evalKey === "judge") {
-    // Contested is an automatic PASS (amber — both labels defensible), so it counts toward
-    // "agree" alongside green; only a red [review] (a real divergence) doesn't. Mirrors the
-    // dots: count everything that isn't a fail. (κ, from the backend, still excludes contested
-    // from its scored set — that's a separate, stricter statistic.)
-    const agree = cases.filter((c) => dotFor(evalKey, c) !== "fail").length;
-    const a = result.agreement;
-    const head = total ? `${agree}/${total} agree` : "";
-    if (!a) return head;
-    const parts = head ? [head] : [];
-    parts.push(`κ ${a.kappa !== null ? a.kappa.toFixed(2) : "n/a"}`);
-    if (a.failureRecall !== null)
-      parts.push(`failure-recall ${a.failureCaught}/${a.failureTotal} = ${Math.round(a.failureRecall * 100)}%`);
-    return parts.join(" · ");
-  }
-  if (!total) return "";
-  // Contested is a PASS with special treatment (amber), not a fail — only a red "fail" dot
-  // (a non-contested divergence) is not passing. So count everything that isn't a fail.
-  const passing = cases.filter((c) => dotFor(evalKey, c) !== "fail").length;
-  return `${passing}/${total} ${stab ? "stable" : "passed"}`;
-}
-
-// One self-contained line per run mode: label, result summary, when it ran, the prompt
-// version, and the model. Turns amber when either identity no longer matches the current
-// configuration. One line carries pass name + prompt + model.
-function RestoredMarker(props: { run: LastEvalRun; totalCases: number }): ReactNode {
-  const { run } = props;
-  const summary = runSummary(run.evalKey as EvalRunMode, run.result, props.totalCases);
-  const stale = run.promptStale || run.modelStale || run.reasoningStale;
-  const changes = [
-    run.promptStale ? `prompt is now ${run.currentPromptVersion}` : "",
-    run.modelStale ? `model is now ${run.currentModelId}` : "",
-    run.reasoningStale
-      ? `reasoning is now ${run.currentReasoningEffort || "not applicable"}`
-      : "",
-  ].filter(Boolean).join(" · ");
-  return (
-    <div className={`eval-restored${stale ? " stale" : ""}`}>
-      {restoredLabel(run.evalKey)}
-      {summary ? ` · ${summary}` : ""} · last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
-      {run.modelId ? ` · ${run.modelId}` : ""}
-      {run.modelId ? ` · reasoning ${reasoningEffortLabel(run.supportsReasoningEffort, run.reasoningEffort || null)}` : ""}
-      {stale ? ` · ${changes} — re-run to refresh` : ""}
-    </div>
-  );
-}
-
-// Compact relative time, falling back to the date for older timestamps.
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "earlier";
-  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
-  if (secs < 60) return "just now";
-  const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  return formatPacificDate(iso);
-}
-
-// Model-produced prose (evidence, reasons, per-run detail) is markdown — the AI writes it
-// that way — so render it as such rather than dumping the raw source. `className` carries the
-// surrounding style (muted/italic); `eval-md` tightens react-markdown's block margins so a
-// one-liner doesn't get paragraph spacing. NB: deterministic, code-generated strings (the
-// `failures` list) are NOT model text and stay plain.
-function Md({ text, className }: { text: string; className?: string }): ReactNode {
-  return (
-    <div className={`eval-md${className ? ` ${className}` : ""}`}>
-      <ReactMarkdown>{text}</ReactMarkdown>
-    </div>
-  );
-}
-
-// The per-run breakdown of a stability case: each of the K runs' outcome + the model's own
-// reasoning for it. This is what makes a flip self-explaining — a bare "3× matches, 2×
-// mismatches" doesn't say WHY the two mismatched; the reasoning does. Older runs (persisted
-// before per-run detail existed) have no `runs`, so render nothing.
-function StabilityRuns({ runs }: { runs?: { outcome: string; detail: string }[] }): ReactNode {
-  if (!runs?.length) return null;
-  return (
-    <ol className="eval-stability-runs">
-      {runs.map((run, i) => (
-        <li key={i}>
-          <span className="eval-mono">{run.outcome}</span>
-          {run.detail ? <Md text={run.detail} className="eval-case-result-ev" /> : null}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-// One case's result, shown in the detail pane above its input.
-function CaseResult(props: { evalKey: EvalRunMode; result: EvalCaseResult }): ReactNode {
-  const { evalKey, result: r } = props;
-  // Header color is the single dot decision (dotFor): green when it passed or a contested
-  // case agreed with its leaning; amber for a contested divergence / stability wobble; red
-  // only for a non-contested fail. One source of truth so dot and header can't disagree.
-  const cls = dotFor(evalKey, r);
-  const head = cls === "contested" ? "contested" : cls === "ok" ? "passed" : "failed";
-  return (
-    <div className={`eval-case-result ${cls}`}>
-      <span className="eval-case-result-head">
-        <span className={`eval-case-dot ${cls}`} />
-        {head}
-      </span>
-      {evalKey === "scoring" ? (
-        <div className="eval-case-result-body">
-          <span className="eval-mono">score {r.score}</span> · {r.confidence} confidence
-          {r.evidence ? <Md text={`“${r.evidence}”`} className="eval-case-result-ev" /> : null}
-          {r.failures?.map((f: string) => (
-            <div key={f} className="eval-check-detail">
-              {f}
-            </div>
-          ))}
-        </div>
-      ) : CATEGORICAL.has(evalKey) ? (
-        <div className="eval-case-result-body">
-          expected <span className="eval-mono">{r.expected}</span> → produced{" "}
-          <span className="eval-mono">{r.verdict}</span>
-          {r.reason ? <Md text={r.reason} className="eval-case-result-ev" /> : null}
-        </div>
-      ) : evalKey === "screening" ? (
-        <div className="eval-case-result-body">
-          flags: <span className="eval-mono">{r.categories?.length ? r.categories.join(", ") : "none"}</span>
-          {r.fires?.length ? <span className="eval-verdict">{" · "}expect: {r.fires.join(", ")}</span> : null}
-          {r.absent?.length ? <span className="eval-verdict">{" · "}guard: no {r.absent.join(", ")}</span> : null}
-          {r.contested ? <span className="eval-verdict">{" · "}contested (a miss is expected)</span> : null}
-          {r.failures?.map((f: string) => (
-            <div key={f} className="eval-check-detail">
-              {f}
-            </div>
-          ))}
-          {r.reason ? <Md text={r.reason} className="eval-case-result-ev" /> : null}
-        </div>
-      ) : evalKey === "scoring_stability" ? (
-        <div className="eval-case-result-body">
-          <span className="eval-mono">{r.marker}</span> {Math.round((r.agreement ?? 0) * 100)}% agreement over K —{" "}
-          {Object.entries(r.tally ?? {}).map(([v, n]) => `${v}×${n}`).join(", ")}
-          <span className="eval-verdict">
-            {" · "}score {r.scoreMin?.toFixed(2)}..{r.scoreMax?.toFixed(2)}
-          </span>
-          <StabilityRuns runs={r.runs} />
-        </div>
-      ) : evalKey === "stability" || evalKey.endsWith("_stability") ? (
-        <div className="eval-case-result-body">
-          <span className="eval-mono">{r.marker}</span> {Math.round((r.agreement ?? 0) * 100)}% agreement over K —{" "}
-          {Object.entries(r.tally ?? {}).map(([v, n]) => `${v}×${n}`).join(", ")}
-          <StabilityRuns runs={r.runs} />
-        </div>
-      ) : (
-        // Judge (blind label audit): the human label vs. what the blind judge reproduced. The
-        // agree/disagree verdict is the backend MARKER (its real grader — for scoring the
-        // judgeLabel is a score that must land in the label's band, so a raw string compare would
-        // wrongly read "+0.00" ≠ "[-0.15, 0.15]" as a disagreement). [ok] = agreed; [contested] =
-        // both defensible (amber pass); anything else = a real divergence to look at.
-        <div className="eval-case-result-body">
-          {r.contested ? "leaning" : "label"} <span className="eval-mono">{r.humanLabel}</span> → judge said{" "}
-          <span className="eval-mono">{r.judgeLabel}</span>
-          {r.marker === "[ok]" ? "" : r.contested ? " (contested — both defensible)" : " (disagrees)"}
-          {r.detail ? <Md text={r.detail} className="eval-case-result-ev" /> : null}
-          {/* Why the human chose this label — shown on a divergence, where it's the context
-              for deciding whether the label or the judge is the one to trust. */}
-          {r.marker !== "[ok]" && r.labelRationale ? (
-            <Md text={`_Label rationale:_ ${r.labelRationale}`} className="eval-case-result-ev" />
-          ) : null}
-        </div>
-      )}
     </div>
   );
 }

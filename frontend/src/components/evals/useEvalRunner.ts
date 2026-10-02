@@ -1,40 +1,33 @@
 import { useEffect, useState } from "react";
 
-import { fetchEvalCases, fetchLastEvalRun, runEval } from "../../api/evals";
+import { caseOutcomes, fetchEvalCases, fetchLastEvalRun, runEval, savedRunSummary } from "../../api/evals";
 import { streamNdjson } from "../../api/client";
 import type {
-  EvalCaseResult,
+  EvalCaseOutcomesByMode,
   EvalFixtureKey,
   EvalRunMode,
   EvalRunOption,
-  EvalRunResult,
   EvalStreamEvent,
   LastEvalRun,
 } from "../../types";
 
-type ModeResults = Partial<Record<EvalRunMode, EvalCaseResult>>;
 type RunState = {
   running: boolean;
   thinking: string;
-  result: EvalRunResult | null;
-  ranMode: EvalRunMode;
   error: string | null;
 };
 
 export function useEvalRunner(options: {
   caseEvalKey: EvalFixtureKey;
   runKeys: EvalRunMode[];
-  initialMode: EvalRunMode;
 }) {
   const [cases, setCases] = useState<Record<string, unknown>[] | null>(null);
   const [run, setRun] = useState<RunState>({
     running: false,
     thinking: "",
-    result: null,
-    ranMode: options.initialMode,
     error: null,
   });
-  const [caseResults, setCaseResults] = useState<Record<string, ModeResults>>({});
+  const [caseResults, setCaseResults] = useState<Record<string, EvalCaseOutcomesByMode>>({});
   const [restored, setRestored] = useState<Record<string, LastEvalRun>>({});
 
   function loadCases() {
@@ -49,26 +42,18 @@ export function useEvalRunner(options: {
     fetchLastEvalRun(options.runKeys).then((data) => {
       if (!data.runs.length) return;
       const byMode: Record<string, LastEvalRun> = {};
-      for (const lastRun of data.runs) byMode[lastRun.evalKey as EvalRunMode] = lastRun;
+      for (const lastRun of data.runs) byMode[lastRun.evalKey] = lastRun;
       setRestored(byMode);
       if (!seedResults) return;
 
-      const seeded: Record<string, ModeResults> = {};
+      const seeded: Record<string, EvalCaseOutcomesByMode> = {};
       for (const lastRun of data.runs) {
-        const mode = lastRun.evalKey as EvalRunMode;
-        for (const result of lastRun.result.cases ?? []) {
-          (seeded[result.key] ??= {})[mode] = result;
+        const mode = lastRun.evalKey;
+        for (const outcome of caseOutcomes(savedRunSummary(lastRun))) {
+          (seeded[outcome.result.key] ??= {})[mode] = outcome;
         }
       }
       setCaseResults(seeded);
-      const newest = data.runs.reduce((left, right) =>
-        left.ranAt >= right.ranAt ? left : right,
-      );
-      setRun((current) => ({
-        ...current,
-        result: newest.result,
-        ranMode: newest.evalKey as EvalRunMode,
-      }));
     });
 
   useEffect(() => {
@@ -82,7 +67,7 @@ export function useEvalRunner(options: {
       const { [mode.evalKey]: _removed, ...remaining } = current;
       return remaining;
     });
-    setRun({ running: true, thinking: "", result: null, ranMode: mode.evalKey, error: null });
+    setRun({ running: true, thinking: "", error: null });
     try {
       const response = await runEval(mode.evalKey, { caseKey });
       if (!response.ok || !response.body) {
@@ -104,17 +89,17 @@ export function useEvalRunner(options: {
         }
         if (event.type !== "summary") return;
 
-        setRun((current) => ({ ...current, running: false, result: event.result }));
-        const runCases = event.result.cases ?? [];
+        setRun((current) => ({ ...current, running: false }));
+        const runCases = caseOutcomes(event);
         setCaseResults((current) => {
-          const next: Record<string, ModeResults> = {};
+          const next: Record<string, EvalCaseOutcomesByMode> = {};
           for (const [key, results] of Object.entries(current)) {
             next[key] = caseKey
               ? { ...results }
-              : { ...results, [mode.evalKey]: undefined };
+              : { ...results, [event.eval]: undefined };
           }
-          for (const result of runCases) {
-            (next[result.key] ??= {})[mode.evalKey] = result;
+          for (const outcome of runCases) {
+            (next[outcome.result.key] ??= {})[outcome.mode] = outcome;
           }
           return next;
         });

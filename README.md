@@ -262,17 +262,15 @@ leaving the backend running for diagnosis. It uses `watchfiles` to replace the b
 reliably after Python edits. Vite HMR updates ordinary frontend edits and also tells the open email
 gallery to refetch when its Python templates change.
 
-If local screening data looks stale or inconsistent, reset the local SQLite database before starting dev:
+If screening results are out of date, use Screen or Rank to refresh the affected results. After
+pulling a database schema change, apply migrations in place from `backend/`:
 
 ```sh
-./reset-db.sh
-./dev.sh
+uv run alembic upgrade head
 ```
 
-```powershell
-./reset-db.ps1
-./dev.ps1
-```
+Keep the existing database and its saved runs. The reset scripts erase local data; use them only
+for an explicitly approved recovery when an in-place migration cannot preserve the data.
 
 ### Database protection
 

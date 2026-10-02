@@ -21,6 +21,13 @@ from app.services.auth.passwordless import (
     magic_link_request_allowed,
 )
 from app.services.email.delivery import deliver_email
+from app.services.email.retry_intents import (
+    ApplicationConfirmationRetryIntent,
+    ApplicationUnavailableRetryIntent,
+    EmailChangeNoticeRetryIntent,
+    MagicLinkRetryIntent,
+    SelectedApplicationRetryIntent,
+)
 from app.services.email.sender import EmailSender
 from app.services.email.templates import (
     application_confirmation_email,
@@ -118,13 +125,11 @@ def send_magic_link(
         applicant_draft=applicant_draft,
         user_id=user_id,
         magic_link_token=issued.record,
-        retry_intent={
-            "type": "magic_link",
-            "purpose": purpose.value,
-            "remember_device": remember_device,
-            "initiating_session_id": initiating_session_id,
-            "committee_invitation": committee_invitation_role is not None,
-        },
+        retry_intent=MagicLinkRetryIntent(
+            type="magic_link", purpose=purpose.value, remember_device=remember_device,
+            initiating_session_id=initiating_session_id,
+            committee_invitation=committee_invitation_role is not None,
+        ),
         now=now,
     )
     return EmailSendOutcome.SENT if delivered else EmailSendOutcome.FAILED
@@ -167,10 +172,7 @@ def send_application_confirmation(
         recipient_kind=PasswordlessIdentityKind.APPLICANT,
         application_id=application.id,
         magic_link_token=issued.record,
-        retry_intent={
-            "type": "application_confirmation",
-            "submitted": submitted,
-        },
+        retry_intent=ApplicationConfirmationRetryIntent(type="application_confirmation", submitted=submitted),
         now=now,
     )
 
@@ -196,10 +198,7 @@ def send_email_change_notice(
         message,
         recipient_kind=PasswordlessIdentityKind.APPLICANT,
         application_id=application.id,
-        retry_intent={
-            "type": "email_change_notice",
-            "old_email": old_email,
-        },
+        retry_intent=EmailChangeNoticeRetryIntent(type="email_change_notice", old_email=old_email),
         now=now,
     )
 
@@ -231,7 +230,7 @@ def send_application_unavailable(
         idempotency_key=(
             f"application-unavailable:{recipient_key}:{pacific_today(now=now).isoformat()}"
         ),
-        retry_intent={"type": "application_unavailable"},
+        retry_intent=ApplicationUnavailableRetryIntent(type="application_unavailable"),
         now=now,
     )
 
@@ -257,6 +256,6 @@ def send_selected_application_locked(
             f"application-selected-locked:{application.id}:"
             f"{pacific_today(now=now).isoformat()}"
         ),
-        retry_intent={"type": "application_selected_locked"},
+        retry_intent=SelectedApplicationRetryIntent(type="application_selected_locked"),
         now=now,
     )

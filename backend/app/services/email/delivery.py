@@ -14,6 +14,7 @@ from app.db.models import (
     MagicLinkToken,
     PasswordlessIdentityKind,
 )
+from app.services.email.retry_intents import RetryIntent
 from app.services.email.sender import (
     EmailQuotaExceededError,
     EmailRetryableError,
@@ -33,7 +34,7 @@ def deliver_email(
     magic_link_token: MagicLinkToken | None = None,
     applicant_draft: ApplicantDraft | None = None,
     idempotency_key: str | None = None,
-    retry_intent: dict[str, object] | None = None,
+    retry_intent: RetryIntent | None = None,
     now: datetime | None = None,
 ) -> bool:
     """Attempt one send and durably record its provider outcome."""
@@ -71,7 +72,7 @@ def queue_email(
     application_id: int | None = None,
     magic_link_token: MagicLinkToken | None = None,
     idempotency_key: str,
-    retry_intent: dict[str, object],
+    retry_intent: RetryIntent,
 ) -> EmailDelivery:
     """Add an outbox intent to the caller's transaction without contacting the provider."""
     delivery = EmailDelivery(
@@ -190,7 +191,7 @@ def _reserve_delivery(
     magic_link_token: MagicLinkToken | None,
     applicant_draft: ApplicantDraft | None,
     idempotency_key: str | None,
-    retry_intent: dict[str, object] | None,
+    retry_intent: RetryIntent | None,
     now: datetime,
 ) -> EmailDelivery | None:
     existing = _delivery_for_key(db, idempotency_key)

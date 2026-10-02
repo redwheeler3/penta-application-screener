@@ -3,7 +3,6 @@
 import time
 from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -13,25 +12,14 @@ from app.ai.analysis import (
     log,
 )
 from app.ai.dimension_consolidation import Consolidation, consolidate_dimensions
-from app.ai.dimension_decomposition import (
-    decompose_audit_payload,
-    decompose_dimensions,
-    enforce_committee_requests,
-    to_pool_report,
-)
-from app.ai.dimension_discovery import (
-    DiscoverySeeds,
-    discover_patterns_fanout,
-    eligible_applications,
-)
-from app.ai.dimension_matching import match_dimensions
+from app.ai.dimension_discovery import DiscoverySeeds, eligible_applications
 from app.ai.dimension_scoring import applications_to_score, score_dimensions
 from app.ai.pricing import PassCost
 from app.ai.provider import AIProvider
-from app.ai.schemas import DecompositionReport, PoolDimensionReport
+from app.ai.schemas import PoolDimensionReport
 from app.db.models import Analysis, MemberRanking, User
-from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.events import (
+    CriteriaPhaseEvent,
     NoticeEvent,
     PhaseEvent,
     ProgressEvent,
@@ -41,6 +29,7 @@ from app.schemas.events import (
     WarningEvent,
     emit,
 )
+from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.settings import AppSettings
 from app.services.cost_report import record_run_cost
 from app.services.ranking.analysis import (
@@ -51,6 +40,11 @@ from app.services.ranking.analysis import (
     create_analysis,
     get_current_analysis,
     key_history,
+)
+from app.services.ranking.criteria import (
+    CriteriaPassResult,
+    CriteriaStageChange,
+    run_criteria_passes,
 )
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.identity import adopt_matched_keys
@@ -65,27 +59,8 @@ from app.services.stream_worker import StreamWorker
 # stream switch is uniform across this job and the screening job).
 CRITERIA, SCORES, CONSOLIDATE = "criteria", "scores", "consolidate"
 
-# Sub-stages within the criteria phase — the sequential model calls under its one
-# banner, surfaced so the UI can say which step is running (they're opaque calls with
-# no per-item progress). Emitted as StageEvents (see _run_criteria_passes + the drain
-# loop) using the literal names below.
-
-# A markdown horizontal rule streamed into the reasoning box between sections (each
-# criteria sub-stage, and consolidation), so the model's reasoning for one step reads
-# as visually distinct from the next. ReactMarkdown renders it as an <hr>. Emitted as
-# a thinking delta — the frontend appends it like any other, staying a dumb sink.
+# Separate streamed reasoning from successive criteria stages and consolidation.
 THINKING_SEPARATOR = "\n\n---\n\n"
-
-
-class _Stage:
-    """A sentinel pushed onto the criteria delta queue to mark a sub-stage transition,
-    so the drain loop can tell it apart from a reasoning-text delta (a plain str) and
-    emit a StageEvent instead of a ThinkingEvent."""
-
-    __slots__ = ("name",)
-
-    def __init__(self, name: str) -> None:
-        self.name = name
 
 
 @dataclass
@@ -134,32 +109,6 @@ class ScoreTally:
         return PassCost.from_tally(self, model_id)
 
 
-# --- Rank: the criteria → scores → consolidation chain -----------------------
-#
-# ``rank_run`` streams the three phases below in order. Each is a ``_stream_*`` generator
-# that yields NDJSON lines and returns its result; ``rank_run.stream()`` threads those
-# results together and writes the run's cost ledger + summary at the end.
-
-
-@dataclass
-class _CriteriaWork:
-    """The criteria worker thread's raw output, handed back to ``_stream_criteria`` after
-    the thread joins (the thread computes the AI passes; the generator does the DB writes
-    and event emission, which must stay on the request thread)."""
-
-    report: PoolDimensionReport
-    narrative: str | None
-    discovery_cost: PassCost
-    new_to_old: dict[str, str]
-    match_narrative: str | None
-    match_cost: PassCost
-    fan_out_reports: list[PoolDimensionReport]
-    decomposition: DecompositionReport
-    decompose_cost: PassCost
-    folded_requests: list[dict]
-    fan_out_audit: dict[str, Any]
-
-
 @dataclass
 class _CriteriaResult:
     """What the criteria phase hands the rest of the chain: the created shared analysis and the
@@ -178,13 +127,11 @@ class _CriteriaResult:
 def _stream_criteria(
     db: Session, provider: AIProvider, settings: AppSettings, user: User, opening_id: int
 ) -> Generator[str, None, _CriteriaResult | None]:
-    """Phase 1 — find criteria: K-parallel discovery → decomposition → identity-match onto
-    prior dimensions → adopt matched keys → carry the triggering member's tiers forward →
-    create the shared analysis + that member's ranking. The sub-passes are opaque multi-minute
-    model calls, so their reasoning streams live via a worker thread that pushes deltas onto a
-    queue this generator drains into ``thinking``/``stage`` events. Returns the analysis +
-    member ranking + per-pass costs, or ``None`` after emitting a fatal ``error`` (the caller
-    then aborts the whole stream)."""
+    """Load prior state, stream the criteria worker, then persist the completed result.
+
+    The worker computes AI passes and audits; database writes stay on this request
+    thread. A fatal worker error emits an error event and ends the run.
+    """
     # Capture prior state before discovery. Matching looks across ALL prior analyses (shared
     # dimension history); tier carry-forward looks across the TRIGGERING member's prior
     # rankings — a concept that fell out and re-surfaces should re-adopt its existing key
@@ -219,101 +166,13 @@ def _stream_criteria(
         proposed=committee_proposed_dimensions(db, prior_analysis),
     )
 
-    # Carry K (the fan-out width) on the criteria phase event's `total` so the UI can
-    # name it ("Running K parallel discovery passes…"). Criteria has no per-item
-    # fraction, so `total` is free to repurpose as this count.
-    yield emit(PhaseEvent(phase=CRITERIA, total=settings.ai.discovery_fan_out))
+    yield emit(CriteriaPhaseEvent(discovery_workers=settings.ai.discovery_fan_out))
     pool = eligible_applications(db, opening_id)
-    worker: StreamWorker[str | _Stage, _CriteriaWork] = StreamWorker()
-    # Per-pass wall-clock (ms) for the criteria sub-passes, filled as each runs and
-    # read back after the worker joins. On this dict, not the result
-    # object, since the worker thread fills it while the generator drains.
-    durations: dict[str, int] = {}
-
-    def run_criteria_passes(put: Callable[[str | _Stage], None]) -> _CriteriaWork:
-            # Pass 1: K-parallel fresh-context discovery, blind except for committee seeds.
-            # The K reports'
-            # cross-call variation is the diversity the decomposition step (pass 1b)
-            # settles — measured to buy +36% real coverage vs. a single run (see the
-            # coverage gate). All K are persisted as an audit trail.
-            put(_Stage("discovering"))
-            _t0 = time.perf_counter()
-            fan_out = discover_patterns_fanout(
-                provider, applications=pool, settings=settings,
-                k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=put,
-            )
-            durations["Pattern discovery"] = round((time.perf_counter() - _t0) * 1000)
-            fan_out_reports = fan_out.reports
-            # Persist every discoverer's report AND its own reasoning, built here
-            # where the passes are in scope. Each pass = one fresh-context discovery;
-            # keeping all K narratives (not just the streamed one) is what lets the
-            # Observability panel show each discoverer — and reasoning has proven vital for
-            # debugging (see .clinerules).
-            fan_out_audit = {
-                "k": len(fan_out.passes),  # survivors (the reports decomposition saw)
-                "failed_count": fan_out.failed_count,  # workers that timed out/errored
-                "passes": [
-                    {"report": p.report.model_dump(mode="json"), "narrative": p.narrative}
-                    for p in fan_out.passes
-                ],
-            }
-            discovery_cost = fan_out.cost
-            # Pass 1b: decomposition — settle the K reports into ONE finest,
-            # non-overlapping set. A single call
-            # distils the union to ~one axis per real concept. Its DecompositionReport
-            # is projected onto a PoolDimensionReport so the match → adopt → score tail
-            # below consumes it unchanged; source_keys + the per-axis merge reasoning
-            # are preserved separately in decompose_audit.
-            put(_Stage("settling"))
-            # Kept axes are injected HERE (not into discovery): the settling call sees
-            # every carving at once, so it folds any re-discovered twin into the kept
-            # axis (reusing its key → match adopts it → cached scores carry forward)
-            # and keeps it present regardless.
-            _t0 = time.perf_counter()
-            decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
-                provider, reports=fan_out_reports, settings=settings,
-                kept=kept_dims, on_delta=put,
-            )
-            durations["Dimension decomposition"] = round((time.perf_counter() - _t0) * 1000)
-            # D9 guard: a committee ask (proposal OR kept axis) must never be silently
-            # merged away. Deterministic backstop for the prompt — repairs flag-loss on
-            # merge and re-adds any ask decomposition dropped; `folded` lists asks merged
-            # INTO another axis, surfaced to the committee (never a silent vanish).
-            decomposition, folded_requests = enforce_committee_requests(
-                decomposition, fan_out_reports, kept=kept_dims
-            )
-            # The settled why_it_differentiates is carried forward from each axis's
-            # primary source (the discoverer/kept axis that actually read the pool),
-            # NOT written by the decomposer (which never sees the pool). See
-            # to_pool_report / DecomposedDimension.
-            report = to_pool_report(
-                decomposition, fan_out_reports, kept=kept_dims
-            )
-            narrative = decompose_narrative or fan_out.narrative
-            # Pass 2: identity-match new dimensions onto ALL prior dimensions (not
-            # just the last run) so a re-surfaced concept re-adopts its key rather
-            # than minting a new one — keeping the key count converging and reusing
-            # cached scores. Skipped on the very first run (no history).
-            new_to_old: dict[str, str] = {}
-            match_narrative: str | None = None
-            match_cost = PassCost()
-            if match_history is not None:
-                put(_Stage("matching"))
-                _t0 = time.perf_counter()
-                new_to_old, match_narrative, match_cost = match_dimensions(
-                    provider, old=match_history, new=report, settings=settings,
-                    on_delta=put,
-                )
-                durations["Dimension matching"] = round((time.perf_counter() - _t0) * 1000)
-            return _CriteriaWork(
-                report=report, narrative=narrative, discovery_cost=discovery_cost,
-                new_to_old=new_to_old, match_narrative=match_narrative, match_cost=match_cost,
-                fan_out_reports=fan_out_reports, decomposition=decomposition,
-                decompose_cost=decompose_cost, folded_requests=folded_requests,
-                fan_out_audit=fan_out_audit,
-            )
-
-    worker.start(run_criteria_passes)
+    worker: StreamWorker[str | CriteriaStageChange, CriteriaPassResult] = StreamWorker()
+    worker.start(lambda put: run_criteria_passes(
+        provider, applications=pool, settings=settings, seeds=seeds,
+        kept=kept_dims, match_history=match_history, on_delta=put,
+    ))
     # Separate each sub-stage's reasoning with a rule — but not before the first, so
     # the box doesn't open with a stray divider. The drain injects a keepalive during any
     # >HEARTBEAT_SECONDS silence (an opaque pass streaming no token) so the stream survives
@@ -325,7 +184,7 @@ def _stream_criteria(
             continue
         if item is None:
             break
-        if isinstance(item, _Stage):
+        if isinstance(item, CriteriaStageChange):
             if not first_stage:
                 yield emit(ThinkingEvent(phase=CRITERIA, text=THINKING_SEPARATOR))
             first_stage = False
@@ -364,37 +223,6 @@ def _stream_criteria(
                 ),
             )
         )
-    # Decompose audit: per settled axis, the source_keys it absorbed + the merge/keep
-    # reasoning (the Observability panel surface, and the D9 committee-request trail). Built
-    # from the pre-adopt decomposition so it reflects what decomposition actually did,
-    # before the match pass rewrites matched keys to prior ones below.
-    decompose_audit = decompose_audit_payload(
-        work.decomposition, work.fan_out_reports, narrative=work.narrative,
-        folded_requests=work.folded_requests,
-    )
-    # Audit trail for the carry-forward: what discovery ACTUALLY emitted (its own
-    # keys, before adopt_matched_keys rewrites matched ones to prior keys) and how
-    # the match pass mapped it. Without this the stored report only shows the
-    # rewritten result, so we can't tell genuine re-discovery from match over-
-    # matching. (Exposed in the admin debug view.)
-    match_audit = {
-        "raw_discovery_dimensions": [
-            {"key": d.key, "name": d.name, "from_committee_request": d.from_committee_request}
-            for d in work.report.dimensions
-        ],
-        "new_to_old": work.new_to_old,
-        "match_narrative": work.match_narrative,
-        # How many prior dimensions the match pass matched against across the full
-        # cross-run history (all known keys). 0 on the first run (no history), so
-        # the audit viewer can tell a first run — where
-        # carry-forward is N/A — from a genuine zero-match re-run.
-        "prior_dimension_count": len(match_history.dimensions) if match_history else 0,
-        # Prior-key → prior-name (from history), so the audit viewer can show a
-        # matched dimension's user-facing prior title next to its key.
-        "prior_dimension_names": (
-            {d.key: d.name for d in match_history.dimensions} if match_history else {}
-        ),
-    }
     # For every matched dimension, adopt the prior dimension wholesale (key + text)
     # from match_history — the same history the match pass matched against — so its
     # tier placement AND cached score carry forward, and the displayed text stays
@@ -416,9 +244,9 @@ def _stream_criteria(
         db, user=user, opening_id=opening_id, report=report, settings=settings,
         narrative=work.narrative,
         tier_layout=layout, new_dimension_keys=new_dimension_keys,
-        match_audit=match_audit,
+        match_audit=work.match_audit,
         fan_out_audit=work.fan_out_audit,
-        decompose_audit=decompose_audit,
+        decompose_audit=work.decompose_audit,
     )
     member_ranking = get_or_create_member_ranking(db, analysis, user)
     yield emit(
@@ -436,7 +264,7 @@ def _stream_criteria(
     return _CriteriaResult(
         analysis=analysis, member_ranking=member_ranking, report=report,
         discovery_cost=work.discovery_cost, decompose_cost=work.decompose_cost,
-        match_cost=work.match_cost, durations=durations,
+        match_cost=work.match_cost, durations=work.durations,
     )
 
 

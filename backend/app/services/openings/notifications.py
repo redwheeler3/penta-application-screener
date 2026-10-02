@@ -16,6 +16,7 @@ from app.db.models import (
     PasswordlessIdentityKind,
 )
 from app.services.email.delivery import deliver_email
+from app.services.email.retry_intents import UnsuccessfulApplicationRetryIntent
 from app.services.email.sender import EmailSender
 from app.services.email.templates import unsuccessful_application_email
 from app.services.openings.catalog import opening_phase
@@ -73,10 +74,9 @@ def stream_due_unsuccessful_notices(
                 f"application-unsuccessful:{notice.application.id}:"
                 + ",".join(str(opening_id) for opening_id in notice.opening_ids)
             ),
-            retry_intent={
-                "type": "application_unsuccessful",
-                "opening_labels": list(notice.labels),
-            },
+            retry_intent=UnsuccessfulApplicationRetryIntent(
+                type="application_unsuccessful", opening_labels=list(notice.labels),
+            ),
             now=now,
         )
         if delivered:

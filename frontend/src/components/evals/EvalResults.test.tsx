@@ -1,0 +1,53 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, expectTypeOf, it } from "vitest";
+
+import type { CategoricalEvalCaseResult, EvalCaseOutcome, EvalRunSummary, EvalStreamEvent, LastEvalRun } from "../../types";
+import { EvalCaseResultView } from "./EvalResults";
+import { evalCaseStatus, runSummary } from "./evalResultPresentation";
+
+const contested: CategoricalEvalCaseResult = {
+  key: "boundary", passed: true, verdict: "keep", expected: "merge",
+  contested: true, reason: "Both are defensible.", failures: [],
+};
+
+describe("eval result presentation", () => {
+  it("rejects mismatched modes and payloads in both live and saved run contracts", () => {
+    type CategoricalPayload = { cases: CategoricalEvalCaseResult[] };
+    expectTypeOf<{ eval: "matching"; result: CategoricalPayload }>().toMatchTypeOf<EvalRunSummary>();
+    expectTypeOf<{
+      type: "summary"; eval: "scoring"; savedPath: null; result: CategoricalPayload;
+    }>().not.toMatchTypeOf<EvalStreamEvent>();
+    expectTypeOf<
+      Omit<LastEvalRun, "evalKey" | "result"> & { evalKey: "scoring"; result: CategoricalPayload }
+    >().not.toMatchTypeOf<LastEvalRun>();
+  });
+
+  it("keeps contested agreement green and contested divergence amber", () => {
+    expect(evalCaseStatus({ mode: "matching", result: { ...contested, verdict: "merge" } })).toBe("ok");
+    const outcome: EvalCaseOutcome = { mode: "matching", result: contested };
+    render(<EvalCaseResultView outcome={outcome} />);
+    expect(screen.getByText("contested").closest(".eval-case-result")).toHaveClass("contested");
+    expect(runSummary({ eval: "matching", result: { cases: [contested] } }, 3)).toBe("1/3 passed");
+  });
+
+  it("uses the judge's verdict when displayed labels have different shapes", () => {
+    render(<EvalCaseResultView outcome={{ mode: "judge", result: {
+      key: "neutral-score", marker: "[ok]", humanLabel: "[-0.15, 0.15]", judgeLabel: "+0.00",
+      contested: false, detail: "Inside the expected band.", labelRationale: "Neutral evidence.",
+    } }} />);
+    expect(screen.getByText("passed").closest(".eval-case-result")).toHaveClass("ok");
+    expect(screen.queryByText(/disagrees/)).toBeNull();
+  });
+
+  it("shows the score spread and each run's reasoning for an unstable scoring case", () => {
+    render(<EvalCaseResultView outcome={{ mode: "scoring_stability", result: {
+      key: "flip", marker: "[UNSTABLE]", agreement: 0.5, tally: { pass: 1, fail: 1 },
+      scoreMin: -0.2, scoreMax: 0.3,
+      runs: [{ outcome: "pass", detail: "**Grounded** evidence." }, { outcome: "fail", detail: "Outside the band." }],
+    } }} />);
+    expect(screen.getByText("failed").closest(".eval-case-result")).toHaveClass("fail");
+    expect(screen.getByText(/score -0.20..0.30/)).toBeInTheDocument();
+    expect(screen.getByText("Grounded").tagName).toBe("STRONG");
+    expect(screen.getByText("Outside the band.")).toBeInTheDocument();
+  });
+});

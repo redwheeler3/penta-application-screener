@@ -58,7 +58,7 @@ export function useAiRuns(options: {
     useState<ScoreCurrentEstimateResponse | null>(null);
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
-  const [criteriaThinking, setCriteriaThinking] = useState("");
+  const [rankThinking, setRankThinking] = useState("");
   const screeningEstimateRequest = useRef(0);
   const rankEstimateRequest = useRef(0);
   const screeningEstimateAbort = useRef<AbortController | null>(null);
@@ -197,7 +197,7 @@ export function useAiRuns(options: {
     setRankRunning(true);
     cancelRankEstimate();
     setRankProgress(null);
-    setCriteriaThinking("");
+    setRankThinking("");
     const priorProposals = options.ranking.currentRun?.proposedDimensions ?? [];
     if (mode === "discover" && priorProposals.length > 0) {
       options.ranking.setDisplayedProposals([]);
@@ -216,25 +216,22 @@ export function useAiRuns(options: {
       } else {
         await streamNdjson<RankingStreamEvent>(response.body, (event) => {
           if (event.type === "phase") {
-            setRankProgress({
-              phase: event.phase as RankProgress["phase"],
-              processed: 0,
-              total: event.total ?? 0,
-            });
+            if (event.phase === "criteria") {
+              setRankProgress({ phase: "criteria", discoveryWorkers: event.discoveryWorkers });
+            } else if (event.phase === "scores") {
+              setRankProgress({ phase: "scores", processed: 0, total: event.total ?? 0 });
+            } else {
+              setRankProgress({ phase: "consolidate" });
+            }
           } else if (event.type === "progress") {
-            setRankProgress({
-              phase: event.phase as RankProgress["phase"],
-              processed: event.processed,
-              total: event.total,
-            });
+            setRankProgress({ phase: "scores", processed: event.processed, total: event.total });
           } else if (event.type === "stage") {
-            setRankProgress((current) =>
-              current
-                ? { ...current, stage: event.stage }
-                : { phase: "criteria", processed: 0, total: 0, stage: event.stage },
+            setRankProgress((current) => current?.phase === "criteria"
+              ? { ...current, stage: event.stage }
+              : { phase: "criteria", discoveryWorkers: 0, stage: event.stage },
             );
           } else if (event.type === "thinking") {
-            setCriteriaThinking((current) => current + event.text);
+            setRankThinking((current) => current + event.text);
           } else if (event.type === "warning") {
             options.notifications.warning(event.message || "The run completed with a warning.");
           } else if (event.type === "error") {
@@ -261,7 +258,7 @@ export function useAiRuns(options: {
     } finally {
       setRankProgress(null);
       setRankRunning(false);
-      setCriteriaThinking("");
+      setRankThinking("");
     }
   }
 
@@ -275,7 +272,7 @@ export function useAiRuns(options: {
     scoreCurrentEstimate,
     rankRunning,
     rankProgress,
-    criteriaThinking,
+    rankThinking,
     requestScreeningEstimate,
     runScreening,
     cancelScreeningEstimate,

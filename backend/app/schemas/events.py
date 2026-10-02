@@ -1,16 +1,16 @@
-"""The one NDJSON event vocabulary shared by both streaming jobs (Screen, Rank).
+"""Shared NDJSON event vocabulary for screening, ranking, and eval runs.
 
 NDJSON responses bypass ``response_model``, so these typed models are the single
 source of truth for event shapes. Generators emit
 ``event.model_dump_json(by_alias=True) + "\\n"`` — camelCase for free, greppable,
-and mirrored by the frontend's discriminated union in ``types.ts``.
+and mirrored by the frontend's unions in ``types/workflow.ts`` and ``types/evals.ts``.
 
 Grammar (every event carries ``phase`` so the client's stream switch is identical
 across jobs; screening uses the single phase ``"screen"``):
 
-    phase      — a pass began (``total`` known for per-item passes)
+    phase      — a pass began (candidate ``total`` or criteria ``discoveryWorkers``)
     progress   — one item finished within a phase
-    thinking   — streamed model reasoning (rank's criteria phase only)
+    thinking   — streamed model reasoning from criteria or consolidation
     notice     — a mid-stream structured update (rank's criteria_done)
     warning    — the run degraded but is continuing (a yellow, non-fatal toast)
     item_error — one item failed, NON-fatal; the stream continues
@@ -27,6 +27,14 @@ proceeded on the survivors. The client shows it amber and keeps going.
 from typing import Literal
 
 from app.schemas.base import ResponseModel
+
+CriteriaStage = Literal["discovering", "settling", "matching"]
+
+
+class CriteriaPhaseEvent(ResponseModel):
+    type: Literal["phase"] = "phase"
+    phase: Literal["criteria"] = "criteria"
+    discovery_workers: int
 
 
 class PhaseEvent(ResponseModel):
@@ -56,8 +64,8 @@ class StageEvent(ResponseModel):
     """
 
     type: Literal["stage"] = "stage"
-    phase: str
-    stage: str
+    phase: Literal["criteria"] = "criteria"
+    stage: CriteriaStage
 
 
 class NoticeEvent(ResponseModel):

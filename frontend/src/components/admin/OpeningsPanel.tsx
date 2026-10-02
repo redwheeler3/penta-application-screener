@@ -1,62 +1,20 @@
-import { CalendarDays, Eye, Pencil, Plus, UserCheck, UserX } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { CalendarDays, Eye, Pencil, Plus, UserCheck } from "lucide-react";
+import { type ReactNode, useState } from "react";
 
 import * as api from "../../api/openings";
-import { streamNdjson } from "../../api/client";
-import { readProblem } from "../../api/problems";
 import { formatDateOnly, formatHousingCharge } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
-import type {
-  Opening,
-  OpeningCreate,
-  OpeningCreated,
-  OpeningDecisionStreamEvent,
-  OpeningPreview,
-  OpeningSelection,
-  OpeningSelectionCandidate,
-  OpeningWrite,
-} from "../../types";
-import { NumberInput } from "../shared/NumberInput";
+import type { Opening, OpeningSelection } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 import { DirectSelectionOpeningForm } from "./DirectSelectionOpeningForm";
-
-type OpeningDraft = {
-  unitSizeBedrooms: number;
-  housingChargeDollars: number;
-  applicationOpenDate: string;
-  applicationCloseDate: string;
-  moveInDate: string;
-};
-
-const EMPTY_DRAFT: OpeningDraft = {
-  unitSizeBedrooms: 2,
-  housingChargeDollars: 0,
-  applicationOpenDate: "",
-  applicationCloseDate: "",
-  moveInDate: "",
-};
+import { OpeningDecisionPanel } from "./OpeningDecisionPanel";
+import { OpeningEditor } from "./OpeningEditor";
 
 type OpeningPanelMode =
   | { kind: "list" }
-  | {
-      kind: "form";
-      editingId: number | null;
-      draft: OpeningDraft;
-      launchPreview: OpeningPreview | null;
-    }
+  | { kind: "form"; opening: Opening | null }
   | { kind: "direct" }
-  | {
-      kind: "selection";
-      selection: OpeningSelection;
-      pendingCandidate: OpeningSelectionCandidate | null;
-      confirmingNoHousehold: boolean;
-    };
-
-type DecisionProgress = {
-  processed: number;
-  total: number | null;
-  sent: number;
-};
+  | { kind: "selection"; selection: OpeningSelection };
 
 export function OpeningsPanel(props: {
   onError: (message: string) => void;
@@ -72,15 +30,9 @@ export function OpeningsPanel(props: {
   const [mode, setMode] = useState<OpeningPanelMode>({ kind: "list" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [decisionProgress, setDecisionProgress] = useState<DecisionProgress | null>(null);
 
   function beginCreate(): void {
-    setMode({
-      kind: "form",
-      editingId: null,
-      draft: { ...EMPTY_DRAFT },
-      launchPreview: null,
-    });
+    setMode({ kind: "form", opening: null });
     setMessage("");
   }
 
@@ -90,77 +42,16 @@ export function OpeningsPanel(props: {
   }
 
   function beginEdit(opening: Opening): void {
-    if (
-      opening.intakeMode !== "applications"
-      || opening.applicationOpenDate === null
-      || opening.applicationCloseDate === null
-    ) return;
-    setMode({
-      kind: "form",
-      editingId: opening.id,
-      draft: {
-        unitSizeBedrooms: opening.unitSizeBedrooms,
-        housingChargeDollars: opening.housingChargeCents / 100,
-        applicationOpenDate: opening.applicationOpenDate,
-        applicationCloseDate: opening.applicationCloseDate,
-        moveInDate: opening.moveInDate,
-      },
-      launchPreview: null,
-    });
+    if (opening.intakeMode !== "applications"
+      || opening.applicationOpenDate === null || opening.applicationCloseDate === null) return;
+    setMode({ kind: "form", opening });
     setMessage("");
   }
 
-  async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    if (mode.kind !== "form" || busy) return;
-    const payload: OpeningWrite = {
-      unitSizeBedrooms: mode.draft.unitSizeBedrooms,
-      housingChargeCents: Math.round(mode.draft.housingChargeDollars * 100),
-      applicationOpenDate: mode.draft.applicationOpenDate,
-      applicationCloseDate: mode.draft.applicationCloseDate,
-      moveInDate: mode.draft.moveInDate,
-    };
-    if (mode.editingId === null && mode.launchPreview === null) {
-      setBusy(true);
-      try {
-        setMode({ ...mode, launchPreview: await api.previewOpening(createPayload(payload)) });
-      } catch {
-        props.onError("Could not preview the opening and notification audience.");
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
-    if (mode.editingId === null && mode.launchPreview !== null) {
-      setBusy(true);
-      try {
-        const createResponse = await api.createOpening(
-          createPayload(payload),
-          mode.launchPreview.audienceCount,
-        );
-        if (!createResponse.ok) {
-          const problem = await readProblem(createResponse);
-          if (createResponse.status === 409) setMode({ ...mode, launchPreview: null });
-          props.onError(problem ?? "Could not create that opening.");
-          return;
-        }
-        const created = (await createResponse.json()) as OpeningCreated;
-        setOpenings(created.openings);
-        setMode({ kind: "list" });
-        setMessage(
-          `Applications are open and ${created.queuedNotificationCount} ${created.queuedNotificationCount === 1 ? "email is" : "emails are"} queued.`,
-        );
-        return;
-      } finally {
-        setBusy(false);
-      }
-    }
-    if (mode.editingId === null) return;
-    const response = await mutate(api.updateOpening(mode.editingId, payload));
-    if (!response) return;
-    setOpenings(response);
+  function completeWorkflow(items: Opening[], message: string): void {
+    setOpenings(items);
     setMode({ kind: "list" });
-    setMessage("Opening updated.");
+    setMessage(message);
   }
 
   async function manageSelection(opening: Opening): Promise<void> {
@@ -173,100 +64,9 @@ export function OpeningsPanel(props: {
         setMessage("Opening decision is already recorded.");
         return;
       }
-      setMode({
-        kind: "selection",
-        selection,
-        pendingCandidate: null,
-        confirmingNoHousehold: false,
-      });
+      setMode({ kind: "selection", selection });
     } catch {
       props.onError("Could not load the opening selection.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirmSelection(): Promise<void> {
-    if (mode.kind !== "selection" || !mode.pendingCandidate || busy) return;
-    setBusy(true);
-    setDecisionProgress({ processed: 0, total: null, sent: 0 });
-    try {
-      await finalizeDecision(
-        api.confirmOpeningSelection(
-          mode.selection.openingId,
-          mode.pendingCandidate.applicationId,
-        ),
-        "Successful applicant selected.",
-      );
-    } finally {
-      setDecisionProgress(null);
-      setBusy(false);
-    }
-  }
-
-  async function confirmNoHousehold(): Promise<void> {
-    if (mode.kind !== "selection" || busy) return;
-    setBusy(true);
-    setDecisionProgress({ processed: 0, total: null, sent: 0 });
-    try {
-      await finalizeDecision(
-        api.confirmNoHouseholdSelected(mode.selection.openingId),
-        "Opening decision recorded.",
-      );
-    } finally {
-      setDecisionProgress(null);
-      setBusy(false);
-    }
-  }
-
-  async function finalizeDecision(
-    request: Promise<Response>,
-    successMessage: string,
-  ): Promise<void> {
-    try {
-      const response = await request;
-      if (!response.ok || !response.body) {
-        props.onError((await readProblem(response)) ?? "Could not save the opening decision.");
-        return;
-      }
-      const summaries: Array<Extract<OpeningDecisionStreamEvent, { type: "summary" }>> = [];
-      await streamNdjson<OpeningDecisionStreamEvent>(response.body, (event) => {
-        if (event.type === "progress") {
-          setDecisionProgress({
-            processed: event.processed,
-            total: event.total,
-            sent: event.sent,
-          });
-        } else {
-          summaries.push(event);
-        }
-      });
-      const summary = summaries.at(-1);
-      if (!summary) {
-        props.onError("The opening decision was saved, but email progress was interrupted.");
-        return;
-      }
-      setMode({ kind: "list" });
-      setOpenings(await api.fetchOpenings());
-      setMessage(decisionCompletionMessage(successMessage, summary.sent, summary.total));
-      props.onPoolChanged();
-    } catch {
-      props.onError(
-        "The connection was interrupted. The decision may already be saved; review the opening before trying again.",
-      );
-    }
-  }
-
-  async function mutate(request: Promise<Response>): Promise<Opening[] | null> {
-    setBusy(true);
-    setMessage("");
-    try {
-      const response = await request;
-      if (!response.ok) {
-        props.onError((await readProblem(response)) ?? "Could not update that opening.");
-        return null;
-      }
-      return ((await response.json()) as { openings: Opening[] }).openings;
     } finally {
       setBusy(false);
     }
@@ -309,33 +109,29 @@ export function OpeningsPanel(props: {
       ) : null}
 
       {mode.kind === "form" ? (
-        <OpeningForm
-          draft={mode.draft}
-          editing={mode.editingId !== null}
-          busy={busy}
-          onChange={(next) => setMode({ ...mode, draft: next, launchPreview: null })}
+        <OpeningEditor
+          key={mode.opening?.id ?? "new"}
+          opening={mode.opening}
           onCancel={() => setMode({ kind: "list" })}
-          onSubmit={save}
-          launchPreview={mode.launchPreview}
+          onSaved={completeWorkflow}
+          busy={busy}
+          setBusy={setBusy}
+          onError={props.onError}
         />
       ) : null}
 
       {mode.kind === "selection" ? (
-        <OpeningSelectionPanel
+        <OpeningDecisionPanel
+          key={mode.selection.openingId}
           selection={mode.selection}
-          pendingCandidate={mode.pendingCandidate}
-          confirmingNoHousehold={mode.confirmingNoHousehold}
+          onSaved={(items, message) => {
+            completeWorkflow(items, message);
+            props.onPoolChanged();
+          }}
           busy={busy}
-          onChoose={(pendingCandidate) => setMode({ ...mode, pendingCandidate })}
-          onRequestNoHousehold={() => setMode({ ...mode, confirmingNoHousehold: true })}
-          onCancelNoHousehold={() => setMode({ ...mode, confirmingNoHousehold: false })}
-          onConfirmNoHousehold={() => void confirmNoHousehold()}
-          onBack={() => setMode({ ...mode, pendingCandidate: null })}
-          onConfirm={() => void confirmSelection()}
-          progress={decisionProgress}
-          onReview={(applicationId) =>
-            props.onOpenApplicant(applicationId, mode.selection.openingId)
-          }
+          setBusy={setBusy}
+          onError={props.onError}
+          onReview={(applicationId) => props.onOpenApplicant(applicationId, mode.selection.openingId)}
           onClose={() => setMode({ kind: "list" })}
         />
       ) : null}
@@ -374,123 +170,6 @@ export function OpeningsPanel(props: {
       )}
     </div>
   );
-}
-
-function OpeningForm(props: {
-  draft: OpeningDraft;
-  editing: boolean;
-  busy: boolean;
-  onChange: (draft: OpeningDraft) => void;
-  onCancel: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  launchPreview: OpeningPreview | null;
-}): ReactNode {
-  const set = (patch: Partial<OpeningDraft>) => props.onChange({ ...props.draft, ...patch });
-  return (
-    <form className="opening-form" onSubmit={props.onSubmit}>
-      <div className="opening-form-heading">
-        <h4>{props.editing ? "Edit opening" : "New opening"}</h4>
-        <span>{props.editing ? "Update the opening details." : "Applications open as soon as you confirm."}</span>
-      </div>
-      <div className="opening-form-grid">
-        <label>
-          <span>Unit size</span>
-          <select value={props.draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
-            <option value={1}>1 bedroom</option>
-            <option value={2}>2 bedrooms</option>
-            <option value={3}>3 bedrooms</option>
-          </select>
-        </label>
-        <label>
-          <span>Monthly housing charge</span>
-          <div className="opening-money-input">
-            <span>$</span>
-            <NumberInput min="0" step="0.01" required value={props.draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
-          </div>
-        </label>
-        {props.editing ? (
-          <label>
-            <span>Applications opened</span>
-            <input type="date" value={props.draft.applicationOpenDate} readOnly />
-          </label>
-        ) : null}
-        <label>
-          <span>Applications close</span>
-          <input type="date" required value={props.draft.applicationCloseDate} onChange={(event) => set({ applicationCloseDate: event.target.value })} />
-        </label>
-        <label>
-          <span>Move-in date</span>
-          <input type="date" required value={props.draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
-        </label>
-      </div>
-      {!props.editing && props.launchPreview ? (
-        <OpeningLaunchPreview preview={props.launchPreview} />
-      ) : null}
-      <div className="opening-form-actions">
-        <button className="secondary-button" type="button" onClick={props.onCancel} disabled={props.busy}>Cancel</button>
-        <button className="primary-button" type="submit" disabled={props.busy}>
-          {props.busy
-            ? "Working…"
-            : props.editing
-              ? "Save changes"
-              : props.launchPreview
-                ? `Open applications and queue ${props.launchPreview.audienceCount} ${props.launchPreview.audienceCount === 1 ? "email" : "emails"}`
-                : "Review opening and emails"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function OpeningLaunchPreview({ preview }: { preview: OpeningPreview }): ReactNode {
-  const usage = preview.socketlabs;
-  const variantLabels: Record<string, string> = {
-    notification_list: "Notification list email",
-    current_application: "Current application email",
-    application_and_notification_list: "Combined application and notification-list email",
-  };
-  return (
-    <section className="opening-launch-preview" aria-label="Opening and email confirmation">
-      <h5>Ready to open applications</h5>
-      <p>
-        <strong>{preview.audienceCount}</strong> {preview.audienceCount === 1 ? "person" : "people"}
-        {" "}will receive an email.
-      </p>
-      <dl className="opening-preview-variants">
-        {preview.variants.map((variant) => (
-          <div key={variant.kind}>
-            <dt>{variantLabels[variant.kind] ?? variant.kind}</dt>
-            <dd>{variant.recipientCount}</dd>
-          </div>
-        ))}
-      </dl>
-      {usage.available ? (
-        <p className="opening-quota-summary">
-          SocketLabs usage will move from <strong>{usage.messagesUsed?.toLocaleString()}</strong> to{" "}
-          <strong>{usage.projectedMessagesUsed?.toLocaleString()}</strong> of{" "}
-          <strong>{usage.messageAllowance?.toLocaleString()}</strong> messages this billing period.
-          {usage.allowOverages === false && usage.projectedMessagesUsed !== null && usage.messageAllowance !== null
-            && usage.projectedMessagesUsed > usage.messageAllowance
-            ? " Messages beyond the allowance will remain queued until SocketLabs accepts them."
-            : ""}
-        </p>
-      ) : (
-        <p className="opening-quota-summary">
-          Current SocketLabs usage is unavailable. Emails will be queued and retried automatically
-          if needed.
-        </p>
-      )}
-    </section>
-  );
-}
-
-function createPayload(payload: OpeningWrite): OpeningCreate {
-  return {
-    unitSizeBedrooms: payload.unitSizeBedrooms,
-    housingChargeCents: payload.housingChargeCents,
-    applicationCloseDate: payload.applicationCloseDate,
-    moveInDate: payload.moveInDate,
-  };
 }
 
 function OpeningCard(props: {
@@ -559,161 +238,4 @@ function OpeningCard(props: {
       </div>
     </article>
   );
-}
-
-function OpeningSelectionPanel(props: {
-  selection: OpeningSelection;
-  pendingCandidate: OpeningSelectionCandidate | null;
-  confirmingNoHousehold: boolean;
-  busy: boolean;
-  onChoose: (candidate: OpeningSelectionCandidate) => void;
-  onRequestNoHousehold: () => void;
-  onCancelNoHousehold: () => void;
-  onConfirmNoHousehold: () => void;
-  onBack: () => void;
-  onConfirm: () => void;
-  progress: DecisionProgress | null;
-  onReview: (id: number) => void;
-  onClose: () => void;
-}): ReactNode {
-  const [candidateFilter, setCandidateFilter] = useState("");
-  const filterTerms = candidateFilter.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  const filteredCandidates = props.selection.candidates.filter((candidate) => {
-    const searchable = `${candidate.applicantName ?? ""} ${candidate.primaryEmail}`.toLocaleLowerCase();
-    return filterTerms.every((term) => searchable.includes(term));
-  });
-  if (props.confirmingNoHousehold) {
-    const count = props.selection.activeParticipantCount;
-    return (
-      <section className="opening-selection-panel">
-        <h4>Confirm no household selected</h4>
-        <p>
-          No household will be selected for this opening. {count} {count === 1 ? "application" : "applications"} will be recorded as unsuccessful.
-        </p>
-        <p className="panel-hint">
-          This decision is permanent. Eligible unsuccessful applicants will be emailed immediately.
-        </p>
-        {props.progress ? <DecisionProgressView progress={props.progress} /> : null}
-        <div className="opening-form-actions">
-          <button className="secondary-button" type="button" onClick={props.onCancelNoHousehold} disabled={props.busy}>Back</button>
-          <button className="primary-button" type="button" onClick={props.onConfirmNoHousehold} disabled={props.busy}>
-            <UserX size={15} /> Confirm decision
-          </button>
-        </div>
-      </section>
-    );
-  }
-  if (props.pendingCandidate) {
-    const unsuccessfulCount = props.selection.activeParticipantCount - 1;
-    return (
-      <section className="opening-selection-panel">
-        <h4>Confirm the successful applicant</h4>
-        <p>
-          <strong>{props.pendingCandidate.applicantName ?? props.pendingCandidate.primaryEmail}</strong>
-          {" "}will be selected. {unsuccessfulCount} other {unsuccessfulCount === 1 ? "application" : "applications"} will be recorded as unsuccessful.
-        </p>
-        <p className="panel-hint">
-          This selection is permanent. Eligible unsuccessful applicants will be emailed immediately.
-        </p>
-        {props.progress ? <DecisionProgressView progress={props.progress} /> : null}
-        <div className="opening-form-actions">
-          <button className="secondary-button" type="button" onClick={props.onBack} disabled={props.busy}>Back</button>
-          <button className="primary-button" type="button" onClick={props.onConfirm} disabled={props.busy}>
-            <UserCheck size={15} /> Confirm selection
-          </button>
-        </div>
-      </section>
-    );
-  }
-  return (
-    <section className="opening-selection-panel">
-      <div className="opening-form-heading">
-        <div>
-          <h4>Opening decision</h4>
-          <span>Record the committee's decision for this opening.</span>
-        </div>
-        <button className="secondary-button" type="button" onClick={props.onClose}>Close</button>
-      </div>
-      <div>
-        {props.selection.candidates.length === 0 ? (
-          <p className="panel-hint">There are no available applicants to select.</p>
-        ) : (
-          <>
-            {props.selection.candidates.length > 5 ? (
-              <label className="opening-candidate-filter">
-                <span>Filter candidates</span>
-                <input
-                  type="search"
-                  value={candidateFilter}
-                  onChange={(event) => setCandidateFilter(event.target.value)}
-                  placeholder="Name or email"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </label>
-            ) : null}
-            {filteredCandidates.length === 0 ? (
-              <p className="panel-hint opening-candidate-empty">No candidates match that filter.</p>
-            ) : (
-              <div className="opening-candidate-list">
-                {filteredCandidates.map((candidate) => (
-                  <div key={candidate.applicationId} className="opening-candidate-row">
-                    <button className="opening-candidate-name" type="button" onClick={() => props.onReview(candidate.applicationId)}>
-                      <strong>{candidate.applicantName ?? candidate.primaryEmail}</strong>
-                      <span>{candidate.primaryEmail}</span>
-                    </button>
-                    <button className="secondary-button" type="button" onClick={() => props.onChoose(candidate)}>
-                      Select
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        <button className="opening-no-selection-button" type="button" onClick={props.onRequestNoHousehold}>
-          No household selected
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function DecisionProgressView(props: { progress: DecisionProgress }): ReactNode {
-  const { processed, total, sent } = props.progress;
-  if (total === null) {
-    return (
-      <div className="opening-decision-progress" role="status">
-        <strong>Preparing outcome emails…</strong>
-        <progress aria-label="Preparing outcome emails" />
-      </div>
-    );
-  }
-  const percentage = total === 0 ? 100 : Math.round((processed / total) * 100);
-  const detail = total === 0
-    ? "No outcome emails are due yet."
-    : `${sent} sent · ${processed} of ${total} processed (${percentage}%)`;
-  return (
-    <div className="opening-decision-progress" role="status" aria-live="polite">
-      <div>
-        <strong>Sending outcome emails</strong>
-        <span>{detail}</span>
-      </div>
-      <progress
-        aria-label="Outcome email progress"
-        value={total === 0 ? 1 : processed}
-        max={Math.max(total, 1)}
-      />
-    </div>
-  );
-}
-
-function decisionCompletionMessage(prefix: string, sent: number, total: number): string {
-  if (total === 0) return `${prefix} No outcome emails were due yet.`;
-  if (sent === total) {
-    return `${prefix} ${sent} outcome ${sent === 1 ? "email was" : "emails were"} sent.`;
-  }
-  const needsAttention = total - sent;
-  const agreement = needsAttention === 1 ? "needs" : "need";
-  return `${prefix} ${sent} of ${total} outcome emails were sent; ${needsAttention} ${agreement} attention in Email delivery.`;
 }

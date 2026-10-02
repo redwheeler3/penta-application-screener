@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
@@ -19,6 +20,7 @@ from app.db.models import (
 from app.services.applications.selected import application_is_selected
 from app.services.auth.passwordless import issue_magic_link
 from app.services.email.delivery import attempt_reserved_delivery
+from app.services.email.retry_intents import MagicLinkRetryIntent, RetryIntent
 from app.services.email.sender import EmailSender, OutboundEmail
 from app.services.email.templates import (
     application_confirmation_email,
@@ -251,11 +253,13 @@ def _delivery_recipient(delivery: EmailDelivery) -> str:
 def _build_retry(
     db: Session, delivery: EmailDelivery, *, now: datetime
 ) -> tuple[OutboundEmail, MagicLinkToken | None] | None:
-    intent = delivery.retry_intent or {}
-    intent_type = intent.get("type")
-    if intent_type == "magic_link":
+    if delivery.retry_intent is None:
+        return None
+    # The ledger stores JSON; every producer constructs a named RetryIntent.
+    intent = cast(RetryIntent, delivery.retry_intent)
+    if intent["type"] == "magic_link":
         return _build_magic_link_retry(db, delivery, intent, now=now)
-    if intent_type == "vacancy_opening":
+    if intent["type"] == "vacancy_opening":
         opening = db.get(Opening, int(intent["opening_id"]))
         subscription_id = int(intent["subscription_id"])
         if (
@@ -271,7 +275,7 @@ def _build_retry(
             ),
             None,
         )
-    if intent_type == "application_unavailable" and delivery.application is None:
+    if intent["type"] == "application_unavailable" and delivery.application is None:
         if delivery.recipient_email is None:
             return None
         return (
@@ -281,7 +285,7 @@ def _build_retry(
     application = delivery.application
     if application is None:
         return None
-    if intent_type == "application_confirmation":
+    if intent["type"] == "application_confirmation":
         submitted = bool(intent.get("submitted"))
         issued = issue_magic_link(
             db,
@@ -307,7 +311,7 @@ def _build_retry(
             ),
             issued.record,
         )
-    if intent_type == "email_change_notice":
+    if intent["type"] == "email_change_notice":
         return (
             email_change_notice_email(
                 application_id=application.id,
@@ -316,7 +320,7 @@ def _build_retry(
             ),
             None,
         )
-    if intent_type == "application_unavailable":
+    if intent["type"] == "application_unavailable":
         return (
             application_unavailable_email(
                 application_id=application.id,
@@ -324,7 +328,7 @@ def _build_retry(
             ),
             None,
         )
-    if intent_type == "application_selected_locked":
+    if intent["type"] == "application_selected_locked":
         if not application_is_selected(db, application.id):
             return None
         return (
@@ -334,7 +338,7 @@ def _build_retry(
             ),
             None,
         )
-    if intent_type == "application_unsuccessful":
+    if intent["type"] == "application_unsuccessful":
         return (
             unsuccessful_application_email(
                 application_id=application.id,
@@ -343,7 +347,7 @@ def _build_retry(
             ),
             None,
         )
-    if intent_type == "application_opening":
+    if intent["type"] == "application_opening":
         opening = db.get(Opening, int(intent["opening_id"]))
         if opening is None:
             return None
@@ -378,7 +382,7 @@ def _build_retry(
 def _build_magic_link_retry(
     db: Session,
     delivery: EmailDelivery,
-    intent: dict[str, object],
+    intent: MagicLinkRetryIntent,
     *,
     now: datetime,
 ) -> tuple[OutboundEmail, MagicLinkToken] | None:

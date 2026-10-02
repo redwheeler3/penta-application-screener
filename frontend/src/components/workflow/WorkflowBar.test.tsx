@@ -31,7 +31,7 @@ const baseProps: ComponentProps<typeof WorkflowBar> = {
   scoreCurrentEstimate: null,
   hasCurrentCriteria: true,
   rankProgress: null,
-  criteriaThinking: "",
+  rankThinking: "",
   pendingProposals: [],
   onRequestRank: vi.fn(),
   onRunRank: vi.fn(),
@@ -51,6 +51,22 @@ const baseProps: ComponentProps<typeof WorkflowBar> = {
 };
 
 describe("WorkflowBar archived state", () => {
+  it("names discovery workers without showing them as candidate progress", () => {
+    const { rerender } = render(<WorkflowBar {...baseProps} rankRunning
+      rankProgress={{ phase: "criteria", discoveryWorkers: 5, stage: "discovering" }} />);
+    expect(screen.getByText("Running 5 parallel discovery passes…")).toBeInTheDocument();
+    expect(screen.queryByText(/0\/5/)).toBeNull();
+
+    rerender(<WorkflowBar {...baseProps} rankRunning
+      rankProgress={{ phase: "scores", processed: 2, total: 8 }} />);
+    expect(screen.getByText("Scoring candidates… 2/8 (25%)")).toBeInTheDocument();
+
+    rerender(<WorkflowBar {...baseProps} rankRunning
+      rankProgress={{ phase: "consolidate" }} rankThinking="Consolidation reasoning" />);
+    expect(screen.getByText("Consolidating duplicate criteria…")).toBeInTheDocument();
+    expect(screen.getByText("Consolidation reasoning")).toBeInTheDocument();
+  });
+
   it("shows completed archived steps as neutral finalized history", () => {
     render(<WorkflowBar {...baseProps} />);
 

@@ -13,6 +13,7 @@ from app.db.models import (
     RunLock,
     UserRole,
 )
+from app.schemas.settings import AISettings
 from app.services.cost_report import RANK_PASS_LABELS
 from tests.ranking_support import (
     _scoring_report,
@@ -389,6 +390,12 @@ async def test_rank_chain_runs_criteria_scores() -> None:
         # emitting its phase even when it merges nothing).
         phases = [e["phase"] for e in events if e["type"] == "phase"]
         assert phases == ["criteria", "scores", "consolidate"]
+
+        criteria_phase = next(e for e in events if e["type"] == "phase" and e["phase"] == "criteria")
+        assert criteria_phase["discoveryWorkers"] == AISettings().discovery_fan_out
+        assert "total" not in criteria_phase
+        scoring_phase = next(e for e in events if e["type"] == "phase" and e["phase"] == "scores")
+        assert scoring_phase["total"] == 2
 
         summary = next(e for e in events if e["type"] == "summary")
         assert summary["dimensions"] == 2
