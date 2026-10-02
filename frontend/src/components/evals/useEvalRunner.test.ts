@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import * as api from "../../api/evals";
 import type { LastEvalRun, ScoringEvalCaseResult } from "../../types";
+import { deferred } from "../../testSupport";
 import { useEvalRunner } from "./useEvalRunner";
 
 vi.mock("../../api/evals", async (importOriginal) => ({
@@ -26,6 +27,37 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.fetchEvalCases).mockResolvedValue({ cases: [{ key: "a" }, { key: "b" }] });
   vi.mocked(api.fetchLastEvalRun).mockResolvedValue({ runs: [] });
+});
+
+it("keeps newly completed results when initial history arrives late", async () => {
+  const pending = deferred<{ runs: LastEvalRun[] }>();
+  vi.mocked(api.fetchLastEvalRun).mockReturnValueOnce(pending.promise);
+  vi.mocked(api.runEval).mockResolvedValue(new Response(`${JSON.stringify({
+    type: "summary", eval: "scoring", savedPath: null, result: { cases: [scored("a", 0.8)] },
+  })}\n`));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await act(async () => {
+    await result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 });
+  });
+  await act(async () => pending.resolve({ runs: [
+    { ...history, evalKey: "scoring", result: { cases: [scored("a", 0.2)] } },
+  ] }));
+  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(result.current.restored.scoring).toBeUndefined();
+});
+
+it("discards history from an eval family the member has left", async () => {
+  const pending = deferred<{ runs: LastEvalRun[] }>();
+  vi.mocked(api.fetchLastEvalRun).mockReturnValueOnce(pending.promise);
+  const { result, rerender } = renderHook(({ matching }) => useEvalRunner({
+    caseEvalKey: matching ? "matching" : "scoring", runKeys: matching ? ["matching"] : ["scoring"],
+  }), { initialProps: { matching: false } });
+  rerender({ matching: true });
+  await act(async () => pending.resolve({ runs: [
+    { ...history, evalKey: "scoring", result: { cases: [scored("a", 0.2)] } },
+  ] }));
+  expect(result.current.caseResults).toEqual({});
+  expect(result.current.restored).toEqual({});
 });
 
 it("restores each mode and replaces only that mode's results after a whole-set run", async () => {

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import * as api from "../api/settings";
 import { retryWithBackoff } from "../retry";
 import type { AppSettings, SettingsResponse } from "../types";
+import { useRequestScope } from "./useRequestScope";
 
 export function useSharedSettings(options: {
   dashboardReady: boolean;
@@ -11,18 +12,18 @@ export function useSharedSettings(options: {
   const [saved, setSaved] = useState<SettingsResponse | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-
-  function apply(payload: SettingsResponse) {
-    setSaved(payload);
-    setDraft(payload.settings);
-    setLoadFailed(false);
-  }
+  const reads = useRequestScope();
 
   async function load(): Promise<void> {
+    const isCurrent = reads.begin();
     try {
-      apply(await retryWithBackoff(api.fetchSettings, 5));
+      const payload = await retryWithBackoff(api.fetchSettings, 5);
+      if (!isCurrent()) return;
+      setSaved(payload);
+      setDraft(payload.settings);
+      setLoadFailed(false);
     } catch {
-      setLoadFailed(true);
+      if (isCurrent()) setLoadFailed(true);
     }
   }
 
@@ -32,15 +33,24 @@ export function useSharedSettings(options: {
   }
 
   async function save(): Promise<boolean> {
-    if (!draft) return false;
+    if (!draft || isSaving) return false;
+    const submitted = draft;
+    const isCurrent = reads.capture();
+    reads.invalidate();
     setIsSaving(true);
     try {
-      const response = await api.saveSettings(draft);
-      if (!response.ok) return false;
-      apply((await response.json()) as SettingsResponse);
+      const response = await api.saveSettings(submitted);
+      if (!response.ok || !isCurrent()) return false;
+      const payload = (await response.json()) as SettingsResponse;
+      if (!isCurrent()) return false;
+      reads.invalidate();
+      setSaved(payload);
+      // The response acknowledges this snapshot; later edits remain an unsaved draft.
+      setDraft((current) => current === submitted ? payload.settings : current);
+      setLoadFailed(false);
       return true;
     } finally {
-      setIsSaving(false);
+      if (isCurrent()) setIsSaving(false);
     }
   }
 

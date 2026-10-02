@@ -65,6 +65,12 @@ owns case navigation; `EvalResults.tsx` owns result details and historical run m
 `evalResultPresentation.ts` defines the shared case-status and summary rules. The HTTP boundary
 keeps mode and payload correlated in both streamed summaries and saved runs. Case renderers
 receive outcomes derived from those whole-run contracts without a mode/payload type assertion.
+Saved-run history reads use `useRequestScope`; starting a new eval invalidates earlier history
+requests so a late initial response cannot overwrite the new run's results.
+
+`hooks/useSharedSettings.ts` keeps the accepted server configuration separate from its editable
+draft. Save completion acknowledges the submitted snapshot and preserves edits made while the
+request was in flight. Older settings reads cannot roll back a completed save.
 
 Applicant persistence is orchestrated by `useApplicantPersistence.ts`; `applicantPersistenceState.ts`
 defines its state, defaults, and typed partial updates. Each workflow updates related fields in

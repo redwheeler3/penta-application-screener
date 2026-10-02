@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { caseOutcomes, fetchEvalCases, fetchLastEvalRun, runEval, savedRunSummary } from "../../api/evals";
 import { streamNdjson } from "../../api/client";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import type {
   EvalCaseOutcomesByMode,
   EvalFixtureKey,
@@ -29,6 +30,8 @@ export function useEvalRunner(options: {
   });
   const [caseResults, setCaseResults] = useState<Record<string, EvalCaseOutcomesByMode>>({});
   const [restored, setRestored] = useState<Record<string, LastEvalRun>>({});
+  const historyKey = options.runKeys.join(",");
+  const historyReads = useRequestScope(historyKey);
 
   function loadCases() {
     fetchEvalCases(options.caseEvalKey)
@@ -38,9 +41,12 @@ export function useEvalRunner(options: {
 
   useEffect(loadCases, [options.caseEvalKey]);
 
-  const loadLastRuns = (seedResults: boolean) =>
-    fetchLastEvalRun(options.runKeys).then((data) => {
-      if (!data.runs.length) return;
+  async function loadLastRuns(seedResults: boolean): Promise<void> {
+    if (!historyReads.isFor(historyKey)) return;
+    const isCurrent = historyReads.begin();
+    try {
+      const data = await fetchLastEvalRun(options.runKeys);
+      if (!isCurrent() || !data.runs.length) return;
       const byMode: Record<string, LastEvalRun> = {};
       for (const lastRun of data.runs) byMode[lastRun.evalKey] = lastRun;
       setRestored(byMode);
@@ -54,15 +60,19 @@ export function useEvalRunner(options: {
         }
       }
       setCaseResults(seeded);
-    });
+    } catch {
+      // History is optional; a failed refresh must preserve displayed run results.
+    }
+  }
 
   useEffect(() => {
     void loadLastRuns(true);
     // The keys are stable per tab; the joined value makes the dependency primitive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.runKeys.join(",")]);
+  }, [historyKey]);
 
   async function runMode(mode: EvalRunOption, caseKey?: string) {
+    historyReads.invalidate();
     setRestored((current) => {
       const { [mode.evalKey]: _removed, ...remaining } = current;
       return remaining;
