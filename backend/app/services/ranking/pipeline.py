@@ -217,8 +217,8 @@ def _stream_criteria(
             WarningEvent(
                 phase=CRITERIA,
                 message=(
-                    f"{_failed} of {_failed + _survived} discovery workers failed "
-                    f"(likely a Bedrock timeout); continued on the {_survived} that "
+                    f"{_failed} of {_failed + _survived} discovery workers failed; "
+                    f"continued on the {_survived} that "
                     f"succeeded. Criteria may be slightly less diverse — re-rank to retry."
                 ),
             )

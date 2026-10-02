@@ -13,6 +13,8 @@ import type {
   WorkflowState,
 } from "../../types";
 
+import { RankingRunConfirmation } from "./RankingRunConfirmation";
+
 // Labels for the sequential criteria stages. Discovery can also name its worker count.
 const CRITERIA_STAGE_LABELS: Record<CriteriaStage, string> = {
   discovering: "Running parallel discovery passes…",
@@ -174,7 +176,6 @@ export function WorkflowBar(props: {
     rankProgress,
     pendingProposals,
   } = props;
-  const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
   const hasPendingProposals = pendingProposals.length > 0;
   // Screen and Rank are shared actions over the union scope, so both gate on the shared
   // pool being empty — not on this member's personal eligible count.
@@ -395,96 +396,15 @@ export function WorkflowBar(props: {
       ) : null}
 
       {rankEstimate ? (
-        <div className="run-confirm">
-          <div className="run-confirm-body">
-            <strong>
-              {hasPendingProposals
-                ? pendingProposals.length === 1
-                  ? "Apply your proposed criterion?"
-                  : "Apply your proposed criteria?"
-                : scoreCurrentEstimate?.toAnalyze === 0
-                  ? "Ranking is up to date."
-                  : scoreCurrentEstimate
-                    ? "Update the ranking?"
-                    : "Rank the candidates?"}
-            </strong>
-            {hasPendingProposals ? (
-              <p>
-                You proposed{" "}
-                {pendingProposals.map((text, i) => (
-                  <span key={text}>
-                    {i > 0 ? ", " : ""}
-                    <strong>{text}</strong>
-                  </span>
-                ))}
-                . A proposal stays inactive until a discovery run grounds it in the pool — run{" "}
-                <strong>Discover new criteria</strong> below to fold it in.
-              </p>
-            ) : null}
-            {scoreCurrentEstimate && hasMissingScores ? (
-              <>
-                <p>
-                  <strong>Score missing applicants</strong> against the current {scoreCurrentEstimate.dimensions} criteria.
-                  The criteria and your tier layout stay unchanged. Estimated cost{" "}
-                  <strong>~{money(scoreCurrentEstimate.estimatedUsd)}</strong> (cap ${scoreCurrentEstimate.capUsd.toFixed(2)}).
-                </p>
-                {!scoreCurrentEstimate.withinCap ? (
-                  <p className="run-confirm-warn">
-                    Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
-                  </p>
-                ) : null}
-              </>
-            ) : null}
-            {scoreCurrentEstimate?.toAnalyze === 0 ? (
-              <p>All {scoreCurrentEstimate.cached} eligible applicants are already scored against these criteria.</p>
-            ) : null}
-            <div>
-              <p>
-                {hasMissingScores ? "Or, " : ""}<strong>Discover new criteria</strong> that distinguish this pool and score all{" "}
-                {rankEstimate.eligible} eligible applicant{rankEstimate.eligible === 1 ? "" : "s"} against them.
-                Estimated cost <strong>~{money(rankEstimate.estimatedUsd)}</strong> (cap $
-                {rankEstimate.capUsd.toFixed(2)}).
-              </p>
-              {hasCurrentCriteria ? (
-                <p>
-                  Criteria you've tiered are kept and re-scored; only ignored criteria may be
-                  dropped or re-carved.
-                </p>
-              ) : null}
-              {!rankEstimate.withinCap ? (
-                <p className="run-confirm-warn">
-                  Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
-                </p>
-              ) : null}
-            </div>
-          </div>
-          <div className="run-confirm-actions">
-            {/* A pending proposal makes Discover the primary action — it's the only run
-                that grounds the proposed axis — so score-missing is demoted even when
-                scores are short. */}
-            {scoreCurrentEstimate && hasMissingScores ? (
-              <button
-                className={hasPendingProposals ? "secondary-button" : "primary-button"}
-                type="button"
-                onClick={() => props.onRunRank("score-current")}
-                disabled={props.rankRunning || !scoreCurrentEstimate.withinCap}
-              >
-                {props.rankRunning ? "Running…" : "Score missing applicants"}
-              </button>
-            ) : null}
-            <button
-              className={hasMissingScores && !hasPendingProposals ? "secondary-button" : "primary-button"}
-              type="button"
-              onClick={() => props.onRunRank("discover")}
-              disabled={props.rankRunning || !rankEstimate.withinCap}
-            >
-              {props.rankRunning ? "Running…" : hasCurrentCriteria ? "Discover new criteria" : "Confirm & run"}
-            </button>
-            <button className="secondary-button" type="button" onClick={props.onCancelRank}>
-              Cancel
-            </button>
-          </div>
-        </div>
+        <RankingRunConfirmation
+          estimate={rankEstimate}
+          scoreCurrentEstimate={scoreCurrentEstimate}
+          hasCurrentCriteria={hasCurrentCriteria}
+          pendingProposals={pendingProposals}
+          running={props.rankRunning}
+          onRun={props.onRunRank}
+          onCancel={props.onCancelRank}
+        />
       ) : null}
       {props.rankRunning ? (
         <div className="run-progress">

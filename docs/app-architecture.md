@@ -49,6 +49,10 @@ print rules live with their owning surface (`applications`, candidate detail/not
 observability, evals, feedback, and print) rather than relying on a cross-feature catch-all.
 `components/ai/AIWorkspaceView.tsx` is the shared shell for the Observability and Evals tabs.
 
+`components/workflow/WorkflowBar.tsx` owns the Screen/Rank strip and progress display.
+`RankingRunConfirmation.tsx` owns the ranking cost confirmation, its heading, and the priority
+between scoring missing applicants and discovering criteria. Both read run state from `useAiRuns`.
+
 `components/admin/OpeningsPanel.tsx` owns the opening list and navigation between workflows.
 `OpeningEditor.tsx` owns the editable opening draft, notification-audience preview, publication,
 and updates. `OpeningDecisionPanel.tsx` owns household selection, permanent-decision confirmation,
