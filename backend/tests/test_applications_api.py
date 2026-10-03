@@ -16,9 +16,11 @@ from app.db.models import (
     ApplicationStar,
     ApplicationVersion,
     Opening,
+    OpeningOutcome,
     User,
     UserRole,
 )
+from tests.application_support import current_opening_id
 from tests.committee_app_support import (
     add_eligible_application as add_eligible,
 )
@@ -64,6 +66,32 @@ async def test_mutations_acknowledge_only_owned_fields_without_rebuilding_detail
         assert not any("FROM analyses" in query or "FROM member_rankings" in query for query in queries)
         if path != "status":
             assert not any("FROM application_ai_results" in query for query in queries)
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", record)
+
+
+@pytest.mark.parametrize("pool_size", [1, 150])
+def test_application_list_batches_selection_state_as_the_pool_grows(pool_size) -> None:
+    _app, db, _ = setup_app(role=UserRole.MEMBER)
+    ids = [add_eligible(db, email=f"synthetic-{i}@example.com", raw_hash=f"synthetic-{i}").id for i in range(pool_size)]
+    opening_id = current_opening_id(db)
+    if pool_size > 1:
+        participation = db.scalar(select(ApplicationParticipation).where(ApplicationParticipation.application_id == ids[0]))
+        participation.outcome = OpeningOutcome.SELECTED
+        db.commit()
+    user = db.scalar(select(User))
+    queries = []
+
+    def record(_connection, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            queries.append(statement)
+
+    event.listen(db.get_bind(), "before_cursor_execute", record)
+    try:
+        result = routes.list_applications(opening_id=opening_id, user=user, db=db)
+        assert len(result.applications) == pool_size
+        assert {row.id for row in result.applications if row.selected} == ({ids[0]} if pool_size > 1 else set())
+        assert len(queries) <= 10
     finally:
         event.remove(db.get_bind(), "before_cursor_execute", record)
 

@@ -129,6 +129,11 @@ def list_applications(
     flags, facts = screening_findings_by_app(db, ids)
     starred = starred_ids(db, user.id, ids)
     shortlisted = shortlisted_ids(db, opening_id, ids) if opening_id is not None else set()
+    selected = set(db.scalars(select(ApplicationParticipation.application_id).where(
+        ApplicationParticipation.opening_id == opening_id,
+        ApplicationParticipation.application_id.in_(ids),
+        ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
+    ))) if ids else set()
     overrides = (
         overrides_by_app(db, user.id, opening_id, ids)
         if opening_id is not None
@@ -152,16 +157,7 @@ def list_applications(
                 starred=app.id in starred,
                 shortlisted=app.id in shortlisted,
                 opening_ids=[opening_id],
-                selected=(
-                    db.scalar(
-                        select(ApplicationParticipation.id).where(
-                            ApplicationParticipation.application_id == app.id,
-                            ApplicationParticipation.opening_id == opening_id,
-                            ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
-                        )
-                    )
-                    is not None
-                ),
+                selected=app.id in selected,
             )
             for app in applications
         ],

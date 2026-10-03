@@ -105,6 +105,11 @@ email change, or reconciliation cannot repopulate the exited application. Commit
 clears its user only after the server confirms success; failures retain the session and report an error.
 Vacancy support actions belong to the accepted exact-email lookup. Editing that address invalidates
 pending work and hides its actions; deletion uses the accepted subscription's email.
+Subscription saves upsert atomically on normalized email while preserving first consent. Each
+prepared opening email captures the current matching request's consent timestamp; acceptance
+deletes the subscription only if that timestamp still matches, preserving updates and re-subscriptions
+made during provider I/O. Pending list-only notices no longer matching the requested unit sizes are
+cancelled; application notices continue independently and consume only a matching subscription.
 
 ## Applicant intake
 
@@ -266,6 +271,9 @@ Compared with the preceding code, the board fell from 34 to 20 SELECTs (median 4
 a private-note save fell from 42 to 4 SELECTs (39.3 to 3.0 ms). These are local diagnostic results,
 not production latency guarantees. Regression tests enforce one score query across criterion counts
 and prevent metadata mutations from rebuilding the full detail.
+The application list batches selected-household IDs in one read. A subsequent five-sample comparison
+with 150 synthetic applicants reduced that list from 158 to 9 SELECTs (median 46.1 to 11.9 ms),
+with authentication lookup, network, and browser work excluded.
 
 Eval case and judge-brief writes share a short lock per fixture in the API process, covering the
 entire read/modify/write. JSON is published through a flushed UTF-8 temporary file and atomic
