@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { saveEvalCase } from "../../api/evals";
+import { readProblem } from "../../api/problems";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import type {
   EvalCaseOutcome,
   EvalFixtureKey,
@@ -55,7 +57,8 @@ export function RunnableEval(props: {
   const addable = props.addable ?? editable;
   const [selected, setSelected] = useState<string | null>(null); // selected case key
   const [editing, setEditing] = useState<{ existing: Record<string, unknown> | null } | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const saves = useRef<Promise<void>>(Promise.resolve());
+  const saveScope = useRequestScope(caseEvalKey);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const { cases, setCases, run, caseResults, restored, runMode } = useEvalRunner({
     caseEvalKey,
@@ -68,22 +71,33 @@ export function RunnableEval(props: {
     if (el) el.scrollTop = el.scrollHeight;
   });
 
-  async function persistCase(evalCase: FieldObject) {
-    setSaveError(null);
-    const resp = await saveEvalCase(caseEvalKey, evalCase);
-    if (resp.ok) {
-      setCases((await resp.json()).cases);
-      setSelected(String(evalCase.key));
-      setEditing(null);
-      props.onToast(`Case “${String(evalCase.key)}” saved — commit the golden file to keep it.`);
-    } else {
-      const problem = await resp.json().catch(() => null);
-      const detail = problem?.detail ?? `Save failed (${resp.status})`;
-      // Keep the inline error too: it holds the editor open with the form intact so the fix is
-      // one edit away, while the toast is the at-a-glance outcome.
-      setSaveError(detail);
-      props.onError(`Could not save case: ${detail}`);
-    }
+  function persistCase(evalCase: FieldObject): Promise<string | null> {
+    const isCurrent = saveScope.capture();
+    // Responses contain the whole fixture: serialize saves so an older list cannot
+    // replace the result of a later save. Editor lifetime owns closing or keeping drafts.
+    const result = saves.current.then(async () => {
+      if (!isCurrent()) return "This case tab is no longer active.";
+      try {
+        const response = await saveEvalCase(caseEvalKey, evalCase);
+        if (!isCurrent()) return "This case tab is no longer active.";
+        if (!response.ok) {
+          const problem = await readProblem(response) ?? `Save failed (${response.status})`;
+          if (isCurrent()) props.onError(`Could not save case: ${problem}`);
+          return problem;
+        }
+        const body = await response.json();
+        if (!isCurrent()) return "This case tab is no longer active.";
+        setCases(body.cases);
+        props.onToast(`Case “${String(evalCase.key)}” saved — commit the golden file to keep it.`);
+        return null;
+      } catch {
+        const problem = "Could not confirm the save. Your draft is still here; try again.";
+        if (isCurrent()) props.onError(problem);
+        return problem;
+      }
+    });
+    saves.current = result.then(() => {});
+    return result;
   }
 
   const selectedCase = cases?.find((c) => c.key === selected) ?? null;
@@ -132,7 +146,6 @@ export function RunnableEval(props: {
             className="secondary-button"
             disabled={run.running}
             onClick={() => {
-              setSaveError(null);
               setEditing({ existing: null });
               setSelected(null);
             }}
@@ -178,11 +191,12 @@ export function RunnableEval(props: {
         <div className="eval-detail-pane">
           {editing ? (
             <EvalCaseEditor
+              key={editing.existing === null ? `${caseEvalKey}:add` : `${caseEvalKey}:edit:${editing.existing.key}`}
               evalKey={caseEvalKey}
               existing={editing.existing}
-              error={saveError}
               onCancel={() => setEditing(null)}
               onSave={persistCase}
+              onSaved={(key) => { setSelected(key); setEditing(null); }}
             />
           ) : selectedCase ? (
             <div>
@@ -204,7 +218,6 @@ export function RunnableEval(props: {
                     className="secondary-button eval-detail-edit"
                     disabled={run.running}
                     onClick={() => {
-                      setSaveError(null);
                       setEditing({ existing: selectedCase });
                     }}
                   >

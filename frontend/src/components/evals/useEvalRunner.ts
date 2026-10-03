@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type SetStateAction, useEffect, useState } from "react";
 
 import { caseOutcomes, fetchEvalCases, fetchLastEvalRun, runEval, savedRunSummary } from "../../api/evals";
 import { streamNdjson } from "../../api/client";
@@ -22,7 +22,8 @@ export function useEvalRunner(options: {
   caseEvalKey: EvalFixtureKey;
   runKeys: EvalRunMode[];
 }) {
-  const [cases, setCases] = useState<Record<string, unknown>[] | null>(null);
+  const [cases, setStoredCases] = useState<Record<string, unknown>[] | null>(null);
+  const caseReads = useRequestScope(options.caseEvalKey);
   const [run, setRun] = useState<RunState>({
     running: false,
     thinking: "",
@@ -34,11 +35,19 @@ export function useEvalRunner(options: {
   const historyReads = useRequestScope(historyKey);
 
   function loadCases() {
+    const isCurrent = caseReads.begin();
     fetchEvalCases(options.caseEvalKey)
-      .then((data) => setCases(data.cases))
-      .catch(() => setCases([]));
+      .then((data) => { if (isCurrent()) setStoredCases(data.cases); })
+      .catch(() => { if (isCurrent()) setStoredCases([]); });
   }
 
+  function setCases(next: SetStateAction<Record<string, unknown>[] | null>) {
+    caseReads.invalidate();
+    setStoredCases(next);
+  }
+
+  // The fixture key owns the read; render-local setters must not replay it on save.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(loadCases, [options.caseEvalKey]);
 
   async function loadLastRuns(seedResults: boolean): Promise<void> {

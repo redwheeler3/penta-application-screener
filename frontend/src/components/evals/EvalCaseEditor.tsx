@@ -1,4 +1,5 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import type { EvalFixtureKey } from "../../types";
 import { type FieldObject, StructuredFields } from "./StructuredFields";
 
@@ -64,27 +65,49 @@ const TEMPLATES: Partial<Record<EvalFixtureKey, FieldObject>> = {
 export function EvalCaseEditor(props: {
   evalKey: EvalFixtureKey;
   existing: Record<string, unknown> | null;
-  error: string | null; // server-side validation error, if any
   onCancel: () => void;
-  onSave: (c: FieldObject) => void;
+  onSave: (c: FieldObject) => Promise<string | null>;
+  onSaved: (key: string) => void;
 }): ReactNode {
   const [value, setValue] = useState<FieldObject>(
     // judge owns no template (addable=false, so no new judge case is created here) → {} fallback.
     () => (props.existing as FieldObject | null) ?? TEMPLATES[props.evalKey] ?? { key: "" },
   );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pending = useRef(false);
+  const currentValue = useRef(value);
+  currentValue.current = value;
+  const requests = useRequestScope();
 
   const isNew = props.existing === null;
   // `key` is read-only when editing an existing case; editable (required) for a new one.
   const readOnlyKeys = isNew ? [] : ["key"];
 
-  function save() {
+  async function save() {
+    if (pending.current) return;
     const key = typeof value.key === "string" ? value.key.trim() : "";
     if (!key) {
       // Surface inline rather than saving an unkeyed case; server would 422 anyway.
       window.alert("A case needs a non-empty key.");
       return;
     }
-    props.onSave(value);
+    const isCurrent = requests.capture();
+    const snapshot = JSON.stringify(value);
+    pending.current = true;
+    setSaving(true);
+    setError(null);
+    try {
+      const problem = await props.onSave(value);
+      if (!isCurrent()) return;
+      if (problem !== null) setError(problem);
+      else if (JSON.stringify(currentValue.current) === snapshot) props.onSaved(String(value.key));
+    } catch {
+      if (isCurrent()) setError("Could not confirm the save. Your draft is still here; try again.");
+    } finally {
+      pending.current = false;
+      if (isCurrent()) setSaving(false);
+    }
   }
 
   return (
@@ -98,10 +121,10 @@ export function EvalCaseEditor(props: {
 
       <StructuredFields value={value} readOnlyKeys={readOnlyKeys} onChange={setValue} />
 
-      {props.error ? <p className="eval-error">{props.error}</p> : null}
+      {error ? <p className="eval-error">{error}</p> : null}
       <div className="run-confirm-actions">
-        <button type="button" className="primary-button" onClick={save}>
-          Save case
+        <button type="button" className="primary-button" onClick={() => void save()} disabled={saving}>
+          {saving ? "Saving…" : "Save case"}
         </button>
         <button type="button" className="secondary-button" onClick={props.onCancel}>
           Cancel

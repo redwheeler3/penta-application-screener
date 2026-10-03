@@ -74,6 +74,10 @@ keeps mode and payload correlated in both streamed summaries and saved runs. Cas
 receive outcomes derived from those whole-run contracts without a mode/payload type assertion.
 Saved-run history reads use `useRequestScope`; starting a new eval invalidates earlier history
 requests so a late initial response cannot overwrite the new run's results.
+Each eval family has its own mounted workspace. The case editor owns its draft, pending save,
+and inline error; it closes only when the current draft still matches the acknowledged submission.
+Fixture saves are ordered because responses contain the full case list. Accepted saves invalidate
+earlier fixture reads, and an earlier editor's completion cannot close a newer case editor.
 
 `hooks/useSharedSettings.ts` keeps the accepted server configuration separate from its editable
 draft. Save completion acknowledges the submitted snapshot and preserves edits made while the

@@ -127,6 +127,7 @@ export function AIWorkspaceView(props: {
           <InvariantsEval />
         ) : activeTab === "scoring" ? (
           <RunnableEval
+            key="scoring"
             {...toast}
             caseEvalKey="scoring"
             runKeys={["scoring", "scoring_stability"]}
@@ -140,6 +141,7 @@ export function AIWorkspaceView(props: {
           />
         ) : activeTab === "consolidation" ? (
           <RunnableEval
+            key="consolidation"
             {...toast}
             caseEvalKey="consolidation"
             runKeys={["consolidation", "consolidation_stability"]}
@@ -153,6 +155,7 @@ export function AIWorkspaceView(props: {
           />
         ) : activeTab === "matching" ? (
           <RunnableEval
+            key="matching"
             {...toast}
             caseEvalKey="matching"
             runKeys={["matching", "matching_stability"]}
@@ -166,6 +169,7 @@ export function AIWorkspaceView(props: {
           />
         ) : activeTab === "decomposition" ? (
           <RunnableEval
+            key="decomposition"
             {...toast}
             caseEvalKey="decomposition"
             runKeys={["decomposition", "decomposition_stability"]}
@@ -179,6 +183,7 @@ export function AIWorkspaceView(props: {
           />
         ) : activeTab === "screening" ? (
           <RunnableEval
+            key="screening"
             {...toast}
             caseEvalKey="screening"
             runKeys={["screening", "screening_stability"]}
@@ -192,6 +197,7 @@ export function AIWorkspaceView(props: {
           />
         ) : activeTab === "judge" ? (
           <RunnableEval
+            key="judge"
             {...toast}
             caseEvalKey="judge"
             runKeys={["judge", "stability"]}

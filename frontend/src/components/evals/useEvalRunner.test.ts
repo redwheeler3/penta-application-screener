@@ -127,3 +127,12 @@ it("keeps the server's fatal eval error as the outcome", async () => {
   await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }));
   expect(result.current.run).toMatchObject({ running: false, error: "Synthetic model failure." });
 });
+
+it("keeps accepted case data when the initial fixture read arrives late", async () => {
+  const pending = deferred<{ cases: Record<string, unknown>[] }>();
+  vi.mocked(api.fetchEvalCases).mockReturnValueOnce(pending.promise);
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: [] }));
+  act(() => result.current.setCases([{ key: "saved-case" }]));
+  await act(async () => { pending.resolve({ cases: [{ key: "old-case" }] }); });
+  expect(result.current.cases).toEqual([{ key: "saved-case" }]);
+});
