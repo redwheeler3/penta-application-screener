@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { MessageSquarePlus } from "lucide-react";
 import * as api from "../../api/feedback";
 import { readProblem } from "../../api/problems";
+import { useRequestScope, type RequestIsCurrent } from "../../hooks/useRequestScope";
 
 // A persistent, low-key corner button available on every page: the member's channel to
 // flag friction. Clicking opens an inline composer —
 // one textarea, submit. The context the member was in (route/tab/current ranking) rides
 // along invisibly (silent capture); identity, app version, and time are stamped
-// server-side. On success a toast confirms and the composer closes.
+// server-side. Success closes an unchanged composer; newer text stays available to send.
 export function FeedbackButton(props: {
   // The context attached to the submission, read from the app's live state. `activeTab`
   // is the accurate view label — when a candidate detail is open it names the detail, not
@@ -22,32 +23,49 @@ export function FeedbackButton(props: {
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const requests = useRequestScope(open);
+  const currentBody = useRef(body);
+  currentBody.current = body;
+  const pending = useRef<RequestIsCurrent | null>(null);
 
   function close() {
+    requests.reset();
     setOpen(false);
     setBody("");
+    setSubmitting(false);
   }
 
   async function submit() {
     const text = body.trim();
-    if (!text || submitting) return;
+    if (!text || pending.current?.()) return;
+    const isCurrent = requests.capture();
+    const submitted = body;
+    pending.current = isCurrent;
     setSubmitting(true);
-    const response = await api.submitFeedback({
-      body: text,
-      // The location.pathname is the most stable "where were they" signal; the active
-      // tab names the in-app view (tabs don't change the path).
-      route: window.location.pathname,
-      activeTab: props.activeTab,
-      analysisId: props.analysisId,
-      applicantId: props.applicantId,
-    });
-    setSubmitting(false);
-    if (response.ok) {
-      close();
-      props.onToast("Thanks — your feedback was sent to Jeff.");
-    } else {
-      const problem = await readProblem(response);
-      props.onError(problem ? `Could not send feedback: ${problem}` : "Could not send feedback.");
+    try {
+      const response = await api.submitFeedback({
+        body: text,
+        // The location.pathname is the most stable "where were they" signal; the active
+        // tab names the in-app view (tabs don't change the path).
+        route: window.location.pathname,
+        activeTab: props.activeTab,
+        analysisId: props.analysisId,
+        applicantId: props.applicantId,
+      });
+      if (!isCurrent()) return;
+      if (response.ok) {
+        const unchanged = currentBody.current === submitted;
+        if (unchanged) close();
+        props.onToast(unchanged ? "Thanks — your feedback was sent to Jeff." : "Feedback sent. Your newer text hasn’t been sent yet.");
+      } else {
+        const problem = await readProblem(response);
+        if (isCurrent()) props.onError(problem ? `Could not send feedback: ${problem}` : "Could not send feedback.");
+      }
+    } catch {
+      if (isCurrent()) props.onError("Could not confirm feedback submission. Your draft is still here; please try again.");
+    } finally {
+      if (pending.current === isCurrent) pending.current = null;
+      if (isCurrent()) setSubmitting(false);
     }
   }
 

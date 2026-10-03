@@ -1,9 +1,10 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 import * as api from "../../api/feedback";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import type { FeedbackItem, ViewTab } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
@@ -31,7 +32,9 @@ export function FeedbackPanel(props: {
   onOpenView: (tab: ViewTab) => void;
 }): ReactNode {
   const [showResolved, setShowResolved] = useState(false);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyIds, setBusyIds] = useState<Set<number>>(new Set());
+  const pending = useRef(new Set<number>());
+  const requests = useRequestScope();
   const feedback = useFetchResource<FeedbackItem[]>(
     () => api.fetchFeedback(showResolved),
     {
@@ -42,16 +45,31 @@ export function FeedbackPanel(props: {
   const items = feedback.data;
 
   async function act(id: number, action: "resolve" | "reopen") {
-    setBusyId(id);
-    const response = await (
-      action === "resolve" ? api.resolveFeedback(id) : api.reopenFeedback(id)
-    );
-    setBusyId(null);
-    if (!response.ok) {
-      props.onError((await readProblem(response)) ?? `Could not ${action} the feedback item.`);
-      return;
+    if (pending.current.has(id)) return;
+    const isCurrent = requests.capture();
+    pending.current.add(id);
+    setBusyIds((current) => new Set(current).add(id));
+    try {
+      const response = await (
+        action === "resolve" ? api.resolveFeedback(id) : api.reopenFeedback(id)
+      );
+      if (!isCurrent()) return;
+      if (!response.ok) {
+        const problem = await readProblem(response);
+        if (isCurrent()) props.onError(problem ?? `Could not ${action} the feedback item.`);
+        return;
+      }
+      void feedback.reload();
+    } catch {
+      if (isCurrent()) props.onError(`Could not confirm the feedback ${action}. Please try again.`);
+    } finally {
+      pending.current.delete(id);
+      if (isCurrent()) setBusyIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
     }
-    void feedback.reload();
   }
 
   return (
@@ -117,7 +135,7 @@ export function FeedbackPanel(props: {
                 <button
                   type="button"
                   className="secondary-button"
-                  disabled={busyId === item.id}
+                  disabled={busyIds.has(item.id)}
                   onClick={() => act(item.id, item.resolvedAt ? "reopen" : "resolve")}
                 >
                   {item.resolvedAt ? "Reopen" : "Mark resolved"}

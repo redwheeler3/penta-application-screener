@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
@@ -7,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.dependencies import require_current_user
 from app.db.models import Application, Base, Feedback, User, UserRole
 from app.db.session import get_db
+from app.services.feedback import reopen_feedback, resolve_feedback
 from tests.app_support import shared_test_app
 
 
@@ -27,6 +30,38 @@ def setup_app(role: UserRole) -> tuple:
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
     return app, db, user
+
+
+def test_reopen_applies_even_when_the_session_loaded_an_older_open_item() -> None:
+    _app, db, user = setup_app(UserRole.ADMIN)
+    item = Feedback(user_id=user.id, body="Synthetic feedback", app_version="test")
+    db.add(item)
+    db.commit()
+    item_id = item.id
+    factory = sessionmaker(bind=db.get_bind(), autoflush=False)
+    with factory() as stale:
+        original = stale.get(Feedback, item_id)
+        assert original.resolved_at is None
+        resolve_feedback(db, item_id)
+        reopened = reopen_feedback(stale, item_id)
+        assert reopened.resolved_at is None
+    db.refresh(item)
+    assert item.resolved_at is None
+
+
+def test_repeated_resolution_keeps_the_current_database_timestamp() -> None:
+    _app, db, user = setup_app(UserRole.ADMIN)
+    item = Feedback(user_id=user.id, body="Synthetic feedback", app_version="test")
+    db.add(item)
+    db.commit()
+    item_id = item.id
+    factory = sessionmaker(bind=db.get_bind(), autoflush=False)
+    with factory() as stale:
+        old = stale.get(Feedback, item_id)
+        assert old.resolved_at is None
+        item.resolved_at = datetime(2026, 1, 1)
+        db.commit()
+        assert resolve_feedback(stale, item_id).resolved_at == datetime(2026, 1, 1)
 
 
 @pytest.mark.anyio

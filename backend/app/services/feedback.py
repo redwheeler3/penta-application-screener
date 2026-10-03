@@ -7,7 +7,7 @@ Resolved items are retained, not deleted, so the friction history survives for m
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import Application, Feedback
@@ -66,24 +66,16 @@ def applicant_names_for(db: Session, items: list[Feedback]) -> dict[int, str]:
 def resolve_feedback(db: Session, feedback_id: int) -> Feedback | None:
     """Mark an item handled (idempotent — re-resolving keeps the original timestamp).
     Returns None if the id doesn't exist so the router can 404."""
-    feedback = db.get(Feedback, feedback_id)
-    if feedback is None:
-        return None
-    if feedback.resolved_at is None:
-        feedback.resolved_at = func.now()
-        db.commit()
-        db.refresh(feedback)
-    return feedback
+    db.execute(update(Feedback).where(Feedback.id == feedback_id, Feedback.resolved_at.is_(None))
+        .values(resolved_at=func.now()).execution_options(synchronize_session=False))
+    db.commit()
+    return db.get(Feedback, feedback_id, populate_existing=True)
 
 
 def reopen_feedback(db: Session, feedback_id: int) -> Feedback | None:
     """Clear an item's resolved stamp, moving it back to the open list. Returns None if
     the id doesn't exist."""
-    feedback = db.get(Feedback, feedback_id)
-    if feedback is None:
-        return None
-    if feedback.resolved_at is not None:
-        feedback.resolved_at = None
-        db.commit()
-        db.refresh(feedback)
-    return feedback
+    db.execute(update(Feedback).where(Feedback.id == feedback_id).values(resolved_at=None)
+        .execution_options(synchronize_session=False))
+    db.commit()
+    return db.get(Feedback, feedback_id, populate_existing=True)
