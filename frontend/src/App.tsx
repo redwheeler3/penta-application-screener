@@ -155,6 +155,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     rankRunning,
     rankProgress,
     rankThinking,
+    rankRefreshing,
     requestScreeningEstimate,
     runScreening,
     cancelScreeningEstimate,
@@ -166,7 +167,6 @@ export function App(props: { authRedirect: AuthRedirect }) {
     openingId: selectedOpeningId,
     ranking: {
       currentRun: rankingRun,
-      refreshCurrentRun: refreshRankingRun,
       load: loadRanking,
       setDisplayedProposals,
     },
@@ -285,11 +285,10 @@ export function App(props: { authRedirect: AuthRedirect }) {
   // Suppressed while THIS member's own rank is in flight: their run creates the new analysis,
   // so mid-completion the loaded id (old) differs from the server's (new) — a focus event then
   // would misread that as "another member re-ranked" and fire the stale toast alongside their
-  // own green "complete" toast. runRank updates the loaded id (refreshRankingRun/openRanking)
-  // before it clears rankRunning, so gating here closes that window. A ref so toggling
-  // rankRunning doesn't re-subscribe the listener.
+  // own green "complete" toast. Suppress the check while our run's coherent board
+  // refresh catches up. A ref avoids re-subscribing the listener on each transition.
   const rankRunningRef = useRef(false);
-  rankRunningRef.current = rankRunning;
+  rankRunningRef.current = rankRunning || rankRefreshing;
   useEffect(() => {
     if (!user) return;
     const onFocus = () => {

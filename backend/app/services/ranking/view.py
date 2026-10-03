@@ -14,7 +14,7 @@ here and arithmetic in the domain keeps the formula (``impact = weight ·
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
@@ -48,35 +48,39 @@ def candidate_scores(
     by_id = {app.id: app for app in applications}
     if include_application is not None:
         by_id.setdefault(include_application.id, include_application)
+    if not by_id or not report.dimensions:
+        return []
 
-    # One query per dimension kind, each giving the latest row per candidate. There
-    # are ~15-30 dimensions, so this is a handful of small indexed lookups.
+    # Fetch only the newest row per applicant and dimension in one query, with
+    # row ID breaking timestamp ties. Keep report order when assembling vectors.
+    kinds = [kind_for_dimension(dim.key) for dim in report.dimensions]
+    ordered = select(
+        ApplicationAIResult.id,
+        func.row_number().over(
+            partition_by=(ApplicationAIResult.application_id, ApplicationAIResult.kind),
+            order_by=(ApplicationAIResult.created_at.desc(), ApplicationAIResult.id.desc()),
+        ).label("position"),
+    ).where(
+        ApplicationAIResult.kind.in_(kinds),
+        ApplicationAIResult.application_id.in_(by_id),
+    ).subquery()
+    rows = db.execute(select(
+        ApplicationAIResult.application_id, ApplicationAIResult.kind, ApplicationAIResult.output,
+    ).join(ordered, ordered.c.id == ApplicationAIResult.id).where(ordered.c.position == 1))
+    latest = {(app_id, kind): output or {} for app_id, kind, output in rows}
     candidates: list[CandidateScores] = []
     scores_by_app: dict[int, list[ScoredDimension]] = {app_id: [] for app_id in by_id}
     for dim in report.dimensions:
-        rows = db.scalars(
-            select(ApplicationAIResult)
-            .where(
-                ApplicationAIResult.kind == kind_for_dimension(dim.key)
-            )
-            .where(ApplicationAIResult.application_id.in_(list(by_id)))
-            .order_by(ApplicationAIResult.created_at)
-        )
-        latest: dict[int, ApplicationAIResult] = {}
-        for row in rows:
-            latest[row.application_id] = row  # a re-score supersedes older rows
-        for app_id, row in latest.items():
-            s = row.output or {}
-            scores_by_app[app_id].append(
-                ScoredDimension(
-                    dimension_key=dim.key,
-                    name=dim.name,
-                    score=float(s.get("score", 0.0)),
-                    confidence=s.get("confidence", "low"),
-                    rationale=s.get("rationale", ""),
-                    evidence=s.get("evidence", ""),
-                )
-            )
+        kind = kind_for_dimension(dim.key)
+        for app_id in by_id:
+            score = latest.get((app_id, kind))
+            if score is None:
+                continue
+            scores_by_app[app_id].append(ScoredDimension(
+                dimension_key=dim.key, name=dim.name, score=float(score.get("score", 0.0)),
+                confidence=score.get("confidence", "low"), rationale=score.get("rationale", ""),
+                evidence=score.get("evidence", ""),
+            ))
 
     for app_id, app in by_id.items():
         scores = scores_by_app[app_id]

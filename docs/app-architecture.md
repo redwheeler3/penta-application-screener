@@ -43,8 +43,10 @@ rather than being duplicated between them.
 their view refreshes. It updates the open detail only while the same applicant and opening remain
 selected; favourites and shortlist changes refresh the whole cached pool so filtered-out rows
 still contribute current facet counts.
-All candidate writes share a queue per applicant, so a note response cannot roll back a later
-eligibility or shortlist change. Different applicants can be saved independently.
+Candidate mutations acknowledge only the fields they own, merged into the loaded detail.
+Writes share a queue per applicant and field group; independent fields save concurrently without
+replacing unrelated state. Notes, favourites, and shortlist responses don't rebuild ranking or
+load AI history. Eligibility responses compute only the current eligibility fields.
 
 `frontend/src/styles.css` is the single ordered stylesheet entrypoint. Screen, responsive, and
 print rules live with their owning surface (`applications`, candidate detail/notes, ranking,
@@ -81,6 +83,8 @@ Each draft belongs to its opening and rule kind; save and reset share one busy s
 response from an opening the member has left cannot change the current editor. Private-note
 autosaves run through a serial queue in `CandidateNotes.tsx`; even a revert waits for earlier
 writes before comparing against the last acknowledged server value.
+Superseded drafts waiting in that queue are skipped; a save already sent must finish before the
+latest draft is sent. Committee-note saves preserve any newer text typed while saving.
 
 Applicant persistence is orchestrated by `useApplicantPersistence.ts`; `applicantPersistenceState.ts`
 defines its state, defaults, and typed partial updates. Each workflow updates related fields in
@@ -95,6 +99,12 @@ while saving remain unsaved. Save actions read one live state reference at reque
 the captured request snapshot remains the acknowledgement baseline when the response arrives.
 Email-identity refreshes use the same application read scope; saves and session exit invalidate
 older identity responses before they can restore cleared fields or falsely flag this browser's save.
+Captured writes also belong to an applicant session generation. Sign-out, withdrawal, a credential
+switch, and draft discard end that generation before awaiting network replies, so a late save,
+email change, or reconciliation cannot repopulate the exited application. Committee sign-out
+clears its user only after the server confirms success; failures retain the session and report an error.
+Vacancy support actions belong to the accepted exact-email lookup. Editing that address invalidates
+pending work and hides its actions; deletion uses the accepted subscription's email.
 
 ## Applicant intake
 
@@ -126,6 +136,11 @@ household remains visible in the opening where it was selected, but neither ente
 keeps that opening in the selector by itself.
 Opening decisions take a database write lock and refresh the opening before reading participants.
 A competing decision cannot replace an archived outcome; repeating the same decision is idempotent.
+Household selection and withdrawal first acquire the same application write lock and reload its
+lifecycle, preventing both from succeeding concurrently. Selection then locks the opening in that
+order. Committee metadata writes use the application lock through their short check-and-write
+transaction, also preventing duplicate first private-note and favourite inserts. These locks never
+span email or AI network calls.
 
 Submitted applications flow directly into the database and become available to the committee.
 The committee client refreshes its lightweight application and workflow reads on focus, on
@@ -224,6 +239,31 @@ Lightweight current-run reads do not replace the criteria of a displayed board i
 Concurrent first reads that create the same member view return the winning record rather than
 failing on the uniqueness constraint. Run leases return their user and acquisition timestamp;
 release matches both, so an expired run cannot release a same-user replacement.
+Ranking score assembly reads the newest result per applicant and criterion in one query, using
+row ID to break equal timestamps. It fetches only the fields used by ranking and preserves criterion
+order for the deterministic calculation.
+
+## Responsiveness
+
+Confirmed mutations release their UI controls before refreshing derived views. A completed Rank
+starts one coherent board read and a dashboard refresh in the background, without first awaiting
+another `/ranking/current` read. Passive stale-analysis checks wait for that board refresh so our
+own completed run doesn't appear as another member's update. Applicant sign-out likewise clears
+the confirmed session before refreshing public openings.
+
+An offline SQLite comparison on 2026-10-03 used 150 synthetic applicants and 15 criteria, five
+samples per operation, and excluded authentication lookup, network, and browser rendering.
+Compared with the preceding code, the board fell from 34 to 20 SELECTs (median 46.5 to 35.0 ms);
+a private-note save fell from 42 to 4 SELECTs (39.3 to 3.0 ms). These are local diagnostic results,
+not production latency guarantees. Regression tests enforce one score query across criterion counts
+and prevent metadata mutations from rebuilding the full detail.
+
+Eval case and judge-brief writes share a short lock per fixture in the API process, covering the
+entire read/modify/write. JSON is published through a flushed UTF-8 temporary file and atomic
+replacement; a failed replacement leaves the old fixture intact. This matches the single-process
+deployment. A separate CLI or another API process editing the same fixture would need shared
+coordination. Judge-brief acknowledgements clear only the submitted draft, preserving later edits;
+different passes can save independently.
 
 ## Eligibility and status
 

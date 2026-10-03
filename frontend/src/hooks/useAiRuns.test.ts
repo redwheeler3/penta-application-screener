@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import * as rankingApi from "../api/ranking";
 import * as screeningApi from "../api/screening";
 import { useAiRuns } from "./useAiRuns";
+import { deferred } from "../testSupport";
 
 vi.mock("../api/ranking", () => ({
   runRank: vi.fn(), scoreCurrent: vi.fn(), fetchRankEstimate: vi.fn(), fetchScoreCurrentEstimate: vi.fn(),
@@ -73,4 +74,19 @@ it("requires a screening summary after per-applicant errors", async () => {
   await act(run);
   expect(options.notifications.error.mock.calls[0][0]).toContain("interrupted");
   expect(options.notifications.success).not.toHaveBeenCalled();
+});
+
+it.each(["discover", "score-current"] as const)("releases %s controls before the derived board refresh finishes", async (mode) => {
+  const { result, options, run } = setup(mode, [{
+    type: "summary", dimensions: 2, scored: 1, failed: 0, totalCostUsd: 0.01,
+  }]);
+  const board = deferred<boolean>();
+  options.ranking.load.mockReturnValue(board.promise);
+  await act(run);
+  expect(result.current.rankRunning).toBe(false);
+  expect(result.current.rankRefreshing).toBe(true);
+  expect(options.ranking.load).toHaveBeenCalledOnce();
+  expect(options.ranking.refreshCurrentRun).not.toHaveBeenCalled();
+  await act(async () => { board.resolve(true); });
+  expect(result.current.rankRefreshing).toBe(false);
 });

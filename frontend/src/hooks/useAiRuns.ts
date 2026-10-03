@@ -13,6 +13,7 @@ import {
 } from "../api/screening";
 import { readProblem } from "../api/problems";
 import { money } from "../format";
+import { useRequestScope } from "./useRequestScope";
 import type {
   CurrentRunResponse,
   RankEstimateResponse,
@@ -31,7 +32,6 @@ type Notifications = {
 
 type RankingCoordinator = {
   currentRun: CurrentRunResponse | null;
-  refreshCurrentRun: () => Promise<unknown>;
   load: () => Promise<boolean>;
   setDisplayedProposals: (proposals: string[]) => void;
 };
@@ -59,6 +59,8 @@ export function useAiRuns(options: {
   const [rankRunning, setRankRunning] = useState(false);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
   const [rankThinking, setRankThinking] = useState("");
+  const [refreshingOpening, setRefreshingOpening] = useState<number | null>(null);
+  const refreshes = useRequestScope(options.openingId);
   const screeningEstimateRequest = useRef(0);
   const rankEstimateRequest = useRef(0);
   const screeningEstimateAbort = useRef<AbortController | null>(null);
@@ -89,6 +91,18 @@ export function useAiRuns(options: {
   function resetEstimates() {
     cancelScreeningEstimate();
     cancelRankEstimate();
+  }
+
+  function refreshRankingViews() {
+    if (options.openingId === null || !refreshes.isFor(options.openingId)) return;
+    const isCurrent = refreshes.begin();
+    setRefreshingOpening(options.openingId);
+    options.refreshDashboard();
+    // Completion is already confirmed. The coherent board read also refreshes
+    // criteria, so it needs no preceding /current request or awaited UI lock.
+    void options.ranking.load().finally(() => {
+      if (isCurrent()) setRefreshingOpening(null);
+    });
   }
 
   async function requestScreeningEstimate() {
@@ -205,6 +219,7 @@ export function useAiRuns(options: {
 
   async function runRank(mode: "discover" | "score-current") {
     if (options.openingId === null) return;
+    const inScope = refreshes.capture();
     setRankRunning(true);
     cancelRankEstimate();
     setRankProgress(null);
@@ -266,15 +281,13 @@ export function useAiRuns(options: {
             "Review current results before starting another run.",
           );
         }
-        await options.ranking.refreshCurrentRun();
-        options.refreshDashboard();
-        void options.ranking.load();
+        if (inScope()) refreshRankingViews();
       }
     } catch (error) {
       options.notifications.error(
         error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.",
       );
-      if (mode === "discover") void options.ranking.refreshCurrentRun();
+      if (inScope()) refreshRankingViews();
     } finally {
       setRankProgress(null);
       setRankRunning(false);
@@ -291,6 +304,7 @@ export function useAiRuns(options: {
     rankEstimateLoading,
     scoreCurrentEstimate,
     rankRunning,
+    rankRefreshing: options.openingId !== null && refreshingOpening === options.openingId,
     rankProgress,
     rankThinking,
     requestScreeningEstimate,
