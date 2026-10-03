@@ -14,6 +14,7 @@ from app.db.models import (
     User,
     UserRole,
 )
+from app.services.email import outbox
 from app.services.email.delivery import ATTEMPT_LEASE, claim_delivery_attempt
 from app.services.email.outbox import email_queue_status, retry_queued_emails
 from app.services.email.sender import CapturedEmailSender, EmailQuotaExceededError
@@ -83,6 +84,62 @@ def test_an_abandoned_email_attempt_becomes_retryable_after_its_lease() -> None:
     assert len(sender.messages) == 1
     db.refresh(delivery)
     assert delivery.attempt_count == 2
+
+
+def test_later_batch_messages_receive_fresh_attempt_times(monkeypatch) -> None:
+    factory = sessionmaker(bind=memory_engine(), autoflush=False)
+    start = datetime(2026, 8, 26, 18, tzinfo=UTC)
+    clock_time = start
+
+    class Clock:
+        @staticmethod
+        def now(_timezone):
+            return clock_time
+
+    monkeypatch.setattr(outbox, "datetime", Clock)
+    with factory() as db:
+        for recipient in ("first@example.com", "second@example.com"):
+            db.add(EmailDelivery(message_kind="application_unavailable",
+                recipient_kind=PasswordlessIdentityKind.APPLICANT, recipient_email=recipient,
+                state=EmailDeliveryState.QUEUED, retry_intent={"type": "application_unavailable"}))
+        db.commit()
+
+    class AdvancingSender(CapturedEmailSender):
+        def send(self, message):
+            nonlocal clock_time
+            if not self.messages:
+                clock_time = start + ATTEMPT_LEASE + timedelta(seconds=1)
+            else:
+                with factory() as competing:
+                    assert claim_delivery_attempt(competing, 2, now=clock_time) is None
+            return super().send(message)
+
+    with factory() as db:
+        assert retry_queued_emails(db, AdvancingSender()).accepted == 2
+        assert as_utc(db.get(EmailDelivery, 2).last_attempt_at) == clock_time
+
+
+def test_prepared_attempt_does_not_adopt_a_replacement_after_commit(monkeypatch) -> None:
+    factory = sessionmaker(bind=memory_engine(), autoflush=False)
+    now = datetime(2026, 8, 26, 18, tzinfo=UTC)
+    with factory() as db:
+        db.add(EmailDelivery(message_kind="application_unavailable",
+            recipient_kind=PasswordlessIdentityKind.APPLICANT, recipient_email="synthetic@example.com",
+            state=EmailDeliveryState.QUEUED, retry_intent={"type": "application_unavailable"}))
+        db.commit()
+    original_attempt = outbox.attempt_reserved_delivery
+
+    def replace_before_network(db, sender, attempt, message, **kwargs):
+        with factory() as replacement:
+            assert claim_delivery_attempt(replacement, attempt.delivery_id, now=now + ATTEMPT_LEASE) is not None
+        return original_attempt(db, sender, attempt, message, **kwargs)
+
+    monkeypatch.setattr(outbox, "attempt_reserved_delivery", replace_before_network)
+    with factory() as db:
+        assert retry_queued_emails(db, CapturedEmailSender(), now=now).accepted == 0
+        delivery = db.get(EmailDelivery, 1)
+        assert delivery.attempt_count == 2
+        assert delivery.state == EmailDeliveryState.QUEUED
 
 
 def test_a_late_provider_failure_cannot_revive_a_cancelled_intent() -> None:

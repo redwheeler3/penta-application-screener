@@ -1,5 +1,6 @@
 """Lease and run lifecycle work at most once per Pacific calendar day."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
@@ -19,6 +20,12 @@ from app.services.openings.notifications import queue_due_unsuccessful_notices
 
 DAILY_LIFECYCLE_TASK = "applicant_lifecycle"
 LEASE_DURATION = timedelta(minutes=10)
+
+
+@dataclass(frozen=True)
+class MaintenanceLease:
+    run_id: int
+    attempt_count: int
 
 
 def run_due_maintenance() -> None:
@@ -43,29 +50,39 @@ def run_due_maintenance_with(
     db: Session, sender: EmailSender, *, now: datetime | None = None
 ) -> bool:
     """Claim today's lease and run the ordered, idempotent lifecycle sweep."""
+    retry_time = now
     now = now or datetime.now(UTC)
-    run = _claim_daily_run(db, now=now)
-    if run is None:
+    lease = _claim_daily_run(db, now=now)
+    if lease is None:
         return False
     try:
         queue_due_unsuccessful_notices(db, now=now)
-        retry_queued_emails(db, sender, now=now)
+        retry_queued_emails(db, sender, now=retry_time)
         purge_due_applicant_data(db, now=now)
         purge_expired_vacancy_delivery_failures(db, now=now)
     except Exception as error:
-        run.status = "failed"
-        run.lease_expires_at = now + LEASE_DURATION
-        run.last_error_code = type(error).__name__[:120]
-        db.commit()
+        db.rollback()
+        _finish_daily_run(db, lease, now=now, error_code=type(error).__name__[:120])
         return False
-    run.status = "completed"
-    run.completed_at = now
-    run.last_error_code = None
+    return _finish_daily_run(db, lease, now=now)
+
+
+def _finish_daily_run(
+    db: Session, lease: MaintenanceLease, *, now: datetime, error_code: str | None = None
+) -> bool:
+    values = {"status": "completed", "completed_at": now, "last_error_code": None}
+    if error_code is not None:
+        values = {"status": "failed", "lease_expires_at": now + LEASE_DURATION, "last_error_code": error_code}
+    finished = db.execute(update(DailyMaintenanceRun).where(
+        DailyMaintenanceRun.id == lease.run_id,
+        DailyMaintenanceRun.attempt_count == lease.attempt_count,
+        DailyMaintenanceRun.status == "running",
+    ).values(**values).execution_options(synchronize_session=False))
     db.commit()
-    return True
+    return finished.rowcount == 1
 
 
-def _claim_daily_run(db: Session, *, now: datetime) -> DailyMaintenanceRun | None:
+def _claim_daily_run(db: Session, *, now: datetime) -> MaintenanceLease | None:
     today = pacific_today(now=now)
     existing = db.scalar(
         select(DailyMaintenanceRun).where(
@@ -91,12 +108,11 @@ def _claim_daily_run(db: Session, *, now: datetime) -> DailyMaintenanceRun | Non
                 attempt_count=DailyMaintenanceRun.attempt_count + 1,
                 last_error_code=None,
             )
-        )
+            .returning(DailyMaintenanceRun.id, DailyMaintenanceRun.attempt_count)
+            .execution_options(synchronize_session=False)
+        ).one_or_none()
         db.commit()
-        if claimed.rowcount != 1:
-            return None
-        db.refresh(existing)
-        return existing
+        return MaintenanceLease(*claimed) if claimed is not None else None
 
     run = DailyMaintenanceRun(
         task=DAILY_LIFECYCLE_TASK,
@@ -107,9 +123,10 @@ def _claim_daily_run(db: Session, *, now: datetime) -> DailyMaintenanceRun | Non
     )
     db.add(run)
     try:
+        db.flush()
+        lease = MaintenanceLease(run.id, run.attempt_count)
         db.commit()
-        db.refresh(run)
-        return run
+        return lease
     except IntegrityError:
         db.rollback()
         return None

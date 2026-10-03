@@ -1,6 +1,6 @@
 """Rebuild and retry queued email intents without storing rendered credentials."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -80,7 +80,6 @@ def retry_queued_emails(
     db: Session, sender: EmailSender, *, now: datetime | None = None
 ) -> RetrySummary:
     """Retry every provider-temporary failure once during the daily maintenance pass."""
-    now = now or datetime.now(UTC)
     accepted = 0
     queued = 0
     quota_blocked = 0
@@ -93,10 +92,13 @@ def retry_queued_emails(
         .order_by(EmailDelivery.id)
     ).all()
     for delivery_id in delivery_ids:
-        delivery = claim_delivery_attempt(db, delivery_id, now=now)
-        if delivery is None:
+        attempt_time = now or datetime.now(UTC)
+        attempt = claim_delivery_attempt(db, delivery_id, now=attempt_time, commit=False)
+        if attempt is None:
+            db.commit()
             continue
-        built = _build_retry(db, delivery, now=now)
+        delivery = db.get(EmailDelivery, delivery_id)
+        built = _build_retry(db, delivery, now=attempt_time)
         if built is None:
             vacancy_request = (delivery.retry_intent or {}).get("type") == "vacancy_opening"
             delivery.state = EmailDeliveryState.FAILED
@@ -107,14 +109,15 @@ def retry_queued_emails(
             continue
         # Publish the fresh credential before network I/O; a recipient can use it
         # immediately, and the provider wait does not hold SQLite's writer lock.
+        attempt = replace(attempt,
+            token_id=built.magic_link_token.id if built.magic_link_token is not None else None)
         db.commit()
         was_accepted = attempt_reserved_delivery(
             db,
             sender,
-            delivery,
+            attempt,
             built.message,
-            magic_link_token=built.magic_link_token,
-            now=now,
+            now=attempt_time,
             commit=False,
         )
         delivery = db.get(EmailDelivery, delivery_id, populate_existing=True)

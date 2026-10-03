@@ -1,5 +1,6 @@
 """Persist provider-neutral delivery attempts and credential-safe retry intents."""
 
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -26,9 +27,31 @@ from app.services.email.sender import (
 ATTEMPT_LEASE = timedelta(minutes=10)
 
 
+@dataclass(frozen=True)
+class DeliveryAttempt:
+    delivery_id: int
+    attempt_count: int
+    attempted_at: datetime
+    retry_intent: RetryIntent | None
+    recipient_email: str | None
+    token_id: int | None
+
+    @classmethod
+    def capture(cls, delivery: EmailDelivery) -> "DeliveryAttempt":
+        return cls(
+            delivery_id=delivery.id,
+            attempt_count=delivery.attempt_count,
+            attempted_at=delivery.last_attempt_at,
+            retry_intent=delivery.retry_intent,
+            recipient_email=delivery.recipient_email,
+            token_id=delivery.magic_link_token_id,
+        )
+
+
 def claim_delivery_attempt(
-    db: Session, delivery_id: int, *, now: datetime, allow_failed: bool = False
-) -> EmailDelivery | None:
+    db: Session, delivery_id: int, *, now: datetime, allow_failed: bool = False,
+    commit: bool = True,
+) -> DeliveryAttempt | None:
     """Reserve one provider attempt before rebuilding credentials or contacting the provider.
 
     The existing attempt timestamp is the lease; its counter identifies successive
@@ -45,7 +68,7 @@ def claim_delivery_attempt(
     )
     if allow_failed:
         available = available | (EmailDelivery.state == EmailDeliveryState.FAILED)
-    claimed = db.execute(
+    statement = (
         update(EmailDelivery)
         .where(EmailDelivery.id == delivery_id, available)
         .values(
@@ -54,12 +77,14 @@ def claim_delivery_attempt(
             last_attempt_at=now,
             last_error_code=None,
         )
+        .returning(EmailDelivery)
         .execution_options(synchronize_session=False)
     )
-    db.commit()
-    if claimed.rowcount != 1:
-        return None
-    return db.get(EmailDelivery, delivery_id, populate_existing=True)
+    delivery = db.scalars(statement, execution_options={"populate_existing": True}).one_or_none()
+    attempt = DeliveryAttempt.capture(delivery) if delivery is not None else None
+    if commit:
+        db.commit()
+    return attempt
 
 
 def deliver_email(
@@ -78,7 +103,7 @@ def deliver_email(
 ) -> bool:
     """Attempt one send and durably record its provider outcome."""
     now = now or datetime.now(UTC)
-    delivery = _reserve_delivery(
+    attempt = _reserve_delivery(
         db,
         message,
         recipient_kind=recipient_kind,
@@ -90,15 +115,14 @@ def deliver_email(
         retry_intent=retry_intent,
         now=now,
     )
-    if delivery is None:
+    if attempt is None:
         existing = _delivery_for_key(db, idempotency_key)
         return existing is not None and existing.state == EmailDeliveryState.ACCEPTED
     return attempt_reserved_delivery(
         db,
         sender,
-        delivery,
+        attempt,
         message,
-        magic_link_token=magic_link_token,
         now=now,
     )
 
@@ -136,21 +160,16 @@ def queue_email(
 def attempt_reserved_delivery(
     db: Session,
     sender: EmailSender,
-    delivery: EmailDelivery,
+    attempt: DeliveryAttempt,
     message: OutboundEmail,
     *,
-    magic_link_token: MagicLinkToken | None = None,
     now: datetime | None = None,
     commit: bool = True,
 ) -> bool:
     """Attempt a reserved intent without ever persisting rendered credential content."""
     now = now or datetime.now(UTC)
-    delivery_id = delivery.id
-    attempt_count = delivery.attempt_count
-    attempted_at = delivery.last_attempt_at
-    token_id = magic_link_token.id if magic_link_token is not None else None
-    retry_intent = delivery.retry_intent
-    recipient_email = delivery.recipient_email
+    retry_intent = attempt.retry_intent
+    recipient_email = attempt.recipient_email
     provider_message_id = None
     error_code = None
     quota_blocked = False
@@ -175,10 +194,10 @@ def attempt_reserved_delivery(
     finished = db.execute(
         update(EmailDelivery)
         .where(
-            EmailDelivery.id == delivery_id,
+            EmailDelivery.id == attempt.delivery_id,
             EmailDelivery.state == EmailDeliveryState.QUEUED,
-            EmailDelivery.attempt_count == attempt_count,
-            EmailDelivery.last_attempt_at == attempted_at,
+            EmailDelivery.attempt_count == attempt.attempt_count,
+            EmailDelivery.last_attempt_at == attempt.attempted_at,
         )
         .values(
             state=state, provider_message_id=provider_message_id,
@@ -187,11 +206,11 @@ def attempt_reserved_delivery(
         )
         .execution_options(synchronize_session=False)
     )
-    if token_id is not None and (state != EmailDeliveryState.ACCEPTED or finished.rowcount != 1):
+    if attempt.token_id is not None and (state != EmailDeliveryState.ACCEPTED or finished.rowcount != 1):
         db.execute(update(MagicLinkToken).where(
-            MagicLinkToken.id == token_id, MagicLinkToken.consumed_at.is_(None),
+            MagicLinkToken.id == attempt.token_id, MagicLinkToken.consumed_at.is_(None),
         ).values(revoked_at=now))
-    db.expire(delivery)
+    db.expire_all()
     if commit:
         db.commit()
     return finished.rowcount == 1 and state == EmailDeliveryState.ACCEPTED
@@ -249,16 +268,20 @@ def _reserve_delivery(
     idempotency_key: str | None,
     retry_intent: RetryIntent | None,
     now: datetime,
-) -> EmailDelivery | None:
+) -> DeliveryAttempt | None:
     existing = _delivery_for_key(db, idempotency_key)
     if existing is not None:
-        existing = claim_delivery_attempt(db, existing.id, now=now, allow_failed=True)
-        if existing is None:
+        attempt = claim_delivery_attempt(db, existing.id, now=now, allow_failed=True, commit=False)
+        if attempt is None:
+            db.commit()
             return None
+        existing = db.get(EmailDelivery, attempt.delivery_id)
         existing.retry_intent = retry_intent
         existing.quota_blocked = False
+        attempt = replace(attempt, retry_intent=retry_intent,
+            token_id=magic_link_token.id if magic_link_token is not None else None)
         db.commit()
-        return existing
+        return attempt
 
     delivery = EmailDelivery(
         idempotency_key=idempotency_key,
@@ -281,11 +304,13 @@ def _reserve_delivery(
     )
     db.add(delivery)
     try:
+        db.flush()
+        attempt = DeliveryAttempt.capture(delivery)
         db.commit()
     except IntegrityError:
         db.rollback()
         return None
-    return delivery
+    return attempt
 
 
 def _delivery_for_key(db: Session, key: str | None) -> EmailDelivery | None:
