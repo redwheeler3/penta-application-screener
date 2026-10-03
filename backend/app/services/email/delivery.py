@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,44 @@ from app.services.email.sender import (
     EmailSender,
     OutboundEmail,
 )
+
+ATTEMPT_LEASE = timedelta(minutes=10)
+
+
+def claim_delivery_attempt(
+    db: Session, delivery_id: int, *, now: datetime, allow_failed: bool = False
+) -> EmailDelivery | None:
+    """Reserve one provider attempt before rebuilding credentials or contacting the provider.
+
+    The existing attempt timestamp is the lease; its counter identifies successive
+    attempts. A provider failure releases the lease through its error code; a crashed
+    worker with no outcome becomes retryable when the lease expires.
+    """
+    available = (
+        (EmailDelivery.state == EmailDeliveryState.QUEUED)
+        & or_(
+            EmailDelivery.last_error_code.is_not(None),
+            EmailDelivery.last_attempt_at.is_(None),
+            EmailDelivery.last_attempt_at <= now - ATTEMPT_LEASE,
+        )
+    )
+    if allow_failed:
+        available = available | (EmailDelivery.state == EmailDeliveryState.FAILED)
+    claimed = db.execute(
+        update(EmailDelivery)
+        .where(EmailDelivery.id == delivery_id, available)
+        .values(
+            state=EmailDeliveryState.QUEUED,
+            attempt_count=EmailDelivery.attempt_count + 1,
+            last_attempt_at=now,
+            last_error_code=None,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+    if claimed.rowcount != 1:
+        return None
+    return db.get(EmailDelivery, delivery_id, populate_existing=True)
 
 
 def deliver_email(
@@ -100,45 +138,60 @@ def attempt_reserved_delivery(
     *,
     magic_link_token: MagicLinkToken | None = None,
     now: datetime | None = None,
-    is_retry: bool = False,
     commit: bool = True,
 ) -> bool:
     """Attempt a reserved intent without ever persisting rendered credential content."""
     now = now or datetime.now(UTC)
-    if is_retry:
-        delivery.attempt_count += 1
-        delivery.last_attempt_at = now
-    delivery.provider_message_id = None
-    delivery.last_error_code = None
+    delivery_id = delivery.id
+    attempt_count = delivery.attempt_count
+    attempted_at = delivery.last_attempt_at
+    token_id = magic_link_token.id if magic_link_token is not None else None
+    retry_intent = delivery.retry_intent
+    recipient_email = delivery.recipient_email
+    provider_message_id = None
+    error_code = None
+    quota_blocked = False
     try:
-        delivery.provider_message_id = sender.send(message)
-        delivery.state = EmailDeliveryState.ACCEPTED
-        delivery.quota_blocked = False
-        delivery.retry_intent = None
+        provider_message_id = sender.send(message)
+        state = EmailDeliveryState.ACCEPTED
+        retry_intent = None
+        recipient_email = None
     except EmailQuotaExceededError as error:
-        _queue_retry(delivery, error, quota_blocked=True)
+        state = EmailDeliveryState.QUEUED
+        quota_blocked = True
+        error_code = type(error).__name__[:120]
     except (EmailRetryableError, httpx.TransportError) as error:
-        _queue_retry(delivery, error, quota_blocked=False)
+        state = EmailDeliveryState.QUEUED
+        error_code = type(error).__name__[:120]
     except Exception as error:
-        delivery.state = EmailDeliveryState.FAILED
-        delivery.quota_blocked = False
-        delivery.retry_intent = None
-        delivery.last_error_code = type(error).__name__[:120]
-    if delivery.state == EmailDeliveryState.ACCEPTED:
-        delivery.recipient_email = None
-    if delivery.state != EmailDeliveryState.ACCEPTED and magic_link_token is not None:
-        magic_link_token.revoked_at = now
+        state = EmailDeliveryState.FAILED
+        retry_intent = None
+        error_code = type(error).__name__[:120]
+    # A cancelled intent or a newer attempt owns the row now. A late provider
+    # response must not revive it or replace that attempt's delivery outcome.
+    finished = db.execute(
+        update(EmailDelivery)
+        .where(
+            EmailDelivery.id == delivery_id,
+            EmailDelivery.state == EmailDeliveryState.QUEUED,
+            EmailDelivery.attempt_count == attempt_count,
+            EmailDelivery.last_attempt_at == attempted_at,
+        )
+        .values(
+            state=state, provider_message_id=provider_message_id,
+            last_error_code=error_code, quota_blocked=quota_blocked,
+            retry_intent=retry_intent, recipient_email=recipient_email,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if token_id is not None and (state != EmailDeliveryState.ACCEPTED or finished.rowcount != 1):
+        db.execute(update(MagicLinkToken).where(
+            MagicLinkToken.id == token_id, MagicLinkToken.consumed_at.is_(None),
+        ).values(revoked_at=now))
+    db.expire(delivery)
     if commit:
         db.commit()
-    return delivery.state == EmailDeliveryState.ACCEPTED
-
-
-def _queue_retry(
-    delivery: EmailDelivery, error: Exception, *, quota_blocked: bool
-) -> None:
-    delivery.state = EmailDeliveryState.QUEUED
-    delivery.quota_blocked = quota_blocked
-    delivery.last_error_code = type(error).__name__[:120]
+    return finished.rowcount == 1 and state == EmailDeliveryState.ACCEPTED
 
 
 def cancel_queued_application_emails(
@@ -196,21 +249,9 @@ def _reserve_delivery(
 ) -> EmailDelivery | None:
     existing = _delivery_for_key(db, idempotency_key)
     if existing is not None:
-        if existing.state == EmailDeliveryState.ACCEPTED:
+        existing = claim_delivery_attempt(db, existing.id, now=now, allow_failed=True)
+        if existing is None:
             return None
-        last_attempt_at = existing.last_attempt_at
-        if last_attempt_at is not None and last_attempt_at.tzinfo is None:
-            last_attempt_at = last_attempt_at.replace(tzinfo=UTC)
-        if (
-            existing.state == EmailDeliveryState.QUEUED
-            and last_attempt_at is not None
-            and last_attempt_at > now - timedelta(minutes=10)
-        ):
-            return None
-        existing.state = EmailDeliveryState.QUEUED
-        existing.attempt_count += 1
-        existing.last_attempt_at = now
-        existing.last_error_code = None
         existing.retry_intent = retry_intent
         existing.quota_blocked = False
         db.commit()

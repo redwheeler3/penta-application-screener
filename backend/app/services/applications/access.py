@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 from sqlalchemy import delete as sql_delete
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.problems import Problem
@@ -324,8 +324,22 @@ def require_matching_email(
         )
 
 
-def require_current_revision(application: Application, base_revision: int | None) -> None:
-    if base_revision != application.working_revision:
+def lock_application_revision(
+    db: Session, application: Application, base_revision: int | None
+) -> None:
+    """Check the database revision and hold its write lock until this transaction ends.
+
+    A conditional no-op UPDATE works with SQLite's writer lock as well as row-locking
+    databases. The working-copy save advances the revision in this same transaction;
+    a competing save then fails the predicate instead of checking a stale ORM snapshot.
+    """
+    claimed = db.execute(
+        update(Application)
+        .where(Application.id == application.id, Application.working_revision == base_revision)
+        .values(working_revision=Application.working_revision, updated_at=Application.updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    if claimed.rowcount != 1:
         raise Problem(
             "stale_application",
             detail=(
@@ -333,6 +347,7 @@ def require_current_revision(application: Application, base_revision: int | None
                 "Reload the latest saved copy before continuing."
             ),
         )
+    db.refresh(application)
 
 
 def applicant_link_state(

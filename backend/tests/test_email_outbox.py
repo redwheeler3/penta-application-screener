@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.orm import sessionmaker
 
 from app.core.time import as_utc
 from app.db.models import (
@@ -13,6 +14,7 @@ from app.db.models import (
     User,
     UserRole,
 )
+from app.services.email.delivery import ATTEMPT_LEASE, claim_delivery_attempt
 from app.services.email.outbox import email_queue_status, retry_queued_emails
 from app.services.email.sender import CapturedEmailSender, EmailQuotaExceededError
 from app.services.email.transactional import (
@@ -20,7 +22,7 @@ from app.services.email.transactional import (
     send_application_unavailable,
     send_magic_link,
 )
-from tests.db_support import memory_session
+from tests.db_support import memory_engine, memory_session
 
 
 class QuotaBlockedSender:
@@ -35,6 +37,107 @@ class TerminalFailureSender:
 
 def _db():
     return memory_session()
+
+
+def test_an_overlapping_outbox_worker_cannot_send_the_same_delivery() -> None:
+    factory = sessionmaker(bind=memory_engine(), autoflush=False)
+    now = datetime.now(UTC)
+    with factory() as db:
+        db.add(EmailDelivery(
+            idempotency_key="synthetic-overlap", message_kind="application_unavailable",
+            recipient_kind=PasswordlessIdentityKind.APPLICANT, recipient_email="a@example.com",
+            state=EmailDeliveryState.QUEUED, retry_intent={"type": "application_unavailable"},
+        ))
+        db.commit()
+
+    class OverlappingSender(CapturedEmailSender):
+        def send(self, message):
+            with factory() as competing:
+                assert retry_queued_emails(competing, self, now=now).accepted == 0
+            return super().send(message)
+
+    sender = OverlappingSender()
+    with factory() as db:
+        assert retry_queued_emails(db, sender, now=now).accepted == 1
+        delivery = db.scalar(select(EmailDelivery))
+        assert delivery.attempt_count == 1
+        assert delivery.state == EmailDeliveryState.ACCEPTED
+    assert len(sender.messages) == 1
+
+
+def test_an_abandoned_email_attempt_becomes_retryable_after_its_lease() -> None:
+    db = _db()
+    now = datetime.now(UTC)
+    delivery = EmailDelivery(
+        message_kind="application_unavailable", recipient_kind=PasswordlessIdentityKind.APPLICANT,
+        recipient_email="a@example.com", state=EmailDeliveryState.QUEUED,
+        retry_intent={"type": "application_unavailable"},
+    )
+    db.add(delivery)
+    db.commit()
+    delivery_id = delivery.id
+    assert claim_delivery_attempt(db, delivery_id, now=now) is not None
+    assert claim_delivery_attempt(db, delivery_id, now=now + timedelta(seconds=1)) is None
+    sender = CapturedEmailSender()
+    assert retry_queued_emails(db, sender, now=now + ATTEMPT_LEASE).accepted == 1
+    assert len(sender.messages) == 1
+    db.refresh(delivery)
+    assert delivery.attempt_count == 2
+
+
+def test_a_late_provider_failure_cannot_revive_a_cancelled_intent() -> None:
+    factory = sessionmaker(bind=memory_engine(), autoflush=False)
+    now = datetime.now(UTC)
+    with factory() as db:
+        db.add(EmailDelivery(
+            message_kind="application_unavailable", recipient_kind=PasswordlessIdentityKind.APPLICANT,
+            recipient_email="a@example.com", state=EmailDeliveryState.QUEUED,
+            retry_intent={"type": "application_unavailable"},
+        ))
+        db.commit()
+
+    class CancellingSender:
+        def send(self, _message):
+            with factory() as cancellation:
+                cancellation.execute(update(EmailDelivery).values(
+                    state=EmailDeliveryState.FAILED, retry_intent=None, last_error_code="ApplicationWithdrawn",
+                ))
+                cancellation.commit()
+            raise EmailQuotaExceededError("synthetic provider failure after cancellation")
+
+    with factory() as db:
+        summary = retry_queued_emails(db, CancellingSender(), now=now)
+        assert summary.accepted == 0
+        assert summary.still_queued == 0
+        delivery = db.scalar(select(EmailDelivery))
+        assert delivery.state == EmailDeliveryState.FAILED
+        assert delivery.retry_intent is None
+        assert delivery.last_error_code == "ApplicationWithdrawn"
+
+
+def test_a_late_attempt_cannot_replace_a_newer_attempt_outcome() -> None:
+    factory = sessionmaker(bind=memory_engine(), autoflush=False)
+    now = datetime.now(UTC)
+    with factory() as db:
+        db.add(EmailDelivery(
+            message_kind="application_unavailable", recipient_kind=PasswordlessIdentityKind.APPLICANT,
+            recipient_email="a@example.com", state=EmailDeliveryState.QUEUED,
+            retry_intent={"type": "application_unavailable"},
+        ))
+        db.commit()
+
+    class DelayedSender:
+        def send(self, _message):
+            with factory() as newer:
+                assert retry_queued_emails(newer, CapturedEmailSender(), now=now + ATTEMPT_LEASE).accepted == 1
+            raise EmailQuotaExceededError("synthetic obsolete response")
+
+    with factory() as db:
+        assert retry_queued_emails(db, DelayedSender(), now=now).accepted == 0
+        delivery = db.scalar(select(EmailDelivery))
+        assert delivery.attempt_count == 2
+        assert delivery.state == EmailDeliveryState.ACCEPTED
+        assert delivery.last_error_code is None
 
 
 def test_quota_blocked_magic_link_retries_with_a_fresh_credential() -> None:

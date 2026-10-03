@@ -19,7 +19,10 @@ from app.db.models import (
 )
 from app.services.applications.selected import application_is_selected
 from app.services.auth.passwordless import issue_magic_link
-from app.services.email.delivery import attempt_reserved_delivery
+from app.services.email.delivery import (
+    attempt_reserved_delivery,
+    claim_delivery_attempt,
+)
 from app.services.email.retry_intents import MagicLinkRetryIntent, RetryIntent
 from app.services.email.sender import EmailSender, OutboundEmail
 from app.services.email.templates import (
@@ -68,15 +71,18 @@ def retry_queued_emails(
     accepted = 0
     queued = 0
     quota_blocked = 0
-    deliveries = db.scalars(
-        select(EmailDelivery)
+    delivery_ids = db.scalars(
+        select(EmailDelivery.id)
         .where(
             EmailDelivery.state == EmailDeliveryState.QUEUED,
             EmailDelivery.retry_intent.is_not(None),
         )
         .order_by(EmailDelivery.id)
     ).all()
-    for delivery in deliveries:
+    for delivery_id in delivery_ids:
+        delivery = claim_delivery_attempt(db, delivery_id, now=now)
+        if delivery is None:
+            continue
         subscription_id = (delivery.retry_intent or {}).get("subscription_id")
         built = _build_retry(db, delivery, now=now)
         if built is None:
@@ -87,6 +93,9 @@ def retry_queued_emails(
             db.commit()
             continue
         message, magic_link_token = built
+        # Publish the fresh credential before network I/O; a recipient can use it
+        # immediately, and the provider wait does not hold SQLite's writer lock.
+        db.commit()
         was_accepted = attempt_reserved_delivery(
             db,
             sender,
@@ -94,9 +103,12 @@ def retry_queued_emails(
             message,
             magic_link_token=magic_link_token,
             now=now,
-            is_retry=True,
             commit=False,
         )
+        delivery = db.get(EmailDelivery, delivery_id, populate_existing=True)
+        if delivery is None:
+            db.commit()
+            continue
         if was_accepted:
             accepted += 1
             if subscription_id is not None:

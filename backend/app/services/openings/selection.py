@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -38,6 +38,7 @@ def active_opening_participants(
                 Application.withdrawn_at.is_(None),
             )
             .order_by(Application.applicant_name, Application.id)
+            .execution_options(populate_existing=True)
         ).all()
     )
 
@@ -97,9 +98,11 @@ def confirm_opening_selection(
     decided_by: User,
     now: datetime | None = None,
 ) -> None:
+    _lock_opening_decision(db, opening)
     existing = selected_participation(db, opening.id)
     if opening.decided_at is not None:
         if existing is not None and existing.application_id == application_id:
+            db.commit()
             return
         raise Problem("invalid_settings", detail="The opening decision is permanent.")
     _require_selection_available(opening)
@@ -159,8 +162,10 @@ def confirm_no_household_selected(
     decided_by: User,
     now: datetime | None = None,
 ) -> None:
+    _lock_opening_decision(db, opening)
     if opening.decided_at is not None:
         if opening.no_household_selected:
+            db.commit()
             return
         raise Problem("invalid_settings", detail="The opening decision is permanent.")
     _require_selection_available(opening)
@@ -177,6 +182,18 @@ def confirm_no_household_selected(
     for application in affected_applications:
         refresh_application_retention(db, application)
     db.commit()
+
+
+def _lock_opening_decision(db: Session, opening: Opening) -> None:
+    """Serialize decisions before reading participants or changing permanent outcomes."""
+    db.execute(
+        update(Opening)
+        .where(Opening.id == opening.id, Opening.decided_at.is_(None))
+        .values(decided_at=Opening.decided_at, updated_at=Opening.updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    # Re-read after the lock: another request may have finalized this loaded opening.
+    db.refresh(opening)
 
 
 def _require_selection_available(opening: Opening) -> None:

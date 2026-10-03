@@ -37,9 +37,9 @@ from app.schemas.applicant.contracts import (
 )
 from app.services.applications.access import (
     access_target_is_editable,
+    lock_application_revision,
     new_applications_are_open,
     require_application_editable,
-    require_current_revision,
     require_matching_email,
     require_new_applications_open,
 )
@@ -268,9 +268,9 @@ def request_applicant_access_link(
     email = normalize_email(str(body.answers.applicant.email))
 
     if current is not None:
+        lock_application_revision(db, current, body.base_revision)
         require_application_editable(db, current)
         require_matching_email(current, body.answers)
-        require_current_revision(current, body.base_revision)
         validate_working_opening_selection(db, current, body.opening_ids, now=now)
         save_working_copy(
             current,

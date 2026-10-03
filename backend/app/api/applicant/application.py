@@ -39,11 +39,11 @@ from app.schemas.applicant.contracts import (
 from app.services.applications.access import (
     draft_answers,
     draft_belongs_to_application,
+    lock_application_revision,
     pending_email_change,
     purge_never_submitted_application,
     require_application_editable,
     require_application_not_selected,
-    require_current_revision,
     require_matching_email,
 )
 from app.services.applications.answers import (
@@ -197,9 +197,9 @@ def save_applicant_application(
     db: Session = Depends(get_db),
     application: Application = Depends(require_current_application),
 ) -> ApplicantApplicationResponse:
+    lock_application_revision(db, application, body.base_revision)
     require_application_editable(db, application)
     require_matching_email(application, body.answers)
-    require_current_revision(application, body.base_revision)
     now = datetime.now(UTC)
     validate_working_opening_selection(db, application, body.opening_ids, now=now)
     save_working_copy(
@@ -221,9 +221,9 @@ def submit_applicant_application(
 ) -> ApplicantApplicationResponse:
     if not body.declaration_accepted:
         raise Problem("declaration_required", detail="Accept the declaration before submitting.")
+    lock_application_revision(db, application, body.base_revision)
     require_application_editable(db, application)
     require_matching_email(application, body.answers)
-    require_current_revision(application, body.base_revision)
     now = datetime.now(UTC)
     openings = validate_opening_selection(db, application, body.opening_ids, now=now)
     publish_working_copy(db, application, body.answers, openings, submitted_at=now)
