@@ -52,6 +52,8 @@ class OpenAccessLinkRequest(AccessLinkRequest):
 
 
 class PendingCopyOut(ResponseModel):
+    base_revision: int
+    guest_saved_at: datetime
     saved_answers: WorkingApplicationAnswers
     saved_opening_ids: list[int]
     guest_answers: WorkingApplicationAnswers
@@ -164,6 +166,8 @@ class PendingCopyResponse(ResponseModel):
 
 class ReconcilePendingCopyRequest(RequestModel):
     choice: Literal["saved", "guest"]
+    base_revision: int = Field(ge=1)
+    guest_saved_at: datetime
 
 
 class WithdrawApplicationResponse(ResponseModel):

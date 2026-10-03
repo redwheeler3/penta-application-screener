@@ -344,13 +344,19 @@ export function useApplicantPersistence(
   }
 
   async function reconcilePendingCopy(choice: "saved" | "guest"): Promise<void> {
+    if (!pendingCopy) return;
     const inSession = sessionWork.capture();
     updatePersistence({ phase: "working" });
-    const response = await reconcilePendingCopyRequest(choice);
+    const response = await reconcilePendingCopyRequest(choice, pendingCopy.baseRevision, pendingCopy.guestSavedAt);
     if (!inSession()) return;
     if (!response.ok) {
       const problem = await responseProblem(response);
       if (!inSession()) return;
+      if (problem.code === "stale_application" || problem.code === "pending_copy_changed") {
+        await restorePendingCopy();
+        if (inSession()) updatePersistence({ message: problem.detail, phase: "error" });
+        return;
+      }
       if (problem.code === "pending_copy_not_found") {
         updatePersistence({ pendingCopy: null, phase: "idle" });
         await restoreApplication(applicationId ?? undefined);

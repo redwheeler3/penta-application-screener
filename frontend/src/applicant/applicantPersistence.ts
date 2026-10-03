@@ -53,6 +53,8 @@ export type LinkConflict = {
 };
 
 export type PendingCopy = {
+  baseRevision: number;
+  guestSavedAt: string;
   savedAnswers: WorkingApplicationAnswers;
   savedOpeningIds: number[];
   guestAnswers: WorkingApplicationAnswers;

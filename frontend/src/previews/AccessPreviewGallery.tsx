@@ -444,6 +444,8 @@ function previewPendingCopy(): PendingCopy {
   guestDraft.essays.householdIntroduction = "We are a family of four who enjoy gardening and community meals.";
   return {
     savedAnswers: workingAnswers(savedDraft),
+    baseRevision: 1,
+    guestSavedAt: "2026-10-03T00:00:00Z",
     savedOpeningIds: [1],
     guestAnswers: workingAnswers(guestDraft),
     guestOpeningIds: [2],

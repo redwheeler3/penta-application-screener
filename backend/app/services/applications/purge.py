@@ -15,6 +15,7 @@ from app.db.models import (
     OpeningOutcome,
     RetentionDeletion,
 )
+from app.services.applications.locking import lock_application
 
 
 @dataclass(frozen=True)
@@ -30,18 +31,20 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
     applications_purged = 0
     drafts_purged = 0
 
-    applications = db.scalars(
-        select(Application)
+    application_ids = db.scalars(
+        select(Application.id)
         .where(
             Application.retention_due_on.is_not(None),
             Application.retention_due_on <= today,
         )
         .order_by(Application.id)
     ).all()
-    for application in applications:
-        due_on = application.retention_due_on
-        if due_on is None:
+    for application_id in application_ids:
+        application = lock_application(db, application_id)
+        if application is None or application.retention_due_on is None or application.retention_due_on > today:
+            db.commit()
             continue
+        due_on = application.retention_due_on
         retention_rule = _application_retention_rule(db, application.id)
         _record_deletion(
             db,
@@ -60,18 +63,31 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
         db.commit()
         applications_purged += 1
 
-    drafts = db.scalars(
-        select(ApplicantDraft)
+    draft_due = or_(
+        ApplicantDraft.resolved_at.is_not(None),
+        ApplicantDraft.revoked_at.is_not(None),
+        ApplicantDraft.expires_on <= today,
+    )
+    draft_ids = db.scalars(
+        select(ApplicantDraft.id)
         .where(
-            or_(
-                ApplicantDraft.resolved_at.is_not(None),
-                ApplicantDraft.revoked_at.is_not(None),
-                ApplicantDraft.expires_on <= today,
-            )
+            draft_due,
         )
         .order_by(ApplicantDraft.id)
     ).all()
-    for draft in drafts:
+    for draft_id in draft_ids:
+        # Recheck actionability under the writer lock: an opening extension or
+        # a guest save may have renewed the draft after the sweep selected its ID.
+        claimed = db.execute(
+            update(ApplicantDraft)
+            .where(ApplicantDraft.id == draft_id, draft_due)
+            .values(saved_at=ApplicantDraft.saved_at)
+            .execution_options(synchronize_session=False)
+        )
+        if claimed.rowcount != 1:
+            db.commit()
+            continue
+        draft = db.get(ApplicantDraft, draft_id, populate_existing=True)
         _record_deletion(
             db,
             record_kind="applicant_draft",

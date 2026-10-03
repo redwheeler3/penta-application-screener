@@ -104,10 +104,10 @@ export function fetchPendingCopy() {
   return request("/applicant/application/pending-copy");
 }
 
-export function reconcilePendingCopy(choice: "saved" | "guest") {
+export function reconcilePendingCopy(choice: "saved" | "guest", baseRevision: number, guestSavedAt: string) {
   return request(
     "/applicant/application/pending-copy",
-    jsonRequest("POST", { choice }),
+    jsonRequest("POST", { choice, baseRevision, guestSavedAt }),
   );
 }
 

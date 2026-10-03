@@ -14,6 +14,7 @@ vi.mock("./api", async (original) => ({
   saveApplication: vi.fn(), savePendingDraft: vi.fn(), submitGuestApplication: vi.fn(),
   requestReturnAccessLink: vi.fn(), logoutApplicant: vi.fn(),
   withdrawApplication: vi.fn(), requestEmailChange: vi.fn(), deletePendingDraft: vi.fn(),
+  reconcilePendingCopy: vi.fn(),
 }));
 
 function initialDraft() {
@@ -335,4 +336,22 @@ it("keeps confirmed sign-out when the background openings refresh fails", async 
   await act(async () => { expect(await result.current.persistence.signOut()).toBe(true); });
   expect(result.current.persistence.authenticated).toBe(false);
   expect(result.current.persistence.message).not.toBe("");
+});
+
+it.each(["stale_application", "pending_copy_changed"])("refreshes the comparison after %s without replacing the local draft", async (code) => {
+  const original = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
+    savedAnswers: workingAnswers(initialDraft()), savedOpeningIds: [],
+    guestAnswers: workingAnswers(initialDraft()), guestOpeningIds: [] };
+  const latest = { ...original, baseRevision: 2, guestSavedAt: "2026-10-03T00:00:01Z" };
+  vi.mocked(api.fetchPendingCopy).mockResolvedValueOnce(Response.json({ pendingCopy: original }))
+    .mockResolvedValueOnce(Response.json({ pendingCopy: latest }));
+  vi.mocked(api.reconcilePendingCopy).mockResolvedValue(Response.json({ code, detail: "Compare the current copies again." }, { status: 409 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.pendingCopy).toEqual(original));
+  act(() => result.current.setDraft((draft) => ({ ...draft, pets: "Unsaved local edit" })));
+  await act(() => result.current.persistence.reconcilePendingCopy("guest"));
+  expect(api.reconcilePendingCopy).toHaveBeenCalledWith("guest", 1, original.guestSavedAt);
+  expect(result.current.persistence.pendingCopy).toEqual(latest);
+  expect(result.current.persistence.busy).toBe(false);
+  expect(result.current.draft.pets).toBe("Unsaved local edit");
 });

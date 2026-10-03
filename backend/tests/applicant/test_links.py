@@ -351,8 +351,12 @@ async def test_claim_asks_owner_which_private_copy_to_keep(choice: str) -> None:
             json={"token": link_from_email(sender), "switchCurrent": False},
         )
         pending = await client.get("/applicant/application/pending-copy")
+        comparison = pending.json()["pendingCopy"]
         reconciled = await client.post(
-            "/applicant/application/pending-copy", json={"choice": choice}
+            "/applicant/application/pending-copy", json={
+                "choice": choice, "baseRevision": comparison["baseRevision"],
+                "guestSavedAt": comparison["guestSavedAt"],
+            }
         )
         stored = await client.get("/applicant/application")
 

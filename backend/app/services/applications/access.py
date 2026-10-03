@@ -33,6 +33,7 @@ from app.services.applications.intake import (
     create_application,
     save_working_copy,
 )
+from app.services.applications.locking import lock_application
 from app.services.applications.selected import application_is_selected
 from app.services.auth.passwordless import (
     magic_link_for_token,
@@ -147,8 +148,10 @@ def claim_link_target(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink
 
 
 def _claim_email_change(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink:
-    application = _active_application(db, link.application_id)
-    if application is None:
+    # Link inspection can have loaded an older answer snapshot before token consumption.
+    # Reload under the application write lock before merging only the email change.
+    application = lock_application(db, link.application_id)
+    if application is None or application.withdrawn_at is not None:
         return ClaimedApplicantLink(None)
     if application_is_selected(db, application.id):
         return ClaimedApplicantLink(None, state="unavailable")

@@ -29,6 +29,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "verified_email_required": (409, "Email verification required"),
     "email_unchanged": (400, "Email address unchanged"),
     "pending_draft_unavailable": (409, "Pending draft unavailable"),
+    "pending_copy_changed": (409, "Guest answers changed"),
     "application_already_exists": (409, "Application already exists"),
     "stale_application": (409, "Application changed elsewhere"),
     "declaration_required": (422, "Declaration acceptance required"),

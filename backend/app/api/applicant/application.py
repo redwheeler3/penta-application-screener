@@ -19,6 +19,7 @@ from app.core.problems import Problem
 from app.core.text import normalize_email
 from app.core.time import as_utc
 from app.db.models import (
+    ApplicantDraft,
     Application,
     ApplicationParticipation,
     BrowserSession,
@@ -94,10 +95,18 @@ def reconcile_pending_copy(
     application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
 ) -> Response:
+    lock_application_revision(db, application, body.base_revision)
     session: BrowserSession = request.state.passwordless_session
     draft = session.reconciliation_draft
+    if draft is not None:
+        draft = db.get(ApplicantDraft, draft.id, populate_existing=True)
     if not draft_belongs_to_application(draft, application):
         raise Problem("pending_copy_not_found", detail="These answers are no longer available.")
+    if as_utc(draft.saved_at) != as_utc(body.guest_saved_at):
+        raise Problem(
+            "pending_copy_changed",
+            detail="These guest answers changed while you were comparing them. Review the copies again.",
+        )
     if body.choice == "guest":
         require_application_editable(db, application)
         answers = draft_answers(draft)

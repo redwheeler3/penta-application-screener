@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.time import as_utc
 from app.db.models import ApplicantDraft, Application, MagicLinkToken
 from app.schemas.applicant.contracts import (
     AccessLinkResponse,
@@ -47,6 +48,8 @@ def pending_copy(application: Application, draft: ApplicantDraft) -> PendingCopy
     if saved is None or guest is None:
         raise ValueError("pending-copy comparison requires two readable working copies")
     return PendingCopyOut(
+        base_revision=application.working_revision,
+        guest_saved_at=as_utc(draft.saved_at),
         saved_answers=saved,
         saved_opening_ids=list(application.working_opening_ids or []),
         guest_answers=guest,

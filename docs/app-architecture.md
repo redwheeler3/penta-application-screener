@@ -127,6 +127,11 @@ submitted participants, so private drafts cannot accidentally enter screening.
 Applicant save, submit, and authenticated return-link requests check the working revision with a
 conditional database update that holds the write lock through the working-copy save and commit.
 The check therefore covers overlapping requests as well as an already-stale browser tab.
+Private-copy reconciliation carries the displayed application revision and the guest draft's
+saved timestamp. Both copies are checked under the application write lock before either is
+chosen or discarded; a changed comparison is refreshed without replacing local form edits.
+Email confirmation reloads answers under that lock and merges the verified email into the
+current working copy, preserving concurrent saves and advancing their revision.
 
 Openings are independent records. Their dates derive upcoming, open, and closed phases; a permanent
 committee decision archives an opening. Applicants can join open openings, withdraw from open or
@@ -141,6 +146,10 @@ lifecycle, preventing both from succeeding concurrently. Selection then locks th
 order. Committee metadata writes use the application lock through their short check-and-write
 transaction, also preventing duplicate first private-note and favourite inserts. These locks never
 span email or AI network calls.
+Retention sweeps first collect due record IDs, then recheck each application's retention date
+under the same application lock before recording and performing deletion. Draft deletion uses
+a conditional write to recheck expiry or resolution, so an opening extension or renewed draft
+can make a previously selected record ineligible for cleanup.
 
 Submitted applications flow directly into the database and become available to the committee.
 The committee client refreshes its lightweight application and workflow reads on focus, on
