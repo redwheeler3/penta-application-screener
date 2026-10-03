@@ -5,8 +5,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import supports_reasoning_effort
+from app.ai.schemas import PoolDimensionReport
 from app.core.time import as_utc, pacific_date, pacific_today, utc_isoformat
 from app.db.models import (
+    Analysis,
     Application,
     ApplicationAIResult,
     ApplicationCommitteeNote,
@@ -18,7 +20,7 @@ from app.db.models import (
     OpeningOutcome,
     User,
 )
-from app.domain.ranking import rank_candidates
+from app.domain.ranking import CandidateScores, rank_candidates
 from app.schemas.applications import (
     AIModelTraceOut,
     AIResultTraceOut,
@@ -53,14 +55,18 @@ from app.services.eligibility.status import (
 )
 from app.services.openings.catalog import opening_phase
 from app.services.openings.participation import opening_ids_by_application
-from app.services.ranking.analysis import current_dimension_kinds, get_current_analysis
+from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
     dimension_weights,
     get_or_create_member_ranking,
     stored_tiers,
 )
-from app.services.ranking.view import candidate_scores
+from app.services.ranking.view import (
+    candidate_scores,
+    latest_application_scores,
+    scored_dimensions,
+)
 
 
 def serialize_summary(
@@ -207,11 +213,21 @@ def serialize_detail(
         )
     ).one()
 
+    analysis = get_current_analysis(db, opening_id)
+    report = current_dimension_report(analysis) if analysis is not None else None
+    results = latest_application_scores(db, app.id, report) if report is not None else []
+    scoring_trace = _dimension_scoring_trace(results)
+    captured_candidate = CandidateScores(
+        application_id=app.id, name=app.applicant_name,
+        scores=scored_dimensions(report, {result.kind: result.output or {} for result in results}) if report is not None else [],
+    )
     dimension_scores = _dimension_scores(
         db,
         app,
         user,
-        opening_id,
+        analysis,
+        report,
+        captured_candidate,
         include_historical=is_selected,
     )
     return ApplicationDetail(
@@ -239,7 +255,7 @@ def serialize_detail(
         # This candidate's scores against the current run's dimensions, joined to
         # their labels. null = no run, or not scored under it.
         dimension_scores=dimension_scores,
-        dimension_scoring_trace=_dimension_scoring_trace(db, opening_id, app.id),
+        dimension_scoring_trace=scoring_trace,
         private_note=_private_note(db, app.id, user.id),
         committee_notes=committee_notes(db, app.id, user.id),
     )
@@ -295,22 +311,8 @@ def _result_trace(result: ApplicationAIResult | None) -> AIResultTraceOut | None
 
 
 def _dimension_scoring_trace(
-    db: Session, opening_id: int, application_id: int
+    results: list[ApplicationAIResult],
 ) -> DimensionScoringTraceOut | None:
-    kinds = current_dimension_kinds(db, opening_id)
-    if not kinds:
-        return None
-    latest: dict[str, ApplicationAIResult] = {}
-    for result in db.scalars(
-        select(ApplicationAIResult)
-        .where(
-            ApplicationAIResult.application_id == application_id,
-            ApplicationAIResult.kind.in_(kinds),
-        )
-        .order_by(ApplicationAIResult.created_at)
-    ):
-        latest[result.kind] = result
-    results = list(latest.values())
     if not results:
         return None
     return DimensionScoringTraceOut(
@@ -340,7 +342,9 @@ def _dimension_scores(
     db: Session,
     app: Application,
     user: User,
-    opening_id: int,
+    analysis: Analysis | None,
+    report: PoolDimensionReport | None,
+    captured_candidate: CandidateScores,
     *,
     include_historical: bool,
 ) -> list[DimensionContributionOut] | None:
@@ -354,8 +358,6 @@ def _dimension_scores(
     this candidate come first. Weight-0 (Ignored) dimensions are dropped — they
     contribute nothing to the ranking.
     """
-    analysis = get_current_analysis(db, opening_id)
-    report = current_dimension_report(analysis) if analysis is not None else None
     if report is None:
         return None
     member_ranking = get_or_create_member_ranking(db, analysis, user)
@@ -367,12 +369,14 @@ def _dimension_scores(
     if not any(tier.get("dimension_keys") for tier in tiers):
         return []
 
-    weights = dimension_weights(member_ranking)
+    weights = dimension_weights(member_ranking, report=report)
     ranked = rank_candidates(
         candidate_scores(
             db,
             analysis,
             include_application=app if include_historical else None,
+            report=report,
+            captured_candidate=captured_candidate,
         ),
         weights,
     )

@@ -14,13 +14,43 @@ here and arithmetic in the domain keeps the formula (``impact = weight ·
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
+from app.ai.schemas import PoolDimensionReport
 from app.db.models import Application, ApplicationAIResult
 from app.domain.ranking import CandidateScores, ScoredDimension
 from app.services.ranking.dimensions import current_dimension_report
+
+
+def _latest_score_ids(application_ids: Collection[int], kinds: Collection[str]):
+    return select(
+        ApplicationAIResult.id,
+        func.row_number().over(
+            partition_by=(ApplicationAIResult.application_id, ApplicationAIResult.kind),
+            order_by=(ApplicationAIResult.created_at.desc(), ApplicationAIResult.id.desc()),
+        ).label("position"),
+    ).where(ApplicationAIResult.kind.in_(kinds), ApplicationAIResult.application_id.in_(application_ids)).subquery()
+
+
+def latest_application_scores(db: Session, application_id: int, report: PoolDimensionReport) -> list[ApplicationAIResult]:
+    """Newest score and provenance rows for one applicant, excluding history and narratives."""
+    ordered = _latest_score_ids([application_id], [kind_for_dimension(dim.key) for dim in report.dimensions])
+    return list(db.scalars(select(ApplicationAIResult).options(load_only(
+        ApplicationAIResult.kind, ApplicationAIResult.output, ApplicationAIResult.model_id,
+        ApplicationAIResult.reasoning_effort, ApplicationAIResult.prompt_version,
+        ApplicationAIResult.input_tokens, ApplicationAIResult.output_tokens, ApplicationAIResult.cost_usd,
+    )).join(ordered, ordered.c.id == ApplicationAIResult.id).where(ordered.c.position == 1)))
+
+
+def scored_dimensions(report: PoolDimensionReport, outputs: dict[str, dict]) -> list[ScoredDimension]:
+    return [ScoredDimension(
+        dimension_key=dim.key, name=dim.name, score=float(score.get("score", 0.0)),
+        confidence=score.get("confidence", "low"), rationale=score.get("rationale", ""), evidence=score.get("evidence", ""),
+    ) for dim in report.dimensions if (score := outputs.get(kind_for_dimension(dim.key))) is not None]
 
 
 def candidate_scores(
@@ -28,6 +58,8 @@ def candidate_scores(
     analysis,
     *,
     include_application: Application | None = None,
+    report: PoolDimensionReport | None = None,
+    captured_candidate: CandidateScores | None = None,
 ) -> list[CandidateScores]:
     """Every eligible candidate with its per-dimension scores under ``analysis``,
     joined to dimension labels. A candidate's score for each dimension is read
@@ -40,9 +72,11 @@ def candidate_scores(
     without changing the active ranking pool. The applicant detail view uses this for a
     selected household, whose persisted scores remain reviewable after selection removes
     the household from future AI work.
+    A detail request can supply its captured candidate scores and report; that
+    applicant is excluded from a second score read so provenance and values agree.
     """
-    report = current_dimension_report(analysis)
-    if analysis.opening_id is None:
+    report = report if report is not None else current_dimension_report(analysis)
+    if analysis.opening_id is None or report is None:
         return []
     applications = applications_to_score(db, analysis.opening_id)
     by_id = {app.id: app for app in applications}
@@ -54,36 +88,18 @@ def candidate_scores(
     # Fetch only the newest row per applicant and dimension in one query, with
     # row ID breaking timestamp ties. Keep report order when assembling vectors.
     kinds = [kind_for_dimension(dim.key) for dim in report.dimensions]
-    ordered = select(
-        ApplicationAIResult.id,
-        func.row_number().over(
-            partition_by=(ApplicationAIResult.application_id, ApplicationAIResult.kind),
-            order_by=(ApplicationAIResult.created_at.desc(), ApplicationAIResult.id.desc()),
-        ).label("position"),
-    ).where(
-        ApplicationAIResult.kind.in_(kinds),
-        ApplicationAIResult.application_id.in_(by_id),
-    ).subquery()
+    ids = set(by_id) - ({captured_candidate.application_id} if captured_candidate is not None else set())
+    ordered = _latest_score_ids(ids, kinds)
     rows = db.execute(select(
         ApplicationAIResult.application_id, ApplicationAIResult.kind, ApplicationAIResult.output,
     ).join(ordered, ordered.c.id == ApplicationAIResult.id).where(ordered.c.position == 1))
-    latest = {(app_id, kind): output or {} for app_id, kind, output in rows}
+    outputs_by_app: dict[int, dict[str, dict]] = {app_id: {} for app_id in by_id}
+    for app_id, kind, output in rows:
+        outputs_by_app[app_id][kind] = output or {}
     candidates: list[CandidateScores] = []
-    scores_by_app: dict[int, list[ScoredDimension]] = {app_id: [] for app_id in by_id}
-    for dim in report.dimensions:
-        kind = kind_for_dimension(dim.key)
-        for app_id in by_id:
-            score = latest.get((app_id, kind))
-            if score is None:
-                continue
-            scores_by_app[app_id].append(ScoredDimension(
-                dimension_key=dim.key, name=dim.name, score=float(score.get("score", 0.0)),
-                confidence=score.get("confidence", "low"), rationale=score.get("rationale", ""),
-                evidence=score.get("evidence", ""),
-            ))
-
     for app_id, app in by_id.items():
-        scores = scores_by_app[app_id]
+        scores = (captured_candidate.scores if captured_candidate is not None and captured_candidate.application_id == app_id
+                  else scored_dimensions(report, outputs_by_app[app_id]))
         if not scores:
             continue
         candidates.append(

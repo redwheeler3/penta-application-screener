@@ -68,12 +68,12 @@ def get_or_create_member_ranking(
     return member_ranking
 
 
-def dimension_weights(member_ranking: MemberRanking) -> dict[str, float]:
+def dimension_weights(member_ranking: MemberRanking, *, report: PoolDimensionReport | None = None) -> dict[str, float]:
     """The member's per-dimension weights — a complete map, DERIVED from their tier layout
     (never stored; tiers are the source of truth). Empty before any dimensions exist.
     Reads the shared dimensions off ``member_ranking.analysis`` and the tiers off the member's
     own view."""
-    report = current_dimension_report(member_ranking.analysis)
+    report = report if report is not None else current_dimension_report(member_ranking.analysis)
     if report is None:
         return {}
     return weights_from_tiers([d.key for d in report.dimensions], stored_tiers(member_ranking))
