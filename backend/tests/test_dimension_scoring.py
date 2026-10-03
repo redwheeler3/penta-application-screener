@@ -13,8 +13,10 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.ai.analysis import cache_key
 from app.ai.dimension_scoring import (
     KIND_PREFIX,
+    PROMPT_VERSION,
     kind_for_dimension,
     score_dimensions,
 )
@@ -106,6 +108,39 @@ def run_scores(db, provider, apps, report, settings):
 
 def test_kind_is_keyed_by_dimension_key() -> None:
     assert kind_for_dimension("community") == f"{KIND_PREFIX}:community"
+
+
+def test_scores_keep_the_original_cache_keys_when_an_applicant_changes(monkeypatch) -> None:
+    db = make_db()
+    applications = [
+        add_eligible(db, email=f"a{i}@example.com", raw_hash=f"old-{i}")
+        for i in (1, 2)
+    ]
+    keys = ["community", "skills"]
+    settings = AppSettings()
+    original_keys = {
+        cache_key(
+            application=applications[1], kind=kind_for_dimension(key),
+            model_id=settings.ai.dimension_scoring_model, prompt_version=PROMPT_VERSION,
+        )
+        for key in keys
+    }
+    provider = MockProvider()
+    for _ in applications:
+        provider.queue(a_scoring_report(keys))
+
+    def controlled_pool(items, *, call, max_workers):
+        yield items[0], call(items[0]), None
+        applications[1].raw_row_hash = "new-2"
+        db.commit()
+        yield items[1], call(items[1]), None
+
+    monkeypatch.setattr("app.ai.dimension_scoring.run_in_pool", controlled_pool)
+    run_scores(db, provider, applications, report_with(keys), settings)
+    stored_keys = set(db.scalars(select(ApplicationAIResult.cache_key).where(
+        ApplicationAIResult.application_id == applications[1].id,
+    )))
+    assert stored_keys == original_keys
 
 
 def test_scores_all_dimensions_and_does_not_touch_status() -> None:

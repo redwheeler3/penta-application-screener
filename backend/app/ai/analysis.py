@@ -285,25 +285,22 @@ def store_result(
     application: Application,
     *,
     kind: str,
-    model_id: str,
+    result_cache_key: str,
     prompt_version: str,
     result: AIResult,
     reasoning_effort: ReasoningEffort | None = None,
 ) -> AnalysisOutcome:
     """Price a fresh model result, persist it, and return its outcome.
 
-    Write half of analysis; touches the session, so the parallel path calls it on
-    the main thread after a worker returns the (session-free) model result.
+    The caller captures ``result_cache_key`` with the model input, before any call or
+    commit can refresh the application. Persistence must never relabel an old answer
+    with newer application content. Database work stays on the caller's thread.
     """
     call_cost = cost_usd(result.model_id, result.usage)
     record = ApplicationAIResult(
         application_id=application.id,
         kind=kind,
-        cache_key=cache_key(
-            application=application, kind=kind, model_id=model_id,
-            prompt_version=prompt_version,
-            reasoning_effort=reasoning_effort,
-        ),
+        cache_key=result_cache_key,
         model_id=result.model_id,
         reasoning_effort=reasoning_effort,
         prompt_version=prompt_version,
@@ -432,7 +429,7 @@ def screen_applications(
 
     # Cache lookups and prompt building touch the ORM, so do them here. Cached
     # applications finish immediately; the rest are queued with a prebuilt prompt.
-    pending: list[tuple[Application, str]] = []
+    pending: list[tuple[Application, str, str]] = []
     for application in applications:
         cached = cached_outcome(
             db, application, kind=kind, schema=schema, model_id=model_id,
@@ -442,9 +439,13 @@ def screen_applications(
         if cached is not None:
             yield finish(application, cached)
         else:
-            pending.append((application, build_prompt(application)))
+            key = cache_key(
+                application=application, kind=kind, model_id=model_id,
+                prompt_version=prompt_version, reasoning_effort=reasoning_effort,
+            )
+            pending.append((application, build_prompt(application), key))
 
-    def call_model(item: tuple[Application, str]) -> AIResult:
+    def call_model(item: tuple[Application, str, str]) -> AIResult:
         # Pure: no session, no ORM — safe to run in a worker thread.
         return retry_per_application_timeout(
             lambda: provider.structured_output(
@@ -457,7 +458,7 @@ def screen_applications(
             operation=f"AI pass {kind!r}",
         )
 
-    for (application, _prompt), result, error in run_in_pool(
+    for (application, _prompt, key), result, error in run_in_pool(
         pending, call=call_model, max_workers=max_workers
     ):
         if error is not None:
@@ -472,7 +473,7 @@ def screen_applications(
             )
             continue
         outcome = store_result(
-            db, application, kind=kind, model_id=model_id,
+            db, application, kind=kind, result_cache_key=key,
             prompt_version=prompt_version, result=result,
             reasoning_effort=reasoning_effort,
         )

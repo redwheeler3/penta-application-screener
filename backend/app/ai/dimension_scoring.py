@@ -395,10 +395,17 @@ def score_dimensions(
         # on the main thread and expires session objects while slower workers are still
         # building prompts. Snapshot the applicant input before the pool starts.
         applicant_block = _applicant_block(application) if to_score else None
-        plans.append((application, applicant_block, to_score, cached, cached_saved_usd))
+        result_keys = {
+            dim.key: cache_key(
+                application=application, kind=kind_for_dimension(dim.key), model_id=model_id,
+                prompt_version=PROMPT_VERSION, reasoning_effort=reasoning_effort,
+            )
+            for dim in to_score
+        }
+        plans.append((application, applicant_block, to_score, cached, cached_saved_usd, result_keys))
 
     def call(plan):
-        _application, applicant_block, to_score, _cached, _cached_saved_usd = plan
+        _application, applicant_block, to_score, _cached, _cached_saved_usd, _result_keys = plan
         if not to_score:
             return None  # fully cached → no model call
         assert applicant_block is not None
@@ -409,7 +416,7 @@ def score_dimensions(
             provider, applicant_block, to_score, model_id, reasoning_effort
         )
 
-    for (application, _applicant_block_text, to_score, cached, cached_saved_usd), result, error in run_in_pool(
+    for (application, _applicant_block_text, to_score, cached, cached_saved_usd, result_keys), result, error in run_in_pool(
         plans, call=call, max_workers=max_workers
     ):
         if error is not None:
@@ -445,7 +452,7 @@ def score_dimensions(
             score = fresh[dim.key]
             outcome = store_result(
                 db, application,
-                kind=kind_for_dimension(dim.key), model_id=model_id,
+                kind=kind_for_dimension(dim.key), result_cache_key=result_keys[dim.key],
                 prompt_version=PROMPT_VERSION,
                 reasoning_effort=reasoning_effort,
                 result=AIResult(

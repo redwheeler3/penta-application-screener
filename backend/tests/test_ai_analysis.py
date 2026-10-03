@@ -10,6 +10,7 @@ from app.ai.analysis import (
     enforce_cap,
     estimate_cost,
     retry_per_application_timeout,
+    screen_applications,
     store_result,
 )
 from app.ai.mock_provider import MockProvider
@@ -49,7 +50,10 @@ def seed_cached(db: Session, provider: MockProvider, app: Application) -> None:
     """Persist one cached result for ``app`` (via the real store_result primitive), so an
     estimate can then treat it as already-analyzed. Pulls the next queued provider result."""
     result = provider.structured_output(model_id=MODEL, schema=ScreeningReport, prompt="analyze")
-    store_result(db, app, kind=KIND, model_id=MODEL, prompt_version=VERSION, result=result)
+    store_result(
+        db, app, kind=KIND, prompt_version=VERSION, result=result,
+        result_cache_key=cache_key(application=app, kind=KIND, model_id=MODEL, prompt_version=VERSION),
+    )
 
 
 def clean_report() -> ScreeningReport:
@@ -70,7 +74,9 @@ def test_store_result_persists_effective_reasoning_effort() -> None:
         db,
         app,
         kind=KIND,
-        model_id=luna,
+        result_cache_key=cache_key(
+            application=app, kind=KIND, model_id=luna, prompt_version=VERSION, reasoning_effort="low",
+        ),
         prompt_version=VERSION,
         result=result,
         reasoning_effort="low",
@@ -223,7 +229,10 @@ def test_cross_provider_cache_hit_keeps_provenance_and_reprices_the_saving() -> 
         db,
         app,
         kind=KIND,
-        model_id=bedrock_luna,
+        result_cache_key=cache_key(
+            application=app, kind=KIND, model_id=bedrock_luna,
+            prompt_version=VERSION, reasoning_effort="low",
+        ),
         prompt_version=VERSION,
         reasoning_effort="low",
         result=result,
@@ -380,6 +389,39 @@ def test_enforce_cap_raises_when_over() -> None:
 
 def test_enforce_cap_passes_when_under() -> None:
     enforce_cap({"estimated_usd": 0.04}, cap_usd=5.0)  # no raise
+
+
+def test_screening_persists_the_input_cache_key_after_an_applicant_changes(monkeypatch) -> None:
+    db = make_session()
+    applications = [
+        make_application(db, email=f"a{i}@example.com", raw_hash=f"old-{i}")
+        for i in (1, 2)
+    ]
+    old_key = cache_key(application=applications[1], kind=KIND, model_id=MODEL, prompt_version=VERSION)
+    provider = MockProvider()
+    provider.queue(clean_report(), model_id=MODEL)
+    provider.queue(clean_report(), model_id=MODEL)
+
+    def controlled_pool(items, *, call, max_workers):
+        yield items[0], call(items[0]), None
+        applications[1].raw_row_hash = "new-2"
+        db.commit()
+        yield items[1], call(items[1]), None
+
+    monkeypatch.setattr("app.ai.analysis.run_in_pool", controlled_pool)
+    list(screen_applications(
+        db, provider, applications=applications, kind=KIND, schema=ScreeningReport,
+        model_id=MODEL, prompt_version=VERSION, build_prompt=lambda app: app.raw_row_hash,
+        max_workers=2,
+    ))
+    stored = db.scalar(select(ApplicationAIResult).where(
+        ApplicationAIResult.application_id == applications[1].id,
+    ))
+    assert stored.cache_key == old_key
+    assert cached_outcome(
+        db, applications[1], kind=KIND, schema=ScreeningReport,
+        model_id=MODEL, prompt_version=VERSION,
+    ) is None
 
 
 def test_per_application_timeout_retries_once() -> None:
