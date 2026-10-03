@@ -1,11 +1,17 @@
 import { Trash2, UserPlus } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import * as api from "../../api/access";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import type { AllowlistEntry, CurrentUser, DeniedSignInAttempt } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
+
+type AccessUpdate = {
+  entries: AllowlistEntry[];
+  invitationEmailStatus?: "sent" | "failed" | null;
+};
 
 // Admin-only management of the access allowlist: who may sign in, and with what role.
 // The mutation endpoints return the full updated list, so this holds the list in local
@@ -23,63 +29,65 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
   const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const pending = useRef(false);
+  const requests = useRequestScope();
+  const draft = useRef({ email, role });
+  draft.current = { email, role };
+
+  async function mutateAccess(send: () => Promise<Response>, onSaved: (body: AccessUpdate) => void, failure: string) {
+    if (pending.current) return;
+    const isCurrent = requests.capture();
+    pending.current = true;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await send();
+      if (!isCurrent()) return;
+      if (!response.ok) {
+        const problem = await readProblem(response);
+        if (isCurrent()) props.onError(problem ?? failure);
+        return;
+      }
+      const body = await response.json() as AccessUpdate;
+      if (!isCurrent()) return;
+      allowlist.setData(body.entries);
+      onSaved(body);
+    } catch {
+      if (isCurrent()) props.onError(failure);
+    } finally {
+      pending.current = false;
+      if (isCurrent()) setBusy(false);
+    }
+  }
 
   async function addEntry(event: React.FormEvent) {
     event.preventDefault();
     const trimmed = email.trim();
-    if (!trimmed || busy) return;
-    setBusy(true);
-    setMessage("");
-    const response = await api.upsertAllowlistEntry(trimmed, role);
-    setBusy(false);
-    if (!response.ok) {
-      props.onError((await readProblem(response)) ?? "Could not add that email.");
-      return;
-    }
-    const body: {
-      entries: AllowlistEntry[];
-      invitationEmailStatus: "sent" | "failed" | null;
-    } = await response.json();
-    allowlist.setData(body.entries);
-    setMessage(
-      body.invitationEmailStatus === "sent"
-        ? "Access added and invitation email sent."
-        : body.invitationEmailStatus === "failed"
-          ? "Access added, but the invitation email needs attention in Email delivery."
-          : "Access updated.",
-    );
-    setEmail("");
-    setRole("member");
+    if (!trimmed) return;
+    const submitted = { email, role };
+    await mutateAccess(() => api.upsertAllowlistEntry(trimmed, role), (body) => {
+      setMessage(
+        body.invitationEmailStatus === "sent"
+          ? "Access added and invitation email sent."
+          : body.invitationEmailStatus === "failed"
+            ? "Access added, but the invitation email needs attention in Email delivery."
+            : "Access updated.",
+      );
+      if (draft.current.email === submitted.email && draft.current.role === submitted.role) {
+        setEmail("");
+        setRole("member");
+      }
+    }, "Could not confirm the access change. Please try again.");
   }
 
   async function removeEntry(target: string) {
-    if (busy) return;
-    setBusy(true);
-    setMessage("");
-    const response = await api.removeAllowlistEntry(target);
-    setBusy(false);
-    if (!response.ok) {
-      props.onError((await readProblem(response)) ?? "Could not remove that email.");
-      return;
-    }
-    const body: { entries: AllowlistEntry[] } = await response.json();
-    allowlist.setData(body.entries);
-    setMessage("Access removed.");
+    await mutateAccess(() => api.removeAllowlistEntry(target), () => setMessage("Access removed."),
+      "Could not confirm the access removal. Please try again.");
   }
 
   async function changeRole(target: string, nextRole: "admin" | "member") {
-    if (busy) return;
-    setBusy(true);
-    setMessage("");
-    const response = await api.upsertAllowlistEntry(target, nextRole);
-    setBusy(false);
-    if (!response.ok) {
-      props.onError((await readProblem(response)) ?? "Could not change that role.");
-      return;
-    }
-    const body: { entries: AllowlistEntry[] } = await response.json();
-    allowlist.setData(body.entries);
-    setMessage("Role updated.");
+    await mutateAccess(() => api.upsertAllowlistEntry(target, nextRole), () => setMessage("Role updated."),
+      "Could not confirm the role change. Please try again.");
   }
 
   return (

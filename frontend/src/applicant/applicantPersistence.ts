@@ -8,6 +8,8 @@ import type {
   WorkingApplicationAnswers,
 } from "./types";
 
+export const APPLICANT_ACTION_ERROR_MESSAGE = "We couldn't confirm that action. Please try again.";
+
 export type PersistencePhase =
   | "idle"
   | "working"

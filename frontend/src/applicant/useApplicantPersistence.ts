@@ -5,6 +5,7 @@ import { retryForServiceRecovery } from "../serviceRecovery";
 import { useRequestScope, type RequestIsCurrent } from "../hooks/useRequestScope";
 import {
   accessCredentialFromFragment,
+  APPLICANT_ACTION_ERROR_MESSAGE,
   type ApplicationResponse,
   defaultOpeningIds,
   type EmailSendStatus,
@@ -141,46 +142,50 @@ export function useApplicantPersistence(
 
   async function inspectLink(token: string): Promise<void> {
     const inSession = sessionWork.capture();
-    updatePersistence({ phase: "working" });
-    const response = await inspectAccessLink(token);
-    if (!inSession()) return;
-    if (!response.ok) return fail(response);
-    const body = await linkBody(response);
-    if (!inSession()) return;
-    updatePersistence({
-      accessPurpose: body.purpose ?? "applicant_access",
-      accessApplicationEmail: body.applicationEmail,
-    });
-    if (body.state === "unavailable") {
-      updatePersistence({ phase: "applications_unavailable" });
-      return;
-    }
-    if (body.switchRequired && body.currentEmail && body.linkEmail) {
+    try {
+      updatePersistence({ phase: "working" });
+      const response = await inspectAccessLink(token);
+      if (!inSession()) return;
+      if (!response.ok) return fail(response);
+      const body = await linkBody(response);
+      if (!inSession()) return;
       updatePersistence({
-        linkConflict: {
-          currentEmail: body.currentEmail,
-          linkEmail: body.linkEmail,
-          applicationEmail: body.applicationEmail,
-          purpose: body.purpose ?? "applicant_access",
-          linkIsValid: body.state === "valid",
-        },
-        phase: "link_conflict",
+        accessPurpose: body.purpose ?? "applicant_access",
+        accessApplicationEmail: body.applicationEmail,
       });
-      return;
+      if (body.state === "unavailable") {
+        updatePersistence({ phase: "applications_unavailable" });
+        return;
+      }
+      if (body.switchRequired && body.currentEmail && body.linkEmail) {
+        updatePersistence({
+          linkConflict: {
+            currentEmail: body.currentEmail,
+            linkEmail: body.linkEmail,
+            applicationEmail: body.applicationEmail,
+            purpose: body.purpose ?? "applicant_access",
+            linkIsValid: body.state === "valid",
+          },
+          phase: "link_conflict",
+        });
+        return;
+      }
+      if (body.state === "valid" && body.linkEmail) {
+        updatePersistence({ accessEmail: body.linkEmail, phase: "link_ready" });
+        return;
+      }
+      if (
+        body.purpose !== "email_change" &&
+        (body.state === "expired" || body.state === "used" || body.state === "replaced") &&
+        body.currentEmail === body.linkEmail
+      ) {
+        await restoreApplication();
+        return;
+      }
+      updatePersistence({ phase: body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired" });
+    } catch {
+      if (inSession()) updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
     }
-    if (body.state === "valid" && body.linkEmail) {
-      updatePersistence({ accessEmail: body.linkEmail, phase: "link_ready" });
-      return;
-    }
-    if (
-      body.purpose !== "email_change" &&
-      (body.state === "expired" || body.state === "used" || body.state === "replaced") &&
-      body.currentEmail === body.linkEmail
-    ) {
-      await restoreApplication();
-      return;
-    }
-    updatePersistence({ phase: body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired" });
   }
 
   async function openLink(
@@ -190,44 +195,48 @@ export function useApplicantPersistence(
   ): Promise<void> {
     endSessionWork();
     const inSession = sessionWork.capture();
-    updatePersistence({ phase: "working" });
-    const response = await openAccessLink(token, switchCurrent, rememberDevice);
-    if (!inSession()) return;
-    if (!response.ok) return fail(response);
-    const body = await linkBody(response);
-    if (!inSession()) return;
-    if (body.state === "email_in_use" && body.applicationId != null) {
+    try {
+      updatePersistence({ phase: "working" });
+      const response = await openAccessLink(token, switchCurrent, rememberDevice);
+      if (!inSession()) return;
+      if (!response.ok) return fail(response);
+      const body = await linkBody(response);
+      if (!inSession()) return;
+      if (body.state === "email_in_use" && body.applicationId != null) {
+        onRememberDeviceChange(rememberDevice);
+        updatePersistence({ applicationId: body.applicationId });
+        await restoreApplication(body.applicationId);
+        if (!inSession()) return;
+        updatePersistence({
+          emailChangeMessage: "That email address already has an application, so nothing was changed.",
+          emailChangeStatus: "error",
+          phase: "idle",
+        });
+        return;
+      }
+      if (body.state !== "valid" || body.applicationId == null) {
+        updatePersistence({ phase: body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired" });
+        return;
+      }
       onRememberDeviceChange(rememberDevice);
-      updatePersistence({ applicationId: body.applicationId });
+      updatePersistence({
+        applicationId: body.applicationId,
+        reviewAfterAccess: body.purpose !== "email_change" && body.pendingIntent === "submit",
+        pendingCopy: body.pendingCopy,
+        linkConflict: null,
+      });
       await restoreApplication(body.applicationId);
       if (!inSession()) return;
-      updatePersistence({
-        emailChangeMessage: "That email address already has an application, so nothing was changed.",
-        emailChangeStatus: "error",
-        phase: "idle",
-      });
-      return;
-    }
-    if (body.state !== "valid" || body.applicationId == null) {
-      updatePersistence({ phase: body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired" });
-      return;
-    }
-    onRememberDeviceChange(rememberDevice);
-    updatePersistence({
-      applicationId: body.applicationId,
-      reviewAfterAccess: body.purpose !== "email_change" && body.pendingIntent === "submit",
-      pendingCopy: body.pendingCopy,
-      linkConflict: null,
-    });
-    await restoreApplication(body.applicationId);
-    if (!inSession()) return;
-    if (body.purpose === "email_change") {
-      updatePersistence({
-        pendingEmailChange: null,
-        emailChangeMessage: "",
-        emailChangeStatus: "confirmed",
-        googleDisconnectedByEmailChange: body.googleDisconnected,
-      });
+      if (body.purpose === "email_change") {
+        updatePersistence({
+          pendingEmailChange: null,
+          emailChangeMessage: "",
+          emailChangeStatus: "confirmed",
+          googleDisconnectedByEmailChange: body.googleDisconnected,
+        });
+      }
+    } catch {
+      if (inSession()) updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
     }
   }
 
@@ -281,10 +290,19 @@ export function useApplicantPersistence(
 
   async function restorePendingCopy(): Promise<void> {
     const isCurrent = pendingCopyReads.begin();
-    const response = await fetchPendingCopy();
-    if (!response.ok || !isCurrent()) return;
-    const body = (await response.json()) as { pendingCopy: PendingCopy | null };
+    const response = await fetchPendingCopy().catch(() => null);
     if (!isCurrent()) return;
+    if (response === null) {
+      updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
+      return;
+    }
+    if (!response.ok) return;
+    const body = (await response.json().catch(() => null)) as { pendingCopy: PendingCopy | null } | null;
+    if (!isCurrent()) return;
+    if (body === null) {
+      updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
+      return;
+    }
     updatePersistence({ pendingCopy: body.pendingCopy });
   }
 
@@ -346,27 +364,31 @@ export function useApplicantPersistence(
   async function reconcilePendingCopy(choice: "saved" | "guest"): Promise<void> {
     if (!pendingCopy) return;
     const inSession = sessionWork.capture();
-    updatePersistence({ phase: "working" });
-    const response = await reconcilePendingCopyRequest(choice, pendingCopy.baseRevision, pendingCopy.guestSavedAt);
-    if (!inSession()) return;
-    if (!response.ok) {
-      const problem = await responseProblem(response);
+    try {
+      updatePersistence({ phase: "working" });
+      const response = await reconcilePendingCopyRequest(choice, pendingCopy.baseRevision, pendingCopy.guestSavedAt);
       if (!inSession()) return;
-      if (problem.code === "stale_application" || problem.code === "pending_copy_changed") {
-        await restorePendingCopy();
-        if (inSession()) updatePersistence({ message: problem.detail, phase: "error" });
+      if (!response.ok) {
+        const problem = await responseProblem(response);
+        if (!inSession()) return;
+        if (problem.code === "stale_application" || problem.code === "pending_copy_changed") {
+          await restorePendingCopy();
+          if (inSession()) updatePersistence({ message: problem.detail, phase: "error" });
+          return;
+        }
+        if (problem.code === "pending_copy_not_found") {
+          updatePersistence({ pendingCopy: null, phase: "idle" });
+          await restoreApplication(applicationId ?? undefined);
+          return;
+        }
+        updatePersistence({ message: problem.detail, phase: "error" });
         return;
       }
-      if (problem.code === "pending_copy_not_found") {
-        updatePersistence({ pendingCopy: null, phase: "idle" });
-        await restoreApplication(applicationId ?? undefined);
-        return;
-      }
-      updatePersistence({ message: problem.detail, phase: "error" });
-      return;
+      updatePersistence({ pendingCopy: null });
+      await restoreApplication(applicationId ?? undefined);
+    } catch {
+      if (inSession()) updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
     }
-    updatePersistence({ pendingCopy: null });
-    await restoreApplication(applicationId ?? undefined);
   }
 
   function clearActionFeedback(): void {
@@ -397,35 +419,39 @@ export function useApplicantPersistence(
   async function emailNewAccessLink(): Promise<void> {
     if (!accessToken) return;
     const inSession = sessionWork.capture();
-    updatePersistence({ phase: "working" });
-    const response = await regenerateAccessLink(accessToken);
-    if (!inSession()) return;
-    if (!response.ok) return fail(response);
-    const body = (await response.json()) as {
-      targetAvailable: boolean;
-      emailSent: boolean;
-      emailStatus: EmailSendStatus;
-    };
-    if (!inSession()) return;
-    if (!body.targetAvailable) {
-      updatePersistence({ linkConflict: null, phase: "link_invalid" });
-      return;
+    try {
+      updatePersistence({ phase: "working" });
+      const response = await regenerateAccessLink(accessToken);
+      if (!inSession()) return;
+      if (!response.ok) return fail(response);
+      const body = (await response.json()) as {
+        targetAvailable: boolean;
+        emailSent: boolean;
+        emailStatus: EmailSendStatus;
+      };
+      if (!inSession()) return;
+      if (!body.targetAvailable) {
+        updatePersistence({ linkConflict: null, phase: "link_invalid" });
+        return;
+      }
+      if (body.emailStatus === "failed") {
+        updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
+        return;
+      }
+      updatePersistence({
+        message: body.emailSent
+          ? accessPurpose === "email_change"
+            ? "We emailed a new confirmation link. Open it to finish changing your email address."
+            : "We emailed a new link to open your application."
+          : accessPurpose === "email_change"
+            ? "Check your inbox for the confirmation link we sent recently."
+            : "Check your inbox for the application link we sent recently.",
+        linkConflict: null,
+        phase: "access_link_sent",
+      });
+    } catch {
+      if (inSession()) updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
     }
-    if (body.emailStatus === "failed") {
-      updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
-      return;
-    }
-    updatePersistence({
-      message: body.emailSent
-        ? accessPurpose === "email_change"
-          ? "We emailed a new confirmation link. Open it to finish changing your email address."
-          : "We emailed a new link to open your application."
-        : accessPurpose === "email_change"
-          ? "Check your inbox for the confirmation link we sent recently."
-          : "Check your inbox for the application link we sent recently.",
-      linkConflict: null,
-      phase: "access_link_sent",
-    });
   }
 
   async function discardDraft(): Promise<void> {
@@ -449,7 +475,13 @@ export function useApplicantPersistence(
       problem.code ?? "",
     )) {
       if (applicationId != null) {
-        if (!(await refreshLifecycleState())) return;
+        if (!(await refreshLifecycleState())) {
+          if (inSession()) updatePersistence((state) => (
+            state.phase === "stale_copy" || state.phase === "session_expired"
+              ? {} : { message: problem.detail, phase: "error" }
+          ));
+          return;
+        }
       } else await restorePublicOpenings(true);
     }
     if (!inSession()) return;
@@ -459,15 +491,17 @@ export function useApplicantPersistence(
 
   async function refreshLifecycleState(): Promise<boolean> {
     const isCurrent = applicationReads.begin();
-    const response = await fetchApplication();
+    const response = await fetchApplication().catch(() => null);
     if (!isCurrent()) return false;
+    if (response === null) return false;
     if (response.status === 401) {
       updatePersistence({ message: "Your application session has ended.", phase: "session_expired" });
       return false;
     }
     if (!response.ok) return false;
-    const body = (await response.json()) as ApplicationResponse;
+    const body = (await response.json().catch(() => null)) as ApplicationResponse | null;
     if (!isCurrent()) return false;
+    if (body === null) return false;
     const currentRevision = stateRef.current.workingRevision;
     updatePersistence((state) => {
       const stale = state.workingRevision !== null && state.workingRevision !== body.workingRevision;

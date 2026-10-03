@@ -103,10 +103,18 @@ while saving remain unsaved. Save actions read one live state reference at reque
 the captured request snapshot remains the acknowledgement baseline when the response arrives.
 Email-identity refreshes use the same application read scope; saves and session exit invalidate
 older identity responses before they can restore cleared fields or falsely flag this browser's save.
+Rejected network requests and unreadable acknowledgements report an unconfirmed action and
+release busy controls while retaining drafts and the last acknowledged revision. Writes are not
+retried automatically; retries use the existing revision checks. Recovery belongs to the workflow
+that owns the action, so a late failure cannot restore errors into an exited session.
 Captured writes also belong to an applicant session generation. Sign-out, withdrawal, a credential
 switch, and draft discard end that generation before awaiting network replies, so a late save,
 email change, or reconciliation cannot repopulate the exited application. Committee sign-out
 clears its user only after the server confirms success; failures retain the session and report an error.
+Committee link inspection and exchange have a retryable connection state; retry checks the link
+again before deciding whether to exchange it or offer an account choice. Sign-in requests are
+ordered, and resetting the form invalidates older responses. Access-allowlist writes hold their
+busy state through response parsing and preserve invitation drafts edited during a request.
 Vacancy support actions belong to the accepted exact-email lookup. Editing that address invalidates
 pending work and hides its actions; deletion uses the accepted subscription's email.
 Subscription saves upsert atomically on normalized email while preserving first consent. Each

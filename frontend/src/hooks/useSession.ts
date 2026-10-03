@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import * as api from "../api/auth";
+import { useRequestScope } from "./useRequestScope";
 import type { AuthRedirect } from "../authRedirect";
 import {
   retryForServiceRecovery,
@@ -16,7 +17,8 @@ export type SignInState =
   | "googleDenied"
   | "staleLink"
   | "invalidLink"
-  | "requestFailed";
+  | "requestFailed"
+  | "connectionFailed";
 
 export type CommitteeLinkConflict = {
   currentEmail: string;
@@ -46,6 +48,7 @@ export function useSession(authRedirect: AuthRedirect) {
         ? "googleDenied"
         : "idle",
   );
+  const signInRequests = useRequestScope(authRedirect.magicLinkToken);
   const exchangeStarted = useRef(false);
   const userLoadInFlight = useRef(false);
 
@@ -87,58 +90,71 @@ export function useSession(authRedirect: AuthRedirect) {
   }, [authRedirect.magicLinkToken]);
 
   async function inspectMagicLink(token: string): Promise<void> {
-    const authStatePromise = api.fetchAuthState().catch(() => null);
-    const response = await api.inspectCommitteeMagicLink(token);
-    const authState = await authStatePromise;
-    if (authState !== null) setEmailSignInEnabled(authState.emailSignInEnabled);
-    if (!response.ok) {
-      setSignInState("invalidLink");
-      setIsLoadingUser(false);
-      return;
+    const isCurrent = signInRequests.begin();
+    try {
+      const authStatePromise = api.fetchAuthState().catch(() => null);
+      const response = await api.inspectCommitteeMagicLink(token);
+      const authState = await authStatePromise;
+      if (!isCurrent()) return;
+      if (authState !== null) setEmailSignInEnabled(authState.emailSignInEnabled);
+      if (!response.ok) {
+        setSignInState("invalidLink");
+        return;
+      }
+      const body = (await response.json()) as CommitteeLinkInspection;
+      if (!isCurrent()) return;
+      setUser(body.currentUser);
+      setLinkedEmail(body.linkEmail);
+      if (body.switchRequired && body.currentUser && body.linkEmail) {
+        setLinkConflict({
+          currentEmail: body.currentUser.email,
+          linkEmail: body.linkEmail,
+          linkIsValid: body.state === "valid",
+        });
+        setSignInState("idle");
+        return;
+      }
+      if (body.state === "valid") {
+        await exchangeMagicLink(token, false);
+        return;
+      }
+      if (body.currentUser && body.currentUser.email === body.linkEmail) {
+        setSignInState("idle");
+        return;
+      }
+      setSignInState(body.linkEmail ? "staleLink" : "invalidLink");
+    } catch {
+      if (isCurrent()) setSignInState("connectionFailed");
+    } finally {
+      if (isCurrent()) setIsLoadingUser(false);
     }
-    const body = (await response.json()) as CommitteeLinkInspection;
-    setUser(body.currentUser);
-    setLinkedEmail(body.linkEmail);
-    if (body.switchRequired && body.currentUser && body.linkEmail) {
-      setLinkConflict({
-        currentEmail: body.currentUser.email,
-        linkEmail: body.linkEmail,
-        linkIsValid: body.state === "valid",
-      });
-      setSignInState("idle");
-      setIsLoadingUser(false);
-      return;
-    }
-    if (body.state === "valid") {
-      await exchangeMagicLink(token, false);
-      return;
-    }
-    if (body.currentUser && body.currentUser.email === body.linkEmail) {
-      setSignInState("idle");
-      setIsLoadingUser(false);
-      return;
-    }
-    setSignInState(body.linkEmail ? "staleLink" : "invalidLink");
-    setIsLoadingUser(false);
   }
 
   async function exchangeMagicLink(token: string, switchCurrent: boolean): Promise<void> {
-    setSignInState("exchanging");
-    const response = await api.consumeCommitteeMagicLink(token, switchCurrent);
-    if (!response.ok) {
-      setSignInState("invalidLink");
-      setIsLoadingUser(false);
-      return;
+    const isCurrent = signInRequests.begin();
+    try {
+      setSignInState("exchanging");
+      const response = await api.consumeCommitteeMagicLink(token, switchCurrent);
+      if (!isCurrent()) return;
+      if (!response.ok) {
+        setSignInState("invalidLink");
+        return;
+      }
+      const body: { user: CurrentUser } = await response.json();
+      if (!isCurrent()) return;
+      setUser(body.user);
+      setLinkConflict(null);
+      setLinkedEmail(null);
+      setSignInState("idle");
+    } catch {
+      if (isCurrent()) setSignInState("connectionFailed");
+    } finally {
+      if (isCurrent()) setIsLoadingUser(false);
     }
-    const body: { user: CurrentUser } = await response.json();
-    setUser(body.user);
-    setLinkConflict(null);
-    setLinkedEmail(null);
-    setSignInState("idle");
-    setIsLoadingUser(false);
   }
 
   function keepCurrentSession(): void {
+    signInRequests.invalidate();
     setLinkConflict(null);
     setLinkedEmail(null);
     setSignInState("idle");
@@ -151,9 +167,11 @@ export function useSession(authRedirect: AuthRedirect) {
 
   async function emailNewLinkedSession(): Promise<void> {
     if (!authRedirect.magicLinkToken) return;
+    const isCurrent = signInRequests.begin();
     setSignInState("requesting");
-    const response = await api.regenerateCommitteeMagicLink(authRedirect.magicLinkToken);
-    if (!response.ok) {
+    const response = await api.regenerateCommitteeMagicLink(authRedirect.magicLinkToken).catch(() => null);
+    if (!isCurrent()) return;
+    if (response === null || !response.ok) {
       setSignInState("requestFailed");
       return;
     }
@@ -166,13 +184,22 @@ export function useSession(authRedirect: AuthRedirect) {
   }
 
   async function requestMagicLink(email: string, rememberDevice: boolean): Promise<void> {
+    const isCurrent = signInRequests.begin();
     setLinkedEmail(email.trim().toLowerCase());
     setSignInState("requesting");
-    const response = await api.requestCommitteeMagicLink(email, rememberDevice);
-    setSignInState(response.ok ? "emailSent" : "requestFailed");
+    const response = await api.requestCommitteeMagicLink(email, rememberDevice).catch(() => null);
+    if (isCurrent()) setSignInState(response?.ok ? "emailSent" : "requestFailed");
+  }
+
+  async function retryLinkedSession(): Promise<void> {
+    if (!authRedirect.magicLinkToken) return;
+    setSignInState("exchanging");
+    setIsLoadingUser(true);
+    await inspectMagicLink(authRedirect.magicLinkToken);
   }
 
   function resetSignIn(): void {
+    signInRequests.invalidate();
     setLinkedEmail(null);
     setSignInState("idle");
   }
@@ -181,6 +208,7 @@ export function useSession(authRedirect: AuthRedirect) {
     try {
       const response = await api.logout();
       if (!response.ok) return "Could not sign out. Please try again.";
+      signInRequests.reset();
       setUser(null);
       return null;
     } catch {
@@ -201,6 +229,7 @@ export function useSession(authRedirect: AuthRedirect) {
     keepCurrentSession,
     openLinkedSession,
     emailNewLinkedSession,
+    retryLinkedSession,
     resetSignIn,
     logout,
   };

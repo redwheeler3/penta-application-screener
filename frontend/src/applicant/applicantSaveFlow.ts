@@ -4,6 +4,7 @@ import type { RequestIsCurrent } from "../hooks/useRequestScope";
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "./accessMessages";
 import {
+  APPLICANT_ACTION_ERROR_MESSAGE,
   type ApplicationResponse,
   type EmailSendStatus,
   workingSnapshot,
@@ -249,8 +250,24 @@ export function createApplicantSaveFlow({
     await start(stateRef.current.lastIntent);
   }
 
+  async function recoverSave<Result>(operation: () => Promise<Result>, fallback: Result): Promise<Result> {
+    try {
+      return await operation();
+    } catch {
+      // A lost response does not prove the server rejected the write. Keep the
+      // draft and its last acknowledged revision, allowing a safe retry or reload.
+      updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
+      return fallback;
+    }
+  }
+
   return {
-    start, saveForReview, prepareGuestReview, emailReturnLink, requestEntryLink,
-    emailSessionAccessLink, resendCurrentIntent,
+    start: (intent: DraftIntent) => recoverSave(() => start(intent), undefined),
+    saveForReview: () => recoverSave(saveForReview, false),
+    prepareGuestReview: () => recoverSave(prepareGuestReview, false),
+    emailReturnLink: () => recoverSave(emailReturnLink, false),
+    requestEntryLink: (email: string) => recoverSave(() => requestEntryLink(email), false),
+    emailSessionAccessLink: () => recoverSave(emailSessionAccessLink, undefined),
+    resendCurrentIntent: () => recoverSave(resendCurrentIntent, undefined),
   };
 }

@@ -1,4 +1,4 @@
-import { responseProblem } from "./applicantPersistence";
+import { APPLICANT_ACTION_ERROR_MESSAGE, responseProblem } from "./applicantPersistence";
 import {
   resetApplicantSession,
   type UpdateApplicantPersistence,
@@ -26,8 +26,12 @@ export function createApplicantWithdrawalFlow({
     endSessionWork();
     const inSession = captureSession();
     updatePersistence({ withdrawalStatus: "working", withdrawalMessage: "" });
-    const response = await withdrawApplication();
+    const response = await withdrawApplication().catch(() => null);
     if (!inSession()) return false;
+    if (response === null) {
+      updatePersistence({ phase: "idle", withdrawalStatus: "error", withdrawalMessage: APPLICANT_ACTION_ERROR_MESSAGE });
+      return false;
+    }
     if (!response.ok) {
       const problem = await responseProblem(response);
       if (!inSession()) return false;
@@ -55,8 +59,12 @@ export function createApplicantWithdrawalFlow({
   async function signOut(): Promise<boolean> {
     endSessionWork();
     const inSession = captureSession();
-    const response = await logoutApplicant();
+    const response = await logoutApplicant().catch(() => null);
     if (!inSession()) return false;
+    if (response === null) {
+      updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
+      return false;
+    }
     if (!response.ok) {
       await fail(response);
       return false;

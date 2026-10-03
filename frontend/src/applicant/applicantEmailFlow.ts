@@ -3,6 +3,7 @@ import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import {
+  APPLICANT_ACTION_ERROR_MESSAGE,
   type ApplicationResponse,
   type EmailSendStatus,
   responseDetail,
@@ -88,8 +89,12 @@ export function createApplicantEmailFlow({
   async function refreshEmailIdentity(): Promise<void> {
     if (!inSession()) return;
     const isCurrent = beginApplicationRead();
-    const response = await fetchApplication();
+    const response = await fetchApplication().catch(() => null);
     if (!isCurrent()) return;
+    if (response === null) {
+      updatePersistence({ emailChangeMessage: APPLICANT_ACTION_ERROR_MESSAGE, emailChangeStatus: "error" });
+      return;
+    }
     if (response.status === 401) {
       updatePersistence({
         emailChangeMessage: "This session has ended. Continue in the tab where you confirmed the new address.",
@@ -98,8 +103,12 @@ export function createApplicantEmailFlow({
       return;
     }
     if (!response.ok) return;
-    const body = (await response.json()) as ApplicationResponse;
+    const body = (await response.json().catch(() => null)) as ApplicationResponse | null;
     if (!isCurrent()) return;
+    if (body === null) {
+      updatePersistence({ emailChangeMessage: APPLICANT_ACTION_ERROR_MESSAGE, emailChangeStatus: "error" });
+      return;
+    }
     updatePersistence((state) => {
       const emailChanged = state.primaryEmail !== null && body.primaryEmail !== state.primaryEmail;
       const stale = state.workingRevision !== null && body.workingRevision !== state.workingRevision;
@@ -126,10 +135,19 @@ export function createApplicantEmailFlow({
     }));
   }
 
+  async function recoverEmailAction<Result>(operation: () => Promise<Result>, fallback: Result): Promise<Result> {
+    try {
+      return await operation();
+    } catch {
+      updatePersistence({ emailChangeMessage: APPLICANT_ACTION_ERROR_MESSAGE, emailChangeStatus: "error" });
+      return fallback;
+    }
+  }
+
   return {
-    beginEmailChange,
+    beginEmailChange: (email: string) => recoverEmailAction(() => beginEmailChange(email), undefined),
     clearEmailChangeFeedback,
-    stopEmailChange,
+    stopEmailChange: () => recoverEmailAction(stopEmailChange, false),
     refreshEmailIdentity,
   };
 }

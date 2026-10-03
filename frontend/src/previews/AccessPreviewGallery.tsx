@@ -303,6 +303,7 @@ function CommitteeAccessPreviews() {
       <CommitteePreview title="Email delivery delayed" description="The committee member sees the same provider-delay guidance." emailDelayed />
       <CommitteePreview title="Checking Google session" description="The existing browser session is being loaded." isLoadingUser />
       <CommitteePreview title="Checking sign-in link" description="A committee sign-in link is being checked." signInState="exchanging" />
+      <CommitteePreview title="Sign-in connection failed" description="The link can be checked again after a network failure." signInState="connectionFailed" />
       <CommitteePreview title="Sending sign-in link" description="A committee sign-in request is in progress." signInState="requesting" initialEmail="member@example.test" />
       <CommitteePreview title="Check your email" description="A committee member has requested a sign-in link." signInState="emailSent" linkedEmail="member@example.test" />
       <CommitteePreview title="Expired committee link" description="The committee member can request a new sign-in link." signInState="staleLink" linkedEmail="member@example.test" />
@@ -346,6 +347,7 @@ function CommitteePreview(props: {
         onKeepCurrent={noAction}
         onOpenLinked={noAsyncAction}
         onEmailNew={noAsyncAction}
+        onRetryLink={noAsyncAction}
         onReset={noAction}
       />
     </PreviewCard>

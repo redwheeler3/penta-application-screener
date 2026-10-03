@@ -60,6 +60,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
     keepCurrentSession,
     openLinkedSession,
     emailNewLinkedSession,
+    retryLinkedSession,
     resetSignIn,
     logout,
   } = useSession(props.authRedirect);
@@ -371,6 +372,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
           onKeepCurrent={keepCurrentSession}
           onOpenLinked={openLinkedSession}
           onEmailNew={emailNewLinkedSession}
+          onRetryLink={retryLinkedSession}
           onReset={resetSignIn}
         />
       ) : (

@@ -15,6 +15,7 @@ vi.mock("./api", async (original) => ({
   requestReturnAccessLink: vi.fn(), logoutApplicant: vi.fn(),
   withdrawApplication: vi.fn(), requestEmailChange: vi.fn(), deletePendingDraft: vi.fn(),
   reconcilePendingCopy: vi.fn(),
+  checkGuestSubmission: vi.fn(), submitApplication: vi.fn(), cancelEmailChange: vi.fn(),
 }));
 
 function initialDraft() {
@@ -354,4 +355,107 @@ it.each(["stale_application", "pending_copy_changed"])("refreshes the comparison
   expect(result.current.persistence.pendingCopy).toEqual(latest);
   expect(result.current.persistence.busy).toBe(false);
   expect(result.current.draft.pets).toBe("Unsaved local edit");
+});
+
+it("retains unsaved edits and the acknowledged revision after a failed save, then allows retry", async () => {
+  vi.mocked(api.saveApplication).mockRejectedValueOnce(new Error("Synthetic network failure"))
+    .mockResolvedValueOnce(Response.json(application(2)));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  act(() => result.current.setDraft((draft) => ({ ...draft, pets: "Keep this edit" })));
+  await act(() => result.current.persistence.start("save"));
+  expect(result.current.persistence.phase).toBe("error");
+  expect(result.current.persistence.busy).toBe(false);
+  expect(result.current.persistence.workingRevision).toBe(1);
+  expect(result.current.persistence.hasUnsavedChanges).toBe(true);
+  expect(result.current.draft.pets).toBe("Keep this edit");
+  await act(() => result.current.persistence.start("save"));
+  expect(result.current.persistence.phase).toBe("saved");
+  expect(result.current.persistence.workingRevision).toBe(2);
+  expect(result.current.persistence.hasUnsavedChanges).toBe(false);
+});
+
+it.each(["save", "submit"] as const)("releases a guest %s after network failure without acknowledging its draft", async (intent) => {
+  vi.mocked(api.fetchApplication).mockResolvedValue(new Response(null, { status: 401 }));
+  vi.mocked(api.savePendingDraft).mockRejectedValue(new Error("Synthetic network failure"));
+  vi.mocked(api.submitGuestApplication).mockRejectedValue(new Error("Synthetic network failure"));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.openingsLoaded).toBe(true));
+  await act(() => result.current.persistence.start(intent));
+  expect(intent === "save" ? api.savePendingDraft : api.submitGuestApplication).toHaveBeenCalledOnce();
+  expect(result.current.persistence.busy).toBe(false);
+  expect(result.current.persistence.phase).toBe("error");
+  expect(result.current.persistence.hasUnsavedChanges).toBe(true);
+  expect(result.current.draft.applicant.email).toBe("review@example.com");
+});
+
+it("blocks review when its save cannot be confirmed", async () => {
+  vi.mocked(api.saveApplication).mockRejectedValue(new Error("Synthetic network failure"));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  await act(async () => { expect(await result.current.persistence.saveForReview()).toBe(false); });
+  expect(result.current.persistence.busy).toBe(false);
+});
+
+it("recovers a guest review check that fails before the server responds", async () => {
+  vi.mocked(api.fetchApplication).mockResolvedValue(new Response(null, { status: 401 }));
+  vi.mocked(api.checkGuestSubmission).mockRejectedValue(new Error("Synthetic network failure"));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.openingsLoaded).toBe(true));
+  await act(async () => { expect(await result.current.persistence.prepareGuestReview()).toBe(false); });
+  expect(result.current.persistence.busy).toBe(false);
+  expect(result.current.persistence.phase).toBe("error");
+});
+
+it("keeps an email change available when sending or cancellation fails", async () => {
+  vi.mocked(api.requestEmailChange).mockRejectedValueOnce(new Error("Synthetic network failure"))
+    .mockResolvedValueOnce(Response.json({ pendingEmail: "new@example.com", emailSent: true, emailStatus: "sent" }));
+  vi.mocked(api.cancelEmailChange).mockRejectedValue(new Error("Synthetic network failure"));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  await act(() => result.current.persistence.beginEmailChange("new@example.com"));
+  expect(result.current.persistence.emailChangeStatus).toBe("error");
+  expect(result.current.persistence.primaryEmail).toBe("review@example.com");
+  await act(() => result.current.persistence.beginEmailChange("new@example.com"));
+  await act(async () => { expect(await result.current.persistence.stopEmailChange()).toBe(false); });
+  expect(result.current.persistence.pendingEmailChange).toBe("new@example.com");
+  expect(result.current.persistence.emailChangeStatus).toBe("error");
+});
+
+it.each(["signOut", "withdrawApplication"] as const)("retains the session when %s cannot be confirmed", async (exit) => {
+  vi.mocked(api.logoutApplicant).mockRejectedValue(new Error("Synthetic network failure"));
+  vi.mocked(api.withdrawApplication).mockRejectedValue(new Error("Synthetic network failure"));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  await act(async () => { expect(await result.current.persistence[exit]()).toBe(false); });
+  expect(result.current.persistence.authenticated).toBe(true);
+  expect(result.current.persistence.workingRevision).toBe(1);
+  expect(result.current.persistence.busy).toBe(false);
+  if (exit === "withdrawApplication") expect(result.current.persistence.withdrawalStatus).toBe("error");
+});
+
+it("ignores a save failure arriving after confirmed sign-out", async () => {
+  const save = deferred<Response>();
+  vi.mocked(api.saveApplication).mockReturnValue(save.promise);
+  vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  let saving!: Promise<void>;
+  act(() => { saving = result.current.persistence.start("save"); });
+  await act(() => result.current.persistence.signOut());
+  await act(async () => { save.reject(new Error("Synthetic network failure")); await saving; });
+  expect(result.current.persistence.authenticated).toBe(false);
+  expect(result.current.persistence.phase).toBe("idle");
+  expect(result.current.persistence.message).toBe("");
+});
+
+it("releases a rejected save when the follow-up lifecycle read also fails", async () => {
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  vi.mocked(api.saveApplication).mockResolvedValue(Response.json({ code: "applications_closed", detail: "Applications are closed." }, { status: 409 }));
+  vi.mocked(api.fetchApplication).mockRejectedValue(new Error("Synthetic network failure"));
+  await act(() => result.current.persistence.start("save"));
+  expect(result.current.persistence.busy).toBe(false);
+  expect(result.current.persistence.phase).toBe("error");
+  expect(result.current.persistence.message).toBe("Applications are closed.");
 });

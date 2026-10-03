@@ -44,6 +44,7 @@ describe("email delay guidance", () => {
         onKeepCurrent={vi.fn()}
         onOpenLinked={vi.fn()}
         onEmailNew={vi.fn()}
+        onRetryLink={vi.fn()}
         onReset={vi.fn()}
       />,
     );

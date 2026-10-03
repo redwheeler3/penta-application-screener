@@ -82,7 +82,7 @@ export function RunnableEval(props: {
         if (!isCurrent()) return "This case tab is no longer active.";
         if (!response.ok) {
           const problem = await readProblem(response) ?? `Save failed (${response.status})`;
-          if (isCurrent()) props.onError(`Could not save case: ${problem}`);
+          if (isCurrent()) props.onError(`Could not save case “${String(evalCase.key)}”: ${problem}`);
           return problem;
         }
         const body = await response.json();
@@ -91,7 +91,7 @@ export function RunnableEval(props: {
         props.onToast(`Case “${String(evalCase.key)}” saved — commit the golden file to keep it.`);
         return null;
       } catch {
-        const problem = "Could not confirm the save. Your draft is still here; try again.";
+        const problem = `Could not confirm the save for case “${String(evalCase.key)}”. Please try again.`;
         if (isCurrent()) props.onError(problem);
         return problem;
       }

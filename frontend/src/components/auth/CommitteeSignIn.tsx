@@ -19,6 +19,7 @@ type CommitteeSignInProps = {
   onKeepCurrent: () => void;
   onOpenLinked: () => Promise<void>;
   onEmailNew: () => Promise<void>;
+  onRetryLink: () => Promise<void>;
   onReset: () => void;
   initialEmail?: string;
   emailDelayed?: boolean;
@@ -76,6 +77,19 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
 
   if (props.isLoadingUser) {
     return <SignInPanel title="Signing you in" message="Checking your Google session…" />;
+  }
+
+  if (props.signInState === "connectionFailed") {
+    return (
+      <SignInPanel title="We couldn’t check your sign-in link">
+        <p className="login-message login-message-error" role="alert">
+          Check your connection and try again. We haven’t confirmed your sign-in.
+        </p>
+        <button className="primary-button" type="button" onClick={() => void props.onRetryLink()}>
+          Try again
+        </button>
+      </SignInPanel>
+    );
   }
 
   if (props.linkConflict?.newLinkSent) {
@@ -140,7 +154,7 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
         </p>
       ) : props.signInState === "requestFailed" ? (
         <p className="login-message login-message-error" role="alert">
-          We couldn’t send a sign-in link. Email{" "}
+          We couldn’t confirm that the sign-in email was sent. Try again, or email{" "}
           <a href={`mailto:${TECH_SUPPORT_EMAIL}`} target="_blank" rel="noreferrer">
             Penta Tech Support
           </a>.
