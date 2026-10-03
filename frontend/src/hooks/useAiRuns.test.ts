@@ -5,6 +5,7 @@ import * as rankingApi from "../api/ranking";
 import * as screeningApi from "../api/screening";
 import { useAiRuns } from "./useAiRuns";
 import { deferred } from "../testSupport";
+import type { CurrentRunResponse } from "../types";
 
 vi.mock("../api/ranking", () => ({
   runRank: vi.fn(), scoreCurrent: vi.fn(), fetchRankEstimate: vi.fn(), fetchScoreCurrentEstimate: vi.fn(),
@@ -89,4 +90,48 @@ it.each(["discover", "score-current"] as const)("releases %s controls before the
   expect(options.ranking.refreshCurrentRun).not.toHaveBeenCalled();
   await act(async () => { board.resolve(true); });
   expect(result.current.rankRefreshing).toBe(false);
+});
+
+it.each([false, true])("does not restore an earlier opening's proposals after navigation (return=%s)", async (returnToOpening) => {
+  const pending = deferred<Response>();
+  vi.mocked(rankingApi.runRank).mockReturnValue(pending.promise);
+  const setDisplayedProposals = vi.fn();
+  const initial = {
+    openingId: 1,
+    ranking: { currentRun: { proposedDimensions: ["A proposal"] } as CurrentRunResponse,
+      load: vi.fn().mockResolvedValue(true), setDisplayedProposals },
+    notifications: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+    refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(),
+  };
+  const { result, rerender } = renderHook((options) => useAiRuns(options), { initialProps: initial });
+  let running!: Promise<void>;
+  act(() => { running = result.current.runRank("discover"); });
+  rerender({ ...initial, openingId: 2 });
+  if (returnToOpening) rerender(initial);
+  setDisplayedProposals.mockClear();
+  await act(async () => { pending.resolve(Response.json({ detail: "Synthetic failure" }, { status: 409 })); await running; });
+  expect(setDisplayedProposals).not.toHaveBeenCalled();
+  expect(result.current.rankRunning).toBe(false);
+});
+
+it("does not close a new opening's candidate when earlier screening completes", async () => {
+  const pending = deferred<Response>();
+  vi.mocked(screeningApi.runScreening).mockReturnValue(pending.promise);
+  const initial = {
+    openingId: 1, ranking: { currentRun: null, load: vi.fn().mockResolvedValue(true), setDisplayedProposals: vi.fn() },
+    notifications: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+    refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(),
+  };
+  const { result, rerender } = renderHook((options) => useAiRuns(options), { initialProps: initial });
+  let running!: Promise<void>;
+  act(() => { running = result.current.runScreening(); });
+  rerender({ ...initial, openingId: 2 });
+  await act(async () => {
+    pending.resolve(new Response(JSON.stringify({ type: "summary", analyzed: 1, cached: 0, flagged: 0, failed: 0, totalCostUsd: 0 })));
+    await running;
+  });
+  expect(initial.clearSelectedApplication).not.toHaveBeenCalled();
+  expect(initial.reloadApplications).not.toHaveBeenCalled();
+  expect(initial.refreshDashboard).not.toHaveBeenCalled();
+  expect(result.current.screeningRunning).toBe(false);
 });

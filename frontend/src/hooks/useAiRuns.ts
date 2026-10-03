@@ -133,7 +133,8 @@ export function useAiRuns(options: {
   }
 
   async function runScreening() {
-    if (options.openingId === null) return;
+    if (options.openingId === null || !refreshes.isFor(options.openingId)) return;
+    const inScope = refreshes.capture();
     setScreeningRunning(true);
     setScreeningEstimate(null);
     setScreeningProgress(null);
@@ -168,9 +169,11 @@ export function useAiRuns(options: {
             "Review current results before starting another run.",
           );
         }
-        options.refreshDashboard();
-        options.reloadApplications();
-        options.clearSelectedApplication();
+        if (inScope()) {
+          options.refreshDashboard();
+          options.reloadApplications();
+          options.clearSelectedApplication();
+        }
       }
     } catch (error) {
       options.notifications.error(
@@ -218,7 +221,7 @@ export function useAiRuns(options: {
   }
 
   async function runRank(mode: "discover" | "score-current") {
-    if (options.openingId === null) return;
+    if (options.openingId === null || !refreshes.isFor(options.openingId)) return;
     const inScope = refreshes.capture();
     setRankRunning(true);
     cancelRankEstimate();
@@ -236,7 +239,7 @@ export function useAiRuns(options: {
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
         options.notifications.error(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
-        if (mode === "discover" && priorProposals.length > 0) {
+        if (inScope() && mode === "discover" && priorProposals.length > 0) {
           options.ranking.setDisplayedProposals(priorProposals);
         }
       } else {
