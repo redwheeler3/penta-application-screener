@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.text import normalize_email
 from app.db.models import (
     EmailDelivery,
     EmailDeliveryState,
@@ -36,7 +37,7 @@ from app.services.email.templates import (
     unsuccessful_application_email,
     vacancy_opening_email,
 )
-from app.services.openings.subscriptions import consume_subscription
+from app.services.openings.subscriptions import consume_subscription, unit_sizes
 from app.services.openings.vacancy_notifications import (
     application_confirmation_timelines,
     opening_email_details,
@@ -48,6 +49,14 @@ class RetrySummary:
     accepted: int = 0
     still_queued: int = 0
     quota_blocked: int = 0
+
+
+@dataclass(frozen=True)
+class PreparedRetry:
+    message: OutboundEmail
+    magic_link_token: MagicLinkToken | None = None
+    subscription_id: int | None = None
+    subscription_consented_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -83,16 +92,15 @@ def retry_queued_emails(
         delivery = claim_delivery_attempt(db, delivery_id, now=now)
         if delivery is None:
             continue
-        subscription_id = (delivery.retry_intent or {}).get("subscription_id")
         built = _build_retry(db, delivery, now=now)
         if built is None:
+            vacancy_request = (delivery.retry_intent or {}).get("type") == "vacancy_opening"
             delivery.state = EmailDeliveryState.FAILED
             delivery.retry_intent = None
             delivery.quota_blocked = False
-            delivery.last_error_code = "RetryTargetUnavailable"
+            delivery.last_error_code = "VacancyRequestUnavailable" if vacancy_request else "RetryTargetUnavailable"
             db.commit()
             continue
-        message, magic_link_token = built
         # Publish the fresh credential before network I/O; a recipient can use it
         # immediately, and the provider wait does not hold SQLite's writer lock.
         db.commit()
@@ -100,8 +108,8 @@ def retry_queued_emails(
             db,
             sender,
             delivery,
-            message,
-            magic_link_token=magic_link_token,
+            built.message,
+            magic_link_token=built.magic_link_token,
             now=now,
             commit=False,
         )
@@ -111,10 +119,11 @@ def retry_queued_emails(
             continue
         if was_accepted:
             accepted += 1
-            if subscription_id is not None:
+            if built.subscription_id is not None and built.subscription_consented_at is not None:
                 consume_subscription(
                     db,
-                    int(subscription_id),
+                    built.subscription_id,
+                    consented_at=built.subscription_consented_at,
                 )
                 if delivery.application_id is None:
                     db.delete(delivery)
@@ -155,6 +164,7 @@ EXPECTED_FAILURE_CODES = frozenset(
         "ApplicationWithdrawn",
         "CommitteeAccessRemoved",
         "CredentialUsed",
+        "VacancyRequestUnavailable",
     }
 )
 FAILURE_BANNER_WINDOW = timedelta(days=7)
@@ -264,7 +274,7 @@ def _delivery_recipient(delivery: EmailDelivery) -> str:
 
 def _build_retry(
     db: Session, delivery: EmailDelivery, *, now: datetime
-) -> tuple[OutboundEmail, MagicLinkToken | None] | None:
+) -> PreparedRetry | None:
     if delivery.retry_intent is None:
         return None
     # The ledger stores JSON; every producer constructs a named RetryIntent.
@@ -274,23 +284,27 @@ def _build_retry(
     if intent["type"] == "vacancy_opening":
         opening = db.get(Opening, int(intent["opening_id"]))
         subscription_id = int(intent["subscription_id"])
+        subscription = db.get(VacancySubscription, subscription_id, populate_existing=True)
         if (
             opening is None
             or delivery.recipient_email is None
-            or db.get(VacancySubscription, subscription_id) is None
+            or subscription is None
+            or subscription.email != normalize_email(delivery.recipient_email)
+            or opening.unit_size_bedrooms not in unit_sizes(subscription)
         ):
             return None
-        return (
+        return PreparedRetry(
             vacancy_opening_email(
                 email=delivery.recipient_email,
                 **opening_email_details(opening),
             ),
-            None,
+            subscription_id=subscription.id,
+            subscription_consented_at=subscription.consented_at,
         )
     if intent["type"] == "application_unavailable" and delivery.application is None:
         if delivery.recipient_email is None:
             return None
-        return (
+        return PreparedRetry(
             application_unavailable_email(email=delivery.recipient_email),
             None,
         )
@@ -308,7 +322,7 @@ def _build_retry(
             now=now,
         )
         delivery.magic_link_token_id = issued.record.id
-        return (
+        return PreparedRetry(
             application_confirmation_email(
                 application_id=application.id,
                 email=application.primary_email,
@@ -324,7 +338,7 @@ def _build_retry(
             issued.record,
         )
     if intent["type"] == "email_change_notice":
-        return (
+        return PreparedRetry(
             email_change_notice_email(
                 application_id=application.id,
                 old_email=str(intent["old_email"]),
@@ -333,7 +347,7 @@ def _build_retry(
             None,
         )
     if intent["type"] == "application_unavailable":
-        return (
+        return PreparedRetry(
             application_unavailable_email(
                 application_id=application.id,
                 email=application.primary_email,
@@ -343,7 +357,7 @@ def _build_retry(
     if intent["type"] == "application_selected_locked":
         if not application_is_selected(db, application.id):
             return None
-        return (
+        return PreparedRetry(
             selected_application_locked_email(
                 application_id=application.id,
                 email=application.primary_email,
@@ -351,7 +365,7 @@ def _build_retry(
             None,
         )
     if intent["type"] == "application_unsuccessful":
-        return (
+        return PreparedRetry(
             unsuccessful_application_email(
                 application_id=application.id,
                 email=application.primary_email,
@@ -373,11 +387,16 @@ def _build_retry(
         )
         delivery.magic_link_token_id = issued.record.id
         subscription_id = intent.get("subscription_id")
-        overlap = (
-            subscription_id is not None
-            and db.get(VacancySubscription, int(subscription_id)) is not None
+        subscription = (
+            db.get(VacancySubscription, int(subscription_id), populate_existing=True)
+            if subscription_id is not None else None
         )
-        return (
+        overlap = (
+            subscription is not None
+            and subscription.email == normalize_email(application.primary_email)
+            and opening.unit_size_bedrooms in unit_sizes(subscription)
+        )
+        return PreparedRetry(
             application_opening_email(
                 application_id=application.id,
                 email=application.primary_email,
@@ -387,6 +406,8 @@ def _build_retry(
                 **opening_email_details(opening),
             ),
             issued.record,
+            subscription_id=subscription.id if overlap else None,
+            subscription_consented_at=subscription.consented_at if overlap else None,
         )
     return None
 
@@ -397,7 +418,7 @@ def _build_magic_link_retry(
     intent: MagicLinkRetryIntent,
     *,
     now: datetime,
-) -> tuple[OutboundEmail, MagicLinkToken] | None:
+) -> PreparedRetry | None:
     identity_kind = delivery.recipient_kind
     purpose = MagicLinkPurpose(str(intent["purpose"]))
     if identity_kind == PasswordlessIdentityKind.APPLICANT:
@@ -449,4 +470,4 @@ def _build_magic_link_retry(
             settings=get_settings(),
         )
     )
-    return message, issued.record
+    return PreparedRetry(message, issued.record)

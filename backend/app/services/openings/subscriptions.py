@@ -3,7 +3,8 @@
 from collections import Counter
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from app.core.text import normalize_email
@@ -26,18 +27,17 @@ def save_subscription(
         raise ValueError("Unit sizes must contain one or more of 1, 2, and 3.")
     normalized = normalize_email(email)
     now = consented_at or datetime.now(UTC)
-    subscription = db.scalar(
-        select(VacancySubscription).where(VacancySubscription.email == normalized)
-    )
-    if subscription is None:
-        subscription = VacancySubscription(email=normalized, first_consented_at=now)
-        db.add(subscription)
-    subscription.wants_one_bedroom = 1 in unit_sizes
-    subscription.wants_two_bedroom = 2 in unit_sizes
-    subscription.wants_three_bedroom = 3 in unit_sizes
-    subscription.consented_at = now
-    subscription.source = source
-    db.flush()
+    values = {
+        "wants_one_bedroom": 1 in unit_sizes, "wants_two_bedroom": 2 in unit_sizes,
+        "wants_three_bedroom": 3 in unit_sizes, "consented_at": now, "source": source,
+    }
+    # The unique email is the upsert boundary, including competing first signups.
+    # First consent belongs to the original row; replacing preferences preserves it.
+    statement = insert(VacancySubscription).values(email=normalized, first_consented_at=now, **values)
+    statement = statement.on_conflict_do_update(
+        index_elements=[VacancySubscription.email], set_={**values, "updated_at": now},
+    ).returning(VacancySubscription)
+    subscription = db.scalars(statement, execution_options={"populate_existing": True}).one()
     if commit:
         db.commit()
         db.refresh(subscription)
@@ -76,11 +76,12 @@ def matching_subscriptions(db: Session, unit_size: int) -> list[VacancySubscript
     )
 
 
-def consume_subscription(db: Session, subscription_id: int) -> None:
-    subscription = db.get(VacancySubscription, subscription_id)
-    if subscription is None:
-        return
-    db.delete(subscription)
+def consume_subscription(db: Session, subscription_id: int, *, consented_at: datetime) -> None:
+    """Consume only the request covered by the accepted notification."""
+    db.execute(delete(VacancySubscription).where(
+        VacancySubscription.id == subscription_id,
+        VacancySubscription.consented_at == consented_at,
+    ))
 
 
 def unit_sizes(subscription: VacancySubscription) -> list[int]:

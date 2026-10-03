@@ -76,7 +76,7 @@ def test_consuming_subscription_deletes_the_record() -> None:
         consented_at=datetime(2026, 8, 27, 18, tzinfo=UTC),
     )
 
-    consume_subscription(db, subscription.id)
+    consume_subscription(db, subscription.id, consented_at=subscription.consented_at)
     db.commit()
 
     assert db.get(VacancySubscription, subscription.id) is None
