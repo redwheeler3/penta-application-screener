@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolDimensionReport
@@ -19,12 +20,11 @@ def get_or_create_member_ranking(
     (the same all-history carry-forward a re-rank uses). A brand-new member (no prior tiering
     anywhere) gets the default all-Ignore layout.
     """
-    existing = db.scalar(
-        select(MemberRanking).where(
-            MemberRanking.analysis_id == analysis.id,
-            MemberRanking.user_id == user.id,
-        )
+    lookup = select(MemberRanking).where(
+        MemberRanking.analysis_id == analysis.id,
+        MemberRanking.user_id == user.id,
     )
+    existing = db.scalar(lookup)
     if existing is not None:
         return existing
 
@@ -55,7 +55,15 @@ def get_or_create_member_ranking(
         },
     )
     db.add(member_ranking)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # A concurrent first read may have materialized this exact member view.
+        existing = db.scalar(lookup)
+        if existing is None:
+            raise
+        return existing
     db.refresh(member_ranking)
     return member_ranking
 

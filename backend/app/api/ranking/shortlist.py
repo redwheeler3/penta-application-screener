@@ -13,19 +13,17 @@ shared dimensions. Tier/seed saves carry the viewed ``analysisId`` and are rejec
 superseded analysis.
 """
 
-from dataclasses import asdict
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
+from app.api.ranking.presentation import ranking_payload, run_payload
 from app.core.problems import Problem
 from app.db.models import MemberRanking, User
 from app.db.session import get_db
-from app.domain.ranking import rank_candidates
-from app.schemas.applications import DimensionContributionOut
 from app.schemas.ranking import (
-    RankedCandidateOut,
+    RankingBoardResponse,
     RankingResponse,
     SeedsResponse,
     SeedsUpdate,
@@ -34,23 +32,15 @@ from app.schemas.ranking import (
     TiersResponse,
 )
 from app.services.applications.scope import resolve_visible_opening_id
-from app.services.applications.shared_shortlist import shortlisted_ids
-from app.services.applications.stars import starred_ids
-from app.services.eligibility.evaluation import eligible_application_ids_for
 from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
-    dimension_weights,
     display_tiers,
     get_or_create_member_ranking,
-    kept_keys,
     proposed_dimensions,
-    requested_flag_keys,
-    revived_flag_keys,
     set_proposals,
     set_tiers,
 )
-from app.services.ranking.view import candidate_scores
 from app.services.run_lock import rank_run_in_progress
 
 router = APIRouter(prefix="/ranking")
@@ -94,58 +84,23 @@ def _require_viewed_analysis(
     return get_or_create_member_ranking(db, current, user)
 
 
-def _ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> RankingResponse:
-    """The ranked-shortlist response for a member's view of an analysis. Shared by
-    ``/ranking`` and the tier-edit endpoint, so a tier change returns the re-sorted list in one
-    round-trip. Ranking weights + tiers are this member's; the dimension scores and star state
-    are shared, resolved off the analysis / this user.
-    """
-    weights = dimension_weights(member_ranking)
-    # The scored pool is the shared UNION (every applicant eligible for at least one member),
-    # so restrict this member's shortlist to the applicants eligible in THEIR own view —
-    # another member's eligible-only applicant is scored but must not appear on this board.
-    # Pool means/impact still come from the full scored set (shared math), so a candidate's
-    # numbers don't shift with who is filtering; we only drop rows the member excluded.
-    if member_ranking.analysis.opening_id is None:
-        raise ValueError("A current analysis must belong to an opening.")
-    opening_id = member_ranking.analysis.opening_id
-    eligible_ids = eligible_application_ids_for(db, user.id, opening_id)
-    ranked = [
-        c
-        for c in rank_candidates(candidate_scores(db, member_ranking.analysis), weights)
-        if c.application_id in eligible_ids
-    ]
-    starred = starred_ids(db, user.id, [c.application_id for c in ranked])
-    shortlisted = shortlisted_ids(db, opening_id, [c.application_id for c in ranked])
-    return RankingResponse(
-        analysis_id=member_ranking.analysis_id,
-        weights=weights,
-        scored_count=len(ranked),
-        candidates=[
-            RankedCandidateOut(
-                application_id=c.application_id,
-                name=c.name,
-                rank=c.rank,
-                fit=c.fit,
-                band=c.band,
-                contributions=[
-                    DimensionContributionOut(**asdict(contribution))
-                    for contribution in c.contributions
-                ],
-                starred_by_me=c.application_id in starred,
-                shortlisted=c.application_id in shortlisted,
-            )
-            for c in ranked
-        ],
-        # Recomputed each save so the tier-list refreshes badges in the same
-        # round-trip (moving or acknowledging a flagged dimension clears it).
-        new_dimension_keys=(member_ranking.run_state or {}).get("new_dimension_keys", []),
-        revived_dimension_keys=revived_flag_keys(db, member_ranking),
-        requested_dimension_keys=requested_flag_keys(member_ranking),
-        # Kept axes (derived from tiers) + pending proposals, so the tier list and
-        # composer stay in sync after a tier/seed save.
-        kept_keys=kept_keys(member_ranking),
-        proposed_dimensions=proposed_dimensions(member_ranking),
+
+
+@router.get("/board", response_model=RankingBoardResponse)
+def ranking_board(
+    opening_id: int | None = None,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> RankingBoardResponse:
+    """Criteria, scores, and tiers from the same captured member view."""
+    resolved = resolve_visible_opening_id(db, opening_id)
+    member_ranking = _current_member_view(db, user, resolved, "ranking")
+    run = run_payload(db, member_ranking)
+    if run is None:
+        raise Problem("run_required", detail="Discover patterns before ranking.")
+    return RankingBoardResponse(
+        run=run, ranking=ranking_payload(db, member_ranking, user),
+        tiers=[TierOut(**tier) for tier in display_tiers(member_ranking)],
     )
 
 
@@ -163,7 +118,7 @@ def ranking(
     math over cached scores.
     """
     resolved = resolve_visible_opening_id(db, opening_id)
-    return _ranking_payload(db, _current_member_view(db, user, resolved, "ranking"), user)
+    return ranking_payload(db, _current_member_view(db, user, resolved, "ranking"), user)
 
 
 # --- Tier-list weighting -----------------------------------------------------
@@ -210,7 +165,7 @@ def update_tiers(
         )
     except ValueError as exc:
         raise Problem("unknown_dimension_key", detail=str(exc)) from exc
-    return _ranking_payload(db, member_ranking, user)
+    return ranking_payload(db, member_ranking, user)
 
 
 # --- Discovery seeds ---------------------------------------------------------

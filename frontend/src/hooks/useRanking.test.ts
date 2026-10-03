@@ -3,11 +3,11 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import * as api from "../api/ranking";
 import { deferred } from "../testSupport";
-import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
+import type { CurrentRunResponse, RankingBoardResponse, RankingResponse, Tier } from "../types";
 import { useRanking } from "./useRanking";
 
 vi.mock("../api/ranking", () => ({
-  fetchRankingCurrent: vi.fn(), fetchRanking: vi.fn(), fetchTiers: vi.fn(),
+  fetchRankingCurrent: vi.fn(), fetchRankingBoard: vi.fn(),
   saveTiers: vi.fn(), saveSeeds: vi.fn(),
 }));
 
@@ -19,15 +19,17 @@ const ranking = (analysisId: number, scoredCount = 0): RankingResponse => ({
   analysisId, scoredCount, candidates: [], weights: {}, newDimensionKeys: [],
   revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [],
 });
+const board = (analysisId: number, tiers: Tier[] = []): RankingBoardResponse => ({
+  run: current(analysisId), ranking: ranking(analysisId), tiers,
+});
 const tier = (label: string): Tier[] => [{ id: "important", label, dimensionKeys: [] }];
 beforeEach(() => vi.resetAllMocks());
 
 it("ignores old current-analysis and board responses after an opening change", async () => {
   const oldCurrent = deferred<CurrentRunResponse>();
-  const oldRanking = deferred<RankingResponse>();
+  const oldRanking = deferred<RankingBoardResponse>();
   vi.mocked(api.fetchRankingCurrent).mockReturnValueOnce(oldCurrent.promise).mockResolvedValueOnce(current(2));
-  vi.mocked(api.fetchRanking).mockReturnValueOnce(oldRanking.promise).mockResolvedValueOnce(ranking(2));
-  vi.mocked(api.fetchTiers).mockResolvedValue({ tiers: [] });
+  vi.mocked(api.fetchRankingBoard).mockReturnValueOnce(oldRanking.promise).mockResolvedValueOnce(board(2));
   const { result, rerender } = renderHook(({ openingId }) => useRanking(openingId, vi.fn()), {
     initialProps: { openingId: 1 },
   });
@@ -39,7 +41,7 @@ it("ignores old current-analysis and board responses after an opening change", a
   rerender({ openingId: 2 });
   await act(async () => { await result.current.refreshRankingRun(); await result.current.loadRanking(); });
   await act(async () => {
-    oldCurrent.resolve(current(1)); oldRanking.resolve(ranking(1));
+    oldCurrent.resolve(current(1)); oldRanking.resolve(board(1));
     await Promise.all([firstCurrent, firstRanking]);
   });
   expect(result.current.rankingRun?.analysisId).toBe(2);
@@ -136,8 +138,7 @@ it("does not start old-opening reads through a callback retained by an async ope
 it("reconciles a failed latest tier save without getting stuck in the queue", async () => {
   vi.mocked(api.fetchRankingCurrent).mockResolvedValue(current(1));
   vi.mocked(api.saveTiers).mockResolvedValue(Response.json({ detail: "Blocked" }, { status: 409 }));
-  vi.mocked(api.fetchRanking).mockResolvedValue(ranking(1));
-  vi.mocked(api.fetchTiers).mockResolvedValue({ tiers: tier("Persisted") });
+  vi.mocked(api.fetchRankingBoard).mockResolvedValue(board(1, tier("Persisted")));
   const onError = vi.fn();
   const { result } = renderHook(() => useRanking(1, onError));
   await act(() => result.current.refreshRankingRun());
@@ -148,10 +149,30 @@ it("reconciles a failed latest tier save without getting stuck in the queue", as
 
 it("reloads a newer analysis when the loaded ranking is stale", async () => {
   vi.mocked(api.fetchRankingCurrent).mockResolvedValueOnce(current(1)).mockResolvedValueOnce(current(2));
-  vi.mocked(api.fetchRanking).mockResolvedValue(ranking(2));
-  vi.mocked(api.fetchTiers).mockResolvedValue({ tiers: tier("Current") });
+  vi.mocked(api.fetchRankingBoard).mockResolvedValue(board(2, tier("Current")));
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.refreshRankingRun());
   await act(async () => { expect(await result.current.reloadStaleRanking()).toBe(true); });
   expect(result.current.ranking?.analysisId).toBe(2);
+});
+
+it("adopts criteria, tiers, and ranking together when a different analysis is returned", async () => {
+  vi.mocked(api.fetchRankingCurrent).mockResolvedValueOnce(current(1));
+  vi.mocked(api.fetchRankingBoard).mockResolvedValueOnce(board(2, tier("Current")));
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.refreshRankingRun());
+  await act(() => result.current.loadRanking());
+  expect(result.current.rankingRun?.analysisId).toBe(2);
+  expect(result.current.ranking?.analysisId).toBe(2);
+  expect(result.current.tiers).toEqual(tier("Current"));
+});
+
+it("does not replace only the criteria of a displayed board during a lightweight refresh", async () => {
+  vi.mocked(api.fetchRankingBoard).mockResolvedValueOnce(board(1));
+  vi.mocked(api.fetchRankingCurrent).mockResolvedValueOnce(current(2));
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.loadRanking());
+  await act(() => result.current.refreshRankingRun());
+  expect(result.current.rankingRun?.analysisId).toBe(1);
+  expect(result.current.ranking?.analysisId).toBe(1);
 });

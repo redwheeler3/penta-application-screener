@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_current_user
+from app.api.ranking.presentation import run_payload
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.ranking import (
@@ -21,7 +22,6 @@ from app.schemas.ranking import (
     DecomposeAuditResponse,
     FanOutAuditResponse,
     MatchAuditResponse,
-    PoolDimensionOut,
 )
 from app.services.applications.scope import resolve_visible_opening_id
 from app.services.ranking.analysis import get_current_analysis
@@ -34,55 +34,11 @@ from app.services.ranking.audit import (
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
     get_or_create_member_ranking,
-    kept_keys,
-    proposed_dimensions,
-    requested_flag_keys,
-    revived_flag_keys,
 )
 
 router = APIRouter(prefix="/ranking")
 
 
-def _run_payload(db: Session, user: User, opening_id: int) -> CurrentRunResponse | None:
-    """The current analysis's discovered pattern report + the signed-in member's view of it,
-    shaped for the UI. The dimensions/narrative are shared; the badges, kept axes, and
-    proposals are read off this member's ranking."""
-    analysis = get_current_analysis(db, opening_id)
-    if analysis is None:
-        return None
-    report = current_dimension_report(analysis)
-    if report is None:
-        return None
-    member_ranking = get_or_create_member_ranking(db, analysis, user)
-    return CurrentRunResponse(
-        analysis_id=analysis.id,
-        dimensions=[
-            PoolDimensionOut(
-                key=d.key,
-                name=d.name,
-                definition=d.definition,
-                high_end=d.high_end,
-                low_end=d.low_end,
-                why_it_differentiates=d.why_it_differentiates,
-                from_committee_request=d.from_committee_request,
-            )
-            for d in report.dimensions
-        ],
-        discovery_narrative=analysis.audit.discovery_narrative if analysis.audit else None,
-        # Dimensions absent from the immediately-prior analysis in this member's view —
-        # parked/placed but flagged for triage. Empty on a first run.
-        new_dimension_keys=(member_ranking.run_state or {}).get("new_dimension_keys", []),
-        # Of those flagged keys, the ones seen in an EARLIER analysis (revived), derived
-        # from history — the frontend colours these blue vs. amber for genuinely-new.
-        revived_dimension_keys=revived_flag_keys(db, member_ranking),
-        # Keys a member proposed for this analysis, not yet dismissed by them — "Requested" pill.
-        requested_dimension_keys=requested_flag_keys(member_ranking),
-        # Kept axes: every dimension in a working (non-Ignore) tier of this member's ranking —
-        # guaranteed to survive the next Rank. Derived from tier placement (see kept_keys). Plus
-        # any pending free-text proposals (fed to the next Rank, then consumed).
-        kept_keys=kept_keys(member_ranking),
-        proposed_dimensions=proposed_dimensions(member_ranking),
-    )
 
 
 @router.get("/current", response_model=CurrentRunResponse | None)
@@ -92,7 +48,10 @@ def current(
     db: Session = Depends(get_db),
 ) -> CurrentRunResponse | None:
     """The current analysis's dimensions + this member's view, or null if none discovered yet."""
-    return _run_payload(db, user, resolve_visible_opening_id(db, opening_id))
+    analysis = get_current_analysis(db, resolve_visible_opening_id(db, opening_id))
+    if analysis is None or current_dimension_report(analysis) is None:
+        return None
+    return run_payload(db, get_or_create_member_ranking(db, analysis, user))
 
 
 @router.get("/current/match-audit", response_model=MatchAuditResponse | None)

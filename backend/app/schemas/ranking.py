@@ -258,6 +258,14 @@ class TiersResponse(ResponseModel):
     tiers: list[TierOut]
 
 
+class RankingBoardResponse(ResponseModel):
+    """GET /ranking/board — all displayed board data for one captured analysis."""
+
+    run: CurrentRunResponse
+    ranking: RankingResponse
+    tiers: list[TierOut]
+
+
 class SeedsResponse(ResponseModel):
     """PUT /ranking/seeds — the current pending-proposal state."""
 

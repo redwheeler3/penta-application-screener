@@ -76,8 +76,10 @@ export function useRanking(
   const tierSaveVersion = useRef(0);
   const proposalSaveVersion = useRef(0);
   const runRef = useRef(rankingRun);
+  const boardRef = useRef(ranking);
   const tiersRef = useRef(tiers);
   runRef.current = rankingRun;
+  boardRef.current = ranking;
   tiersRef.current = tiers;
 
   useEffect(() => {
@@ -85,6 +87,7 @@ export function useRanking(
     setRanking(null);
     setTiers(null);
     runRef.current = null;
+    boardRef.current = null;
     tiersRef.current = null;
     setRankingLoadState("idle");
     setStaleAnalysis(false);
@@ -142,6 +145,9 @@ export function useRanking(
     try {
       const run = await api.fetchRankingCurrent(openingId);
       if (!isCurrent()) return null;
+      // A displayed board owns its criteria snapshot. Replace it through a full
+      // board read, including consolidation changes within the same analysis.
+      if (boardRef.current !== null) return run;
       runRef.current = run;
       setRankingRun(run);
       return run;
@@ -154,15 +160,18 @@ export function useRanking(
   async function loadRanking(): Promise<boolean> {
     if (openingId === null || !boardReads.isFor(openingId) || hasPendingMutations()) return false;
     const isCurrent = boardReads.begin();
+    currentReads.invalidate();
     setRankingLoadState("loading");
     try {
-      const [nextRanking, nextTiers] = await Promise.all([
-        api.fetchRanking(openingId), api.fetchTiers(openingId),
-      ]);
+      const board = await api.fetchRankingBoard(openingId);
       if (!isCurrent()) return false;
-      setRanking(nextRanking);
-      tiersRef.current = nextTiers.tiers;
-      setTiers(nextTiers.tiers);
+      currentReads.invalidate();
+      runRef.current = board.run;
+      boardRef.current = board.ranking;
+      tiersRef.current = board.tiers;
+      setRankingRun(board.run);
+      setRanking(board.ranking);
+      setTiers(board.tiers);
       setRankingLoadState("ready");
       return true;
     } catch {
@@ -192,6 +201,7 @@ export function useRanking(
         const updated: RankingResponse = await response.json();
         if (!isLatest()) return;
         boardReads.invalidate();
+        boardRef.current = updated;
         setRanking(updated);
         setRankingLoadState("ready");
         setRankingRun((run) => {

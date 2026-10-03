@@ -5,7 +5,7 @@ import type {
   FanOutAuditResponse,
   MatchAuditResponse,
   RankEstimateResponse,
-  RankingResponse,
+  RankingBoardResponse,
   ScoreCurrentEstimateResponse,
   Tier,
 } from "../types";
@@ -45,11 +45,8 @@ export const fetchScoreCurrentEstimate = (openingId: number, signal?: AbortSigna
 export const scoreCurrent = (openingId: number) =>
   streamRequest(`/ranking/score-current${openingQuery(openingId)}`);
 
-export const fetchRanking = (openingId: number) =>
-  getJson<RankingResponse>(`/ranking${openingQuery(openingId)}`);
-
-export const fetchTiers = (openingId: number) =>
-  getJson<{ tiers: Tier[] }>(`/ranking/tiers${openingQuery(openingId)}`);
+export const fetchRankingBoard = (openingId: number) =>
+  getJson<RankingBoardResponse>(`/ranking/board${openingQuery(openingId)}`);
 
 // analysisId is the analysis the client is viewing; the server rejects a save against a
 // superseded one (409 stale_analysis) so a member's edit never lands on the wrong board.

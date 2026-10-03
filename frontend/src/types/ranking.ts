@@ -70,6 +70,12 @@ export type Tier = {
   ignore?: boolean;
 };
 
+export type RankingBoardResponse = {
+  run: CurrentRunResponse;
+  ranking: RankingResponse;
+  tiers: Tier[];
+};
+
 export type CurrentRunResponse = {
   analysisId: number;
   dimensions: PoolDimension[];
