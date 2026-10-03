@@ -3,6 +3,7 @@ import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import * as api from "../../api/openings";
 import { problemMessage, readProblemBody } from "../../api/problems";
 import { useRequestScope } from "../../hooks/useRequestScope";
+import { useFetchResource } from "../../hooks/useFetchResource";
 import type { Opening, OpeningCreate, OpeningCommit, OpeningDetails, OpeningPreview, OpeningUpdated, OpeningWrite } from "../../types";
 import { NumberInput } from "../shared/NumberInput";
 
@@ -273,7 +274,10 @@ function OpeningForm(props: {
 }
 
 function OpeningLaunchPreview({ preview }: { preview: OpeningPreview }): ReactNode {
-  const usage = preview.socketlabs;
+  const usageResource = useFetchResource(() => api.fetchOpeningEmailUsage(preview.audienceCount), {
+    reloadKey: preview.audienceCount,
+  });
+  const usage = usageResource.data;
   const variantLabels: Record<string, string> = {
     notification_list: "Notification list email",
     current_application: "Current application email",
@@ -294,7 +298,9 @@ function OpeningLaunchPreview({ preview }: { preview: OpeningPreview }): ReactNo
           </div>
         ))}
       </dl>
-      {usage.available ? (
+      {usageResource.state === "loading" ? (
+        <p className="opening-quota-summary">Checking current email usage… You can confirm the opening while this loads.</p>
+      ) : usage?.available ? (
         <p className="opening-quota-summary">
           SocketLabs usage will move from <strong>{usage.messagesUsed?.toLocaleString()}</strong> to{" "}
           <strong>{usage.projectedMessagesUsed?.toLocaleString()}</strong> of{" "}

@@ -36,6 +36,7 @@ from app.services.email.sender import (
     EmailQuotaExceededError,
     get_email_sender,
 )
+from app.services.maintenance import get_outbox_runner
 from tests.app_support import shared_test_app
 
 
@@ -64,6 +65,7 @@ def setup_app(role: UserRole | None) -> tuple:
 
     app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_outbox_runner] = lambda: (lambda sender: retry_queued_emails(db, sender))
     if user is not None:
         app.dependency_overrides[require_current_user] = lambda: user
     return app, db
@@ -215,7 +217,7 @@ async def test_admin_can_add_and_remove_entries() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         added = await client.put("/allowlist", json={"email": "Bob@x.com", "role": "member"})
         assert added.status_code == 200
-        assert added.json()["invitationEmailStatus"] == "sent"
+        assert added.json()["invitationEmailStatus"] == "queued"
         emails = {e["email"] for e in added.json()["entries"]}
         assert "bob@x.com" in emails
 
@@ -249,7 +251,7 @@ async def test_invitation_failure_keeps_access_and_retries_invitation_copy() -> 
         )
 
     assert added.status_code == 200
-    assert added.json()["invitationEmailStatus"] == "failed"
+    assert added.json()["invitationEmailStatus"] == "queued"
     assert allowlist.get_entry(db, "new-admin@x.com") is not None
     user = db.scalar(select(User).where(User.email == "new-admin@x.com"))
     assert user is not None

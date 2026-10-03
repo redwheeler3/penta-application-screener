@@ -1,5 +1,6 @@
 """Lease and run lifecycle work at most once per Pacific calendar day."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -26,6 +27,10 @@ LEASE_DURATION = timedelta(minutes=10)
 class MaintenanceLease:
     run_id: int
     attempt_count: int
+
+
+def get_outbox_runner() -> Callable[[EmailSender], None]:
+    return run_email_outbox
 
 
 def run_due_maintenance() -> None:

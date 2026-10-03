@@ -3,16 +3,17 @@
 Every route is admin-gated. Seed admins and the last admin cannot be removed or demoted.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
 from app.core.problems import Problem
 from app.core.text import normalize_email
-from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind, User, UserRole
+from app.db.models import User, UserRole
 from app.db.session import get_db
 from app.schemas.allowlist import (
     AllowlistEntryOut,
@@ -26,7 +27,8 @@ from app.services.auth import allowlist
 from app.services.auth.denied_sign_ins import list_denied_sign_ins
 from app.services.auth.users import upsert_committee_user
 from app.services.email.sender import EmailSender, get_email_sender
-from app.services.email.transactional import send_magic_link
+from app.services.email.transactional import queue_committee_invitation
+from app.services.maintenance import get_outbox_runner
 
 router = APIRouter(prefix="/allowlist", tags=["allowlist"])
 
@@ -102,9 +104,11 @@ def read_allowlist(
 @router.put("", response_model=AllowlistMutationResponse)
 def upsert_allowlist_entry(
     body: AllowlistUpsert,
+    background_tasks: BackgroundTasks,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
+    outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
 ) -> AllowlistMutationResponse:
     """Add an allowed email or change its role. Adding an ``admin`` entry grants
     admin — the allowlist is the role-management surface."""
@@ -135,27 +139,20 @@ def upsert_allowlist_entry(
             detail="Cannot demote the last admin; promote another admin first.",
         )
     try:
-        allowlist.upsert_entry(db, email=target_email, role=body.role)
+        allowlist.upsert_entry(db, email=target_email, role=body.role, commit=False)
     except allowlist.SeedAdminProtectedError as exc:
         raise Problem(
             "invalid_settings",
             detail="The permanent seed admin cannot be demoted.",
         ) from exc
-    user = upsert_committee_user(db, email=target_email, role=body.role)
+    user = upsert_committee_user(db, email=target_email, role=body.role, commit=False)
     invitation_status = None
     if existing is None:
-        invitation = send_magic_link(
-            db,
-            sender,
-            identity_kind=PasswordlessIdentityKind.COMMITTEE,
-            purpose=MagicLinkPurpose.COMMITTEE_ACCESS,
-            email=user.email,
-            recipient_id=user.id,
-            user_id=user.id,
-            enforce_request_limits=False,
-            committee_invitation_role=body.role,
-        )
-        invitation_status = "sent" if invitation.email_sent else "failed"
+        queue_committee_invitation(db, user)
+        invitation_status = "queued"
+    db.commit()
+    if invitation_status is not None:
+        background_tasks.add_task(outbox_runner, sender)
     return AllowlistMutationResponse(
         entries=_response(db).entries,
         invitation_email_status=invitation_status,

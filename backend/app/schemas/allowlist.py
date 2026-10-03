@@ -23,7 +23,7 @@ class AllowlistResponse(ResponseModel):
 
 
 class AllowlistMutationResponse(AllowlistResponse):
-    invitation_email_status: Literal["sent", "failed"] | None = None
+    invitation_email_status: Literal["queued"] | None = None
 
 
 class DeniedSignInAttemptOut(ResponseModel):

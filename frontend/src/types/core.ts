@@ -86,7 +86,6 @@ export type OpeningPreview = {
   applicationOnlyCount: number;
   overlapCount: number;
   variants: Array<{ kind: string; recipientCount: number }>;
-  socketlabs: SocketLabsUsage;
 };
 
 export type OpeningCommit = {

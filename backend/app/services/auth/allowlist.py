@@ -50,6 +50,7 @@ def upsert_entry(
     email: str,
     role: UserRole,
     is_seed_admin: bool = False,
+    commit: bool = True,
 ) -> AccessAllowlistEntry:
     """Add an allowed email or update its role. Idempotent on email."""
     email = normalize_email(email)
@@ -83,8 +84,10 @@ def upsert_entry(
             )
         user.role = role
         user.is_active = True
-    db.commit()
-    db.refresh(entry)
+    db.flush()
+    if commit:
+        db.commit()
+        db.refresh(entry)
     return entry
 
 

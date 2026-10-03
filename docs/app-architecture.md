@@ -202,8 +202,9 @@ no separate recent-sign-in window.
 
 The access allowlist gates committee sign-in regardless of identity provider. Google provides
 identity only; it has no access to application data. Adding a new allowlist entry creates or
-reactivates its committee user and sends a role-specific magic-link invitation through the durable
-email ledger. Role changes do not resend invitations, and delivery failure does not roll back access.
+reactivates its committee user and queues a role-specific invitation in the same transaction.
+The outbox issues its magic link and sends it after the response. Role changes do not resend
+invitations, and delivery failure does not roll back access.
 
 ## Transactional email boundary
 
@@ -230,7 +231,8 @@ purpose.
 `services/email/retry_intents.py` defines the credential-free JSON shapes shared by initial sends,
 opening notifications, and the outbox worker. The ledger stores those same shapes as JSON.
 Initial sends and retries reserve attempts atomically. The existing attempt timestamp supplies a
-10-minute lease and the attempt counter guards completion. Outbox workers claim an intent before
+10-minute lease and the captured attempt counter guards completion. Each message receives a fresh
+claim timestamp. Outbox workers claim an intent before
 rebuilding its credential, commit that credential before network I/O, and cannot overwrite a
 cancelled intent or a newer attempt's outcome with a late provider response.
 
@@ -242,7 +244,7 @@ failures are deleted after 30 days. The report excludes expected cancellations a
 rendered bodies or credentials.
 
 Ordinary application traffic claims a durable once-per-Pacific-day maintenance lease in a response
-background task. The pass retries queued mail, sends due unsuccessful notices, performs due
+background task. The pass queues due unsuccessful notices, retries queued mail, performs due
 application-retention deletion, and deletes expired list-only vacancy failures. Health checks, static
 assets, and CORS preflight requests do not trigger it.
 Administrators see queued, provider-quota-blocked, and recent unexpected failure counts in the

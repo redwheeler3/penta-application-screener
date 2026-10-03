@@ -154,7 +154,7 @@ async def test_identical_facts_with_distinct_publication_ids_create_distinct_ope
 
 
 @pytest.mark.anyio
-async def test_preview_counts_each_email_variant_and_projects_usage() -> None:
+async def test_preview_counts_each_email_variant_and_loads_usage_separately() -> None:
     app, db, _ = _app_and_db()
     app_only = _application("application@example.com")
     overlap = _application("overlap@example.com")
@@ -170,14 +170,32 @@ async def test_preview_counts_each_email_variant_and_projects_usage() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post("/openings/preview", json=_opening_payload())
+        usage = await client.get("/openings/email-usage?audience_count=3")
 
     assert response.status_code == 200
     assert response.json()["audienceCount"] == 3
     assert response.json()["subscriberOnlyCount"] == 1
     assert response.json()["applicationOnlyCount"] == 1
     assert response.json()["overlapCount"] == 1
-    assert response.json()["socketlabs"]["messagesUsed"] == 1_100
-    assert response.json()["socketlabs"]["projectedMessagesUsed"] == 1_103
+    assert "socketlabs" not in response.json()
+    assert usage.json()["messagesUsed"] == 1_100
+    assert usage.json()["projectedMessagesUsed"] == 1_103
+
+
+@pytest.mark.anyio
+async def test_audience_preview_does_not_contact_the_usage_provider() -> None:
+    app, _db, _sender = _app_and_db()
+
+    class UnavailableUsage:
+        def fetch(self):
+            raise AssertionError("Audience preview must not wait for provider reporting")
+
+    app.dependency_overrides[get_socketlabs_usage_reader] = UnavailableUsage
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/openings/preview", json=_opening_payload())
+    assert response.status_code == 200
+    assert response.json()["audienceCount"] == 0
 
 
 def test_archived_application_inside_retention_is_in_the_opening_audience() -> None:

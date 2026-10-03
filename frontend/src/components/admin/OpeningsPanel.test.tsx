@@ -9,6 +9,7 @@ import { OpeningsPanel } from "./OpeningsPanel";
 
 vi.mock("../../api/openings", () => ({
   fetchOpenings: vi.fn(),
+  fetchOpeningEmailUsage: vi.fn(),
   fetchOpeningSelection: vi.fn(),
   confirmOpeningSelection: vi.fn(),
   previewOpening: vi.fn(),
@@ -58,11 +59,6 @@ const preview: OpeningPreview = {
   applicationOnlyCount: 0,
   overlapCount: 0,
   variants: [{ kind: "notification_list", recipientCount: 2 }],
-  socketlabs: {
-    available: false, retrievedAt: null, billingPeriodStart: null, billingPeriodEnd: null,
-    messagesUsed: null, messageAllowance: null, messagesUsedPercent: null,
-    allowOverages: null, projectedMessagesUsed: null,
-  },
 };
 
 const selection: OpeningSelection = {
@@ -83,6 +79,9 @@ const selection: OpeningSelection = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.fetchOpenings).mockResolvedValue([]);
+  vi.mocked(api.fetchOpeningEmailUsage).mockResolvedValue({ available: false, retrievedAt: null,
+    billingPeriodStart: null, billingPeriodEnd: null, messagesUsed: null, messageAllowance: null,
+    messagesUsedPercent: null, allowOverages: null, projectedMessagesUsed: null });
 });
 
 describe("OpeningsPanel modes", () => {

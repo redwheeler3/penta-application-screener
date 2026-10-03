@@ -10,7 +10,7 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 
 type AccessUpdate = {
   entries: AllowlistEntry[];
-  invitationEmailStatus?: "sent" | "failed" | null;
+  invitationEmailStatus?: "queued" | null;
 };
 
 // Admin-only management of the access allowlist: who may sign in, and with what role.
@@ -67,11 +67,9 @@ export function AccessPanel(props: { currentUser: CurrentUser; onError: (message
     const submitted = { email, role };
     await mutateAccess(() => api.upsertAllowlistEntry(trimmed, role), (body) => {
       setMessage(
-        body.invitationEmailStatus === "sent"
-          ? "Access added and invitation email sent."
-          : body.invitationEmailStatus === "failed"
-            ? "Access added, but the invitation email needs attention in Email delivery."
-            : "Access updated.",
+        body.invitationEmailStatus === "queued"
+          ? "Access added and invitation email queued. Delivery status is available in Email delivery."
+          : "Access updated.",
       );
       if (draft.current.email === submitted.email && draft.current.role === submitted.role) {
         setEmail("");

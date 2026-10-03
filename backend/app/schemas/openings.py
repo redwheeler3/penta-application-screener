@@ -102,7 +102,6 @@ class OpeningPreviewOut(ResponseModel):
     application_only_count: int
     overlap_count: int
     variants: list[OpeningNotificationVariantOut]
-    socketlabs: SocketLabsUsageOut
 
 
 class OpeningCommitOut(OpeningsResponse):

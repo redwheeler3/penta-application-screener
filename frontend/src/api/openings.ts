@@ -6,6 +6,7 @@ import type {
   OpeningSelection,
   OpeningSelectionCandidate,
   OpeningWrite,
+  SocketLabsUsage,
 } from "../types";
 import { getJson, request } from "./client";
 
@@ -13,6 +14,9 @@ import { getJson, request } from "./client";
 
 export const fetchOpenings = () =>
   getJson<{ openings: Opening[] }>("/openings").then((payload) => payload.openings);
+
+export const fetchOpeningEmailUsage = (audienceCount: number) =>
+  getJson<SocketLabsUsage>(`/openings/email-usage?audience_count=${audienceCount}`);
 
 export function previewOpening(opening: OpeningCreate): Promise<OpeningPreview> {
   return request("/openings/preview", {

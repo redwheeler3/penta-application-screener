@@ -63,6 +63,7 @@ def upsert_committee_user(
     *,
     email: str,
     role: UserRole,
+    commit: bool = True,
 ) -> User:
     """Create or reactivate the committee user represented by an allowlist entry."""
     normalized_email = normalize_email(email)
@@ -78,8 +79,10 @@ def upsert_committee_user(
     else:
         user.role = role
         user.is_active = True
-    db.commit()
-    db.refresh(user)
+    db.flush()
+    if commit:
+        db.commit()
+        db.refresh(user)
     return user
 
 

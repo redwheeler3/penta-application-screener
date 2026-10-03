@@ -303,10 +303,10 @@ available, and an email-provider outage leaves Google sign-in available to appli
 members who otherwise qualify for access.
 
 When an administrator adds a new member or admin to the allowlist, the service creates or
-reactivates the committee user and immediately sends a role-specific invitation with a private
-magic link. Changing an existing entry's role does not send another invitation. Access remains
-saved if delivery fails; retryable delivery stays in the durable email queue and the Access panel
-reports whether the invitation was sent or needs attention.
+reactivates the committee user and queues a role-specific invitation in the same transaction.
+The response returns before provider delivery; the worker creates its private magic link when
+sending. Changing an existing entry's role does not send another invitation. Access remains saved
+if delivery fails; the Access panel confirms queueing and Email delivery shows its outcome.
 
 Committee email credentials use the same seven-day lifetime as applicant links. Following a stale
 link while its matching committee session remains active simply continues that session. If the
@@ -396,9 +396,9 @@ diagnosis; neither changes delivery priority.
 The current plan permits 2,000 messages per billing period, and this server also carries Penta mail
 sent outside the application. The SocketLabs usage-summary API returns the server's billing-period
 boundaries, messages used, message allowance, percentage used, and overage policy. Administrator
-send previews show that current provider snapshot, its retrieval time, and projected usage after the
-previewed audience; confirmation refreshes it because other Penta mail may have been injected in the
-meantime. An unavailable usage summary is reported as unknown rather than replaced with a guess.
+send previews show the audience immediately and load the current provider snapshot and projected
+usage in a separate request. Usage is advisory: confirmation remains available while reporting
+loads, and an unavailable summary is reported as unknown rather than replaced with a guess.
 The provider reporting API is read on demand and cached for five minutes. Login screens first read
 the last in-memory observation without waiting, then hold a separate refresh request open while
 SocketLabs responds and update the notice only if the aggregate changes. Normal Fly suspend/resume
@@ -675,7 +675,7 @@ Retention is enforced automatically and opportunistically at most once per Pacif
 when the deployed service receives ordinary browser or API traffic. Health checks, static assets,
 and CORS preflight requests do not wake the sweep, and no external scheduler exists solely to wake
 a suspended Fly Machine. A durable lease prevents concurrent requests from running the
-same sweep. The ordered pass retries queued email, processes due unsuccessful notices, and then
+same sweep. The ordered pass queues due unsuccessful notices, retries queued email, and then
 processes due retention deletion. A record may remain somewhat past its scheduled date while the
 service is unused; the first subsequent real use starts the due work in the background.
 

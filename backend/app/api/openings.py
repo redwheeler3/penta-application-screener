@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,7 +36,7 @@ from app.services.email.socketlabs_usage import (
     SocketLabsUsageReader,
     get_socketlabs_usage_reader,
 )
-from app.services.maintenance import run_email_outbox
+from app.services.maintenance import get_outbox_runner
 from app.services.openings.catalog import (
     create_opening,
     list_openings,
@@ -63,10 +63,6 @@ from app.services.openings.vacancy_notifications import (
 )
 
 router = APIRouter(prefix="/openings", tags=["openings"])
-
-
-def get_outbox_runner() -> Callable[[EmailSender], None]:
-    return run_email_outbox
 
 
 def _opening(db: Session, opening_id: int) -> Opening:
@@ -164,10 +160,31 @@ def preview_opening(
     body: OpeningCreate,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
-    usage_reader: SocketLabsUsageReader = Depends(get_socketlabs_usage_reader),
 ) -> OpeningPreviewOut:
     audience = opening_audience(db, body.unit_size_bedrooms)
-    return _preview_out(audience, usage_reader)
+    return _preview_out(audience)
+
+
+@router.get("/email-usage", response_model=SocketLabsUsageOut)
+def read_opening_email_usage(
+    audience_count: int = Query(ge=0),
+    _admin: User = Depends(require_admin),
+    usage_reader: SocketLabsUsageReader = Depends(get_socketlabs_usage_reader),
+) -> SocketLabsUsageOut:
+    usage = usage_reader.fetch()
+    if usage is None:
+        return SocketLabsUsageOut(available=False)
+    return SocketLabsUsageOut(
+        available=True,
+        retrieved_at=usage.retrieved_at,
+        billing_period_start=usage.billing_period_start,
+        billing_period_end=usage.billing_period_end,
+        messages_used=usage.messages_used,
+        message_allowance=usage.message_allowance,
+        messages_used_percent=usage.messages_used_percent,
+        allow_overages=usage.allow_overages,
+        projected_messages_used=usage.messages_used + audience_count,
+    )
 
 
 @router.post("", response_model=OpeningCommitOut)
@@ -228,24 +245,7 @@ def edit_opening(
     )
 
 
-def _preview_out(
-    audience: VacancyAudience,
-    usage_reader: SocketLabsUsageReader,
-) -> OpeningPreviewOut:
-    usage = usage_reader.fetch()
-    socketlabs = SocketLabsUsageOut(available=False)
-    if usage is not None:
-        socketlabs = SocketLabsUsageOut(
-            available=True,
-            retrieved_at=usage.retrieved_at,
-            billing_period_start=usage.billing_period_start,
-            billing_period_end=usage.billing_period_end,
-            messages_used=usage.messages_used,
-            message_allowance=usage.message_allowance,
-            messages_used_percent=usage.messages_used_percent,
-            allow_overages=usage.allow_overages,
-            projected_messages_used=usage.messages_used + audience.total,
-        )
+def _preview_out(audience: VacancyAudience) -> OpeningPreviewOut:
     return OpeningPreviewOut(
         audience_count=audience.total,
         subscriber_only_count=len(audience.subscriber_only),
@@ -265,7 +265,6 @@ def _preview_out(
                 recipient_count=len(audience.overlaps),
             ),
         ],
-        socketlabs=socketlabs,
     )
 
 

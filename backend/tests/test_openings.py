@@ -90,6 +90,7 @@ async def test_opening_routes_are_admin_only() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         assert (await client.get("/openings")).status_code == 403
+        assert (await client.get("/openings/email-usage?audience_count=0")).status_code == 403
         assert (await client.post("/openings", json=_opening_payload())).status_code == 403
 
 

@@ -3,10 +3,10 @@ import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import * as api from "../../api/openings";
 import { deferred } from "../../testSupport";
-import type { Opening, OpeningPreview } from "../../types";
+import type { Opening, OpeningPreview, SocketLabsUsage } from "../../types";
 import { OpeningEditor } from "./OpeningEditor";
 
-vi.mock("../../api/openings", () => ({ updateOpening: vi.fn(), fetchOpenings: vi.fn(), previewOpening: vi.fn(), createOpening: vi.fn() }));
+vi.mock("../../api/openings", () => ({ updateOpening: vi.fn(), fetchOpenings: vi.fn(), fetchOpeningEmailUsage: vi.fn(), previewOpening: vi.fn(), createOpening: vi.fn() }));
 const opening = { id: 1, intakeMode: "applications", unitSizeBedrooms: 2, housingChargeCents: 100_000,
   applicationOpenDate: "2026-10-01", applicationCloseDate: "2026-10-31", moveInDate: "2026-11-30" } as Opening;
 const values = { unitSizeBedrooms: 2, housingChargeCents: 100_000,
@@ -24,7 +24,8 @@ function setup(editedOpening: Opening | null = opening) {
 beforeEach(() => vi.resetAllMocks());
 
 it("retries an uncertain publication with the original identity and frozen facts", async () => {
-  vi.mocked(api.previewOpening).mockResolvedValue({ audienceCount: 0, variants: [], socketlabs: { available: false } } as unknown as OpeningPreview);
+  vi.mocked(api.previewOpening).mockResolvedValue({ audienceCount: 0, subscriberOnlyCount: 0,
+    applicationOnlyCount: 0, overlapCount: 0, variants: [] } satisfies OpeningPreview);
   vi.mocked(api.createOpening).mockRejectedValueOnce(new Error("Synthetic lost response"))
     .mockResolvedValueOnce(Response.json({ openings: [], queuedNotificationCount: 0 }));
   const { onSaved } = setup(null);
@@ -39,6 +40,25 @@ it("retries an uncertain publication with the original identity and frozen facts
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open applications and queue 0 emails" })); });
   expect(vi.mocked(api.createOpening).mock.calls[1]).toEqual(first);
   expect(onSaved).toHaveBeenCalledOnce();
+});
+
+it("shows the audience and enables publication while provider usage is pending", async () => {
+  const usage = deferred<SocketLabsUsage>();
+  vi.mocked(api.fetchOpeningEmailUsage).mockReturnValue(usage.promise);
+  vi.mocked(api.previewOpening).mockResolvedValue({ audienceCount: 3, subscriberOnlyCount: 3,
+    applicationOnlyCount: 0, overlapCount: 0, variants: [] });
+  setup(null);
+  fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
+  fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Review opening and emails" })); });
+  expect(screen.getByText("Ready to open applications")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open applications and queue 3 emails" })).toBeEnabled();
+  expect(screen.getByText(/Checking current email usage/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Unit size"), { target: { value: "3" } });
+  await act(async () => usage.resolve({ available: true, retrievedAt: null, billingPeriodStart: null,
+    billingPeriodEnd: null, messagesUsed: 100, messageAllowance: 200, messagesUsedPercent: 50,
+    allowOverages: false, projectedMessagesUsed: 103 }));
+  expect(screen.queryByText(/SocketLabs usage will move/)).toBeNull();
 });
 
 it("preserves later edits and advances only the acknowledged opening snapshot", async () => {

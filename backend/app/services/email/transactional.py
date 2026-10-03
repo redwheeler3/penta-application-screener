@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -14,13 +15,14 @@ from app.db.models import (
     Application,
     MagicLinkPurpose,
     PasswordlessIdentityKind,
+    User,
     UserRole,
 )
 from app.services.auth.passwordless import (
     issue_magic_link,
     magic_link_request_allowed,
 )
-from app.services.email.delivery import deliver_email
+from app.services.email.delivery import deliver_email, queue_email
 from app.services.email.retry_intents import (
     ApplicationConfirmationRetryIntent,
     ApplicationUnavailableRetryIntent,
@@ -50,6 +52,16 @@ class EmailSendOutcome(StrEnum):
     @property
     def email_sent(self) -> bool:
         return self == EmailSendOutcome.SENT
+
+
+def queue_committee_invitation(db: Session, user: User) -> None:
+    """Stage an invitation with the access change; the worker issues its credential."""
+    message = committee_invitation_email(user_id=user.id, email=user.email, role=user.role,
+        token="queued", settings=get_settings())
+    queue_email(db, message, recipient_kind=PasswordlessIdentityKind.COMMITTEE,
+        user_id=user.id, idempotency_key=f"committee-invitation:{uuid4()}",
+        retry_intent=MagicLinkRetryIntent(type="magic_link", purpose=MagicLinkPurpose.COMMITTEE_ACCESS.value,
+            committee_invitation=True))
 
 
 def send_magic_link(

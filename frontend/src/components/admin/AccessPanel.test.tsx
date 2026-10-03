@@ -52,7 +52,7 @@ it("keeps a newer invitation draft when an earlier access request succeeds", asy
   fireEvent.click(screen.getByRole("button", { name: "Add and invite" }));
   fireEvent.change(input, { target: { value: "b@example.com" } });
   fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "admin" } });
-  await act(async () => { save.resolve(Response.json({ entries, invitationEmailStatus: "sent" })); });
+  await act(async () => { save.resolve(Response.json({ entries, invitationEmailStatus: "queued" })); });
   expect(input).toHaveValue("b@example.com");
   expect(screen.getAllByRole("combobox")[0]).toHaveValue("admin");
   expect(screen.getByRole("button", { name: "Add and invite" })).toBeEnabled();

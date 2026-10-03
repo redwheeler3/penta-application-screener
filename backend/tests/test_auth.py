@@ -19,6 +19,9 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import get_db
+from app.services.email.outbox import retry_queued_emails
+from app.services.email.sender import CapturedEmailSender, get_email_sender
+from app.services.maintenance import get_outbox_runner
 from tests.app_support import shared_test_app
 
 
@@ -49,6 +52,8 @@ def _app_and_db():
     db = test_session()
     app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_email_sender] = CapturedEmailSender
+    app.dependency_overrides[get_outbox_runner] = lambda: (lambda sender: retry_queued_emails(db, sender))
     return app, db
 
 
