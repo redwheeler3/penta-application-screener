@@ -185,7 +185,7 @@ it("a retained save action uses the latest revision and opening choices", async 
   expect(result.current.persistence.workingRevision).toBe(3);
 });
 
-it("email identity refresh compares with the revision saved while the request was pending", async () => {
+it("ignores an identity response captured before this browser's own save", async () => {
   const identity = deferred<Response>();
   vi.mocked(api.saveApplication).mockResolvedValue(Response.json(application(2)));
   const { result } = renderPersistence();
@@ -194,7 +194,40 @@ it("email identity refresh compares with the revision saved while the request wa
   let refresh!: Promise<void>;
   act(() => { refresh = result.current.persistence.refreshEmailIdentity(); });
   await act(() => result.current.persistence.start("save"));
-  await act(async () => { identity.resolve(Response.json(application(2))); await refresh; });
+  await act(async () => { identity.resolve(Response.json(application(1))); await refresh; });
+  expect(result.current.persistence.workingRevision).toBe(2);
+  expect(result.current.persistence.phase).toBe("saved");
+});
+
+it("does not restore email identity after sign-out clears the session", async () => {
+  const identity = deferred<Response>();
+  vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  vi.mocked(api.fetchApplication).mockReturnValueOnce(identity.promise);
+  let refresh!: Promise<void>;
+  act(() => { refresh = result.current.persistence.refreshEmailIdentity(); });
+  await act(() => result.current.persistence.signOut());
+  act(() => result.current.setDraft(emptyApplicantDraft()));
+  await act(async () => { identity.resolve(Response.json(application())); await refresh; });
+  expect(result.current.persistence.primaryEmail).toBeNull();
+  expect(result.current.persistence.workingRevision).toBeNull();
+  expect(result.current.draft.applicant.email).toBe("");
+});
+
+it("invalidates identity reads started while a save was in flight", async () => {
+  const identity = deferred<Response>();
+  const saved = deferred<Response>();
+  vi.mocked(api.saveApplication).mockReturnValueOnce(saved.promise);
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  let saving!: Promise<void>;
+  act(() => { saving = result.current.persistence.start("save"); });
+  vi.mocked(api.fetchApplication).mockReturnValueOnce(identity.promise);
+  let refresh!: Promise<void>;
+  act(() => { refresh = result.current.persistence.refreshEmailIdentity(); });
+  await act(async () => { saved.resolve(Response.json(application(2))); await saving; });
+  await act(async () => { identity.resolve(Response.json(application(1))); await refresh; });
   expect(result.current.persistence.workingRevision).toBe(2);
   expect(result.current.persistence.phase).toBe("saved");
 });

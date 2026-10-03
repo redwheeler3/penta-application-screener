@@ -20,6 +20,7 @@ export function useCandidateActions(options: CandidateActionsOptions) {
   const { openingId } = options;
   const requests = useRequestScope(openingId);
   const current = useRef(options);
+  const writeQueues = useRef(new Map<number, Promise<void>>());
   current.current = options;
 
   async function mutate(
@@ -29,24 +30,35 @@ export function useCandidateActions(options: CandidateActionsOptions) {
   ): Promise<ApplicationDetail | null> {
     if (openingId === null || !requests.isFor(openingId)) return null;
     const isCurrent = requests.capture();
-    try {
-      const response = await send(openingId);
+    // Each response is a whole detail snapshot. Finish applying it before the next
+    // write for this applicant starts, so unrelated fields cannot be rolled back.
+    const result = (writeQueues.current.get(applicationId) ?? Promise.resolve()).then(async () => {
       if (!isCurrent()) return null;
-      if (!response.ok) {
-        current.current.onError(failureMessage);
+      try {
+        const response = await send(openingId);
+        if (!isCurrent()) return null;
+        if (!response.ok) {
+          current.current.onError(failureMessage);
+          return null;
+        }
+        const payload: { application: ApplicationDetail } = await response.json();
+        if (!isCurrent()) return null;
+        // A completed save must not reopen a detail the member has since left.
+        if (current.current.selectedApplication?.id === applicationId) {
+          current.current.onApplicationUpdated(payload.application);
+        }
+        return payload.application;
+      } catch {
+        if (isCurrent()) current.current.onError(failureMessage);
         return null;
       }
-      const payload: { application: ApplicationDetail } = await response.json();
-      if (!isCurrent()) return null;
-      // A completed save must not reopen a detail the member has since left.
-      if (current.current.selectedApplication?.id === applicationId) {
-        current.current.onApplicationUpdated(payload.application);
-      }
-      return payload.application;
-    } catch {
-      if (isCurrent()) current.current.onError(failureMessage);
-      return null;
-    }
+    });
+    const tail = result.then(() => {}, () => {});
+    writeQueues.current.set(applicationId, tail);
+    void tail.then(() => {
+      if (writeQueues.current.get(applicationId) === tail) writeQueues.current.delete(applicationId);
+    });
+    return result;
   }
 
   function refreshEligibilityViews(): void {

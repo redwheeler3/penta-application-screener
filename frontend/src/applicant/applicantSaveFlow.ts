@@ -151,6 +151,8 @@ export function createApplicantSaveFlow({
       return false;
     }
     const body = (await response.json()) as ApplicationResponse;
+    // Reads started during this save can still describe the pre-save revision.
+    invalidateReads();
     updatePersistence({
       workingRevision: body.workingRevision,
       openings: body.openings,

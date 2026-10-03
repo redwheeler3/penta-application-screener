@@ -457,6 +457,7 @@ export function useApplicantPersistence(
     fail,
   });
   const emailFlow = createApplicantEmailFlow({
+    beginApplicationRead: applicationReads.begin,
     updatePersistence,
     setDraft,
   });

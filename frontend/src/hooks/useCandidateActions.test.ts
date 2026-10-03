@@ -85,3 +85,50 @@ it("reports a failed note save and leaves the loaded detail unchanged", async ()
   expect(initial.onError).toHaveBeenCalledWith("Could not add the committee note.");
   expect(initial.onApplicationUpdated).not.toHaveBeenCalled();
 });
+
+it("serializes different writes for one applicant while allowing another applicant's save", async () => {
+  const note = deferred<Response>();
+  vi.mocked(api.savePrivateNote).mockReturnValueOnce(note.promise)
+    .mockResolvedValueOnce(Response.json({ application: detail(8) }));
+  const overridden = { ...detail(7), status: "ineligible" } as ApplicationDetail;
+  vi.mocked(api.overrideStatus).mockResolvedValueOnce(Response.json({ application: overridden }));
+  const initial = options();
+  const { result } = renderHook(() => useCandidateActions(initial));
+  let saving!: Promise<boolean>;
+  let overriding!: Promise<void>;
+  let other!: Promise<boolean>;
+  await act(async () => {
+    saving = result.current.savePrivateNote(7, "Synthetic note");
+    overriding = result.current.overrideStatus(7, "ineligible");
+    other = result.current.savePrivateNote(8, "Independent note");
+  });
+  expect(api.savePrivateNote).toHaveBeenCalledTimes(2);
+  expect(api.overrideStatus).not.toHaveBeenCalled();
+  await act(async () => {
+    expect(await other).toBe(true);
+    note.resolve(Response.json({ application: detail(7) }));
+    expect(await saving).toBe(true);
+    await overriding;
+  });
+  expect(initial.onApplicationUpdated).toHaveBeenLastCalledWith(overridden);
+});
+
+it("discards queued candidate writes for an opening the member has left", async () => {
+  const first = deferred<Response>();
+  vi.mocked(api.savePrivateNote).mockReturnValueOnce(first.promise);
+  const initial = options();
+  const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
+  let saving!: Promise<boolean>;
+  let overriding!: Promise<void>;
+  await act(async () => {
+    saving = result.current.savePrivateNote(7, "Synthetic note");
+    overriding = result.current.overrideStatus(7, "ineligible");
+  });
+  rerender({ ...initial, openingId: 2 });
+  await act(async () => {
+    first.resolve(Response.json({ application: detail(7) }));
+    await Promise.all([saving, overriding]);
+  });
+  expect(api.overrideStatus).not.toHaveBeenCalled();
+  expect(initial.onApplicationUpdated).not.toHaveBeenCalled();
+});

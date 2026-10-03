@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import {
@@ -17,11 +18,13 @@ import {
 import type { ApplicantDraft } from "./types";
 
 type EmailFlowDependencies = {
+  beginApplicationRead: () => RequestIsCurrent;
   updatePersistence: UpdateApplicantPersistence;
   setDraft: Dispatch<SetStateAction<ApplicantDraft>>;
 };
 
 export function createApplicantEmailFlow({
+  beginApplicationRead,
   updatePersistence,
   setDraft,
 }: EmailFlowDependencies) {
@@ -70,7 +73,9 @@ export function createApplicantEmailFlow({
   }
 
   async function refreshEmailIdentity(): Promise<void> {
+    const isCurrent = beginApplicationRead();
     const response = await fetchApplication();
+    if (!isCurrent()) return;
     if (response.status === 401) {
       updatePersistence({
         emailChangeMessage: "This session has ended. Continue in the tab where you confirmed the new address.",
@@ -80,6 +85,7 @@ export function createApplicantEmailFlow({
     }
     if (!response.ok) return;
     const body = (await response.json()) as ApplicationResponse;
+    if (!isCurrent()) return;
     updatePersistence((state) => {
       const emailChanged = state.primaryEmail !== null && body.primaryEmail !== state.primaryEmail;
       const stale = state.workingRevision !== null && body.workingRevision !== state.workingRevision;
