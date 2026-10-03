@@ -2,17 +2,16 @@ import { UserCheck, UserX } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import * as api from "../../api/openings";
-import { streamNdjson } from "../../api/client";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import { readProblem } from "../../api/problems";
-import type { Opening, OpeningDecisionStreamEvent, OpeningSelection, OpeningSelectionCandidate } from "../../types";
+import type { Opening, OpeningCommit, OpeningSelection, OpeningSelectionCandidate } from "../../types";
 
-type DecisionProgress = { processed: number; total: number | null; sent: number };
 type DecisionChoice =
   | { kind: "candidates" }
   | { kind: "candidate"; candidate: OpeningSelectionCandidate }
   | { kind: "no-household" };
 
-/** Owns decision confirmation and the streamed outcome-email progress. */
+/** Owns permanent decision confirmation and its outcome-email queue acknowledgement. */
 export function OpeningDecisionPanel(props: {
   selection: OpeningSelection;
   onSaved: (openings: Opening[], message: string) => void;
@@ -24,41 +23,35 @@ export function OpeningDecisionPanel(props: {
 }): ReactNode {
   const [choice, setChoice] = useState<DecisionChoice>({ kind: "candidates" });
   const { busy, setBusy } = props;
-  const [progress, setProgress] = useState<DecisionProgress | null>(null);
+  const requests = useRequestScope(props.selection.openingId);
 
   async function confirm(): Promise<void> {
     if (choice.kind === "candidates" || busy) return;
     setBusy(true);
-    setProgress({ processed: 0, total: null, sent: 0 });
+    const isCurrent = requests.capture();
     try {
       const response = choice.kind === "candidate"
         ? await api.confirmOpeningSelection(props.selection.openingId, choice.candidate.applicationId)
         : await api.confirmNoHouseholdSelected(props.selection.openingId);
-      if (!response.ok || !response.body) {
-        props.onError((await readProblem(response)) ?? "Could not save the opening decision.");
+      if (!isCurrent()) return;
+      if (!response.ok) {
+        const problem = await readProblem(response);
+        if (isCurrent()) props.onError(problem ?? "Could not save the opening decision.");
         return;
       }
-      const summaries: Array<Extract<OpeningDecisionStreamEvent, { type: "summary" }>> = [];
-      await streamNdjson<OpeningDecisionStreamEvent>(response.body, (event) => {
-        if (event.type === "progress") {
-          setProgress({ processed: event.processed, total: event.total, sent: event.sent });
-        } else summaries.push(event);
-      });
-      const summary = summaries.at(-1);
-      if (!summary) {
-        props.onError("The opening decision was saved, but email progress was interrupted.");
-        return;
-      }
-      const message = choice.kind === "candidate"
-        ? "Successful applicant selected." : "Opening decision recorded.";
-      props.onSaved(await api.fetchOpenings(), decisionCompletionMessage(message, summary.sent, summary.total));
+      const saved = await response.json() as OpeningCommit;
+      if (!isCurrent()) return;
+      const prefix = choice.kind === "candidate" ? "Successful applicant selected." : "Opening decision recorded.";
+      const message = saved.queuedNotificationCount > 0
+        ? `${prefix} ${saved.queuedNotificationCount} outcome ${saved.queuedNotificationCount === 1 ? "email is" : "emails are"} queued. Check Email delivery for status.`
+        : `${prefix} No new outcome emails were needed. Check Email delivery for existing deliveries.`;
+      props.onSaved(saved.openings, message);
     } catch {
-      props.onError(
+      if (isCurrent()) props.onError(
         "The connection was interrupted. The decision may already be saved; review the opening before trying again.",
       );
     } finally {
-      setProgress(null);
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
@@ -77,13 +70,12 @@ export function OpeningDecisionPanel(props: {
           No household will be selected for this opening. {count} {count === 1 ? "application" : "applications"} will be recorded as unsuccessful.
         </p>
         <p className="panel-hint">
-          This decision is permanent. Eligible unsuccessful applicants will be emailed immediately.
+          This decision is permanent. Eligible outcome emails will be queued and sent in the background.
         </p>
-        {progress ? <DecisionProgressView progress={progress} /> : null}
         <div className="opening-form-actions">
           <button className="secondary-button" type="button" onClick={() => setChoice({ kind: "candidates" })} disabled={busy}>Back</button>
           <button className="primary-button" type="button" onClick={() => void confirm()} disabled={busy}>
-            <UserX size={15} /> Confirm decision
+            <UserX size={15} /> {busy ? "Saving decision…" : "Confirm decision"}
           </button>
         </div>
       </section>
@@ -100,13 +92,12 @@ export function OpeningDecisionPanel(props: {
           {" "}will be selected. {unsuccessfulCount} other {unsuccessfulCount === 1 ? "application" : "applications"} will be recorded as unsuccessful.
         </p>
         <p className="panel-hint">
-          This selection is permanent. Eligible unsuccessful applicants will be emailed immediately.
+          This selection is permanent. Eligible outcome emails will be queued and sent in the background.
         </p>
-        {progress ? <DecisionProgressView progress={progress} /> : null}
         <div className="opening-form-actions">
           <button className="secondary-button" type="button" onClick={() => setChoice({ kind: "candidates" })} disabled={busy}>Back</button>
           <button className="primary-button" type="button" onClick={() => void confirm()} disabled={busy}>
-            <UserCheck size={15} /> Confirm selection
+            <UserCheck size={15} /> {busy ? "Saving decision…" : "Confirm selection"}
           </button>
         </div>
       </section>
@@ -164,43 +155,4 @@ export function OpeningDecisionPanel(props: {
       </div>
     </section>
   );
-}
-
-function DecisionProgressView(props: { progress: DecisionProgress }): ReactNode {
-  const { processed, total, sent } = props.progress;
-  if (total === null) {
-    return (
-      <div className="opening-decision-progress" role="status">
-        <strong>Preparing outcome emails…</strong>
-        <progress aria-label="Preparing outcome emails" />
-      </div>
-    );
-  }
-  const percentage = total === 0 ? 100 : Math.round((processed / total) * 100);
-  const detail = total === 0
-    ? "No outcome emails are due yet."
-    : `${sent} sent · ${processed} of ${total} processed (${percentage}%)`;
-  return (
-    <div className="opening-decision-progress" role="status" aria-live="polite">
-      <div>
-        <strong>Sending outcome emails</strong>
-        <span>{detail}</span>
-      </div>
-      <progress
-        aria-label="Outcome email progress"
-        value={total === 0 ? 1 : processed}
-        max={Math.max(total, 1)}
-      />
-    </div>
-  );
-}
-
-function decisionCompletionMessage(prefix: string, sent: number, total: number): string {
-  if (total === 0) return `${prefix} No outcome emails were due yet.`;
-  if (sent === total) {
-    return `${prefix} ${sent} outcome ${sent === 1 ? "email was" : "emails were"} sent.`;
-  }
-  const needsAttention = total - sent;
-  const agreement = needsAttention === 1 ? "needs" : "need";
-  return `${prefix} ${sent} of ${total} outcome emails were sent; ${needsAttention} ${agreement} attention in Email delivery.`;
 }

@@ -1,7 +1,6 @@
 import { apiBaseUrl } from "../constants";
 import type {
   EvalStreamEvent,
-  OpeningDecisionStreamEvent,
   RankingStreamEvent,
   ScreeningStreamEvent,
 } from "../types";
@@ -60,8 +59,7 @@ export async function streamNdjson<
   TEvent extends
     | ScreeningStreamEvent
     | RankingStreamEvent
-    | EvalStreamEvent
-    | OpeningDecisionStreamEvent,
+    | EvalStreamEvent,
 >(
   body: ReadableStream<Uint8Array>,
   onEvent: (event: TEvent) => void,

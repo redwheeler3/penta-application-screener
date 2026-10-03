@@ -127,9 +127,7 @@ describe("OpeningsPanel modes", () => {
   it("requires confirmation before recording that no household was selected", async () => {
     vi.mocked(api.fetchOpenings).mockResolvedValueOnce([closedOpening]).mockResolvedValueOnce([]);
     vi.mocked(api.fetchOpeningSelection).mockResolvedValue(selection);
-    vi.mocked(api.confirmNoHouseholdSelected).mockResolvedValue(new Response(
-      `${JSON.stringify({ type: "summary", sent: 0, total: 0, selection })}\n`,
-    ));
+    vi.mocked(api.confirmNoHouseholdSelected).mockResolvedValue(Response.json({ openings: [], queuedNotificationCount: 0 }));
     const user = userEvent.setup();
     render(<OpeningsPanel {...props} />);
     await user.click(await screen.findByRole("button", { name: "Record decision" }));
@@ -137,7 +135,7 @@ describe("OpeningsPanel modes", () => {
     expect(screen.getByRole("heading", { name: "Confirm no household selected" })).toBeInTheDocument();
     expect(api.confirmNoHouseholdSelected).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Confirm decision" }));
-    expect(await screen.findByText("Opening decision recorded. No outcome emails were due yet.")).toBeInTheDocument();
+    expect(await screen.findByText("Opening decision recorded. No new outcome emails were needed. Check Email delivery for existing deliveries.")).toBeInTheDocument();
     expect(api.confirmNoHouseholdSelected).toHaveBeenCalledWith(7);
     expect(api.confirmOpeningSelection).not.toHaveBeenCalled();
     expect(props.onPoolChanged).toHaveBeenCalledOnce();
@@ -167,14 +165,14 @@ describe("OpeningsPanel modes", () => {
 
   it("updates an existing opening without publishing or reviewing an audience", async () => {
     vi.mocked(api.fetchOpenings).mockResolvedValue([closedOpening]);
-    vi.mocked(api.updateOpening).mockResolvedValue(Response.json({ openings: [closedOpening] }));
+    vi.mocked(api.updateOpening).mockResolvedValue(Response.json({ openings: [closedOpening], saved: { ...closedOpening, moveInDate: "2026-10-01" } }));
     const user = userEvent.setup();
     render(<OpeningsPanel {...props} />);
     await user.click(await screen.findByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-10-01" } });
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByText("Opening updated.")).toBeInTheDocument();
-    expect(api.updateOpening).toHaveBeenCalledWith(7, expect.objectContaining({ moveInDate: "2026-10-01" }));
+    expect(api.updateOpening).toHaveBeenCalledWith(7, expect.objectContaining({ moveInDate: "2026-09-01" }), expect.objectContaining({ moveInDate: "2026-10-01" }));
     expect(api.previewOpening).not.toHaveBeenCalled();
     expect(api.createOpening).not.toHaveBeenCalled();
   });
@@ -220,62 +218,22 @@ describe("OpeningsPanel modes", () => {
     expect(screen.getByRole("button", { name: "Review application" })).toBeInTheDocument();
   });
 
-  it("shows provider-backed progress while finalizing an opening", async () => {
-    const encoder = new TextEncoder();
-    let streamController!: ReadableStreamDefaultController<Uint8Array>;
-    const response = new Response(new ReadableStream<Uint8Array>({
-      start(controller) {
-        streamController = controller;
-      },
-    }), { status: 200 });
-    vi.mocked(api.fetchOpenings)
-      .mockResolvedValueOnce([closedOpening])
-      .mockResolvedValueOnce([{
-        ...closedOpening,
-        phase: "archived",
-        selectedApplicationId: 1,
-        selectedApplicantName: "Jordan Patel",
-        needsDecision: false,
-      }]);
+  it("releases decision controls on the committed response without an extra openings read", async () => {
+    const pending = deferred<Response>();
+    vi.mocked(api.fetchOpenings).mockResolvedValue([closedOpening]);
     vi.mocked(api.fetchOpeningSelection).mockResolvedValue(selection);
-    vi.mocked(api.confirmOpeningSelection).mockResolvedValue(response);
+    vi.mocked(api.confirmOpeningSelection).mockReturnValue(pending.promise);
     const user = userEvent.setup();
     render(<OpeningsPanel {...props} />);
-
     await user.click(await screen.findByRole("button", { name: "Record decision" }));
     await user.click(screen.getAllByRole("button", { name: "Select" })[0]);
     await user.click(screen.getByRole("button", { name: "Confirm selection" }));
-    expect(screen.getByText("Preparing outcome emails…")).toBeInTheDocument();
-
-    streamController.enqueue(encoder.encode(
-      `${JSON.stringify({ type: "progress", processed: 0, total: 2, sent: 0 })}\n`,
-    ));
-    expect(await screen.findByText("0 sent · 0 of 2 processed (0%)")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "Outcome email progress" }))
-      .toHaveAttribute("max", "2");
-    streamController.enqueue(encoder.encode(
-      `${JSON.stringify({ type: "progress", processed: 2, total: 2, sent: 2 })}\n`,
-    ));
-    expect(await screen.findByText("2 sent · 2 of 2 processed (100%)")).toBeInTheDocument();
-    streamController.enqueue(encoder.encode(
-      `${JSON.stringify({
-        type: "summary",
-        sent: 2,
-        total: 2,
-        selection: {
-          ...selection,
-          phase: "archived",
-          selectedApplicationId: 1,
-          selectedApplicantName: "Jordan Patel",
-          candidates: selection.candidates.slice(1),
-        },
-      })}\n`,
-    ));
-    streamController.close();
-
-    expect(await screen.findByText(
-      "Successful applicant selected. 2 outcome emails were sent.",
-    )).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Manage decision" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Saving decision…" })).toBeDisabled();
+    await act(async () => { pending.resolve(Response.json({ openings: [{ ...closedOpening, phase: "archived", selectedApplicationId: 1,
+      selectedApplicantName: "Jordan Patel", needsDecision: false }], queuedNotificationCount: 2 })); });
+    expect(screen.getByText("Successful applicant selected. 2 outcome emails are queued. Check Email delivery for status.")).toBeInTheDocument();
+    expect(api.fetchOpenings).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeEnabled();
+    expect(props.onPoolChanged).toHaveBeenCalledOnce();
   });
 });

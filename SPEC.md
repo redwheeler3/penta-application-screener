@@ -587,9 +587,11 @@ immediately releases eligible unsuccessful notices. A notice is eligible only wh
 that applicant actively entered has a confirmed decision and none selected that applicant. This
 avoids sending an unsuccessful notice to someone
 whose result in another simultaneous opening remains pending or who was selected elsewhere. The
-confirmation streams provider-backed progress for the due notices, including processed and accepted
-counts, while the operation remains retry-safe and records enough provider state to prevent duplicate
-sends. The message acknowledges the time and effort involved in applying, closes the loop without
+confirmation commits its decision and due email intents together and returns the updated opening
+list and queued count before provider delivery. The existing outbox sends the notices in the
+background; Email delivery reports pending or failed messages independently. Retries remain safe,
+and provider acceptance and participation notification markers are recorded together to prevent
+duplicate sends. The message acknowledges the time and effort involved in applying, closes the loop without
 implying fault, and invites the applicant to join the vacancy notification list for future openings.
 
 The committee screener shows administrators an action banner when an opening reaches its move-in

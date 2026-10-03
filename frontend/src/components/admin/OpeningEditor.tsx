@@ -1,9 +1,9 @@
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
 import * as api from "../../api/openings";
-import { readProblem } from "../../api/problems";
+import { problemMessage, readProblem, readProblemBody } from "../../api/problems";
 import { useRequestScope } from "../../hooks/useRequestScope";
-import type { Opening, OpeningCreate, OpeningCreated, OpeningPreview, OpeningWrite } from "../../types";
+import type { Opening, OpeningCreate, OpeningCommit, OpeningDetails, OpeningPreview, OpeningUpdated, OpeningWrite } from "../../types";
 import { NumberInput } from "../shared/NumberInput";
 
 type OpeningDraft = {
@@ -22,25 +22,39 @@ const EMPTY_DRAFT: OpeningDraft = {
   moveInDate: "",
 };
 
+function openingValues(opening: Opening | OpeningDetails): OpeningWrite {
+  return {
+    unitSizeBedrooms: opening.unitSizeBedrooms, housingChargeCents: opening.housingChargeCents,
+    applicationOpenDate: opening.applicationOpenDate ?? "", applicationCloseDate: opening.applicationCloseDate ?? "",
+    moveInDate: opening.moveInDate,
+  };
+}
+
+function editableDraft(values: OpeningWrite): OpeningDraft {
+  return { unitSizeBedrooms: values.unitSizeBedrooms, housingChargeDollars: values.housingChargeCents / 100,
+    applicationOpenDate: values.applicationOpenDate, applicationCloseDate: values.applicationCloseDate, moveInDate: values.moveInDate };
+}
+
 /** Owns the editable draft and the preview-before-publication workflow. */
 export function OpeningEditor(props: {
   opening: Opening | null;
   onCancel: () => void;
-  onSaved: (openings: Opening[], message: string) => void;
+  onSaved: (openings: Opening[], message: string, closeEditor?: boolean) => void;
   busy: boolean;
   setBusy: (busy: boolean) => void;
   onError: (message: string) => void;
 }): ReactNode {
-  const [draft, setDraft] = useState<OpeningDraft>(() => props.opening ? {
-    unitSizeBedrooms: props.opening.unitSizeBedrooms,
-    housingChargeDollars: props.opening.housingChargeCents / 100,
-    applicationOpenDate: props.opening.applicationOpenDate ?? "",
-    applicationCloseDate: props.opening.applicationCloseDate ?? "",
-    moveInDate: props.opening.moveInDate,
-  } : { ...EMPTY_DRAFT });
+  const [draft, setDraft] = useState<OpeningDraft>(() => props.opening ? editableDraft(openingValues(props.opening)) : { ...EMPTY_DRAFT });
   const [launchPreview, setLaunchPreview] = useState<OpeningPreview | null>(null);
   const { busy, setBusy } = props;
   const previewRequests = useRequestScope();
+  const accepted = useRef(props.opening ? openingValues(props.opening) : null);
+  const currentDraft = useRef(draft);
+  currentDraft.current = draft;
+  const pending = useRef(false);
+  const [publishing, setPublishing] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [conflict, setConflict] = useState(false);
 
   function payload(): OpeningWrite {
     return {
@@ -64,58 +78,113 @@ export function OpeningEditor(props: {
 
   async function publish(): Promise<void> {
     if (!launchPreview) return;
+    const isCurrent = previewRequests.capture();
+    setPublishing(true);
     const response = await api.createOpening(createPayload(payload()), launchPreview.audienceCount);
+    if (!isCurrent()) return;
     if (!response.ok) {
       if (response.status === 409) setLaunchPreview(null);
-      props.onError((await readProblem(response)) ?? "Could not create that opening.");
+      const problem = await readProblem(response);
+      if (isCurrent()) props.onError(problem ?? "Could not create that opening.");
       return;
     }
-    const created = (await response.json()) as OpeningCreated;
+    const created = (await response.json()) as OpeningCommit;
+    if (!isCurrent()) return;
     props.onSaved(created.openings,
       `Applications are open and ${created.queuedNotificationCount} ${created.queuedNotificationCount === 1 ? "email is" : "emails are"} queued.`,
     );
   }
 
   async function update(): Promise<void> {
-    if (!props.opening) return;
-    const response = await api.updateOpening(props.opening.id, payload());
+    if (!props.opening || !accepted.current) return;
+    const isCurrent = previewRequests.capture();
+    const snapshot = JSON.stringify(draft);
+    const response = await api.updateOpening(props.opening.id, accepted.current, payload());
+    if (!isCurrent()) return;
     if (!response.ok) {
-      props.onError((await readProblem(response)) ?? "Could not update that opening.");
+      const problem = await readProblemBody(response);
+      if (!isCurrent()) return;
+      if (problem?.code === "stale_opening") setConflict(true);
+      props.onError(problemMessage(problem) ?? "Could not update that opening.");
       return;
     }
-    const result = (await response.json()) as { openings: Opening[] };
-    props.onSaved(result.openings, "Opening updated.");
+    const result = (await response.json()) as OpeningUpdated;
+    if (!isCurrent()) return;
+    accepted.current = openingValues(result.saved);
+    const unchanged = JSON.stringify(currentDraft.current) === snapshot;
+    props.onSaved(result.openings, unchanged ? "Opening updated." : "Opening updated. Your newer edits are still unsaved.", unchanged);
+  }
+
+  async function reloadSavedFacts(): Promise<void> {
+    if (!props.opening || pending.current) return;
+    const isCurrent = previewRequests.capture();
+    pending.current = true;
+    setBusy(true);
+    setReloading(true);
+    try {
+      const openings = await api.fetchOpenings();
+      if (!isCurrent()) return;
+      const opening = openings.find((item) => item.id === props.opening?.id);
+      if (!opening) throw new Error("Opening unavailable");
+      accepted.current = openingValues(opening);
+      setDraft(editableDraft(accepted.current));
+      setConflict(false);
+      props.onSaved(openings, "Saved opening facts reloaded.", false);
+    } catch {
+      if (isCurrent()) props.onError("Could not reload the opening. Your edits are still here.");
+    } finally {
+      pending.current = false;
+      if (isCurrent()) {
+        setReloading(false);
+        setBusy(false);
+      }
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (busy) return;
+    if (busy || pending.current || conflict) return;
+    const isCurrent = previewRequests.capture();
+    pending.current = true;
     setBusy(true);
     try {
       if (props.opening) await update();
       else if (launchPreview) await publish();
       else await preview();
     } catch {
-      props.onError(props.opening ? "Could not update that opening." : "Could not create that opening.");
+      if (isCurrent()) props.onError(props.opening ? "Could not confirm the opening save. Your edits are still here." : "Could not confirm opening publication. Check the opening list before trying again.");
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (isCurrent()) {
+        setPublishing(false);
+        setBusy(false);
+      }
     }
   }
 
   return (
-    <OpeningForm
-      draft={draft}
-      editing={props.opening !== null}
-      busy={busy}
-      onChange={(next) => {
-        previewRequests.invalidate();
-        setDraft(next);
-        setLaunchPreview(null);
-      }}
-      onCancel={props.onCancel}
-      onSubmit={(event) => void submit(event)}
-      launchPreview={launchPreview}
-    />
+    <>
+      <OpeningForm
+        draft={draft}
+        editing={props.opening !== null}
+        busy={busy}
+        fieldsDisabled={publishing || reloading}
+        conflict={conflict}
+        onChange={(next) => {
+          previewRequests.invalidate();
+          setDraft(next);
+          setLaunchPreview(null);
+        }}
+        onCancel={props.onCancel}
+        onSubmit={(event) => void submit(event)}
+        launchPreview={launchPreview}
+      />
+      {conflict ? <div className="opening-launch-preview" role="alert">
+        <p>This opening changed elsewhere. Your edits are still here and haven’t been saved.</p>
+        <p>Reloading replaces these edits with the saved opening facts.</p>
+        <button className="secondary-button" type="button" disabled={busy} onClick={() => void reloadSavedFacts()}>Reload saved facts</button>
+      </div> : null}
+    </>
   );
 }
 
@@ -123,6 +192,8 @@ function OpeningForm(props: {
   draft: OpeningDraft;
   editing: boolean;
   busy: boolean;
+  fieldsDisabled: boolean;
+  conflict: boolean;
   onChange: (draft: OpeningDraft) => void;
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -138,7 +209,7 @@ function OpeningForm(props: {
       <div className="opening-form-grid">
         <label>
           <span>Unit size</span>
-          <select value={props.draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
+          <select disabled={props.fieldsDisabled} value={props.draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
             <option value={1}>1 bedroom</option>
             <option value={2}>2 bedrooms</option>
             <option value={3}>3 bedrooms</option>
@@ -148,7 +219,7 @@ function OpeningForm(props: {
           <span>Monthly housing charge</span>
           <div className="opening-money-input">
             <span>$</span>
-            <NumberInput min="0" step="0.01" required value={props.draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
+            <NumberInput disabled={props.fieldsDisabled} min="0" step="0.01" required value={props.draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
           </div>
         </label>
         {props.editing ? (
@@ -159,11 +230,11 @@ function OpeningForm(props: {
         ) : null}
         <label>
           <span>Applications close</span>
-          <input type="date" required value={props.draft.applicationCloseDate} onChange={(event) => set({ applicationCloseDate: event.target.value })} />
+          <input type="date" disabled={props.fieldsDisabled} required value={props.draft.applicationCloseDate} onChange={(event) => set({ applicationCloseDate: event.target.value })} />
         </label>
         <label>
           <span>Move-in date</span>
-          <input type="date" required value={props.draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
+          <input type="date" disabled={props.fieldsDisabled} required value={props.draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
         </label>
       </div>
       {!props.editing && props.launchPreview ? (
@@ -171,7 +242,7 @@ function OpeningForm(props: {
       ) : null}
       <div className="opening-form-actions">
         <button className="secondary-button" type="button" onClick={props.onCancel} disabled={props.busy}>Cancel</button>
-        <button className="primary-button" type="submit" disabled={props.busy}>
+        <button className="primary-button" type="submit" disabled={props.busy || props.conflict}>
           {props.busy
             ? "Working…"
             : props.editing

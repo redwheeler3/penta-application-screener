@@ -208,10 +208,6 @@
 .opening-selection-panel h4 { margin: 0 0 0.35rem; }
 .opening-selection-panel > p { margin: 0.35rem 0; line-height: 1.5; }
 .opening-selection-panel .opening-form-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.opening-decision-progress { display: grid; gap: 0.5rem; margin-top: 0.85rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-.opening-decision-progress > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
-.opening-decision-progress span { color: var(--muted); font-size: 0.78rem; }
-.opening-decision-progress progress { width: 100%; accent-color: var(--penta-green); }
 .opening-candidate-filter { display: grid; gap: 0.35rem; margin-top: 1rem; }
 .opening-candidate-filter span { color: var(--muted); font-size: 0.78rem; font-weight: 700; }
 .opening-candidate-filter input { width: 100%; padding: 0.55rem 0.65rem; border: 1px solid var(--line); border-radius: 7px; }
@@ -242,7 +238,6 @@
   .opening-header-actions button { flex: 1; }
   .opening-card-actions button { flex: 1; }
   .opening-form-grid { grid-template-columns: 1fr; }
-  .opening-decision-progress > div { align-items: flex-start; flex-direction: column; gap: 0.15rem; }
   .opening-candidate-row { align-items: stretch; flex-direction: column; }
   .direct-applicant-search > label > div { align-items: stretch; flex-direction: column; }
   .vacancy-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

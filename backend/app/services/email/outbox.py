@@ -37,6 +37,10 @@ from app.services.email.templates import (
     unsuccessful_application_email,
     vacancy_opening_email,
 )
+from app.services.openings.notifications import (
+    record_unsuccessful_delivery,
+    unsuccessful_notice_is_available,
+)
 from app.services.openings.subscriptions import consume_subscription, unit_sizes
 from app.services.openings.vacancy_notifications import (
     application_confirmation_timelines,
@@ -98,7 +102,7 @@ def retry_queued_emails(
             delivery.state = EmailDeliveryState.FAILED
             delivery.retry_intent = None
             delivery.quota_blocked = False
-            delivery.last_error_code = "VacancyRequestUnavailable" if vacancy_request else "RetryTargetUnavailable"
+            delivery.last_error_code = delivery.last_error_code or ("VacancyRequestUnavailable" if vacancy_request else "RetryTargetUnavailable")
             db.commit()
             continue
         # Publish the fresh credential before network I/O; a recipient can use it
@@ -119,6 +123,8 @@ def retry_queued_emails(
             continue
         if was_accepted:
             accepted += 1
+            if delivery.message_kind == "application_unsuccessful":
+                record_unsuccessful_delivery(db, delivery)
             if built.subscription_id is not None and built.subscription_consented_at is not None:
                 consume_subscription(
                     db,
@@ -165,6 +171,7 @@ EXPECTED_FAILURE_CODES = frozenset(
         "CommitteeAccessRemoved",
         "CredentialUsed",
         "VacancyRequestUnavailable",
+        "OutcomeNoLongerDue",
     }
 )
 FAILURE_BANNER_WINDOW = timedelta(days=7)
@@ -365,6 +372,9 @@ def _build_retry(
             None,
         )
     if intent["type"] == "application_unsuccessful":
+        if not unsuccessful_notice_is_available(db, application):
+            delivery.last_error_code = "OutcomeNoLongerDue"
+            return None
         return PreparedRetry(
             unsuccessful_application_email(
                 application_id=application.id,

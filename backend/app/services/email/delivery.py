@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import or_, select, update
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -113,7 +114,7 @@ def queue_email(
     retry_intent: RetryIntent,
 ) -> EmailDelivery:
     """Add an outbox intent to the caller's transaction without contacting the provider."""
-    delivery = EmailDelivery(
+    statement = insert(EmailDelivery).values(
         idempotency_key=idempotency_key,
         message_kind=message.kind,
         recipient_kind=recipient_kind,
@@ -124,10 +125,12 @@ def queue_email(
         retry_intent=retry_intent,
         quota_blocked=False,
         attempt_count=0,
-    )
-    db.add(delivery)
-    db.flush()
-    return delivery
+    ).on_conflict_do_nothing(index_elements=[EmailDelivery.idempotency_key]).returning(EmailDelivery)
+    delivery = db.scalars(statement, execution_options={"populate_existing": True}).one_or_none()
+    if delivery is not None:
+        return delivery
+    return db.scalar(select(EmailDelivery).where(EmailDelivery.idempotency_key == idempotency_key)
+        .execution_options(populate_existing=True))
 
 
 def attempt_reserved_delivery(

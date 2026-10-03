@@ -1,7 +1,7 @@
 """Admin opening-management request and response shapes."""
 
 from datetime import date, datetime
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import Field, StringConstraints, model_validator
 
@@ -30,6 +30,11 @@ class OpeningWrite(OpeningCreate):
         if self.application_open_date > self.application_close_date:
             raise ValueError("Application open date must be on or before the close date.")
         return self
+
+
+class OpeningUpdate(RequestModel):
+    original: OpeningWrite
+    changes: OpeningWrite
 
 
 class OpeningCreateConfirmation(OpeningCreate):
@@ -68,6 +73,10 @@ class OpeningsResponse(ResponseModel):
     openings: list[OpeningOut]
 
 
+class OpeningUpdatedOut(OpeningsResponse):
+    saved: OpeningDetailsOut
+
+
 class OpeningNotificationVariantOut(ResponseModel):
     kind: str
     recipient_count: int
@@ -94,7 +103,7 @@ class OpeningPreviewOut(ResponseModel):
     socketlabs: SocketLabsUsageOut
 
 
-class OpeningCreatedOut(OpeningsResponse):
+class OpeningCommitOut(OpeningsResponse):
     queued_notification_count: int
 
 
@@ -117,20 +126,6 @@ class OpeningSelectionOut(ResponseModel):
     no_household_selected: bool
     active_participant_count: int
     candidates: list[OpeningSelectionCandidateOut]
-
-
-class OpeningDecisionProgressOut(ResponseModel):
-    type: Literal["progress"] = "progress"
-    processed: int
-    total: int
-    sent: int
-
-
-class OpeningDecisionSummaryOut(ResponseModel):
-    type: Literal["summary"] = "summary"
-    sent: int
-    total: int
-    selection: OpeningSelectionOut
 
 
 class PreviousApplicantSearch(RequestModel):

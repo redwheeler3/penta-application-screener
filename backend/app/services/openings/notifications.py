@@ -1,94 +1,95 @@
 """Release closeout email only after every opening an applicant entered is final."""
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     Application,
     ApplicationParticipation,
+    EmailDelivery,
+    EmailDeliveryState,
     Opening,
     OpeningOutcome,
     OpeningPhase,
     PasswordlessIdentityKind,
 )
-from app.services.email.delivery import deliver_email
+from app.services.applications.locking import lock_application
+from app.services.email.delivery import queue_email
 from app.services.email.retry_intents import UnsuccessfulApplicationRetryIntent
-from app.services.email.sender import EmailSender
 from app.services.email.templates import unsuccessful_application_email
 from app.services.openings.catalog import opening_phase
 
 
 @dataclass(frozen=True)
-class OutcomeNoticeProgress:
-    processed: int
-    total: int
-    sent: int
-
-
-@dataclass(frozen=True)
 class _OutcomeNotice:
     application: Application
-    participations: tuple[ApplicationParticipation, ...]
     opening_ids: tuple[int, ...]
     labels: tuple[str, ...]
 
 
-def send_due_unsuccessful_notices(
-    db: Session, sender: EmailSender, *, now: datetime | None = None
+def queue_due_unsuccessful_notices(
+    db: Session, *, application_ids: set[int] | None = None,
+    now: datetime | None = None, commit: bool = True,
 ) -> int:
-    """Send each newly eligible household one notice, safely repeatable."""
-    sent = 0
-    for progress in stream_due_unsuccessful_notices(db, sender, now=now):
-        sent = progress.sent
-    return sent
-
-
-def stream_due_unsuccessful_notices(
-    db: Session,
-    sender: EmailSender,
-    *,
-    application_ids: set[int] | None = None,
-    now: datetime | None = None,
-) -> Iterator[OutcomeNoticeProgress]:
-    """Send due notices sequentially and expose provider-backed progress."""
+    """Stage due closeout intents; decision callers include them in their own transaction."""
     now = now or datetime.now(UTC)
-    notices = _due_unsuccessful_notices(db, application_ids=application_ids)
-    sent = 0
-    yield OutcomeNoticeProgress(processed=0, total=len(notices), sent=0)
-    for processed, notice in enumerate(notices, start=1):
-        delivered = deliver_email(
-            db,
-            sender,
-            unsuccessful_application_email(
-                application_id=notice.application.id,
-                email=notice.application.primary_email,
-                opening_labels=list(notice.labels),
-            ),
-            recipient_kind=PasswordlessIdentityKind.APPLICANT,
-            application_id=notice.application.id,
-            idempotency_key=(
-                f"application-unsuccessful:{notice.application.id}:"
-                + ",".join(str(opening_id) for opening_id in notice.opening_ids)
-            ),
-            retry_intent=UnsuccessfulApplicationRetryIntent(
-                type="application_unsuccessful", opening_labels=list(notice.labels),
-            ),
-            now=now,
-        )
-        if delivered:
-            for participation in notice.participations:
-                participation.unsuccessful_notified_at = now
+    db.flush()
+    query = select(Application.id).where(Application.submitted_at.is_not(None), Application.withdrawn_at.is_(None))
+    if application_ids is not None:
+        query = query.where(Application.id.in_(application_ids))
+    ids = list(db.scalars(query))
+    queued = 0
+    captured = {notice.application.id: notice for notice in _due_unsuccessful_notices(db, application_ids=set(ids))} if not commit else None
+    for application_id in ids:
+        if commit and lock_application(db, application_id) is None:
             db.commit()
-            sent += 1
-        yield OutcomeNoticeProgress(
-            processed=processed,
-            total=len(notices),
-            sent=sent,
-        )
+            continue
+        notices = ([captured[application_id]] if application_id in captured else []) if captured is not None else _due_unsuccessful_notices(db, application_ids={application_id})
+        for notice in notices:
+            intent = UnsuccessfulApplicationRetryIntent(type="application_unsuccessful", opening_labels=list(notice.labels))
+            delivery = queue_email(
+                db, unsuccessful_application_email(application_id=application_id,
+                    email=notice.application.primary_email, opening_labels=list(notice.labels)),
+                recipient_kind=PasswordlessIdentityKind.APPLICANT, application_id=application_id,
+                idempotency_key=f"application-unsuccessful:{application_id}:" + ",".join(str(id) for id in notice.opening_ids),
+                retry_intent=intent,
+            )
+            if delivery.state == EmailDeliveryState.ACCEPTED:
+                record_unsuccessful_delivery(db, delivery)
+            else:
+                if delivery.state == EmailDeliveryState.FAILED:
+                    # Reconsider failures only after checking the household's current state.
+                    delivery.state = EmailDeliveryState.QUEUED
+                    delivery.retry_intent = intent
+                    delivery.last_attempt_at = None
+                    delivery.last_error_code = None
+                    delivery.quota_blocked = False
+                queued += 1
+        if commit:
+            db.commit()
+    return queued
+
+
+def record_unsuccessful_delivery(db: Session, delivery: EmailDelivery) -> None:
+    """Record acceptance with the same transaction as the delivery ledger update."""
+    prefix = f"application-unsuccessful:{delivery.application_id}:"
+    key = delivery.idempotency_key or ""
+    if not key.startswith(prefix):
+        raise ValueError("Invalid unsuccessful-notice identity")
+    opening_ids = [int(value) for value in key.removeprefix(prefix).split(",")]
+    db.execute(update(ApplicationParticipation).where(
+        ApplicationParticipation.application_id == delivery.application_id,
+        ApplicationParticipation.opening_id.in_(opening_ids),
+        ApplicationParticipation.outcome == OpeningOutcome.UNSUCCESSFUL,
+        ApplicationParticipation.unsuccessful_notified_at.is_(None),
+    ).values(unsuccessful_notified_at=delivery.last_attempt_at))
+
+
+def unsuccessful_notice_is_available(db: Session, application: Application) -> bool:
+    return application.withdrawn_at is None and _is_unsuccessful_and_final(_active_participations(db, application.id))
 
 
 def _due_unsuccessful_notices(
@@ -102,8 +103,14 @@ def _due_unsuccessful_notices(
     if application_ids is not None:
         statement = statement.where(Application.id.in_(application_ids))
     applications = db.scalars(statement).all()
+    by_application = {application.id: [] for application in applications}
+    rows = db.execute(select(ApplicationParticipation, Opening).join(Opening, Opening.id == ApplicationParticipation.opening_id)
+        .where(ApplicationParticipation.application_id.in_(by_application), ApplicationParticipation.withdrawn_at.is_(None))
+        .order_by(Opening.move_in_date, Opening.id))
+    for participation, opening in rows:
+        by_application[participation.application_id].append((participation, opening))
     for application in applications:
-        participations = _active_participations(db, application.id)
+        participations = by_application[application.id]
         if not _is_unsuccessful_and_final(participations):
             continue
         unnotified = [
@@ -124,7 +131,6 @@ def _due_unsuccessful_notices(
         notices.append(
             _OutcomeNotice(
                 application=application,
-                participations=tuple(unnotified),
                 opening_ids=opening_ids,
                 labels=tuple(labels),
             )

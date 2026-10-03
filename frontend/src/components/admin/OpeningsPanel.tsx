@@ -48,9 +48,9 @@ export function OpeningsPanel(props: {
     setMessage("");
   }
 
-  function completeWorkflow(items: Opening[], message: string): void {
+  function completeWorkflow(items: Opening[], message: string, closeEditor = true): void {
     setOpenings(items);
-    setMode({ kind: "list" });
+    if (closeEditor) setMode({ kind: "list" });
     setMessage(message);
   }
 

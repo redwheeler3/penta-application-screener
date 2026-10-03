@@ -32,6 +32,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "pending_copy_changed": (409, "Guest answers changed"),
     "application_already_exists": (409, "Application already exists"),
     "stale_application": (409, "Application changed elsewhere"),
+    "stale_opening": (409, "Opening changed elsewhere"),
     "declaration_required": (422, "Declaration acceptance required"),
     "applications_closed": (409, "Applications are closed"),
     "opening_selection_required": (409, "Choose an opening"),

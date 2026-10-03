@@ -59,13 +59,24 @@ between scoring missing applicants and discovering criteria. Both read run state
 The shared NDJSON reader accepts a final event without a trailing newline and releases its reader
 on completion or failure. Screen, Rank, and Evals require a summary or fatal error before treating
 the stream as finished; an earlier end reports interrupted progress and preserves saved results.
+Run completion and proposal restoration retain their opening generation, so an earlier run
+cannot clear another opening's candidate or restore its old proposals into that workspace.
 
 `components/admin/OpeningsPanel.tsx` owns the opening list and navigation between workflows.
 `OpeningEditor.tsx` owns the editable opening draft, notification-audience preview, publication,
 and updates. `OpeningDecisionPanel.tsx` owns household selection, permanent-decision confirmation,
-and streamed outcome-email progress. `DirectSelectionOpeningForm.tsx` owns filling a new home from
-previous applicants. Draft, selection, and progress state live in their workflow; the list owns
+and outcome-email queue acknowledgement. `DirectSelectionOpeningForm.tsx` owns filling a new home from
+previous applicants. Draft and confirmation state live in their workflow; the list owns
 the shared busy flag used to disable competing actions. Workflows report completion to the list.
+Opening edits carry both the originally displayed facts and proposed changes. A conditional update
+rejects stale snapshots; the response acknowledges the submitted facts, and newer typing remains
+in the editor. Reloading conflicting saved facts is explicit and replaces the draft. Publication
+freezes its announcement facts while that irreversible action is awaiting confirmation.
+
+Feedback submission follows the same draft acknowledgement rule. Each composer lifetime scopes
+its pending work; cancelling and reopening cannot let an older response close the new composer.
+Admin resolve/reopen actions track pending state per row and release it on failure. Their database
+updates apply the requested state atomically and preserve an existing resolution timestamp.
 
 Eval run controls and case editing live in `components/evals/RunnableEval.tsx`. `EvalCaseList.tsx`
 owns case navigation; `EvalResults.tsx` owns result details and historical run markers.
@@ -163,6 +174,11 @@ lifecycle, preventing both from succeeding concurrently. Selection then locks th
 order. Committee metadata writes use the application lock through their short check-and-write
 transaction, also preventing duplicate first private-note and favourite inserts. These locks never
 span email or AI network calls.
+Decision outcomes and due closeout-email intents commit together. The HTTP acknowledgement
+returns the updated opening list and queued count before provider I/O; the existing outbox runs
+in the response background task. Acceptance updates the ledger and participation notification
+markers together. Repeated decisions find the same intents and do not send duplicate notices;
+daily maintenance rechecks eligibility before staging outstanding closeouts and draining the outbox.
 Retention sweeps first collect due record IDs, then recheck each application's retention date
 under the same application lock before recording and performing deletion. Draft deletion uses
 a conditional write to recheck expiry or resolution, so an opening extension or renewed draft
@@ -268,6 +284,10 @@ release matches both, so an expired run cannot release a same-user replacement.
 Ranking score assembly reads the newest result per applicant and criterion in one query, using
 row ID to break equal timestamps. It fetches only the fields used by ranking and preserves criterion
 order for the deterministic calculation.
+Candidate details capture their analysis, parsed criteria, and latest score/provenance rows once.
+The pure candidate score snapshot is reused in the pool calculation; that applicant's score rows
+are excluded from the second read. The trace loads current rows without old history or narratives.
+This prevents a newer analysis or score result from being attributed to previously displayed values.
 
 ## Responsiveness
 
@@ -286,6 +306,9 @@ and prevent metadata mutations from rebuilding the full detail.
 The application list batches selected-household IDs in one read. A subsequent five-sample comparison
 with 150 synthetic applicants reduced that list from 158 to 9 SELECTs (median 46.1 to 11.9 ms),
 with authentication lookup, network, and browser work excluded.
+A latest-score trace comparison used 15 criteria with 50 synthetic result versions each.
+Loading only the current rows reduced materialized results from 750 to 15 and the five-sample
+median trace read from 12.3 to 1.8 ms, with identical output. This excludes network and UI work.
 
 Eval case and judge-brief writes share a short lock per fixture in the API process, covering the
 entire read/modify/write. JSON is published through a flushed UTF-8 temporary file and atomic

@@ -7,10 +7,10 @@ from app.db.models import (
     Opening,
     OpeningOutcome,
 )
+from app.services.email.outbox import retry_queued_emails
 from app.services.email.sender import CapturedEmailSender
 from app.services.openings.notifications import (
-    send_due_unsuccessful_notices,
-    stream_due_unsuccessful_notices,
+    queue_due_unsuccessful_notices,
 )
 from tests.db_support import memory_session
 
@@ -78,12 +78,14 @@ def test_notice_waits_until_every_active_opening_has_a_decision() -> None:
     first = _participate(db, application, archived, OpeningOutcome.UNSUCCESSFUL)
     second = _participate(db, application, closed, None)
 
-    assert send_due_unsuccessful_notices(db, sender) == 0
+    assert queue_due_unsuccessful_notices(db) == 0
+    assert retry_queued_emails(db, sender).accepted == 0
 
     closed.decided_at = datetime.now(UTC)
     second.outcome = OpeningOutcome.UNSUCCESSFUL
     db.commit()
-    assert send_due_unsuccessful_notices(db, sender) == 1
+    assert queue_due_unsuccessful_notices(db) == 1
+    assert retry_queued_emails(db, sender).accepted == 1
     assert len(sender.messages) == 1
     assert "time and care you put into your application" in sender.messages[0].text_body
     assert "your household was not selected" in sender.messages[0].text_body
@@ -106,7 +108,8 @@ def test_notice_is_not_sent_to_an_application_selected_for_any_opening() -> None
     _participate(db, application, first, OpeningOutcome.SELECTED)
     _participate(db, application, second, OpeningOutcome.UNSUCCESSFUL)
 
-    assert send_due_unsuccessful_notices(db, sender) == 0
+    assert queue_due_unsuccessful_notices(db) == 0
+    assert retry_queued_emails(db, sender).accepted == 0
     assert sender.messages == []
 
 
@@ -119,10 +122,12 @@ def test_accepted_notice_is_idempotent_if_marking_is_replayed() -> None:
         db, application, opening, OpeningOutcome.UNSUCCESSFUL
     )
 
-    assert send_due_unsuccessful_notices(db, sender) == 1
+    assert queue_due_unsuccessful_notices(db) == 1
+    assert retry_queued_emails(db, sender).accepted == 1
     participation.unsuccessful_notified_at = None
     db.commit()
-    assert send_due_unsuccessful_notices(db, sender) == 1
+    assert queue_due_unsuccessful_notices(db) == 0
+    assert retry_queued_emails(db, sender).accepted == 0
     assert len(sender.messages) == 1
     assert participation.unsuccessful_notified_at is not None
 
@@ -135,16 +140,18 @@ def test_failed_notice_is_retried_without_marking_the_applicant_notified() -> No
         db, application, opening, OpeningOutcome.UNSUCCESSFUL
     )
 
-    assert send_due_unsuccessful_notices(db, FailingEmailSender()) == 0
+    assert queue_due_unsuccessful_notices(db) == 1
+    assert retry_queued_emails(db, FailingEmailSender()).accepted == 0
     assert participation.unsuccessful_notified_at is None
 
     sender = CapturedEmailSender()
-    assert send_due_unsuccessful_notices(db, sender) == 1
+    assert queue_due_unsuccessful_notices(db) == 1
+    assert retry_queued_emails(db, sender).accepted == 1
     assert len(sender.messages) == 1
     assert participation.unsuccessful_notified_at is not None
 
 
-def test_streamed_progress_is_scoped_to_the_finalized_opening_participants() -> None:
+def test_queued_notices_are_scoped_to_the_finalized_opening_participants() -> None:
     db = _db()
     sender = CapturedEmailSender()
     opening = _opening(db, archived=True)
@@ -157,18 +164,8 @@ def test_streamed_progress_is_scoped_to_the_finalized_opening_participants() -> 
         db, unrelated, opening, OpeningOutcome.UNSUCCESSFUL
     )
 
-    progress = list(
-        stream_due_unsuccessful_notices(
-            db,
-            sender,
-            application_ids={target.id},
-        )
-    )
-
-    assert [(item.processed, item.total, item.sent) for item in progress] == [
-        (0, 1, 0),
-        (1, 1, 1),
-    ]
+    assert queue_due_unsuccessful_notices(db, application_ids={target.id}) == 1
+    assert retry_queued_emails(db, sender).accepted == 1
     assert [message.to for message in sender.messages] == [("target@example.com",)]
     assert target_participation.unsuccessful_notified_at is not None
     assert unrelated_participation.unsuccessful_notified_at is None

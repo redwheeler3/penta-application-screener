@@ -36,11 +36,11 @@ export function createOpening(
   });
 }
 
-export function updateOpening(id: number, opening: OpeningWrite): Promise<Response> {
+export function updateOpening(id: number, original: OpeningWrite, changes: OpeningWrite): Promise<Response> {
   return request(`/openings/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(opening),
+    body: JSON.stringify({ original, changes }),
   });
 }
 

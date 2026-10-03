@@ -89,9 +89,14 @@ export type OpeningPreview = {
   socketlabs: SocketLabsUsage;
 };
 
-export type OpeningCreated = {
+export type OpeningCommit = {
   openings: Opening[];
   queuedNotificationCount: number;
+};
+
+export type OpeningUpdated = {
+  openings: Opening[];
+  saved: OpeningDetails;
 };
 
 export type VacancySubscription = {
@@ -127,10 +132,6 @@ export type OpeningSelection = {
   activeParticipantCount: number;
   candidates: OpeningSelectionCandidate[];
 };
-
-export type OpeningDecisionStreamEvent =
-  | { type: "progress"; processed: number; total: number; sent: number }
-  | { type: "summary"; sent: number; total: number; selection: OpeningSelection };
 
 export type DirectSelectionOpeningCreate = {
   unitSizeBedrooms: number;

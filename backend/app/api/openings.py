@@ -1,9 +1,8 @@
 """Admin-only opening configuration and lifecycle endpoints."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
@@ -11,14 +10,12 @@ from app.core.problems import Problem
 from app.core.time import pacific_today
 from app.db.models import Application, Opening, User
 from app.db.session import get_db
-from app.schemas.events import emit
 from app.schemas.openings import (
     DirectSelectionOpeningCreate,
+    OpeningCommitOut,
     OpeningCreate,
     OpeningCreateConfirmation,
-    OpeningCreatedOut,
-    OpeningDecisionProgressOut,
-    OpeningDecisionSummaryOut,
+    OpeningDetailsOut,
     OpeningNotificationVariantOut,
     OpeningOut,
     OpeningPreviewOut,
@@ -26,7 +23,8 @@ from app.schemas.openings import (
     OpeningSelectionOut,
     OpeningSelectionRequest,
     OpeningsResponse,
-    OpeningWrite,
+    OpeningUpdate,
+    OpeningUpdatedOut,
     PreviousApplicantSearch,
     PreviousApplicantSearchOut,
     SocketLabsUsageOut,
@@ -48,7 +46,6 @@ from app.services.openings.direct_selection import (
     create_direct_selection_opening,
     search_previous_applicants,
 )
-from app.services.openings.notifications import stream_due_unsuccessful_notices
 from app.services.openings.selection import (
     active_opening_participants,
     confirm_no_household_selected,
@@ -170,7 +167,7 @@ def preview_opening(
     return _preview_out(audience, usage_reader)
 
 
-@router.post("", response_model=OpeningCreatedOut)
+@router.post("", response_model=OpeningCommitOut)
 def add_opening(
     body: OpeningCreateConfirmation,
     background_tasks: BackgroundTasks,
@@ -178,7 +175,7 @@ def add_opening(
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
-) -> OpeningCreatedOut:
+) -> OpeningCommitOut:
     audience = opening_audience(db, body.unit_size_bedrooms)
     if audience.total != body.expected_audience_count:
         raise Problem(
@@ -191,21 +188,24 @@ def add_opening(
     db.commit()
     response = _response(db)
     background_tasks.add_task(outbox_runner, sender)
-    return OpeningCreatedOut(
+    return OpeningCommitOut(
         openings=response.openings,
         queued_notification_count=audience.total,
     )
 
 
-@router.put("/{opening_id}", response_model=OpeningsResponse)
+@router.put("/{opening_id}", response_model=OpeningUpdatedOut)
 def edit_opening(
     opening_id: int,
-    body: OpeningWrite,
+    body: OpeningUpdate,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
-) -> OpeningsResponse:
+) -> OpeningUpdatedOut:
     update_opening(db, _opening(db, opening_id), body)
-    return _response(db)
+    return OpeningUpdatedOut(
+        openings=_response(db).openings,
+        saved=OpeningDetailsOut(id=opening_id, **body.changes.model_dump()),
+    )
 
 
 def _preview_out(
@@ -258,72 +258,30 @@ def read_opening_selection(
     return _selection_response(db, _opening(db, opening_id))
 
 
-@router.post("/{opening_id}/selection")
+@router.post("/{opening_id}/selection", response_model=OpeningCommitOut)
 def select_successful_applicant(
-    opening_id: int,
-    body: OpeningSelectionRequest,
-    admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    opening_id: int, body: OpeningSelectionRequest, background_tasks: BackgroundTasks,
+    admin: User = Depends(require_admin), db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
-) -> StreamingResponse:
+    outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
+) -> OpeningCommitOut:
     opening = _opening(db, opening_id)
-    confirm_opening_selection(
-        db,
-        opening,
-        body.application_id,
-        decided_by=admin,
-    )
-    return _decision_stream(db, opening, sender)
+    queued = confirm_opening_selection(db, opening, body.application_id, decided_by=admin)
+    background_tasks.add_task(outbox_runner, sender)
+    return OpeningCommitOut(openings=_response(db).openings, queued_notification_count=queued)
 
 
-@router.post("/{opening_id}/selection/no-household")
+@router.post("/{opening_id}/selection/no-household", response_model=OpeningCommitOut)
 def select_no_household(
-    opening_id: int,
-    admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    opening_id: int, background_tasks: BackgroundTasks,
+    admin: User = Depends(require_admin), db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
-) -> StreamingResponse:
+    outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
+) -> OpeningCommitOut:
     opening = _opening(db, opening_id)
-    confirm_no_household_selected(db, opening, decided_by=admin)
-    return _decision_stream(db, opening, sender)
-
-
-def _decision_stream(
-    db: Session,
-    opening: Opening,
-    sender: EmailSender,
-) -> StreamingResponse:
-    participant_ids = {
-        application.id
-        for _, application in active_opening_participants(db, opening)
-    }
-
-    def stream() -> Iterator[str]:
-        last_total = 0
-        last_sent = 0
-        for progress in stream_due_unsuccessful_notices(
-            db,
-            sender,
-            application_ids=participant_ids,
-        ):
-            last_total = progress.total
-            last_sent = progress.sent
-            yield emit(
-                OpeningDecisionProgressOut(
-                    processed=progress.processed,
-                    total=progress.total,
-                    sent=progress.sent,
-                )
-            )
-        yield emit(
-            OpeningDecisionSummaryOut(
-                sent=last_sent,
-                total=last_total,
-                selection=_selection_response(db, opening),
-            )
-        )
-
-    return StreamingResponse(stream(), media_type="application/x-ndjson")
+    queued = confirm_no_household_selected(db, opening, decided_by=admin)
+    background_tasks.add_task(outbox_runner, sender)
+    return OpeningCommitOut(openings=_response(db).openings, queued_notification_count=queued)
 
 
 def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:

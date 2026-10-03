@@ -2,7 +2,7 @@
 
 from datetime import UTC, date, datetime
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.problems import Problem
@@ -13,7 +13,7 @@ from app.db.models import (
     OpeningIntakeMode,
     OpeningPhase,
 )
-from app.schemas.openings import OpeningCreate, OpeningWrite
+from app.schemas.openings import OpeningCreate, OpeningUpdate
 from app.services.applications.retention import refresh_draft_retention_for_opening
 from app.services.eligibility.rules import create_opening_rules
 
@@ -98,15 +98,20 @@ def create_opening(
     return opening
 
 
-def update_opening(db: Session, opening: Opening, values: OpeningWrite) -> Opening:
+def update_opening(db: Session, opening: Opening, values: OpeningUpdate) -> Opening:
     if opening.intake_mode != OpeningIntakeMode.APPLICATIONS:
         raise Problem(
             "invalid_settings",
             detail="Direct-selection openings cannot be edited.",
         )
-    for field, value in values.model_dump().items():
-        setattr(opening, field, value)
-    db.flush()
+    expected = values.original.model_dump()
+    saved = db.execute(update(Opening).where(
+        Opening.id == opening.id,
+        *(getattr(Opening, field) == value for field, value in expected.items()),
+    ).values(**values.changes.model_dump()).execution_options(synchronize_session=False))
+    if saved.rowcount != 1:
+        raise Problem("stale_opening", detail="This opening changed while you were editing. Reload its saved facts before saving again.")
+    db.refresh(opening)
     refresh_draft_retention_for_opening(db, opening.id)
     db.commit()
     db.refresh(opening)

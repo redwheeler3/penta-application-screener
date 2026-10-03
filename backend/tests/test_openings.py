@@ -1,4 +1,3 @@
-import json
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -29,17 +28,14 @@ from app.db.session import get_db
 from app.services.applications.retention import one_year_after, years_after
 from app.services.applications.scope import opening_ai_applications
 from app.services.auth.passwordless import create_browser_session, issue_magic_link
+from app.services.email.outbox import retry_queued_emails
 from app.services.email.sender import CapturedEmailSender, get_email_sender
 from app.services.openings.catalog import opening_phase
 from tests.app_support import shared_test_app
 
 
-def _stream_events(response) -> list[dict]:
-    return [json.loads(line) for line in response.text.splitlines() if line]
-
-
-def _stream_summary(response) -> dict:
-    return _stream_events(response)[-1]
+def _decision_opening(response) -> dict:
+    return response.json()["openings"][0]
 
 
 def _app_and_db(role: UserRole) -> tuple:
@@ -56,7 +52,8 @@ def _app_and_db(role: UserRole) -> tuple:
     app = shared_test_app()
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[require_current_user] = lambda: user
-    app.dependency_overrides[get_outbox_runner] = lambda: (lambda _sender: None)
+    app.dependency_overrides[get_email_sender] = CapturedEmailSender
+    app.dependency_overrides[get_outbox_runner] = lambda: (lambda sender: retry_queued_emails(db, sender))
     return app, db
 
 
@@ -72,6 +69,17 @@ def _opening_payload(**overrides) -> dict:
     }
     payload.update(overrides)
     return payload
+
+
+def _opening_update(opening, **changes) -> dict:
+    fields = ["unit_size_bedrooms", "housing_charge_cents", "application_open_date", "application_close_date", "move_in_date"]
+    from pydantic.alias_generators import to_camel
+    original = {
+        to_camel(field): (opening[to_camel(field)] if isinstance(opening, dict) else getattr(opening, field))
+        for field in fields
+    }
+    original = {key: value.isoformat() if isinstance(value, date) else value for key, value in original.items()}
+    return {"original": original, "changes": {**original, **changes}}
 
 
 @pytest.mark.anyio
@@ -102,7 +110,7 @@ async def test_admin_creation_opens_an_opening_immediately() -> None:
 
         edited = await client.put(
             f"/openings/{opening_id}",
-            json=_opening_payload(housingChargeCents=130_000),
+            json=_opening_update(opening, housingChargeCents=130_000),
         )
 
     assert edited.json()["openings"][0]["housingChargeCents"] == 130_000
@@ -205,7 +213,7 @@ async def test_admin_can_edit_an_archived_opening() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.put(
             f"/openings/{opening.id}",
-            json=_opening_payload(
+            json=_opening_update(opening,
                 housingChargeCents=130_000,
                 applicationOpenDate="2020-01-01",
                 applicationCloseDate="2020-01-15",
@@ -252,7 +260,7 @@ async def test_changing_move_in_date_does_not_set_participant_retention() -> Non
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.put(
             f"/openings/{opening.id}",
-            json=_opening_payload(moveInDate="2026-11-01"),
+            json=_opening_update(opening, moveInDate="2026-11-01"),
         )
 
     assert response.status_code == 200
@@ -297,7 +305,7 @@ async def test_changing_close_date_updates_private_draft_expiry() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.put(
             f"/openings/{opening.id}",
-            json=_opening_payload(
+            json=_opening_update(opening,
                 applicationCloseDate="2026-10-15",
                 moveInDate="2026-11-01",
             ),
@@ -366,10 +374,8 @@ async def test_selection_archives_permanently_and_sends_unsuccessful_notices() -
     ).all()
     assert selected.status_code == 200
     assert repeated.status_code == 200
-    events = _stream_events(selected)
-    assert [event["processed"] for event in events[:-1]] == [0, 1, 2]
-    assert [event["sent"] for event in events[:-1]] == [0, 1, 2]
-    assert events[-1]["selection"]["phase"] == "archived"
+    assert selected.json()["queuedNotificationCount"] == 2
+    assert selected.json()["openings"][0]["phase"] == "archived"
     assert [candidate["applicationId"] for candidate in picker_after_selection.json()["candidates"]] == [
         applications[1].id,
         applications[2].id,
@@ -492,10 +498,10 @@ async def test_no_household_decision_archives_permanently() -> None:
         decided = await client.post(f"/openings/{opening.id}/selection/no-household")
 
     assert decided.status_code == 200
-    summary = _stream_summary(decided)
-    assert summary["selection"]["selectedApplicationId"] is None
-    assert summary["selection"]["noHouseholdSelected"] is True
-    assert summary["selection"]["phase"] == "archived"
+    summary = _decision_opening(decided)
+    assert summary["selectedApplicationId"] is None
+    assert summary["noHouseholdSelected"] is True
+    assert summary["phase"] == "archived"
     assert opening.no_household_selected is True
     assert all(
         participation.outcome == OpeningOutcome.UNSUCCESSFUL
@@ -517,7 +523,7 @@ async def test_overdue_no_household_decision_sends_notices() -> None:
         decided = await client.post(f"/openings/{opening.id}/selection/no-household")
 
     assert decided.status_code == 200
-    assert _stream_summary(decided)["selection"]["noHouseholdSelected"] is True
+    assert _decision_opening(decided)["noHouseholdSelected"] is True
     assert len(sender.messages) == len(applications)
     assert all(
         participation.outcome == OpeningOutcome.UNSUCCESSFUL

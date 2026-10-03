@@ -23,6 +23,7 @@ from app.services.applications.selected import (
     selected_opening_id,
 )
 from app.services.openings.catalog import opening_phase
+from app.services.openings.notifications import queue_due_unsuccessful_notices
 
 
 def active_opening_participants(
@@ -98,15 +99,16 @@ def confirm_opening_selection(
     *,
     decided_by: User,
     now: datetime | None = None,
-) -> None:
+) -> int:
     # Application first: withdrawal and selection use the same lifecycle boundary.
     lock_application(db, application_id)
     _lock_opening_decision(db, opening)
     existing = selected_participation(db, opening.id)
     if opening.decided_at is not None:
         if existing is not None and existing.application_id == application_id:
+            queued = _queue_decision_notices(db, opening, now=now)
             db.commit()
-            return
+            return queued
         raise Problem("invalid_settings", detail="The opening decision is permanent.")
     _require_selection_available(opening)
     now = now or datetime.now(UTC)
@@ -149,6 +151,7 @@ def confirm_opening_selection(
         refresh_application_retention(db, application)
     revoke_selected_applicant_access(db, application_id, now=now)
     try:
+        queued = _queue_decision_notices(db, opening, now=now)
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -156,6 +159,7 @@ def confirm_opening_selection(
             "invalid_settings",
             detail="Another opening selection was saved first. Review the openings and try again.",
         ) from error
+    return queued
 
 
 def confirm_no_household_selected(
@@ -164,12 +168,13 @@ def confirm_no_household_selected(
     *,
     decided_by: User,
     now: datetime | None = None,
-) -> None:
+) -> int:
     _lock_opening_decision(db, opening)
     if opening.decided_at is not None:
         if opening.no_household_selected:
+            queued = _queue_decision_notices(db, opening, now=now)
             db.commit()
-            return
+            return queued
         raise Problem("invalid_settings", detail="The opening decision is permanent.")
     _require_selection_available(opening)
 
@@ -184,7 +189,15 @@ def confirm_no_household_selected(
     opening.no_household_selected = True
     for application in affected_applications:
         refresh_application_retention(db, application)
+    queued = _queue_decision_notices(db, opening, now=now)
     db.commit()
+    return queued
+
+
+def _queue_decision_notices(db: Session, opening: Opening, *, now: datetime | None) -> int:
+    db.flush()
+    application_ids = {application.id for _, application in active_opening_participants(db, opening)}
+    return queue_due_unsuccessful_notices(db, application_ids=application_ids, now=now, commit=False)
 
 
 def _lock_opening_decision(db: Session, opening: Opening) -> None:
