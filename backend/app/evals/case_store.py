@@ -16,7 +16,10 @@ partially written.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from threading import Lock
 
 from app.evals.paths import (
     CONSOLIDATION_GOLDEN_PATH,
@@ -39,6 +42,9 @@ _FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
 }
 
 
+_FIXTURE_LOCKS = {key: Lock() for key in _FIXTURES}
+
+
 class UnknownEvalError(ValueError):
     """The eval key has no editable case fixture (e.g. invariants; or judge/stability, which
     read every pass's golden set and own no case files of their own)."""
@@ -49,29 +55,51 @@ class CaseValidationError(ValueError):
 
 
 def _load(path: Path) -> dict:
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_fixture(eval_key: str) -> dict:
+    # Share the writer's short lock so Windows readers don't hold the target
+    # file open during replacement. Locks cover requests in this API process.
+    with _FIXTURE_LOCKS[eval_key]:
+        path, _ = _FIXTURES[eval_key]
+        return _load(path)
+
+
+def _write(path: Path, data: dict) -> None:
+    """Publish complete UTF-8 JSON atomically; readers never see a partial rewrite."""
+    temporary: Path | None = None
+    try:
+        with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                prefix=path.name + ".", suffix=".tmp", delete=False) as file:
+            temporary = Path(file.name)
+            file.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def list_cases(eval_key: str) -> list[dict]:
     """Every case for an eval, straight from its committed fixture. The special key ``judge``
-    is READ-ONLY and AGGREGATED: it returns every pass's golden cases (the judge owns no files,
-    it audits them all), each tagged with its ``pass`` so the Judge tab can group. It is not in
-    ``_FIXTURES``, so ``save_case('judge', …)`` correctly refuses (nothing to write to)."""
+    is aggregated: it returns every pass's golden cases (the judge owns no files,
+    it audits them all), each tagged with its ``pass`` so the Judge tab can group.
+    Judge edits are routed to the case's own pass by ``save_case``."""
     if eval_key == "judge":
         out: list[dict] = []
         for pass_name in _BACKGROUND_PASSES:
-            path, _ = _FIXTURES[pass_name]
-            for c in _load(path).get("cases", []):
+            for c in _read_fixture(pass_name).get("cases", []):
                 if isinstance(c, dict) and "key" in c:
                     c.setdefault("metadata", {}).setdefault("pass", pass_name)
                     out.append(c)
         return out
     if eval_key not in _FIXTURES:
         raise UnknownEvalError(eval_key)
-    path, _required = _FIXTURES[eval_key]
     # The golden fixture carries a leading ``_comment`` string in ``cases``-adjacent scope;
     # cases themselves are dicts with a "key". Filter to real cases defensively.
-    return [c for c in _load(path).get("cases", []) if isinstance(c, dict) and "key" in c]
+    return [c for c in _read_fixture(eval_key).get("cases", []) if isinstance(c, dict) and "key" in c]
 
 
 def save_case(eval_key: str, case: dict) -> list[dict]:
@@ -100,22 +128,23 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
     if missing:
         raise CaseValidationError(f"case is missing required field(s): {', '.join(missing)}")
 
-    data = _load(path)
-    cases = data.get("cases", [])
-    replaced = False
-    for i, existing in enumerate(cases):
-        if isinstance(existing, dict) and existing.get("key") == key:
-            cases[i] = case
-            replaced = True
-            break
-    if not replaced:
-        cases.append(case)
-    data["cases"] = cases
-    # Match the on-disk formatting the fixtures already use (indent=2). Not sort_keys: the
-    # golden file keeps ``_comment`` first by insertion order, and case field order is
-    # meaningful for readability in the diff.
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-    return [c for c in cases if isinstance(c, dict) and "key" in c]
+    with _FIXTURE_LOCKS[eval_key]:
+        data = _load(path)
+        cases = data.get("cases", [])
+        replaced = False
+        for i, existing in enumerate(cases):
+            if isinstance(existing, dict) and existing.get("key") == key:
+                cases[i] = case
+                replaced = True
+                break
+        if not replaced:
+            cases.append(case)
+        data["cases"] = cases
+        # Match the on-disk formatting the fixtures already use (indent=2). Not sort_keys: the
+        # golden file keeps ``_comment`` first by insertion order, and case field order is
+        # meaningful for readability in the diff.
+        _write(path, data)
+        return [c for c in cases if isinstance(c, dict) and "key" in c]
 
 
 # The passes the judge audits — each has its own golden file (a subset of _FIXTURES: every
@@ -131,8 +160,7 @@ def get_background(pass_name: str) -> str:
     pass, read from its golden file. Empty string if unset. Unknown pass → UnknownEvalError."""
     if pass_name not in _BACKGROUND_PASSES:
         raise UnknownEvalError(pass_name)
-    path, _ = _FIXTURES[pass_name]
-    return _load(path).get("judge_background", "")
+    return _read_fixture(pass_name).get("judge_background", "")
 
 
 def save_background(pass_name: str, background: str) -> str:
@@ -144,7 +172,8 @@ def save_background(pass_name: str, background: str) -> str:
     if not isinstance(background, str) or not background.strip():
         raise CaseValidationError("judge_background must be a non-empty string")
     path, _ = _FIXTURES[pass_name]
-    data = _load(path)
-    data["judge_background"] = background
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-    return background
+    with _FIXTURE_LOCKS[pass_name]:
+        data = _load(path)
+        data["judge_background"] = background
+        _write(path, data)
+        return background

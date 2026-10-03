@@ -7,6 +7,8 @@ and validation refusals.
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 
 import pytest
 
@@ -101,3 +103,55 @@ def test_save_judge_case_routes_to_its_pass_file(golden_file) -> None:
 def test_save_judge_case_rejects_unknown_pass(golden_file) -> None:
     with pytest.raises(case_store.CaseValidationError):
         case_store.save_case("judge", {"key": "x", "metadata": {"pass": "nope"}, "given": {}})
+
+
+@pytest.mark.parametrize("second_edit", ["case", "background"])
+def test_overlapping_fixture_edits_preserve_both_changes(golden_file, monkeypatch, second_edit) -> None:
+    held, release, competing = Event(), Event(), Event()
+    write = case_store._write
+
+    def pause_first_write(path, data):
+        if not held.is_set():
+            held.set()
+            assert release.wait(5)
+        write(path, data)
+
+    monkeypatch.setattr(case_store, "_write", pause_first_write)
+
+    def save_case(key):
+        return case_store.save_case("scoring", {"key": key, "metadata": {}, "given": {}})
+
+    def save_second():
+        competing.set()
+        if second_edit == "case":
+            return save_case("c")
+        return case_store.save_background("scoring", "Updated brief — café")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(save_case, "b")
+        try:
+            assert held.wait(5)
+            second = pool.submit(save_second)
+            assert competing.wait(5)
+            assert not second.done()
+        finally:
+            release.set()
+        first.result(timeout=5)
+        second.result(timeout=5)
+    data = json.loads(golden_file.read_text(encoding="utf-8"))
+    assert data["_comment"] == "keep me"
+    assert [case["key"] for case in data["cases"]] == (["a", "b", "c"] if second_edit == "case" else ["a", "b"])
+    assert data["judge_background"] == ("keep me too" if second_edit == "case" else "Updated brief — café")
+
+
+def test_failed_publication_preserves_original_and_removes_temporary_file(golden_file, monkeypatch) -> None:
+    original = golden_file.read_bytes()
+
+    def fail_replace(_source, _target):
+        raise OSError("Synthetic replacement failure")
+
+    monkeypatch.setattr(case_store.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="Synthetic replacement failure"):
+        case_store.save_background("scoring", "Changed brief")
+    assert golden_file.read_bytes() == original
+    assert list(golden_file.parent.glob("*.tmp")) == []

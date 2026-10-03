@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useRequestScope } from "../../hooks/useRequestScope";
 
 import { fetchJudgeBackgrounds, saveJudgeBackground } from "../../api/evals";
 import { readProblem } from "../../api/problems";
@@ -16,7 +17,9 @@ export function JudgeBackgrounds(props: {
 }): ReactNode {
   const [items, setItems] = useState<JudgeBackground[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState<string | null>(null);
+  const [saving, setSaving] = useState<Set<string>>(new Set());
+  const pending = useRef(new Set<string>());
+  const requests = useRequestScope();
 
   useEffect(() => {
     let live = true;
@@ -31,21 +34,36 @@ export function JudgeBackgrounds(props: {
 
   async function save(passName: string) {
     const text = drafts[passName];
-    if (text === undefined) return;
-    setSaving(passName);
-    const resp = await saveJudgeBackground(passName, text);
-    setSaving(null);
-    if (resp.ok) {
+    if (text === undefined || pending.current.has(passName)) return;
+    const isCurrent = requests.capture();
+    pending.current.add(passName);
+    setSaving((current) => new Set(current).add(passName));
+    try {
+      const resp = await saveJudgeBackground(passName, text);
+      if (!isCurrent()) return;
+      if (!resp.ok) {
+        const detail = await readProblem(resp);
+        if (isCurrent()) props.onError(`Could not save ${passName} brief: ${detail ?? `HTTP ${resp.status}`}`);
+        return;
+      }
       const saved: JudgeBackground = await resp.json();
+      if (!isCurrent()) return;
       setItems((prev) => (prev ?? []).map((b) => (b.passName === passName ? saved : b)));
       setDrafts((prev) => {
+        if (prev[passName] !== text) return prev;
         const { [passName]: _drop, ...rest } = prev;
         return rest;
       });
       props.onToast(`${passName} brief saved — commit the golden file to keep it.`);
-    } else {
-      const detail = (await readProblem(resp)) ?? `HTTP ${resp.status}`;
-      props.onError(`Could not save ${passName} brief: ${detail}`);
+    } catch {
+      if (isCurrent()) props.onError(`Could not save ${passName} brief.`);
+    } finally {
+      pending.current.delete(passName);
+      if (isCurrent()) setSaving((current) => {
+        const next = new Set(current);
+        next.delete(passName);
+        return next;
+      });
     }
   }
 
@@ -72,6 +90,7 @@ export function JudgeBackgrounds(props: {
               <span className="eval-background-count">{b.caseCount} cases</span>
             </div>
             <textarea
+              aria-label={`${b.passName} judge brief`}
               className="eval-background-text"
               rows={4}
               value={draft ?? b.background}
@@ -81,10 +100,10 @@ export function JudgeBackgrounds(props: {
               <button
                 type="button"
                 className="secondary-button"
-                disabled={!dirty || saving === b.passName}
+                disabled={!dirty || saving.has(b.passName)}
                 onClick={() => void save(b.passName)}
               >
-                {saving === b.passName ? "Saving…" : "Save brief"}
+                {saving.has(b.passName) ? "Saving…" : "Save brief"}
               </button>
             </div>
           </div>
