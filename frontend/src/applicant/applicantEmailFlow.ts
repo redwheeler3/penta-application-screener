@@ -19,22 +19,33 @@ import type { ApplicantDraft } from "./types";
 
 type EmailFlowDependencies = {
   beginApplicationRead: () => RequestIsCurrent;
+  captureSession: () => RequestIsCurrent;
   updatePersistence: UpdateApplicantPersistence;
   setDraft: Dispatch<SetStateAction<ApplicantDraft>>;
 };
 
 export function createApplicantEmailFlow({
   beginApplicationRead,
-  updatePersistence,
-  setDraft,
+  captureSession,
+  updatePersistence: dispatch,
+  setDraft: dispatchDraft,
 }: EmailFlowDependencies) {
+  const inSession = captureSession();
+  const updatePersistence: UpdateApplicantPersistence = (patch) => {
+    if (inSession()) dispatch(patch);
+  };
+  const setDraft: Dispatch<SetStateAction<ApplicantDraft>> = (patch) => {
+    if (inSession()) dispatchDraft(patch);
+  };
   async function beginEmailChange(newEmail: string): Promise<void> {
+    if (!inSession()) return;
     updatePersistence({
       emailChangeStatus: "sending",
       emailChangeMessage: "",
       googleDisconnectedByEmailChange: false,
     });
     const response = await requestEmailChange(newEmail);
+    if (!inSession()) return;
     if (!response.ok) {
       const problem = await responseProblem(response);
       updatePersistence({ emailChangeMessage: problem.detail, emailChangeStatus: "error" });
@@ -63,7 +74,9 @@ export function createApplicantEmailFlow({
   }
 
   async function stopEmailChange(): Promise<boolean> {
+    if (!inSession()) return false;
     const response = await cancelEmailChange();
+    if (!inSession()) return false;
     if (!response.ok) {
       updatePersistence({ emailChangeMessage: await responseDetail(response), emailChangeStatus: "error" });
       return false;
@@ -73,6 +86,7 @@ export function createApplicantEmailFlow({
   }
 
   async function refreshEmailIdentity(): Promise<void> {
+    if (!inSession()) return;
     const isCurrent = beginApplicationRead();
     const response = await fetchApplication();
     if (!isCurrent()) return;

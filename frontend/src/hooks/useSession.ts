@@ -178,8 +178,14 @@ export function useSession(authRedirect: AuthRedirect) {
   }
 
   async function logout() {
-    await api.logout();
-    setUser(null);
+    try {
+      const response = await api.logout();
+      if (!response.ok) return "Could not sign out. Please try again.";
+      setUser(null);
+      return null;
+    } catch {
+      return "Could not sign out. Please try again.";
+    }
   }
 
   return {

@@ -13,6 +13,7 @@ vi.mock("./api", async (original) => ({
   fetchApplication: vi.fn(), fetchPendingCopy: vi.fn(), fetchApplicantOpenings: vi.fn(),
   saveApplication: vi.fn(), savePendingDraft: vi.fn(), submitGuestApplication: vi.fn(),
   requestReturnAccessLink: vi.fn(), logoutApplicant: vi.fn(),
+  withdrawApplication: vi.fn(), requestEmailChange: vi.fn(), deletePendingDraft: vi.fn(),
 }));
 
 function initialDraft() {
@@ -250,4 +251,88 @@ it("email confirmation updates identity without acknowledging unsaved essay edit
   expect(result.current.persistence.hasUnsavedChanges).toBe(true);
   expect(result.current.persistence.emailChangeStatus).toBe("confirmed");
   expect(result.current.persistence.googleDisconnectedByEmailChange).toBe(true);
+});
+
+it.each(["signOut", "withdrawApplication"] as const)("ignores a pending save after %s", async (exit) => {
+  const saved = deferred<Response>();
+  vi.mocked(api.saveApplication).mockReturnValue(saved.promise);
+  vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
+  vi.mocked(api.withdrawApplication).mockResolvedValue(new Response(null, { status: 204 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  let request!: Promise<void>;
+  act(() => { request = result.current.persistence.start("save"); });
+  await act(() => result.current.persistence[exit]());
+  await act(async () => { saved.resolve(Response.json(application(2))); await request; });
+  expect(result.current.persistence.authenticated).toBe(false);
+  expect(result.current.persistence.workingRevision).toBeNull();
+  expect(result.current.persistence.phase).toBe(exit === "signOut" ? "idle" : "withdrawn");
+});
+
+it("does not restore an email-change response after signing out", async () => {
+  const emailed = deferred<Response>();
+  vi.mocked(api.requestEmailChange).mockReturnValue(emailed.promise);
+  vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  let request!: Promise<void>;
+  act(() => { request = result.current.persistence.beginEmailChange("new@example.com"); });
+  await act(() => result.current.persistence.signOut());
+  await act(async () => {
+    emailed.resolve(Response.json({ emailSent: true, emailStatus: "sent", pendingEmail: "new@example.com" }));
+    await request;
+  });
+  expect(result.current.persistence.pendingEmailChange).toBeNull();
+  expect(result.current.persistence.emailChangeStatus).toBe("idle");
+});
+
+it("ignores a pending guest draft acknowledgement after discarding it", async () => {
+  vi.mocked(api.fetchApplication).mockResolvedValue(new Response(null, { status: 401 }));
+  const saved = deferred<Response>();
+  vi.mocked(api.savePendingDraft).mockReturnValue(saved.promise);
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.openingsLoaded).toBe(true));
+  let request!: Promise<void>;
+  act(() => { request = result.current.persistence.start("save"); });
+  await act(() => result.current.persistence.discardDraft());
+  await act(async () => {
+    saved.resolve(Response.json({ draftToken: "obsolete-token", emailSent: true, emailStatus: "sent" }));
+    await request;
+  });
+  expect(result.current.persistence.phase).toBe("idle");
+  expect(result.current.persistence.hasUnsavedChanges).toBe(true);
+});
+
+it("signs out without waiting for the public openings refresh", async () => {
+  vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  const openings = deferred<Response>();
+  vi.mocked(api.fetchApplicantOpenings).mockReturnValue(openings.promise);
+  await act(async () => { expect(await result.current.persistence.signOut()).toBe(true); });
+  expect(result.current.persistence.authenticated).toBe(false);
+  await act(async () => { openings.resolve(Response.json({ canStartApplication: true, openings: [] })); });
+});
+
+it("does not enter review when its save completes after session exit", async () => {
+  const saved = deferred<Response>();
+  vi.mocked(api.saveApplication).mockReturnValue(saved.promise);
+  vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  let request!: Promise<boolean>;
+  act(() => { request = result.current.persistence.saveForReview(); });
+  await act(() => result.current.persistence.signOut());
+  await act(async () => { saved.resolve(Response.json(application(2))); expect(await request).toBe(false); });
+  expect(result.current.persistence.authenticated).toBe(false);
+});
+
+it("keeps confirmed sign-out when the background openings refresh fails", async () => {
+  vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  vi.mocked(api.fetchApplicantOpenings).mockRejectedValue(new Error("Synthetic network failure"));
+  await act(async () => { expect(await result.current.persistence.signOut()).toBe(true); });
+  expect(result.current.persistence.authenticated).toBe(false);
+  expect(result.current.persistence.message).not.toBe("");
 });

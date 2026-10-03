@@ -2,7 +2,7 @@ import { type Dispatch, type SetStateAction, useEffect, useReducer, useRef } fro
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { retryForServiceRecovery } from "../serviceRecovery";
-import { useRequestScope } from "../hooks/useRequestScope";
+import { useRequestScope, type RequestIsCurrent } from "../hooks/useRequestScope";
 import {
   accessCredentialFromFragment,
   type ApplicationResponse,
@@ -49,6 +49,7 @@ export function useApplicantPersistence(
   const draftRef = useRef(draft);
   const applicationReads = useRequestScope();
   const pendingCopyReads = useRequestScope();
+  const sessionWork = useRequestScope();
   const linkStarted = useRef(false);
   const [persistence, updatePersistence] = useReducer(
     applicantPersistenceReducer,
@@ -139,10 +140,13 @@ export function useApplicantPersistence(
   }, [applicationId, openingsLoaded, workingRevision]);
 
   async function inspectLink(token: string): Promise<void> {
+    const inSession = sessionWork.capture();
     updatePersistence({ phase: "working" });
     const response = await inspectAccessLink(token);
+    if (!inSession()) return;
     if (!response.ok) return fail(response);
     const body = await linkBody(response);
+    if (!inSession()) return;
     updatePersistence({
       accessPurpose: body.purpose ?? "applicant_access",
       accessApplicationEmail: body.applicationEmail,
@@ -184,14 +188,19 @@ export function useApplicantPersistence(
     switchCurrent: boolean,
     rememberDevice: boolean,
   ): Promise<void> {
+    endSessionWork();
+    const inSession = sessionWork.capture();
     updatePersistence({ phase: "working" });
     const response = await openAccessLink(token, switchCurrent, rememberDevice);
+    if (!inSession()) return;
     if (!response.ok) return fail(response);
     const body = await linkBody(response);
+    if (!inSession()) return;
     if (body.state === "email_in_use" && body.applicationId != null) {
       onRememberDeviceChange(rememberDevice);
       updatePersistence({ applicationId: body.applicationId });
       await restoreApplication(body.applicationId);
+      if (!inSession()) return;
       updatePersistence({
         emailChangeMessage: "That email address already has an application, so nothing was changed.",
         emailChangeStatus: "error",
@@ -211,6 +220,7 @@ export function useApplicantPersistence(
       linkConflict: null,
     });
     await restoreApplication(body.applicationId);
+    if (!inSession()) return;
     if (body.purpose === "email_change") {
       updatePersistence({
         pendingEmailChange: null,
@@ -223,7 +233,7 @@ export function useApplicantPersistence(
 
   async function restoreApplication(knownId?: number): Promise<void> {
     const isCurrent = applicationReads.begin();
-    const response = await recoverInitialLoad(fetchApplication);
+    const response = await recoverInitialLoad(fetchApplication, isCurrent);
     if (response === null || !isCurrent()) return;
     if (response.status === 401) {
       if (knownId == null) {
@@ -279,13 +289,15 @@ export function useApplicantPersistence(
   }
 
   async function restorePublicOpenings(preserveSelection = false): Promise<void> {
-    const response = await recoverInitialLoad(fetchApplicantOpenings);
-    if (response === null) return;
+    const isCurrent = applicationReads.begin();
+    const response = await recoverInitialLoad(fetchApplicantOpenings, isCurrent);
+    if (response === null || !isCurrent()) return;
     if (!response.ok) return fail(response);
     const body = (await response.json()) as {
       canStartApplication: boolean;
       openings: ApplicantOpening[];
     };
+    if (!isCurrent()) return;
     updatePersistence((state) => ({
       openings: body.openings,
       openingIds: preserveSelection
@@ -298,8 +310,16 @@ export function useApplicantPersistence(
 
   async function recoverInitialLoad(
     request: () => Promise<Response>,
+    isCurrent: RequestIsCurrent,
   ): Promise<Response | null> {
-    if (stateRef.current.openingsLoaded) return request();
+    if (stateRef.current.openingsLoaded) {
+      try {
+        return await request();
+      } catch {
+        if (isCurrent()) updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
+        return null;
+      }
+    }
     updatePersistence({ loadRecoveryStage: null });
     try {
       const response = await retryForServiceRecovery(async () => {
@@ -308,11 +328,13 @@ export function useApplicantPersistence(
           throw new Error(`Application service unavailable (${attempt.status}).`);
         }
         return attempt;
-      }, (stage) => updatePersistence({ loadRecoveryStage: stage }));
-      updatePersistence({ loadRecoveryStage: null });
+      }, (stage) => {
+        if (isCurrent()) updatePersistence({ loadRecoveryStage: stage });
+      });
+      if (isCurrent()) updatePersistence({ loadRecoveryStage: null });
       return response;
     } catch {
-      updatePersistence({
+      if (isCurrent()) updatePersistence({
         loadRecoveryStage: "failed",
         message: TECH_SUPPORT_ERROR_MESSAGE,
         phase: "load_error",
@@ -322,10 +344,13 @@ export function useApplicantPersistence(
   }
 
   async function reconcilePendingCopy(choice: "saved" | "guest"): Promise<void> {
+    const inSession = sessionWork.capture();
     updatePersistence({ phase: "working" });
     const response = await reconcilePendingCopyRequest(choice);
+    if (!inSession()) return;
     if (!response.ok) {
       const problem = await responseProblem(response);
+      if (!inSession()) return;
       if (problem.code === "pending_copy_not_found") {
         updatePersistence({ pendingCopy: null, phase: "idle" });
         await restoreApplication(applicationId ?? undefined);
@@ -358,20 +383,24 @@ export function useApplicantPersistence(
   }
 
   async function keepCurrentApplication(): Promise<void> {
+    endSessionWork();
     updatePersistence({ linkConflict: null, accessToken: null });
     await restoreApplication();
   }
 
   async function emailNewAccessLink(): Promise<void> {
     if (!accessToken) return;
+    const inSession = sessionWork.capture();
     updatePersistence({ phase: "working" });
     const response = await regenerateAccessLink(accessToken);
+    if (!inSession()) return;
     if (!response.ok) return fail(response);
     const body = (await response.json()) as {
       targetAvailable: boolean;
       emailSent: boolean;
       emailStatus: EmailSendStatus;
     };
+    if (!inSession()) return;
     if (!body.targetAvailable) {
       updatePersistence({ linkConflict: null, phase: "link_invalid" });
       return;
@@ -394,7 +423,7 @@ export function useApplicantPersistence(
   }
 
   async function discardDraft(): Promise<void> {
-    if (pendingDraftToken) await deletePendingDraft(pendingDraftToken);
+    endSessionWork();
     if (applicationId != null) clearApplicationDraft(applicationId);
     updatePersistence({
       pendingDraftToken: null,
@@ -402,10 +431,13 @@ export function useApplicantPersistence(
       savedAnswers: null,
       phase: "idle",
     });
+    if (pendingDraftToken) await deletePendingDraft(pendingDraftToken);
   }
 
   async function fail(response: Response): Promise<void> {
+    const inSession = sessionWork.capture();
     const problem = await responseProblem(response);
+    if (!inSession()) return;
     const { applicationId } = stateRef.current;
     if (["applications_closed", "opening_archived", "opening_selection_required"].includes(
       problem.code ?? "",
@@ -414,6 +446,7 @@ export function useApplicantPersistence(
         if (!(await refreshLifecycleState())) return;
       } else await restorePublicOpenings(true);
     }
+    if (!inSession()) return;
     updatePersistence({ message: problem.detail,
       phase: problem.code === "stale_application" ? "stale_copy" : "error" });
   }
@@ -449,20 +482,28 @@ export function useApplicantPersistence(
     pendingCopyReads.invalidate();
   }
 
+  function endSessionWork(): void {
+    sessionWork.reset();
+    invalidateApplicationReads();
+  }
+
   const saveFlow = createApplicantSaveFlow({
     stateRef,
     draftRef,
     invalidateReads: invalidateApplicationReads,
+    captureSession: sessionWork.capture,
     updatePersistence,
     fail,
   });
   const emailFlow = createApplicantEmailFlow({
     beginApplicationRead: applicationReads.begin,
+    captureSession: sessionWork.capture,
     updatePersistence,
     setDraft,
   });
   const withdrawalFlow = createApplicantWithdrawalFlow({
-    invalidateReads: invalidateApplicationReads,
+    endSessionWork,
+    captureSession: sessionWork.capture,
     updatePersistence,
     fail,
     restorePublicOpenings,

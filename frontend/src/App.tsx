@@ -68,6 +68,11 @@ export function App(props: { authRedirect: AuthRedirect }) {
   // errors/warnings persist until dismissed). See useToasts.
   const { toasts, showToast, showError, showWarning, dismissToast } = useToasts();
 
+  async function signOut(): Promise<void> {
+    const error = await logout();
+    if (error) showError(error);
+  }
+
   // The applications-list view state (full pool + client-derived filter/sort/facets).
   // See useApplications; the selected candidate detail stays here (cross-cutting).
   const {
@@ -345,7 +350,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
         <div className="topnav-inner penta-header-inner">
           <BrandLockup />
           {user ? (
-            <HeaderAccount email={user.email} role={user.role} onSignOut={logout} />
+            <HeaderAccount email={user.email} role={user.role} onSignOut={() => void signOut()} />
           ) : null}
         </div>
       </header>

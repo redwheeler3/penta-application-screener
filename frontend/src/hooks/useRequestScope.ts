@@ -40,5 +40,10 @@ export function useRequestScope(key: string | number | boolean | null = null) {
     invalidate(): void {
       scope.current.request += 1;
     },
+    reset(): void {
+      // A session transition invalidates captured writes as well as ordered reads.
+      scope.current.generation += 1;
+      scope.current.request += 1;
+    },
   }), []);
 }

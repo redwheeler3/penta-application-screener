@@ -4,6 +4,7 @@ import * as api from "../../api/vacancySubscriptions";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import type { VacancySubscription, VacancySubscriptionReport } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
@@ -20,60 +21,74 @@ export function VacancyNotificationsPanel(props: {
   const [unitSizes, setUnitSizes] = useState<number[]>([]);
   const [source, setSource] = useState("Tech support request");
   const [subscription, setSubscription] = useState<VacancySubscription | null>(null);
-  const [lookedUp, setLookedUp] = useState(false);
+  const [lookedUpEmail, setLookedUpEmail] = useState<string | null>(null);
+  const emailKey = email.trim().toLowerCase();
+  const requests = useRequestScope(emailKey);
+  const lookedUp = lookedUpEmail === emailKey;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   async function lookup(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!email.trim() || busy) return;
+    const isCurrent = requests.begin();
     setBusy(true);
     setMessage("");
     try {
-      const response = await api.lookupVacancySubscription(email);
+      const response = await api.lookupVacancySubscription(emailKey);
+      if (!isCurrent()) return;
       if (!response.ok) {
-        props.onError((await readProblem(response)) ?? "Could not look up that address.");
+        const problem = await readProblem(response);
+        if (isCurrent()) props.onError(problem ?? "Could not look up that address.");
         return;
       }
       const result = (await response.json()) as api.VacancySubscriptionLookup;
+      if (!isCurrent()) return;
       setSubscription(result.subscription);
       setUnitSizes(result.subscription?.unitSizes ?? []);
-      setLookedUp(true);
+      setLookedUpEmail(emailKey);
       setMessage(result.subscription ? "Active subscription found." : "No active subscription found.");
     } catch {
-      props.onError("Could not look up that address.");
+      if (isCurrent()) props.onError("Could not look up that address.");
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
   async function save(): Promise<void> {
-    if (!email.trim() || unitSizes.length === 0 || !source.trim() || busy) return;
+    if (lookedUpEmail === null || !lookedUp || unitSizes.length === 0 || !source.trim() || busy) return;
+    const isCurrent = requests.capture();
     setBusy(true);
     try {
-      const response = await api.saveVacancySubscription(email, unitSizes, source.trim());
+      const response = await api.saveVacancySubscription(lookedUpEmail, unitSizes, source.trim());
+      if (!isCurrent()) return;
       if (!response.ok) {
-        props.onError((await readProblem(response)) ?? "Could not save that subscription.");
+        const problem = await readProblem(response);
+        if (isCurrent()) props.onError(problem ?? "Could not save that subscription.");
         return;
       }
       const result = (await response.json()) as api.VacancySubscriptionLookup;
+      if (!isCurrent()) return;
       setSubscription(result.subscription);
       setMessage("Subscription saved.");
       void reportResource.reload();
     } catch {
-      props.onError("Could not save that subscription.");
+      if (isCurrent()) props.onError("Could not save that subscription.");
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
   async function remove(): Promise<void> {
-    if (!subscription || busy) return;
+    if (!subscription || !lookedUp || busy) return;
+    const isCurrent = requests.capture();
     setBusy(true);
     try {
-      const response = await api.deleteVacancySubscription(email);
+      const response = await api.deleteVacancySubscription(subscription.email);
+      if (!isCurrent()) return;
       if (!response.ok) {
-        props.onError((await readProblem(response)) ?? "Could not delete that subscription.");
+        const problem = await readProblem(response);
+        if (isCurrent()) props.onError(problem ?? "Could not delete that subscription.");
         return;
       }
       setSubscription(null);
@@ -81,9 +96,9 @@ export function VacancyNotificationsPanel(props: {
       setMessage("Subscription deleted.");
       void reportResource.reload();
     } catch {
-      props.onError("Could not delete that subscription.");
+      if (isCurrent()) props.onError("Could not delete that subscription.");
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
@@ -130,7 +145,9 @@ export function VacancyNotificationsPanel(props: {
             placeholder="person@example.com"
             onChange={(event) => {
               setEmail(event.target.value);
-              setLookedUp(false);
+              requests.invalidate();
+              setBusy(false);
+              setLookedUpEmail(null);
               setSubscription(null);
               setUnitSizes([]);
               setMessage("");

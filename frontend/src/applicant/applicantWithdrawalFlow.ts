@@ -5,26 +5,32 @@ import {
 } from "./applicantPersistenceState";
 import { logoutApplicant, withdrawApplication } from "./api";
 import { clearApplicantStorage } from "./draftStorage";
+import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 type WithdrawalFlowDependencies = {
   updatePersistence: UpdateApplicantPersistence;
-  invalidateReads: () => void;
+  endSessionWork: () => void;
+  captureSession: () => RequestIsCurrent;
   fail: (response: Response) => Promise<void>;
   restorePublicOpenings: () => Promise<void>;
 };
 
 export function createApplicantWithdrawalFlow({
   updatePersistence,
-  invalidateReads,
+  endSessionWork,
+  captureSession,
   fail,
   restorePublicOpenings,
 }: WithdrawalFlowDependencies) {
   async function withdraw(): Promise<boolean> {
-    invalidateReads();
+    endSessionWork();
+    const inSession = captureSession();
     updatePersistence({ withdrawalStatus: "working", withdrawalMessage: "" });
     const response = await withdrawApplication();
+    if (!inSession()) return false;
     if (!response.ok) {
       const problem = await responseProblem(response);
+      if (!inSession()) return false;
       if (problem.code === "unauthorized") {
         updatePersistence({
           message: "Your application session has ended.",
@@ -37,6 +43,7 @@ export function createApplicantWithdrawalFlow({
       return false;
     }
     clearApplicantStorage();
+    endSessionWork();
     updatePersistence((state) => resetApplicantSession(state, "withdrawn"));
     return true;
   }
@@ -46,15 +53,18 @@ export function createApplicantWithdrawalFlow({
   }
 
   async function signOut(): Promise<boolean> {
-    invalidateReads();
+    endSessionWork();
+    const inSession = captureSession();
     const response = await logoutApplicant();
+    if (!inSession()) return false;
     if (!response.ok) {
       await fail(response);
       return false;
     }
     clearApplicantStorage();
+    endSessionWork();
     updatePersistence((state) => resetApplicantSession(state));
-    await restorePublicOpenings();
+    void restorePublicOpenings();
     return true;
   }
 

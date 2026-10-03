@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { APPLICATION_ACCESS_EMAIL_MESSAGE } from "./accessMessages";
@@ -32,15 +33,21 @@ type SaveFlowDependencies = {
   stateRef: RefObject<ApplicantPersistenceState>;
   draftRef: RefObject<ApplicantDraft>;
   invalidateReads: () => void;
+  captureSession: () => RequestIsCurrent;
   updatePersistence: UpdateApplicantPersistence;
   fail: (response: Response) => Promise<void>;
 };
 
 /** Saving, review preparation, and submission share one snapshot acknowledgement rule. */
 export function createApplicantSaveFlow({
-  stateRef, draftRef, updatePersistence, invalidateReads, fail,
+  stateRef, draftRef, updatePersistence: dispatch, invalidateReads, captureSession, fail,
 }: SaveFlowDependencies) {
+  const inSession = captureSession();
+  const updatePersistence: UpdateApplicantPersistence = (patch) => {
+    if (inSession()) dispatch(patch);
+  };
   async function start(intent: DraftIntent): Promise<void> {
+    if (!inSession()) return;
     const { applicationId, openingIds, pendingDraftToken } = stateRef.current;
     invalidateReads();
     updatePersistence({ lastIntent: intent, message: "", phase: "working" });
@@ -60,12 +67,14 @@ export function createApplicantSaveFlow({
       pendingDraftToken,
       openingIds,
     );
+    if (!inSession()) return;
     if (!response.ok) return fail(response);
     const body = (await response.json()) as {
       draftToken: string;
       emailSent: boolean;
       emailStatus: EmailSendStatus;
     };
+    if (!inSession()) return;
     updatePersistence({
       savedAnswers: snapshot,
       pendingDraftToken: body.draftToken,
@@ -79,14 +88,17 @@ export function createApplicantSaveFlow({
   }
 
   async function saveForReview(): Promise<boolean> {
+    if (!inSession()) return false;
     if (stateRef.current.applicationId == null) return true;
     updatePersistence({ lastIntent: "save", message: "", phase: "working" });
     const saved = await persistAuthenticatedApplication("save");
+    if (!inSession()) return false;
     if (saved) updatePersistence({ phase: "idle" });
     return saved;
   }
 
   async function prepareGuestReview(): Promise<boolean> {
+    if (!inSession()) return false;
     const { applicationId, openingIds } = stateRef.current;
     if (applicationId != null) return true;
     updatePersistence({ lastIntent: "submit", message: "", phase: "working" });
@@ -95,6 +107,7 @@ export function createApplicantSaveFlow({
       workingAnswers(draftRef.current),
       openingIds,
     );
+    if (!inSession()) return false;
     if (!response.ok) {
       await fail(response);
       return false;
@@ -104,6 +117,7 @@ export function createApplicantSaveFlow({
       emailSent: boolean;
       emailStatus: EmailSendStatus | null;
     };
+    if (!inSession()) return false;
     if (!body.canSubmit) {
       updatePersistence({ collisionEmail: email });
       if (body.emailStatus === "failed") {
@@ -118,6 +132,7 @@ export function createApplicantSaveFlow({
   }
 
   async function persistGuestApplication(): Promise<void> {
+    if (!inSession()) return;
     const { openingIds, pendingDraftToken, openings } = stateRef.current;
     const snapshot = workingSnapshot(draftRef.current, openingIds);
     const response = await submitGuestApplication(
@@ -126,11 +141,13 @@ export function createApplicantSaveFlow({
       openingIds,
       pendingDraftToken,
     );
+    if (!inSession()) return;
     if (!response.ok) return fail(response);
     updatePersistence({ savedAnswers: snapshot, message: "", phase: "submitted" });
   }
 
   async function persistAuthenticatedApplication(intent: DraftIntent): Promise<boolean> {
+    if (!inSession()) return false;
     const { applicationId, workingRevision, openingIds, openings } = stateRef.current;
     invalidateReads();
     if (workingRevision == null) {
@@ -146,11 +163,13 @@ export function createApplicantSaveFlow({
           workingRevision,
         )
       : await saveApplication(workingAnswers(draftRef.current), openingIds, workingRevision);
+    if (!inSession()) return false;
     if (!response.ok) {
       await fail(response);
       return false;
     }
     const body = (await response.json()) as ApplicationResponse;
+    if (!inSession()) return false;
     // Reads started during this save can still describe the pre-save revision.
     invalidateReads();
     updatePersistence({
@@ -169,6 +188,7 @@ export function createApplicantSaveFlow({
   }
 
   async function emailReturnLink(): Promise<boolean> {
+    if (!inSession()) return false;
     const { openingIds, workingRevision } = stateRef.current;
     invalidateReads();
     const snapshot = workingSnapshot(draftRef.current, openingIds);
@@ -177,6 +197,7 @@ export function createApplicantSaveFlow({
       openingIds,
       workingRevision,
     );
+    if (!inSession()) return false;
     if (!response.ok) {
       await fail(response);
       return false;
@@ -185,6 +206,7 @@ export function createApplicantSaveFlow({
       currentAnswersSaved: boolean;
       emailStatus: EmailSendStatus;
     };
+    if (!inSession()) return false;
     if (body.emailStatus === "failed") return false;
     if (body.currentAnswersSaved) {
       updatePersistence({ savedAnswers: snapshot });
@@ -193,15 +215,18 @@ export function createApplicantSaveFlow({
   }
 
   async function requestEntryLink(email: string): Promise<boolean> {
+    if (!inSession()) return false;
     const { openingIds } = stateRef.current;
     const working = workingAnswers(draftRef.current);
     const answers = { ...working, applicant: { ...working.applicant, email: email.trim().toLowerCase() } };
     const response = await requestReturnAccessLink(answers, openingIds, null);
+    if (!inSession()) return false;
     if (!response.ok) {
       await fail(response);
       return false;
     }
     const body = (await response.json()) as { emailStatus: EmailSendStatus };
+    if (!inSession()) return false;
     if (body.emailStatus === "failed") {
       updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
       return false;
@@ -216,6 +241,7 @@ export function createApplicantSaveFlow({
       updatePersistence({ message: APPLICATION_ACCESS_EMAIL_MESSAGE, phase: "access_link_sent" });
       return;
     }
+    if (!inSession()) return;
     updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
   }
 
