@@ -71,6 +71,11 @@ requests so a late initial response cannot overwrite the new run's results.
 `hooks/useSharedSettings.ts` keeps the accepted server configuration separate from its editable
 draft. Save completion acknowledges the submitted snapshot and preserves edits made while the
 request was in flight. Older settings reads cannot roll back a completed save.
+`hooks/useEligibilityRules.ts` applies the same acknowledgement rule to both eligibility editors.
+Each draft belongs to its opening and rule kind; save and reset share one busy state, and a late
+response from an opening the member has left cannot change the current editor. Private-note
+autosaves run through a serial queue in `CandidateNotes.tsx`; even a revert waits for earlier
+writes before comparing against the last acknowledged server value.
 
 Applicant persistence is orchestrated by `useApplicantPersistence.ts`; `applicantPersistenceState.ts`
 defines its state, defaults, and typed partial updates. Each workflow updates related fields in
@@ -102,6 +107,9 @@ Saving a draft changes only the working copy. Submitting validates the answers, 
 onto the committee-visible columns, records a version, and updates the selected
 `ApplicationParticipation` rows. Committee pool queries require an opening and read only its
 submitted participants, so private drafts cannot accidentally enter screening.
+Applicant save, submit, and authenticated return-link requests check the working revision with a
+conditional database update that holds the write lock through the working-copy save and commit.
+The check therefore covers overlapping requests as well as an already-stale browser tab.
 
 Openings are independent records. Their dates derive upcoming, open, and closed phases; a permanent
 committee decision archives an opening. Applicants can join open openings, withdraw from open or
@@ -109,6 +117,8 @@ closed openings, and cannot change archived participation. The committee selects
 archived openings remain selectable while they retain a non-selected applicant. A selected
 household remains visible in the opening where it was selected, but neither enters its AI pool nor
 keeps that opening in the selector by itself.
+Opening decisions take a database write lock and refresh the opening before reading participants.
+A competing decision cannot replace an archived outcome; repeating the same decision is idempotent.
 
 Submitted applications flow directly into the database and become available to the committee.
 The committee client refreshes its lightweight application and workflow reads on focus, on
@@ -155,6 +165,10 @@ that token. A newer credential request supersedes an older queued one for the sa
 purpose.
 `services/email/retry_intents.py` defines the credential-free JSON shapes shared by initial sends,
 opening notifications, and the outbox worker. The ledger stores those same shapes as JSON.
+Initial sends and retries reserve attempts atomically. The existing attempt timestamp supplies a
+10-minute lease and the attempt counter guards completion. Outbox workers claim an intent before
+rebuilding its credential, commit that credential before network I/O, and cannot overwrite a
+cancelled intent or a newer attempt's outcome with a late provider response.
 
 Accepted deliveries clear any targetless recipient address from the application ledger. An accepted
 list-only vacancy delivery is deleted with its consumed subscription. Queued and unexpectedly failed
@@ -241,6 +255,9 @@ Each pass owns:
 Application cache keys depend on semantic model identity, prompt version, reasoning level, and
 application content—not on an equivalent provider route. Ranking freshness adds the eligible
 pool and every rank-chain pass identity.
+Screening and dimension scoring capture their cache keys alongside the model inputs before calls
+start. Result persistence uses those captured keys, so an applicant edit during a run leaves the
+answer attached to the content actually analyzed and keeps the newer content uncached.
 
 The main AI modules are:
 

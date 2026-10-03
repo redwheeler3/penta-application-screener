@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CommitteeNote } from "../../types";
+import { deferred } from "../../testSupport";
 import { CandidateNotes } from "./CandidateNotes";
 
 const committeeNote: CommitteeNote = {
@@ -35,6 +36,47 @@ function renderNotes(overrides: Partial<ComponentProps<typeof CandidateNotes>> =
 }
 
 describe("CandidateNotes", () => {
+  it("queues a revert behind an in-flight save before showing Saved", async () => {
+    const first = deferred<boolean>();
+    const reverted = deferred<boolean>();
+    const save = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(reverted.promise);
+    renderNotes({ onSavePrivateNote: save });
+    const input = screen.getByRole("textbox", { name: "My private notes" });
+    fireEvent.change(input, { target: { value: "Changed" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    fireEvent.change(input, { target: { value: "Private context" } });
+    fireEvent.blur(input);
+    expect(save).toHaveBeenCalledOnce();
+    await act(async () => { first.resolve(true); });
+    expect(save).toHaveBeenLastCalledWith(42, "Private context");
+    expect(screen.getByText("Saving…")).toBeInTheDocument();
+    await act(async () => { reverted.resolve(true); });
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(input).toHaveValue("Private context");
+  });
+
+  it("serializes different note edits and deduplicates repeated blur saves", async () => {
+    const first = deferred<boolean>();
+    const last = deferred<boolean>();
+    const save = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(last.promise);
+    renderNotes({ onSavePrivateNote: save });
+    const input = screen.getByRole("textbox", { name: "My private notes" });
+    fireEvent.change(input, { target: { value: "First edit" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    fireEvent.change(input, { target: { value: "Last edit" } });
+    fireEvent.blur(input);
+    fireEvent.blur(input);
+    expect(save).toHaveBeenCalledOnce();
+    await act(async () => { first.resolve(true); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(42, "Last edit");
+    await act(async () => { last.resolve(true); });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
   it("keeps private autosave and committee publishing visibly separate", async () => {
     const user = userEvent.setup();
     const callbacks = renderNotes();

@@ -2,6 +2,7 @@ import { LockKeyhole, Plus, UsersRound } from "lucide-react";
 import { type FormEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { formatPacificDateTime } from "../../format";
 import type { CommitteeNote } from "../../types";
+import { useRequestScope } from "../../hooks/useRequestScope";
 
 const MAX_PRIVATE_NOTE_HEIGHT_PX = 150;
 type NotesTab = "private" | "committee";
@@ -31,6 +32,8 @@ export function CandidateNotes(props: {
   const pendingPrivateSave = useRef<ReturnType<typeof setTimeout> | null>(null);
   const privateRevision = useRef(0);
   const savedPrivateNote = useRef(props.privateNote);
+  const privateSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const privateRequests = useRequestScope(props.applicationId);
 
   useEffect(
     () => () => {
@@ -48,18 +51,23 @@ export function CandidateNotes(props: {
   }, [privateNote, activeTab]);
 
   function persistPrivateNote(note: string, revision: number) {
-    if (props.readOnly || note === savedPrivateNote.current) {
-      if (revision === privateRevision.current) setPrivateStatus("saved");
-      return;
-    }
+    if (props.readOnly) return;
+    const inScope = privateRequests.capture();
     setPrivateStatus("saving");
-    props.onSavePrivateNote(props.applicationId, note).then((saved) => {
-      if (revision !== privateRevision.current) return;
-      if (saved) {
-        savedPrivateNote.current = note;
-        setPrivateStatus("saved");
-      } else {
-        setPrivateStatus("error");
+    privateSaveQueue.current = privateSaveQueue.current.then(async () => {
+      // Compare after earlier writes finish. Reverting to a previously saved value
+      // still needs a write if an in-flight edit has since changed the server.
+      let saved = note === savedPrivateNote.current;
+      if (!saved) {
+        try {
+          saved = await props.onSavePrivateNote(props.applicationId, note);
+        } catch {
+          saved = false;
+        }
+      }
+      if (saved) savedPrivateNote.current = note;
+      if (inScope() && revision === privateRevision.current) {
+        setPrivateStatus(saved ? "saved" : "error");
       }
     });
   }

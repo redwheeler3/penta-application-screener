@@ -1,7 +1,6 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode } from "react";
 import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS, ELIGIBILITY_NUMERIC_FIELDS } from "../../constants";
 import * as api from "../../api/settings";
-import { readProblem } from "../../api/problems";
 import { CheckGroup } from "./CheckToggles";
 import { EmploymentRequirementField } from "./EmploymentRequirementField";
 import { NumberInput } from "../shared/NumberInput";
@@ -9,6 +8,7 @@ import { PetLimitsFields } from "./PetLimitsFields";
 import type { EligibilityRules } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 import { useFetchResource } from "../../hooks/useFetchResource";
+import { useEligibilityRules } from "../../hooks/useEligibilityRules";
 
 // A member's own screening rules: the numeric eligibility thresholds plus which rules
 // run. Self-contained — it fetches its rules on mount (like AccessPanel), edits a local
@@ -21,72 +21,18 @@ export function EligibilitySettingsPanel(props: {
   onError: (message: string) => void;
   onRulesUpdated: () => void;
 }): ReactNode {
-  const rules = useFetchResource(
-    async () => {
-      const [mine, committeeDefault] = await Promise.all([
-        api.fetchEligibilityRules(props.openingId),
-        api.fetchCommitteeDefaultRules(props.openingId),
-      ]);
-      return { draft: mine.rules, isDefault: mine.isDefault, committeeDefault };
-    },
-    {
-      reloadKey: props.openingId,
-      onError: () => props.onError("Could not load your eligibility rules."),
-    },
-  );
-  const draft = rules.data?.draft ?? null;
-  const isDefault = rules.data?.isDefault ?? true;
-  // The divergence display compares against the current committee default on every load;
-  // no separate diff is persisted.
-  const committeeDefault = rules.data?.committeeDefault ?? null;
-  const [saving, setSaving] = useState(false);
-  const [savedTick, setSavedTick] = useState(false);
-  const [resetting, setResetting] = useState(false);
+  const rules = useEligibilityRules({
+    openingId: props.openingId,
+    kind: "member",
+    onError: props.onError,
+    onUpdated: props.onRulesUpdated,
+  });
+  const { draft, isDefault, committeeDefault, setDraft, saving, savedTick } = rules;
   const checks = useFetchResource(api.fetchEligibilityCheckCatalog);
 
-  function setDraft(next: EligibilityRules): void {
-    rules.setData((current) => current ? { ...current, draft: next } : current);
-  }
-
-  function setEffectiveRules(next: EligibilityRules, nextIsDefault: boolean): void {
-    rules.setData((current) => current
-      ? { ...current, draft: next, isDefault: nextIsDefault }
-      : current);
-  }
-
-  async function save(event: React.FormEvent) {
+  function save(event: React.FormEvent) {
     event.preventDefault();
-    if (!draft || saving) return;
-    setSaving(true);
-    const response = await api.saveEligibilityRules(props.openingId, draft);
-    setSaving(false);
-    if (!response.ok) {
-      // The server validates cross-field constraints (e.g. incomeMax >= incomeMin) and
-      // returns a problem+json detail; surface it rather than a generic message.
-      props.onError((await readProblem(response)) ?? "Your eligibility rules could not be saved.");
-      return;
-    }
-    const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
-    setEffectiveRules(payload.rules, payload.isDefault);
-    props.onRulesUpdated();
-    // Transient "Saved" confirmation, matching CommitteeDefaultsPanel.
-    setSavedTick(true);
-    setTimeout(() => setSavedTick(false), 2000);
-  }
-
-  async function reset() {
-    if (resetting) return;
-    setResetting(true);
-    const response = await api.resetEligibilityRules(props.openingId);
-    setResetting(false);
-    if (!response.ok) {
-      props.onError((await readProblem(response)) ?? "Could not reset to the committee default.");
-      return;
-    }
-    // Server returns the now-effective (default) rules; adopt them and drop divergence.
-    const payload: { rules: EligibilityRules; isDefault: boolean } = await response.json();
-    setEffectiveRules(payload.rules, payload.isDefault);
-    props.onRulesUpdated();
+    void rules.save();
   }
 
   // Flip a check on/off in this member's own disabled set. Guarded on `draft` (the render
@@ -118,8 +64,9 @@ export function EligibilitySettingsPanel(props: {
             <DivergencePanel
               mine={draft}
               committeeDefault={committeeDefault}
-              onReset={reset}
-              resetting={resetting}
+              onReset={rules.reset}
+              resetting={rules.resetting}
+              busy={rules.busy}
             />
           )}
           {ELIGIBILITY_GENERAL_NUMERIC_FIELDS.map((f) => (
@@ -173,7 +120,7 @@ export function EligibilitySettingsPanel(props: {
             )}
           </div>
           <div className="settings-actions">
-            <button className="primary-button" type="submit" disabled={saving}>
+            <button className="primary-button" type="submit" disabled={rules.busy}>
               {saving ? "Saving…" : savedTick ? "Saved" : "Save eligibility rules"}
             </button>
           </div>
@@ -207,6 +154,7 @@ function DivergencePanel(props: {
   committeeDefault: EligibilityRules | null;
   onReset: () => void;
   resetting: boolean;
+  busy: boolean;
 }): ReactNode {
   const { mine, committeeDefault, onReset, resetting } = props;
   const diffs = committeeDefault
@@ -238,7 +186,7 @@ function DivergencePanel(props: {
             ? " They currently match the default."
             : " Reset drops your copy and follows the committee default again."}
         </p>
-        <button type="button" className="secondary-button" onClick={onReset} disabled={resetting}>
+        <button type="button" className="secondary-button" onClick={onReset} disabled={props.busy}>
           {resetting ? "Resetting" : "Reset to committee default"}
         </button>
       </div>

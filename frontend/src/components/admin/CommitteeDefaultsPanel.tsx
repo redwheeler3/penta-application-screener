@@ -1,9 +1,9 @@
-import { type ReactNode, type SyntheticEvent, useState } from "react";
+import { type ReactNode, type SyntheticEvent } from "react";
 
 import * as api from "../../api/settings";
 import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS } from "../../constants";
-import { readProblem } from "../../api/problems";
 import { useFetchResource } from "../../hooks/useFetchResource";
+import { useEligibilityRules } from "../../hooks/useEligibilityRules";
 import type { EligibilityRules } from "../../types";
 import { CheckGroup } from "./CheckToggles";
 import { EmploymentRequirementField } from "./EmploymentRequirementField";
@@ -17,34 +17,17 @@ export function CommitteeDefaultsPanel(props: {
   onEligibilityChanged: () => void;
 }): ReactNode {
   const checks = useFetchResource(api.fetchEligibilityCheckCatalog);
-  const rules = useFetchResource(
-    () => api.fetchCommitteeDefaultRules(props.openingId),
-    {
-      reloadKey: props.openingId,
-      onError: () => props.onError("Could not load the committee default rules."),
-    },
-  );
-  const draft = rules.data;
-  const setDraft = rules.setData;
-  const [saving, setSaving] = useState(false);
-  const [savedTick, setSavedTick] = useState(false);
+  const rules = useEligibilityRules({
+    openingId: props.openingId,
+    kind: "committee-default",
+    onError: props.onError,
+    onUpdated: props.onEligibilityChanged,
+  });
+  const { draft, setDraft, saving, savedTick } = rules;
 
-  async function save(event: SyntheticEvent<HTMLFormElement>) {
+  function save(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft || saving) return;
-    setSaving(true);
-    const response = await api.saveCommitteeDefaultRules(props.openingId, draft);
-    setSaving(false);
-    if (!response.ok) {
-      props.onError(
-        (await readProblem(response)) ?? "The committee default rules could not be saved.",
-      );
-      return;
-    }
-    setDraft(await response.json());
-    props.onEligibilityChanged();
-    setSavedTick(true);
-    setTimeout(() => setSavedTick(false), 2000);
+    void rules.save();
   }
 
   const set = (patch: Partial<EligibilityRules>) =>
@@ -122,7 +105,7 @@ export function CommitteeDefaultsPanel(props: {
             )}
           </div>
           <div className="settings-actions">
-            <button className="primary-button" type="submit" disabled={saving}>
+            <button className="primary-button" type="submit" disabled={rules.busy}>
               {saving ? "Saving…" : savedTick ? "Saved" : "Save committee defaults"}
             </button>
           </div>
