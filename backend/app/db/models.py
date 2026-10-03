@@ -340,6 +340,8 @@ class Opening(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    publication_request_id: Mapped[str | None] = mapped_column(String(36), unique=True)
+    publication_request: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     intake_mode: Mapped[OpeningIntakeMode] = mapped_column(
         Enum(OpeningIntakeMode, values_callable=enum_values),
         default=OpeningIntakeMode.APPLICATIONS,

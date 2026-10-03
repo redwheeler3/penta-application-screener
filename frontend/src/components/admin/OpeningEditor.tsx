@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
 import * as api from "../../api/openings";
-import { problemMessage, readProblem, readProblemBody } from "../../api/problems";
+import { problemMessage, readProblemBody } from "../../api/problems";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import type { Opening, OpeningCreate, OpeningCommit, OpeningDetails, OpeningPreview, OpeningUpdated, OpeningWrite } from "../../types";
 import { NumberInput } from "../shared/NumberInput";
@@ -53,6 +53,8 @@ export function OpeningEditor(props: {
   currentDraft.current = draft;
   const pending = useRef(false);
   const [publishing, setPublishing] = useState(false);
+  const [publicationUnconfirmed, setPublicationUnconfirmed] = useState(false);
+  const publicationRequestId = useRef<string | null>(null);
   const [reloading, setReloading] = useState(false);
   const [conflict, setConflict] = useState(false);
 
@@ -80,12 +82,19 @@ export function OpeningEditor(props: {
     if (!launchPreview) return;
     const isCurrent = previewRequests.capture();
     setPublishing(true);
-    const response = await api.createOpening(createPayload(payload()), launchPreview.audienceCount);
+    publicationRequestId.current ??= crypto.randomUUID();
+    const response = await api.createOpening(createPayload(payload()), launchPreview.audienceCount, publicationRequestId.current);
     if (!isCurrent()) return;
     if (!response.ok) {
-      if (response.status === 409) setLaunchPreview(null);
-      const problem = await readProblem(response);
-      if (isCurrent()) props.onError(problem ?? "Could not create that opening.");
+      const problem = await readProblemBody(response);
+      if (!isCurrent()) return;
+      if (response.status >= 500 || problem?.code === "opening_publication_changed") setPublicationUnconfirmed(true);
+      else if (problem?.code === "opening_audience_changed") {
+        setLaunchPreview(null);
+        publicationRequestId.current = null;
+        setPublicationUnconfirmed(false);
+      }
+      props.onError(problemMessage(problem) ?? "Could not create that opening.");
       return;
     }
     const created = (await response.json()) as OpeningCommit;
@@ -152,7 +161,10 @@ export function OpeningEditor(props: {
       else if (launchPreview) await publish();
       else await preview();
     } catch {
-      if (isCurrent()) props.onError(props.opening ? "Could not confirm the opening save. Your edits are still here." : "Could not confirm opening publication. Check the opening list before trying again.");
+      if (isCurrent()) {
+        if (!props.opening && publicationRequestId.current !== null) setPublicationUnconfirmed(true);
+        props.onError(props.opening ? "Could not confirm the opening save. Your edits are still here." : "Could not confirm opening publication. Retry to check the saved result safely.");
+      }
     } finally {
       pending.current = false;
       if (isCurrent()) {
@@ -168,10 +180,11 @@ export function OpeningEditor(props: {
         draft={draft}
         editing={props.opening !== null}
         busy={busy}
-        fieldsDisabled={publishing || reloading}
+        fieldsDisabled={publishing || publicationUnconfirmed || reloading}
         conflict={conflict}
         onChange={(next) => {
           previewRequests.invalidate();
+          publicationRequestId.current = null;
           setDraft(next);
           setLaunchPreview(null);
         }}
@@ -179,6 +192,9 @@ export function OpeningEditor(props: {
         onSubmit={(event) => void submit(event)}
         launchPreview={launchPreview}
       />
+      {publicationUnconfirmed ? <p className="opening-message" role="status">
+        Publication may already be saved. Retry this request to confirm it before changing the opening facts.
+      </p> : null}
       {conflict ? <div className="opening-launch-preview" role="alert">
         <p>This opening changed elsewhere. Your edits are still here and haven’t been saved.</p>
         <p>Reloading replaces these edits with the saved opening facts.</p>

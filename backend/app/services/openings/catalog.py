@@ -13,7 +13,7 @@ from app.db.models import (
     OpeningIntakeMode,
     OpeningPhase,
 )
-from app.schemas.openings import OpeningCreate, OpeningUpdate
+from app.schemas.openings import OpeningCreate, OpeningCreateConfirmation, OpeningUpdate
 from app.services.applications.retention import refresh_draft_retention_for_opening
 from app.services.eligibility.rules import create_opening_rules
 
@@ -68,6 +68,8 @@ def create_opening(
     values: OpeningCreate,
     *,
     now: datetime | None = None,
+    publication_request_id: str | None = None,
+    publication_request: dict | None = None,
 ) -> Opening:
     now = now or datetime.now(UTC)
     today = pacific_today(now=now)
@@ -82,6 +84,8 @@ def create_opening(
             detail="The move-in date must be in the future.",
         )
     opening = Opening(
+        publication_request_id=publication_request_id,
+        publication_request=publication_request,
         **values.model_dump(include={
             "unit_size_bedrooms",
             "housing_charge_cents",
@@ -96,6 +100,20 @@ def create_opening(
     db.flush()
     create_opening_rules(db, opening)
     return opening
+
+
+def published_request(db: Session, values: OpeningCreateConfirmation) -> Opening | None:
+    opening = db.scalar(select(Opening).where(
+        Opening.publication_request_id == str(values.publication_request_id),
+    ))
+    if opening is not None and opening.publication_request != publication_facts(values):
+        raise Problem("opening_publication_changed",
+            detail="This publication was already saved with different facts. Reload the opening list before creating another opening.")
+    return opening
+
+
+def publication_facts(values: OpeningCreateConfirmation) -> dict:
+    return values.model_dump(mode="json", exclude={"publication_request_id"})
 
 
 def update_opening(db: Session, opening: Opening, values: OpeningUpdate) -> Opening:

@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -114,7 +115,42 @@ def _opening_payload(expected: int | None = None) -> dict:
     }
     if expected is not None:
         payload["expectedAudienceCount"] = expected
+        payload["publicationRequestId"] = str(uuid4())
     return payload
+
+
+@pytest.mark.anyio
+async def test_publication_replay_preserves_one_opening_and_one_notification() -> None:
+    app, db, sender = _app_and_db()
+    save_subscription(db, email="synthetic@example.com", unit_sizes={2}, source="synthetic")
+    payload = _opening_payload(expected=1)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first = await client.post("/openings", json=payload)
+        assert first.status_code == 200
+        # Delivery consumed the subscription, so a fresh audience calculation would differ.
+        assert opening_audience(db, 2).total == 0
+        replayed = await client.post("/openings", json=payload)
+        assert replayed.status_code == 200
+        assert replayed.json()["queuedNotificationCount"] == 1
+        assert len(replayed.json()["openings"]) == 1
+        assert len(sender.messages) == 1
+        changed = await client.post("/openings", json={**payload, "housingChargeCents": 200_000})
+        assert changed.status_code == 409
+        assert changed.json()["code"] == "opening_publication_changed"
+        assert db.scalar(select(func.count()).select_from(Opening)) == 1
+
+
+@pytest.mark.anyio
+async def test_identical_facts_with_distinct_publication_ids_create_distinct_openings() -> None:
+    app, db, _sender = _app_and_db()
+    payload = _opening_payload(expected=0)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        assert (await client.post("/openings", json=payload)).status_code == 200
+        payload["publicationRequestId"] = str(uuid4())
+        assert (await client.post("/openings", json=payload)).status_code == 200
+    assert db.scalar(select(func.count()).select_from(Opening)) == 2
 
 
 @pytest.mark.anyio

@@ -1,9 +1,10 @@
 import { Search, UserCheck } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
 import * as api from "../../api/openings";
 import { readProblem } from "../../api/problems";
 import type { Opening, OpeningSelectionCandidate } from "../../types";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import { NumberInput } from "../shared/NumberInput";
 
 type DirectDraft = {
@@ -23,6 +24,7 @@ export function DirectSelectionOpeningForm(props: {
   onCreated: (openings: Opening[], applicant: OpeningSelectionCandidate) => void;
   onError: (message: string) => void;
   onReviewRetained: (applicationId: number) => void;
+  onSavingChange?: (saving: boolean) => void;
 }): ReactNode {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [query, setQuery] = useState("");
@@ -31,24 +33,32 @@ export function DirectSelectionOpeningForm(props: {
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const searches = useRequestScope(query);
+  const requests = useRequestScope();
+  const pending = useRef(false);
 
   async function search(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const trimmed = query.trim();
     if (trimmed.length < 2 || searching) return;
+    const isCurrent = searches.begin();
     setSearching(true);
     try {
-      setResults(await api.searchPreviousApplicants(trimmed));
+      const candidates = await api.searchPreviousApplicants(trimmed);
+      if (isCurrent()) setResults(candidates);
     } catch {
-      props.onError("Could not search previous applicants.");
+      if (isCurrent()) props.onError("Could not search previous applicants.");
     } finally {
-      setSearching(false);
+      if (isCurrent()) setSearching(false);
     }
   }
 
   async function create(): Promise<void> {
-    if (!selected || saving) return;
+    if (!selected || pending.current) return;
+    const isCurrent = requests.capture();
+    pending.current = true;
     setSaving(true);
+    props.onSavingChange?.(true);
     try {
       const response = await api.createDirectSelectionOpening({
         unitSizeBedrooms: draft.unitSizeBedrooms,
@@ -56,18 +66,28 @@ export function DirectSelectionOpeningForm(props: {
         moveInDate: draft.moveInDate,
         applicationId: selected.applicationId,
       });
+      if (!isCurrent()) return;
       if (!response.ok) {
-        props.onError((await readProblem(response)) ?? "Could not fill that opening.");
+        const problem = await readProblem(response);
+        if (!isCurrent()) return;
+        props.onError(problem ?? "Could not fill that opening.");
         setConfirming(false);
         return;
       }
       const payload = (await response.json()) as { openings: Opening[] };
+      if (!isCurrent()) return;
       props.onCreated(payload.openings, selected);
     } catch {
-      props.onError("Could not fill that opening.");
-      setConfirming(false);
+      if (isCurrent()) {
+        props.onError("Could not fill that opening.");
+        setConfirming(false);
+      }
     } finally {
-      setSaving(false);
+      pending.current = false;
+      if (isCurrent()) {
+        setSaving(false);
+        props.onSavingChange?.(false);
+      }
     }
   }
 
@@ -88,7 +108,7 @@ export function DirectSelectionOpeningForm(props: {
       <div className="opening-form-grid">
         <label>
           <span>Unit size</span>
-          <select value={draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
+          <select disabled={saving} value={draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
             <option value={1}>1 bedroom</option>
             <option value={2}>2 bedrooms</option>
             <option value={3}>3 bedrooms</option>
@@ -98,12 +118,12 @@ export function DirectSelectionOpeningForm(props: {
           <span>Monthly housing charge</span>
           <div className="opening-money-input">
             <span>$</span>
-            <NumberInput min="0" step="0.01" required value={draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
+            <NumberInput disabled={saving} min="0" step="0.01" required value={draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
           </div>
         </label>
         <label>
           <span>Move-in date</span>
-          <input type="date" required value={draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
+          <input disabled={saving} type="date" required value={draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
         </label>
       </div>
 
@@ -113,15 +133,21 @@ export function DirectSelectionOpeningForm(props: {
           <div>
             <input
               type="search"
+              disabled={saving}
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                searches.invalidate();
+                setQuery(event.target.value);
+                setResults(null);
+                setSearching(false);
+              }}
               placeholder="Name or email"
               autoComplete="off"
               spellCheck={false}
               minLength={2}
               required
             />
-            <button className="secondary-button" type="submit" disabled={searching || query.trim().length < 2}>
+            <button className="secondary-button" type="submit" disabled={saving || searching || query.trim().length < 2}>
               <Search size={15} /> {searching ? "Searching…" : "Search"}
             </button>
           </div>
@@ -135,13 +161,14 @@ export function DirectSelectionOpeningForm(props: {
           <div className="opening-candidate-list direct-opening-results">
             {results.map((candidate) => (
               <div key={candidate.applicationId} className="opening-candidate-row">
-                <button className="opening-candidate-name" type="button" onClick={() => props.onReviewRetained(candidate.applicationId)}>
+                <button disabled={saving} className="opening-candidate-name" type="button" onClick={() => props.onReviewRetained(candidate.applicationId)}>
                   <strong>{candidate.applicantName ?? candidate.primaryEmail}</strong>
                   <span>{candidate.primaryEmail}</span>
                 </button>
                 <button
                   className={selected?.applicationId === candidate.applicationId ? "primary-button" : "secondary-button"}
                   type="button"
+                  disabled={saving}
                   onClick={() => { setSelected(candidate); setConfirming(false); }}
                 >
                   {selected?.applicationId === candidate.applicationId ? "Chosen" : "Choose"}

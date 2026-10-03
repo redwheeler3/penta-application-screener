@@ -40,6 +40,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "opening_finalized": (409, "Opening outcome finalized"),
     "opening_archived": (409, "Opening is archived"),
     "opening_audience_changed": (409, "Notification audience changed"),
+    "opening_publication_changed": (409, "Publication request changed"),
     "session_switch_required": (409, "Choose a committee account"),
     "forbidden": (403, "Admin access required"),
     "not_found": (404, "Resource not found"),

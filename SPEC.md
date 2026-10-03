@@ -496,6 +496,10 @@ removed. They do not show an applicant-removal link.
   maintained with manual Open and Close actions. The dates may be equal but cannot run backward:
   open is on or before close, which is on or before move-in. A committee decision, not a calendar
   date, archives the opening.
+  Publication carries a unique request identity and its original facts. Retrying an uncertain
+  response returns that opening without queueing notifications again; separate identities allow
+  legitimate openings with identical facts. An uncertain publication keeps its form facts fixed
+  until the saved result is confirmed.
 - **Fill from previous applicants** is a separate production intake mode for a home offered to
   someone from a retained prior pool. An administrator searches by name or email across submitted,
   non-withdrawn, non-selected applications that still have a prior participation and have not

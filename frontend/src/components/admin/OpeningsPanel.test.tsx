@@ -86,6 +86,20 @@ beforeEach(() => {
 });
 
 describe("OpeningsPanel modes", () => {
+  it("keeps a newer editor when a selection read finishes late", async () => {
+    vi.mocked(api.fetchOpenings).mockResolvedValue([closedOpening]);
+    const pending = deferred<OpeningSelection>();
+    vi.mocked(api.fetchOpeningSelection).mockReturnValue(pending.promise);
+    const user = userEvent.setup();
+    render(<OpeningsPanel {...props} />);
+    await user.click(await screen.findByRole("button", { name: "Record decision" }));
+    await user.click(screen.getByRole("button", { name: "New opening" }));
+    fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
+    await act(async () => pending.resolve(selection));
+    expect(screen.getByLabelText("Move-in date")).toHaveValue("2026-12-01");
+    expect(screen.queryByRole("heading", { name: "Opening decision" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Review opening and emails" })).toBeEnabled();
+  });
   it("uses the same busy flag for a workflow and the opening list", async () => {
     vi.mocked(api.fetchOpenings).mockResolvedValue([closedOpening]);
     const pending = deferred<OpeningPreview>();
@@ -159,7 +173,7 @@ describe("OpeningsPanel modes", () => {
     expect(screen.queryByText("Ready to open applications")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Review opening and emails" }));
     await user.click(await screen.findByRole("button", { name: "Open applications and queue 2 emails" }));
-    expect(api.createOpening).toHaveBeenCalledWith(expect.objectContaining({ unitSizeBedrooms: 3 }), 2);
+    expect(api.createOpening).toHaveBeenCalledWith(expect.objectContaining({ unitSizeBedrooms: 3 }), 2, expect.any(String));
     expect(await screen.findByText("Applications are open and 2 emails are queued.")).toBeInTheDocument();
   });
 

@@ -2,6 +2,7 @@ import json
 import runpy
 from pathlib import Path
 
+import pytest
 from alembic.config import Config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -10,6 +11,38 @@ from alembic import command
 from app.core.config import get_settings
 from app.db.models import Base
 from app.schemas.settings import AppSettings
+
+
+def test_publication_migration_preserves_openings_and_enforces_request_identity(tmp_path, monkeypatch) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    backend = Path(__file__).parents[1]
+    url = f"sqlite:///{(tmp_path / 'publication.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "alembic"))
+        command.upgrade(config, "9e0f1a2b3c4d")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("INSERT INTO openings (unit_size_bedrooms, housing_charge_cents, "
+                "application_open_date, application_close_date, move_in_date, intake_mode, created_at, updated_at) "
+                "VALUES (2, 125000, '2026-10-01', '2026-10-31', '2026-11-30', 'applications', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+        engine.dispose()
+        command.upgrade(config, "head")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            row = connection.exec_driver_sql("SELECT housing_charge_cents, publication_request_id, publication_request FROM openings").one()
+            assert row == (125000, None, None)
+            connection.exec_driver_sql("UPDATE openings SET publication_request_id = 'synthetic-publication'")
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.exec_driver_sql("INSERT INTO openings (unit_size_bedrooms, housing_charge_cents, "
+                "application_open_date, application_close_date, move_in_date, intake_mode, publication_request_id, created_at, updated_at) "
+                "VALUES (2, 125000, '2026-10-01', '2026-10-31', '2026-11-30', 'applications', 'synthetic-publication', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+        engine.dispose()
+    finally:
+        get_settings.cache_clear()
 
 
 def test_cache_identity_migration_can_build_rank_fingerprints() -> None:

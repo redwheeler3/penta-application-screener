@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 import * as api from "../../api/openings";
 import { formatDateOnly, formatHousingCharge } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import type { Opening, OpeningSelection } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 import { DirectSelectionOpeningForm } from "./DirectSelectionOpeningForm";
@@ -30,45 +31,56 @@ export function OpeningsPanel(props: {
   const [mode, setMode] = useState<OpeningPanelMode>({ kind: "list" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const navigation = useRequestScope();
+
+  function changeMode(next: OpeningPanelMode): void {
+    navigation.invalidate();
+    setBusy(false);
+    setMode(next);
+  }
 
   function beginCreate(): void {
-    setMode({ kind: "form", opening: null });
+    changeMode({ kind: "form", opening: null });
     setMessage("");
   }
 
   function beginDirectSelection(): void {
-    setMode({ kind: "direct" });
+    changeMode({ kind: "direct" });
     setMessage("");
   }
 
   function beginEdit(opening: Opening): void {
     if (opening.intakeMode !== "applications"
       || opening.applicationOpenDate === null || opening.applicationCloseDate === null) return;
-    setMode({ kind: "form", opening });
+    changeMode({ kind: "form", opening });
     setMessage("");
   }
 
   function completeWorkflow(items: Opening[], message: string, closeEditor = true): void {
     setOpenings(items);
-    if (closeEditor) setMode({ kind: "list" });
+    if (closeEditor) changeMode({ kind: "list" });
     setMessage(message);
   }
 
   async function manageSelection(opening: Opening): Promise<void> {
+    const isCurrent = navigation.begin();
     setBusy(true);
     setMessage("");
     try {
       const selection = await api.fetchOpeningSelection(opening.id);
+      if (!isCurrent()) return;
       if (selection.selectedApplicationId !== null || selection.noHouseholdSelected) {
-        setOpenings(await api.fetchOpenings());
+        const refreshed = await api.fetchOpenings();
+        if (!isCurrent()) return;
+        setOpenings(refreshed);
         setMessage("Opening decision is already recorded.");
         return;
       }
       setMode({ kind: "selection", selection });
     } catch {
-      props.onError("Could not load the opening selection.");
+      if (isCurrent()) props.onError("Could not load the opening selection.");
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
@@ -96,10 +108,11 @@ export function OpeningsPanel(props: {
 
       {mode.kind === "direct" ? (
         <DirectSelectionOpeningForm
-          onCancel={() => setMode({ kind: "list" })}
+          onCancel={() => changeMode({ kind: "list" })}
+          onSavingChange={setBusy}
           onCreated={(items, applicant) => {
             setOpenings(items);
-            setMode({ kind: "list" });
+            changeMode({ kind: "list" });
             setMessage(`${applicant.applicantName ?? applicant.primaryEmail} selected for the new opening.`);
             props.onPoolChanged();
           }}
@@ -112,7 +125,10 @@ export function OpeningsPanel(props: {
         <OpeningEditor
           key={mode.opening?.id ?? "new"}
           opening={mode.opening}
-          onCancel={() => setMode({ kind: "list" })}
+          onCancel={() => {
+            changeMode({ kind: "list" });
+            void openingsResource.reload();
+          }}
           onSaved={completeWorkflow}
           busy={busy}
           setBusy={setBusy}
@@ -132,7 +148,7 @@ export function OpeningsPanel(props: {
           setBusy={setBusy}
           onError={props.onError}
           onReview={(applicationId) => props.onOpenApplicant(applicationId, mode.selection.openingId)}
-          onClose={() => setMode({ kind: "list" })}
+          onClose={() => changeMode({ kind: "list" })}
         />
       ) : null}
 

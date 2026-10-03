@@ -3,6 +3,7 @@
 from collections.abc import Callable
 
 from fastapi import APIRouter, BackgroundTasks, Depends
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
@@ -40,6 +41,8 @@ from app.services.openings.catalog import (
     create_opening,
     list_openings,
     opening_phase,
+    publication_facts,
+    published_request,
     update_opening,
 )
 from app.services.openings.direct_selection import (
@@ -176,6 +179,11 @@ def add_opening(
     sender: EmailSender = Depends(get_email_sender),
     outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
 ) -> OpeningCommitOut:
+    opening = published_request(db, body)
+    if opening is not None:
+        background_tasks.add_task(outbox_runner, sender)
+        return OpeningCommitOut(openings=_response(db).openings,
+            queued_notification_count=body.expected_audience_count)
     audience = opening_audience(db, body.unit_size_bedrooms)
     if audience.total != body.expected_audience_count:
         raise Problem(
@@ -183,7 +191,19 @@ def add_opening(
             detail="The audience changed while you were reviewing it. Preview the opening again.",
             audienceCount=audience.total,
         )
-    opening = create_opening(db, body)
+    try:
+        opening = create_opening(db, body,
+            publication_request_id=str(body.publication_request_id),
+            publication_request=publication_facts(body))
+    except IntegrityError:
+        db.rollback()
+        # A concurrent retry may have published this request while we checked the audience.
+        opening = published_request(db, body)
+        if opening is None:
+            raise
+        background_tasks.add_task(outbox_runner, sender)
+        return OpeningCommitOut(openings=_response(db).openings,
+            queued_notification_count=body.expected_audience_count)
     queue_opening_notifications(db, opening, audience)
     db.commit()
     response = _response(db)

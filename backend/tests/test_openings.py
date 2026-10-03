@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
@@ -66,6 +67,7 @@ def _opening_payload(**overrides) -> dict:
         "applicationCloseDate": (today + timedelta(days=14)).isoformat(),
         "moveInDate": (today + timedelta(days=30)).isoformat(),
         "expectedAudienceCount": 0,
+        "publicationRequestId": str(uuid4()),
     }
     payload.update(overrides)
     return payload

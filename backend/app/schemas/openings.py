@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import Field, StringConstraints, model_validator
 
@@ -38,6 +39,7 @@ class OpeningUpdate(RequestModel):
 
 
 class OpeningCreateConfirmation(OpeningCreate):
+    publication_request_id: UUID
     expected_audience_count: int = Field(ge=0)
 
 

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import * as api from "../../api/openings";
 import { deferred } from "../../testSupport";
-import type { Opening } from "../../types";
+import type { Opening, OpeningPreview } from "../../types";
 import { OpeningEditor } from "./OpeningEditor";
 
 vi.mock("../../api/openings", () => ({ updateOpening: vi.fn(), fetchOpenings: vi.fn(), previewOpening: vi.fn(), createOpening: vi.fn() }));
@@ -11,17 +11,35 @@ const opening = { id: 1, intakeMode: "applications", unitSizeBedrooms: 2, housin
   applicationOpenDate: "2026-10-01", applicationCloseDate: "2026-10-31", moveInDate: "2026-11-30" } as Opening;
 const values = { unitSizeBedrooms: 2, housingChargeCents: 100_000,
   applicationOpenDate: "2026-10-01", applicationCloseDate: "2026-10-31", moveInDate: "2026-11-30" };
-function setup() {
+function setup(editedOpening: Opening | null = opening) {
   const onSaved = vi.fn();
   const onError = vi.fn();
   function Host() {
     const [busy, setBusy] = useState(false);
-    return <OpeningEditor opening={opening} busy={busy} setBusy={setBusy} onSaved={onSaved} onError={onError} onCancel={vi.fn()} />;
+    return <OpeningEditor opening={editedOpening} busy={busy} setBusy={setBusy} onSaved={onSaved} onError={onError} onCancel={vi.fn()} />;
   }
   render(<Host />);
   return { onSaved, onError };
 }
 beforeEach(() => vi.resetAllMocks());
+
+it("retries an uncertain publication with the original identity and frozen facts", async () => {
+  vi.mocked(api.previewOpening).mockResolvedValue({ audienceCount: 0, variants: [], socketlabs: { available: false } } as unknown as OpeningPreview);
+  vi.mocked(api.createOpening).mockRejectedValueOnce(new Error("Synthetic lost response"))
+    .mockResolvedValueOnce(Response.json({ openings: [], queuedNotificationCount: 0 }));
+  const { onSaved } = setup(null);
+  fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
+  fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Review opening and emails" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open applications and queue 0 emails" })); });
+  expect(screen.getByLabelText("Move-in date")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Open applications and queue 0 emails" })).toBeEnabled();
+  const first = vi.mocked(api.createOpening).mock.calls[0];
+  expect(first[2]).toMatch(/^[0-9a-f-]{36}$/);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open applications and queue 0 emails" })); });
+  expect(vi.mocked(api.createOpening).mock.calls[1]).toEqual(first);
+  expect(onSaved).toHaveBeenCalledOnce();
+});
 
 it("preserves later edits and advances only the acknowledged opening snapshot", async () => {
   const pending = deferred<Response>();

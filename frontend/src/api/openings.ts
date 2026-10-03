@@ -28,11 +28,12 @@ export function previewOpening(opening: OpeningCreate): Promise<OpeningPreview> 
 export function createOpening(
   opening: OpeningCreate,
   expectedAudienceCount: number,
+  publicationRequestId: string,
 ): Promise<Response> {
   return request("/openings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...opening, expectedAudienceCount }),
+    body: JSON.stringify({ ...opening, expectedAudienceCount, publicationRequestId }),
   });
 }
 
