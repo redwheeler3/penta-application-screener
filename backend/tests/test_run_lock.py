@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.models import Base, User, UserRole
 from app.services.run_lock import (
     LEASE_TTL,
+    RunLease,
     acquire_run_lock,
     ensure_lock_row,
     rank_run_in_progress,
@@ -34,23 +35,23 @@ def make_db() -> Session:
 def test_acquire_then_contended() -> None:
     """One holder wins; a second run while it's held loses (would 409)."""
     db = make_db()
-    assert acquire_run_lock(db, user_id=1, kind="rank") is True
-    assert acquire_run_lock(db, user_id=2, kind="screen") is False  # still held by user 1
+    assert acquire_run_lock(db, user_id=1, kind="rank") is not None
+    assert acquire_run_lock(db, user_id=2, kind="screen") is None  # still held by user 1
 
 
 def test_release_frees_the_lease() -> None:
     db = make_db()
-    acquire_run_lock(db, user_id=1, kind="rank")
-    release_run_lock(db, user_id=1)
-    assert acquire_run_lock(db, user_id=2, kind="screen") is True  # free again
+    lease = acquire_run_lock(db, user_id=1, kind="rank")
+    release_run_lock(db, lease)
+    assert acquire_run_lock(db, user_id=2, kind="screen") is not None  # free again
 
 
 def test_release_is_holder_guarded() -> None:
     """A run that already lost its lease (e.g. to a TTL steal) can't clear a newer holder."""
     db = make_db()
-    acquire_run_lock(db, user_id=1, kind="rank")
-    release_run_lock(db, user_id=2)  # user 2 isn't the holder — no-op
-    assert acquire_run_lock(db, user_id=2, kind="screen") is False  # user 1 still holds it
+    lease = acquire_run_lock(db, user_id=1, kind="rank")
+    release_run_lock(db, RunLease(user_id=2, acquired_at=lease.acquired_at))  # user 2 isn't the holder — no-op
+    assert acquire_run_lock(db, user_id=2, kind="screen") is None  # user 1 still holds it
 
 
 def test_stale_lease_is_stealable_after_ttl() -> None:
@@ -58,17 +59,30 @@ def test_stale_lease_is_stealable_after_ttl() -> None:
     db = make_db()
     # Claim as if it happened well over the TTL ago.
     stale = datetime.now(UTC) - LEASE_TTL - timedelta(minutes=1)
-    assert acquire_run_lock(db, user_id=1, kind="rank", now=stale) is True
+    assert acquire_run_lock(db, user_id=1, kind="rank", now=stale) is not None
     # A fresh acquire now steals the abandoned lease.
-    assert acquire_run_lock(db, user_id=2, kind="screen") is True
+    assert acquire_run_lock(db, user_id=2, kind="screen") is not None
 
 
 def test_fresh_lease_is_not_stealable() -> None:
     """A lease within the TTL is a live run — not stealable."""
     db = make_db()
     just_now = datetime.now(UTC) - timedelta(minutes=1)  # well within the 15m TTL
-    assert acquire_run_lock(db, user_id=1, kind="rank", now=just_now) is True
-    assert acquire_run_lock(db, user_id=2, kind="screen") is False
+    assert acquire_run_lock(db, user_id=1, kind="rank", now=just_now) is not None
+    assert acquire_run_lock(db, user_id=2, kind="screen") is None
+
+
+def test_expired_run_cannot_release_a_replacement_for_the_same_member() -> None:
+    db = make_db()
+    now = datetime.now(UTC)
+    original = acquire_run_lock(db, user_id=1, kind="rank", now=now - LEASE_TTL - timedelta(seconds=1))
+    replacement = acquire_run_lock(db, user_id=1, kind="rank", now=now)
+    assert original is not None
+    assert replacement is not None
+    release_run_lock(db, original)
+    assert acquire_run_lock(db, user_id=2, kind="screen", now=now) is None
+    release_run_lock(db, replacement)
+    assert acquire_run_lock(db, user_id=2, kind="screen", now=now) is not None
 
 
 def test_rank_run_in_progress_only_for_a_live_rank_lease() -> None:
@@ -77,18 +91,18 @@ def test_rank_run_in_progress_only_for_a_live_rank_lease() -> None:
     assert rank_run_in_progress(db) is False  # free lease
 
     # A screen or score-current run holds the lease but touches no dimensions — editing is safe.
-    acquire_run_lock(db, user_id=1, kind="screen")
+    lease = acquire_run_lock(db, user_id=1, kind="screen")
     assert rank_run_in_progress(db) is False
-    release_run_lock(db, user_id=1)
+    release_run_lock(db, lease)
 
-    acquire_run_lock(db, user_id=1, kind="rank_scores")
+    lease = acquire_run_lock(db, user_id=1, kind="rank_scores")
     assert rank_run_in_progress(db) is False
-    release_run_lock(db, user_id=1)
+    release_run_lock(db, lease)
 
     # A full rank IS the dangerous case (snapshots kept-list, supersedes the analysis).
-    acquire_run_lock(db, user_id=1, kind="rank")
+    lease = acquire_run_lock(db, user_id=1, kind="rank")
     assert rank_run_in_progress(db) is True
-    release_run_lock(db, user_id=1)
+    release_run_lock(db, lease)
     assert rank_run_in_progress(db) is False
 
 

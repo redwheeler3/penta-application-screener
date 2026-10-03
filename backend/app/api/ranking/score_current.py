@@ -82,7 +82,8 @@ def score_current(
             estimated_usd=estimate["estimated_usd"],
         ) from exc
 
-    if not acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND):
+    lease = acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND)
+    if lease is None:
         raise Problem(
             "run_in_progress",
             detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
@@ -145,6 +146,6 @@ def score_current(
                 )
             )
         finally:
-            release_run_lock(db, user_id=user.id)
+            release_run_lock(db, lease)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

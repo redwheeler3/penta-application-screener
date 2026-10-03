@@ -114,7 +114,8 @@ def rank_run(
     # is genuinely destructive — two concurrent Ranks each create an Analysis and
     # last-writer-wins strands the loser's MemberRanking — so this guard is what closes that
     # hazard. Released in the stream's finally (covers the early return + any pass raising).
-    if not acquire_run_lock(db, user_id=user.id, kind="rank"):
+    lease = acquire_run_lock(db, user_id=user.id, kind="rank")
+    if lease is None:
         raise Problem(
             "run_in_progress",
             detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
@@ -131,5 +132,5 @@ def rank_run(
                 estimated_usd=float(estimate["estimated_usd"]),
             )
         finally:
-            release_run_lock(db, user_id=user.id)
+            release_run_lock(db, lease)
     return StreamingResponse(stream(), media_type="application/x-ndjson")

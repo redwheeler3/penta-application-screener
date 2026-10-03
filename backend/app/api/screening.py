@@ -144,7 +144,8 @@ def run(
     # Serialize against other in-flight runs: a concurrent Screen or Rank would waste
     # shared spend and (for Rank) strand a MemberRanking. Claim the lease before streaming;
     # 409 if another run holds it. Released in the stream's finally.
-    if not acquire_run_lock(db, user_id=user.id, kind="screen"):
+    lease = acquire_run_lock(db, user_id=user.id, kind="screen")
+    if lease is None:
         raise Problem(
             "run_in_progress",
             detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
@@ -200,6 +201,6 @@ def run(
         finally:
             # Always free the lease — even if the client disconnects mid-stream or a pass
             # raises — so a run can't wedge the workflow (belt-and-suspenders with the TTL).
-            release_run_lock(db, user_id=user.id)
+            release_run_lock(db, lease)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

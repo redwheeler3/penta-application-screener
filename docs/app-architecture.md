@@ -43,6 +43,8 @@ rather than being duplicated between them.
 their view refreshes. It updates the open detail only while the same applicant and opening remain
 selected; favourites and shortlist changes refresh the whole cached pool so filtered-out rows
 still contribute current facet counts.
+All candidate writes share a queue per applicant, so a note response cannot roll back a later
+eligibility or shortlist change. Different applicants can be saved independently.
 
 `frontend/src/styles.css` is the single ordered stylesheet entrypoint. Screen, responsive, and
 print rules live with their owning surface (`applications`, candidate detail/notes, ranking,
@@ -91,6 +93,8 @@ email changes and session exit live in `applicantEmailFlow.ts` and `applicantWit
 Save completion acknowledges the draft snapshot captured before the request, so edits made
 while saving remain unsaved. Save actions read one live state reference at request boundaries;
 the captured request snapshot remains the acknowledgement baseline when the response arrives.
+Email-identity refreshes use the same application read scope; saves and session exit invalidate
+older identity responses before they can restore cleared fields or falsely flag this browser's save.
 
 ## Applicant intake
 
@@ -215,6 +219,11 @@ detail navigation use that boundary. Background refresh failures preserve the la
 data within the current workspace. Tier and proposal writes share a serial queue in `useRanking.ts`;
 queued writes retain their opening and analysis scope, and only the latest edit's response updates
 its optimistic display. A write for an opening the member has left cannot update the new workspace.
+`GET /ranking/board` captures one member view and returns its criteria, ranking, and tiers together.
+Lightweight current-run reads do not replace the criteria of a displayed board independently.
+Concurrent first reads that create the same member view return the winning record rather than
+failing on the uniqueness constraint. Run leases return their user and acquisition timestamp;
+release matches both, so an expired run cannot release a same-user replacement.
 
 ## Eligibility and status
 

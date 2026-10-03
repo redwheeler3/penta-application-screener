@@ -134,18 +134,18 @@ async def test_tier_save_blocked_while_a_rank_run_is_in_flight() -> None:
         member = db.scalar(select(User))
 
         # A screen run holds the lease but touches no dimensions — the save is allowed.
-        acquire_run_lock(db, user_id=member.id, kind="screen")
+        lease = acquire_run_lock(db, user_id=member.id, kind="screen")
         assert (await client.put("/ranking/tiers", json=layout)).status_code == 200
-        release_run_lock(db, user_id=member.id)
+        release_run_lock(db, lease)
 
         # A full rank in flight blocks the save.
-        acquire_run_lock(db, user_id=member.id, kind="rank")
+        lease = acquire_run_lock(db, user_id=member.id, kind="rank")
         blocked = await client.put("/ranking/tiers", json=layout)
         assert blocked.status_code == 409
         assert blocked.json()["code"] == "run_in_progress"
 
         # Once the run finishes, the save goes through.
-        release_run_lock(db, user_id=member.id)
+        release_run_lock(db, lease)
         assert (await client.put("/ranking/tiers", json=layout)).status_code == 200
 
 
