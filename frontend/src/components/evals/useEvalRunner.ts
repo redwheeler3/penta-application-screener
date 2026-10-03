@@ -88,17 +88,20 @@ export function useEvalRunner(options: {
         }));
         return;
       }
+      let finished = false;
       await streamNdjson<EvalStreamEvent>(response.body, (event) => {
         if (event.type === "thinking") {
           setRun((current) => ({ ...current, thinking: current.thinking + event.text }));
           return;
         }
         if (event.type === "error") {
+          finished = true;
           setRun((current) => ({ ...current, running: false, error: event.message }));
           return;
         }
         if (event.type !== "summary") return;
 
+        finished = true;
         setRun((current) => ({ ...current, running: false }));
         const runCases = caseOutcomes(event);
         setCaseResults((current) => {
@@ -115,7 +118,14 @@ export function useEvalRunner(options: {
         });
         void loadLastRuns(false);
       });
-      setRun((current) => (current.running ? { ...current, running: false } : current));
+      if (!finished) {
+        setRun((current) => ({
+          ...current,
+          running: false,
+          error: "Eval progress was interrupted before completion was confirmed. " +
+            "Review current results before starting another run.",
+        }));
+      }
     } catch (error) {
       setRun((current) => ({
         ...current,

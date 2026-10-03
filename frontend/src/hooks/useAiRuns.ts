@@ -131,18 +131,29 @@ export function useAiRuns(options: {
           problem ? `Screening failed: ${problem}` : "Screening failed.",
         );
       } else {
+        let finished = false;
         await streamNdjson<ScreeningStreamEvent>(response.body, (event) => {
           if (event.type === "progress") {
             setScreeningProgress({ processed: event.processed, total: event.total });
           } else if (event.type === "summary") {
+            finished = true;
             const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
             options.notifications.success(
               `Screening complete: ${event.flagged} flagged of ${event.analyzed + event.cached} analyzed ` +
                 `(${money(event.totalCostUsd)}).` +
                 failedNote,
             );
+          } else if (event.type === "error") {
+            finished = true;
+            options.notifications.error(event.message || "Screening failed.");
           }
         });
+        if (!finished) {
+          options.notifications.error(
+            "Screening progress was interrupted before completion was confirmed. " +
+            "Review current results before starting another run.",
+          );
+        }
         options.refreshDashboard();
         options.reloadApplications();
         options.clearSelectedApplication();
@@ -214,6 +225,7 @@ export function useAiRuns(options: {
           options.ranking.setDisplayedProposals(priorProposals);
         }
       } else {
+        let finished = false;
         await streamNdjson<RankingStreamEvent>(response.body, (event) => {
           if (event.type === "phase") {
             if (event.phase === "criteria") {
@@ -235,8 +247,10 @@ export function useAiRuns(options: {
           } else if (event.type === "warning") {
             options.notifications.warning(event.message || "The run completed with a warning.");
           } else if (event.type === "error") {
+            finished = true;
             options.notifications.error(event.message || "Ranking failed.");
           } else if (event.type === "summary") {
+            finished = true;
             const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
             options.notifications.success(
               `${mode === "discover" ? "Ranking complete" : "Current criteria updated"}: ` +
@@ -246,6 +260,12 @@ export function useAiRuns(options: {
             );
           }
         });
+        if (!finished) {
+          options.notifications.error(
+            "Ranking progress was interrupted before completion was confirmed. " +
+            "Review current results before starting another run.",
+          );
+        }
         await options.ranking.refreshCurrentRun();
         options.refreshDashboard();
         void options.ranking.load();

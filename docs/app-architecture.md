@@ -52,6 +52,9 @@ observability, evals, feedback, and print) rather than relying on a cross-featur
 `components/workflow/WorkflowBar.tsx` owns the Screen/Rank strip and progress display.
 `RankingRunConfirmation.tsx` owns the ranking cost confirmation, its heading, and the priority
 between scoring missing applicants and discovering criteria. Both read run state from `useAiRuns`.
+The shared NDJSON reader accepts a final event without a trailing newline and releases its reader
+on completion or failure. Screen, Rank, and Evals require a summary or fatal error before treating
+the stream as finished; an earlier end reports interrupted progress and preserves saved results.
 
 `components/admin/OpeningsPanel.tsx` owns the opening list and navigation between workflows.
 `OpeningEditor.tsx` owns the editable opening draft, notification-audience preview, publication,
@@ -258,6 +261,10 @@ pool and every rank-chain pass identity.
 Screening and dimension scoring capture their cache keys alongside the model inputs before calls
 start. Result persistence uses those captured keys, so an applicant edit during a run leaves the
 answer attached to the content actually analyzed and keeps the newer content uncached.
+Full Rank and score-current capture the eligible pool's fingerprint before AI work begins and
+persist that original identity. An edit or new applicant during a run keeps Rank out of date.
+Dimension scoring carries each applicant's input, cache keys, pending dimensions, and cached
+scores in a named `ScoringPlan`; worker calls read its captured input without touching the ORM.
 
 The main AI modules are:
 

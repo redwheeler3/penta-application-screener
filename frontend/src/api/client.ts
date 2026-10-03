@@ -69,15 +69,31 @@ export async function streamNdjson<
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      onEvent(JSON.parse(line) as TEvent);
+
+  function deliver(line: string) {
+    if (!line.trim()) return;
+    let event: TEvent;
+    try {
+      event = JSON.parse(line) as TEvent;
+    } catch {
+      throw new Error("The progress stream contained an incomplete or invalid message.");
     }
+    onEvent(event);
+  }
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        deliver(buffer + decoder.decode());
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) deliver(line);
+    }
+  } finally {
+    reader.releaseLock();
   }
 }

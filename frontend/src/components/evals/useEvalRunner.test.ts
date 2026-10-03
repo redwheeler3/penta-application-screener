@@ -93,3 +93,37 @@ it("restores each mode and replaces only that mode's results after a whole-set r
   });
   expect(result.current.run).toMatchObject({ running: false, error: null });
 });
+
+it("reports incomplete eval progress and preserves the displayed results", async () => {
+  vi.mocked(api.fetchLastEvalRun).mockResolvedValueOnce({ runs: [
+    { ...history, evalKey: "scoring", result: { cases: [scored("a", 0.2)] } },
+  ] });
+  vi.mocked(api.runEval).mockResolvedValue(new Response(`${JSON.stringify({
+    type: "progress", phase: "scoring", processed: 1, total: 2,
+  })}\n`));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await waitFor(() => expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.2 } }));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 2 }));
+  expect(result.current.run.running).toBe(false);
+  expect(result.current.run.error).toContain("interrupted before completion was confirmed");
+  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.2 } });
+});
+
+it("accepts a final eval summary without a newline", async () => {
+  vi.mocked(api.runEval).mockResolvedValue(new Response(JSON.stringify({
+    type: "summary", eval: "scoring", savedPath: null, result: { cases: [scored("a", 0.8)] },
+  })));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }));
+  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(result.current.run).toMatchObject({ running: false, error: null });
+});
+
+it("keeps the server's fatal eval error as the outcome", async () => {
+  vi.mocked(api.runEval).mockResolvedValue(new Response(JSON.stringify({
+    type: "error", phase: "scoring", message: "Synthetic model failure.",
+  })));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }));
+  expect(result.current.run).toMatchObject({ running: false, error: "Synthetic model failure." });
+});
