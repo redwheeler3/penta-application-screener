@@ -12,6 +12,7 @@ from app.evals.synthetic_guard import (
 )
 from app.schemas.settings import AppSettings
 from app.services.ranking.analysis import create_analysis
+from app.services.ranking.freshness import rank_inputs_fingerprint
 from tests.application_support import current_opening_id
 from tests.ranking_support import add_eligible, setup_app
 
@@ -44,7 +45,7 @@ def test_analysis_is_synthetic_only_when_its_whole_pool_is_synthetic() -> None:
         opening_id=current_opening_id(db),
         user=user,
         report=PoolDimensionReport(dimensions=[]),
-        settings=AppSettings(),
+        inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()),
         narrative=None,
     )
     assert analysis.synthetic_data is True
@@ -55,7 +56,7 @@ def test_analysis_is_synthetic_only_when_its_whole_pool_is_synthetic() -> None:
         opening_id=current_opening_id(db),
         user=user,
         report=PoolDimensionReport(dimensions=[]),
-        settings=AppSettings(),
+        inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()),
         narrative=None,
     )
     assert analysis.synthetic_data is False

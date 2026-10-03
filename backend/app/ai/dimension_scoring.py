@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -246,11 +247,10 @@ def missing_dimensions_by_application(
 
 
 def applications_needing_scores(
-    db: Session, opening_id: int, report: PoolDimensionReport, model_id: str,
+    db: Session, applications: list[Application], report: PoolDimensionReport, model_id: str,
     reasoning_effort: ReasoningEffort | None = None,
 ) -> list[Application]:
-    """Eligible applicants with at least one missing score for ``report``."""
-    applications = applications_to_score(db, opening_id)
+    """Applicants in the supplied eligible pool with a missing score for ``report``."""
     missing_by_application = missing_dimensions_by_application(
         db, applications, report, model_id, reasoning_effort
     )
@@ -364,6 +364,18 @@ def _score_all_dimensions(
     )
 
 
+@dataclass(frozen=True)
+class ScoringPlan:
+    """One applicant's captured model input, pending dimensions, and reusable results."""
+
+    application: Application
+    applicant_block: str | None
+    dimensions_to_score: list[PoolDimension]
+    cached_scores: dict[str, DimensionScore]
+    cached_saved_usd: float
+    result_cache_keys: dict[str, str]
+
+
 def score_dimensions(
     db: Session,
     provider: AIProvider,
@@ -386,7 +398,7 @@ def score_dimensions(
 
     # Plan each candidate on the main thread (cache lookups touch the ORM): which
     # dimensions still need scoring, and the cached ones to merge in.
-    plans = []
+    plans: list[ScoringPlan] = []
     for application in applications:
         to_score, cached, cached_saved_usd = _to_score_dimensions(
             db, application, report, model_id, reasoning_effort
@@ -402,23 +414,27 @@ def score_dimensions(
             )
             for dim in to_score
         }
-        plans.append((application, applicant_block, to_score, cached, cached_saved_usd, result_keys))
+        plans.append(ScoringPlan(
+            application=application, applicant_block=applicant_block,
+            dimensions_to_score=to_score, cached_scores=cached,
+            cached_saved_usd=cached_saved_usd, result_cache_keys=result_keys,
+        ))
 
-    def call(plan):
-        _application, applicant_block, to_score, _cached, _cached_saved_usd, _result_keys = plan
-        if not to_score:
+    def call(plan: ScoringPlan) -> AIResult | None:
+        if not plan.dimensions_to_score:
             return None  # fully cached → no model call
-        assert applicant_block is not None
+        assert plan.applicant_block is not None
         # Score COMPLETELY: initial call + targeted re-asks for any omitted dimension.
         # Raises IncompleteScoringError if the model won't return them all — which
         # run_in_pool surfaces as this candidate's error (fail loud, no partial store).
         return _score_all_dimensions(
-            provider, applicant_block, to_score, model_id, reasoning_effort
+            provider, plan.applicant_block, plan.dimensions_to_score, model_id, reasoning_effort
         )
 
-    for (application, _applicant_block_text, to_score, cached, cached_saved_usd, result_keys), result, error in run_in_pool(
+    for plan, result, error in run_in_pool(
         plans, call=call, max_workers=max_workers
     ):
+        application = plan.application
         if error is not None:
             error_type = exception_type_name(error)
             log.warning(
@@ -434,25 +450,25 @@ def score_dimensions(
             yield PassResult(
                 application=application,
                 outcome=AnalysisOutcome(
-                    output=_assemble(report, cached, {}), cost_usd=0.0, cached=True
+                    output=_assemble(report, plan.cached_scores, {}), cost_usd=0.0, cached=True
                 ),
                 fresh_units=0,
-                cached_units=len(cached),
-                cached_saved_usd=cached_saved_usd,
+                cached_units=len(plan.cached_scores),
+                cached_saved_usd=plan.cached_saved_usd,
             )
             continue
         fresh = {s.dimension_key: s for s in result.output.scores}
-        share = _split_usage(result.usage, len(to_score))
+        share = _split_usage(result.usage, len(plan.dimensions_to_score))
         call_cost = 0.0
         fresh_count = 0
-        for dim in to_score:
-            # _score_all_dimensions guarantees every to_score dim is present, so index
+        for dim in plan.dimensions_to_score:
+            # _score_all_dimensions guarantees every pending dimension is present, so index
             # directly — a KeyError here would mean that contract broke, and failing
             # loud beats silently skipping.
             score = fresh[dim.key]
             outcome = store_result(
                 db, application,
-                kind=kind_for_dimension(dim.key), result_cache_key=result_keys[dim.key],
+                kind=kind_for_dimension(dim.key), result_cache_key=plan.result_cache_keys[dim.key],
                 prompt_version=PROMPT_VERSION,
                 reasoning_effort=reasoning_effort,
                 result=AIResult(
@@ -473,10 +489,10 @@ def score_dimensions(
         yield PassResult(
             application=application,
             outcome=AnalysisOutcome(
-                output=_assemble(report, cached, fresh), cost_usd=call_cost, cached=False,
+                output=_assemble(report, plan.cached_scores, fresh), cost_usd=call_cost, cached=False,
                 input_tokens=result.usage.input_tokens, output_tokens=result.usage.output_tokens,
             ),
             fresh_units=fresh_count,
-            cached_units=len(cached),
-            cached_saved_usd=cached_saved_usd,
+            cached_units=len(plan.cached_scores),
+            cached_saved_usd=plan.cached_saved_usd,
         )

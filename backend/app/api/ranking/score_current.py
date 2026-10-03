@@ -8,7 +8,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import SpendingCapExceeded, enforce_cap
-from app.ai.dimension_scoring import applications_needing_scores, score_dimensions
+from app.ai.dimension_scoring import (
+    applications_needing_scores,
+    applications_to_score,
+    score_dimensions,
+)
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.core.problems import Problem
@@ -19,8 +23,9 @@ from app.schemas.ranking import ScoreCurrentEstimateResponse
 from app.services.applications.scope import resolve_visible_opening_id
 from app.services.cost_report import SCORE_CURRENT_KIND, record_run_cost
 from app.services.openings.selection import require_ai_actions_available
-from app.services.ranking.analysis import get_current_analysis, mark_ranking_current
+from app.services.ranking.analysis import get_current_analysis, record_rank_inputs
 from app.services.ranking.estimates import current_scoring_estimate
+from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.pipeline import SCORES, ScoreTally
 from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.settings import get_app_settings
@@ -77,12 +82,6 @@ def score_current(
             estimated_usd=estimate["estimated_usd"],
         ) from exc
 
-    candidates = applications_needing_scores(
-        db,
-        opening_id,
-        report,
-        settings.ai.dimension_scoring_model,
-    )
     if not acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND):
         raise Problem(
             "run_in_progress",
@@ -91,6 +90,11 @@ def score_current(
 
     def stream() -> Iterator[str]:
         try:
+            pool = applications_to_score(db, opening_id)
+            inputs_fingerprint = rank_inputs_fingerprint(db, opening_id, settings, applications=pool)
+            candidates = applications_needing_scores(
+                db, pool, report, settings.ai.dimension_scoring_model,
+            )
             yield emit(PhaseEvent(phase=SCORES, total=len(candidates)))
             tally = ScoreTally()
             started = time.perf_counter()
@@ -116,7 +120,7 @@ def score_current(
             if tally.failed == 0:
                 analysis = get_current_analysis(db, opening_id)
                 if analysis is not None:
-                    mark_ranking_current(db, analysis, settings)
+                    record_rank_inputs(db, analysis, inputs_fingerprint)
             record_run_cost(
                 db,
                 kind=SCORE_CURRENT_KIND,

@@ -36,6 +36,7 @@ from app.db.models import (
     UserRole,
 )
 from app.schemas.settings import AppSettings
+from app.services.ranking.freshness import rank_inputs_fingerprint
 from tests.application_support import activate_application, current_opening_id
 
 
@@ -339,7 +340,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
 
     create_analysis(
         db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
-        report=report, settings=settings,
+        report=report, inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), settings),
         narrative=None,
     )
     provider = MockProvider()
@@ -380,7 +381,7 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     report = report_with(["community", "skills"])
     create_analysis(
         db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
-        report=report, settings=settings,
+        report=report, inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), settings),
         narrative=None,
     )
 

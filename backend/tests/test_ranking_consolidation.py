@@ -15,6 +15,7 @@ from app.ai.schemas import (
     ScoreConfidence,
 )
 from app.db.models import User, UserRole
+from app.services.ranking.freshness import rank_inputs_fingerprint
 from tests.application_support import current_opening_id
 from tests.ranking_support import (
     _decomposition_of,
@@ -268,7 +269,7 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
         PoolDimension(key="financial_stewardship", name="Financial stewardship",
                       definition="bookkeeping", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, settings=AppSettings(), narrative=None)
+    analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None)
     mr = get_or_create_member_ranking(db, analysis, user)
     # The committee places ONLY the key that will be merged away into a working tier —
     # the survivor sits in Ignore (unplaced).
@@ -312,7 +313,7 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
             PoolDimension(key="financial_literacy", name="FL", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
             PoolDimension(key="financial_stewardship", name="FS", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
         ])
-        analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, settings=AppSettings(),
+        analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()),
                                    narrative=None)
         mr = get_or_create_member_ranking(db, analysis, user)
         apply_consolidation(
@@ -359,7 +360,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
         PoolDimension(key="b_mid", name="B", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
         PoolDimension(key="c_newest", name="C", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
-    analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, settings=AppSettings(), narrative=None)
+    analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None)
     mr = get_or_create_member_ranking(db, analysis, user)
     # Place ONLY the innermost link C in a working tier; A and B sit in Ignore.
     set_tiers(db, mr, [{"id": "tier-s", "label": "Critical", "dimension_keys": ["c_newest"]}])
@@ -417,7 +418,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
                           definition=canonical_def, high_end="school-age+", low_end="all under 3",
                           why_it_differentiates="ages span the pool"),
         ]),
-        settings=AppSettings(), narrative=None,
+        inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None,
         tier_layout=[
             {"id": "tier-s", "label": "Critical", "dimension_keys": []},
             {"id": "tier-a", "label": "Important", "dimension_keys": ["child_age_profile_community_fit"]},
@@ -436,7 +437,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
                           definition="A re-worded, differently-scoped take on child ages.",
                           high_end="teens", low_end="infants", why_it_differentiates="v"),
         ]),
-        settings=AppSettings(), narrative=None,
+        inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None,
     )
     mr2 = get_or_create_member_ranking(db, analysis2, user)
 
@@ -489,7 +490,7 @@ def test_consolidate_audit_view_resolves_pair_names() -> None:
         opening_id=current_opening_id(db),
         user=db.scalar(select(User)),
         report=PoolDimensionReport(dimensions=[_dim("survivor", "Survivor Axis")]),
-        settings=AppSettings(), narrative=None,
+        inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None,
     )
     run.audit.decompose = {
         "settled": [{"key": "retired_within_run", "name": "Retired Within Run", "source_keys": []}],
@@ -530,7 +531,7 @@ def test_consolidate_audit_view_prefers_the_snapshotted_name() -> None:
         report=PoolDimensionReport(dimensions=[PoolDimension(
             key="survivor", name="Later Renamed", definition="d",
             high_end="hi", low_end="lo", why_it_differentiates="v")]),
-        settings=AppSettings(), narrative=None,
+        inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None,
     )
     run.audit.consolidate = {
         "pairs": [{
@@ -572,12 +573,12 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
 
     # Run 1: mint the narrow key. Its cached scores (not modelled here) belong to THIS text.
     create_analysis(db, user=user, opening_id=current_opening_id(db), report=PoolDimensionReport(dimensions=[_dim("licensed_trade", narrow)]),
-                    settings=AppSettings(), narrative=None)
+                    inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None)
     # Run 2: a broader duplicate appears alongside, and is merged INTO the narrow key
     # (older key wins the merge). This writes the alias hands_on_trade -> licensed_trade.
     analysis2 = create_analysis(db, user=user, opening_id=current_opening_id(db), report=PoolDimensionReport(dimensions=[
         _dim("licensed_trade", narrow), _dim("hands_on_trade", broad),
-    ]), settings=AppSettings(), narrative=None)
+    ]), inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None)
     mr2 = get_or_create_member_ranking(db, analysis2, user)
     apply_consolidation(
         db, analysis2, mr2,
@@ -591,7 +592,7 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
     # reach the broad re-discovery (resolved via alias to licensed_trade) BEFORE the narrow
     # canonical's own mint, and donate the broad text to the narrow key.
     create_analysis(db, user=user, opening_id=current_opening_id(db), report=PoolDimensionReport(dimensions=[_dim("hands_on_trade", broad)]),
-                    settings=AppSettings(), narrative=None)
+                    inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None)
 
     # all_known_dimensions (match target set) must report the NARROW mint.
     known = all_known_dimensions(db)

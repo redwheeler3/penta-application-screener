@@ -33,7 +33,7 @@ def create_analysis(
     user: User,
     opening_id: int,
     report: PoolDimensionReport,
-    settings: AppSettings,
+    inputs_fingerprint: str,
     narrative: str | None,
     tier_layout: list[dict] | None = None,
     new_dimension_keys: list[str] | None = None,
@@ -63,10 +63,8 @@ def create_analysis(
             application.synthetic_data for application in applications
         ),
         dimension_report=report.model_dump(mode="json"),
-        # Everything this analysis's ranking depends on — pool + rank-chain prompt and model
-        # identity. The next Rank compares it to flag the analysis "out of date" when the pool,
-        # any rank-chain prompt, or a model has changed.
-        rank_inputs_fingerprint=rank_inputs_fingerprint(db, opening_id, settings),
+        # Captured before discovery, so edits made during the run keep it out of date.
+        rank_inputs_fingerprint=inputs_fingerprint,
         # The AI-legibility trail lives in the 1:1 child so the hot read path stays lean.
         #   - discovery_narrative: the discovery pass's streamed reasoning.
         #   - match: raw pre-adopt discovery dims + the match map + narrative, so a re-rank's
@@ -382,14 +380,11 @@ def ranking_is_current(
     )
 
 
-def mark_ranking_current(db: Session, analysis: Analysis, settings: AppSettings) -> None:
-    """Record the committee's choice to keep this analysis's dimensions for current inputs
-    (stamps ``rank_inputs_fingerprint`` so a score-only run reads as up to date)."""
+def record_rank_inputs(db: Session, analysis: Analysis, inputs_fingerprint: str) -> None:
+    """Persist a score-only run's captured inputs; changes made during it remain stale."""
     if analysis.opening_id is None:
         raise ValueError("A current analysis must belong to an opening.")
-    analysis.rank_inputs_fingerprint = rank_inputs_fingerprint(
-        db, analysis.opening_id, settings
-    )
+    analysis.rank_inputs_fingerprint = inputs_fingerprint
     db.add(analysis)
     db.commit()
 

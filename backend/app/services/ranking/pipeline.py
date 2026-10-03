@@ -47,6 +47,7 @@ from app.services.ranking.criteria import (
     run_criteria_passes,
 )
 from app.services.ranking.dimensions import current_dimension_report
+from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.identity import adopt_matched_keys
 from app.services.ranking.member_state import (
     carry_forward_layout,
@@ -168,6 +169,7 @@ def _stream_criteria(
 
     yield emit(CriteriaPhaseEvent(discovery_workers=settings.ai.discovery_fan_out))
     pool = eligible_applications(db, opening_id)
+    inputs_fingerprint = rank_inputs_fingerprint(db, opening_id, settings, applications=pool)
     worker: StreamWorker[str | CriteriaStageChange, CriteriaPassResult] = StreamWorker()
     worker.start(lambda put: run_criteria_passes(
         provider, applications=pool, settings=settings, seeds=seeds,
@@ -241,7 +243,7 @@ def _stream_criteria(
     # carried forward above ARE their kept set — no separate field to thread through;
     # create_analysis clears the consumed proposals on the new ranking).
     analysis = create_analysis(
-        db, user=user, opening_id=opening_id, report=report, settings=settings,
+        db, user=user, opening_id=opening_id, report=report, inputs_fingerprint=inputs_fingerprint,
         narrative=work.narrative,
         tier_layout=layout, new_dimension_keys=new_dimension_keys,
         match_audit=work.match_audit,
