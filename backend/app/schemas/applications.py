@@ -149,6 +149,48 @@ class ApplicationDetail(ApplicationSummary):
     committee_notes: list["CommitteeNoteOut"] = []
 
 
+class EligibilityUpdate(ResponseModel):
+    id: int
+    status: str
+    status_source: str
+    stale: bool
+    auto_status: str
+    auto_status_source: str
+    hard_filter_reasons: list[HardFilterReason]
+
+
+class PrivateNoteSaved(ResponseModel):
+    id: int
+    private_note: str
+
+
+class CommitteeNotesUpdated(ResponseModel):
+    id: int
+    committee_notes: list["CommitteeNoteOut"]
+
+
+class FavouriteUpdated(ResponseModel):
+    id: int
+    starred_by_me: bool
+
+
+class ShortlistUpdated(ResponseModel):
+    id: int
+    shortlisted: bool
+
+
+class ApplicationMutationResponse[UpdateT](ResponseModel):
+    """Acknowledge only fields owned by the requested mutation."""
+
+    application: UpdateT
+
+
+EligibilityResponse = ApplicationMutationResponse[EligibilityUpdate]
+PrivateNoteResponse = ApplicationMutationResponse[PrivateNoteSaved]
+FavouriteResponse = ApplicationMutationResponse[FavouriteUpdated]
+ShortlistResponse = ApplicationMutationResponse[ShortlistUpdated]
+
+
 class CommitteeNoteOut(ResponseModel):
     id: int
     author_name: str
@@ -156,6 +198,9 @@ class CommitteeNoteOut(ResponseModel):
     created_at: datetime
     updated_at: datetime
     editable_by_me: bool
+
+
+CommitteeNotesResponse = ApplicationMutationResponse[CommitteeNotesUpdated]
 
 
 class CommitteeNoteWrite(RequestModel):

@@ -185,7 +185,8 @@ export function App(props: { authRedirect: AuthRedirect }) {
     openingId: selectedOpeningId,
     selectedApplication: selectedApp,
     rankingLoaded: ranking !== null,
-    onApplicationUpdated: setSelectedApp,
+    onApplicationUpdated: (update) => setSelectedApp((current) =>
+      current?.id === update.id ? { ...current, ...update } : current),
     onError: showError,
     refreshDashboard,
     reloadApplications,

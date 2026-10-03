@@ -28,6 +28,7 @@ from app.schemas.applications import (
     CommitteeOpeningOut,
     DimensionContributionOut,
     DimensionScoringTraceOut,
+    EligibilityUpdate,
     PetFactsOut,
     ScreeningFlagOut,
 )
@@ -139,6 +140,23 @@ def _pet_facts_out(output: dict[str, Any] | None) -> PetFactsOut | None:
     )
 
 
+def eligibility_update(app: Application, db: Session, user: User, opening_id: int) -> EligibilityUpdate:
+    """Current eligibility fields without loading essays, notes, or ranking scores."""
+    rules = rules_config_for(db, user.id, opening_id)
+    result = latest_screening_results(db, [app.id]).get(app.id)
+    flags = active_flags((result.output or {}).get("flags", []) if result else None, rules.disabled_checks)
+    facts = pet_facts_from_screening(result.output) if result else None
+    reasons = hard_filter_reasons_for(rules, app, pet_facts=facts)
+    override = overrides_by_app(db, user.id, opening_id, [app.id]).get(app.id)
+    status, source = effective_status(override, reasons=reasons, has_ai_flags=bool(flags))
+    automatic, automatic_source = resolve_machine_status(reasons=reasons, has_ai_flags=bool(flags))
+    return EligibilityUpdate(
+        id=app.id, status=status.value, status_source=source.value,
+        stale=override_is_stale(override, reasons, flags), hard_filter_reasons=reasons,
+        auto_status=automatic.value, auto_status_source=automatic_source.value,
+    )
+
+
 def serialize_detail(
     app: Application, db: Session, user: User, opening_id: int
 ) -> ApplicationDetail:
@@ -223,7 +241,7 @@ def serialize_detail(
         dimension_scores=dimension_scores,
         dimension_scoring_trace=_dimension_scoring_trace(db, opening_id, app.id),
         private_note=_private_note(db, app.id, user.id),
-        committee_notes=_committee_notes(db, app.id, user.id),
+        committee_notes=committee_notes(db, app.id, user.id),
     )
 
 
@@ -237,7 +255,7 @@ def _private_note(db: Session, application_id: int, user_id: int) -> str:
     return note or ""
 
 
-def _committee_notes(
+def committee_notes(
     db: Session, application_id: int, current_user_id: int
 ) -> list[CommitteeNoteOut]:
     rows = db.execute(

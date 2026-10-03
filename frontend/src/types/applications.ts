@@ -169,3 +169,8 @@ export type ApplicationDetail = ApplicationSummary & {
   // Attributed human notes visible to every committee member; never included in AI inputs.
   committeeNotes: CommitteeNote[];
 };
+
+export type ApplicationUpdate = Pick<ApplicationDetail, "id"> & Partial<Pick<ApplicationDetail,
+  "status" | "statusSource" | "stale" | "autoStatus" | "autoStatusSource" | "hardFilterReasons"
+  | "privateNote" | "committeeNotes" | "starredByMe" | "shortlisted"
+>>;

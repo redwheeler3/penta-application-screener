@@ -1,11 +1,12 @@
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.applications.presentation import (
+    committee_notes,
     committee_opening,
+    eligibility_update,
     serialize_detail,
     serialize_summary,
 )
@@ -28,10 +29,16 @@ from app.db.session import get_db
 from app.schemas.applications import (
     ApplicationEnvelope,
     ApplicationListResponse,
+    CommitteeNotesResponse,
     CommitteeNoteWrite,
+    EligibilityResponse,
+    FavouriteResponse,
+    PrivateNoteResponse,
     PrivateNoteUpdate,
+    ShortlistResponse,
 )
 from app.schemas.base import RequestModel
+from app.services.applications.locking import lock_application
 from app.services.applications.scope import (
     opening_ai_applications_query,
     opening_application,
@@ -68,9 +75,10 @@ def _get_application_or_404(
     return application
 
 
-def _get_mutable_application_or_404(
+def _lock_mutable_application_or_404(
     db: Session, opening_id: int, application_id: int
 ) -> Application:
+    lock_application(db, application_id)
     application = db.scalar(
         opening_ai_applications_query(opening_id).where(Application.id == application_id)
     )
@@ -206,14 +214,14 @@ class StatusOverride(RequestModel):
     status: ApplicationStatus
 
 
-@router.patch("/{application_id}/status", response_model=ApplicationEnvelope)
+@router.patch("/{application_id}/status", response_model=EligibilityResponse)
 def override_status(
     application_id: int,
     body: StatusOverride,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> EligibilityResponse:
     """This member's human override of an application's eligibility.
 
     Any committee member may set their own status. Upserts a ``MemberEligibility`` row
@@ -223,7 +231,7 @@ def override_status(
     else's view.
     """
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    application = _lock_mutable_application_or_404(db, opening_id, application_id)
     rules_config = rules_config_for(db, user.id, opening_id)
     flags_by_app, facts_by_app = screening_findings_by_app(db, [application_id])
     flags = active_flags(flags_by_app.get(application_id), rules_config.disabled_checks)
@@ -255,16 +263,16 @@ def override_status(
         override.reviewed_fingerprint = fingerprint
     db.commit()
 
-    return _application_envelope(application, db, user, opening_id)
+    return EligibilityResponse(application=eligibility_update(application, db, user, opening_id))
 
 
-@router.delete("/{application_id}/status", response_model=ApplicationEnvelope)
+@router.delete("/{application_id}/status", response_model=EligibilityResponse)
 def clear_status_override(
     application_id: int,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> EligibilityResponse:
     """Remove this member's override, reverting their view to the machine verdict.
 
     The machine verdict is recomputed on read from the *current* findings (rules then
@@ -272,7 +280,7 @@ def clear_status_override(
     reverting to automatic. No-op if this member has no override.
     """
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    application = _lock_mutable_application_or_404(db, opening_id, application_id)
     override = db.scalar(
         select(MemberEligibility).where(
             MemberEligibility.application_id == application_id,
@@ -284,20 +292,20 @@ def clear_status_override(
         db.delete(override)
         db.commit()
 
-    return _application_envelope(application, db, user, opening_id)
+    return EligibilityResponse(application=eligibility_update(application, db, user, opening_id))
 
 
-@router.put("/{application_id}/note", response_model=ApplicationEnvelope)
+@router.put("/{application_id}/note", response_model=PrivateNoteResponse)
 def save_private_note(
     application_id: int,
     body: PrivateNoteUpdate,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> PrivateNoteResponse:
     """Create or replace the current member's private application note."""
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    _lock_mutable_application_or_404(db, opening_id, application_id)
     note = db.scalar(
         select(ApplicationNote).where(
             ApplicationNote.application_id == application_id,
@@ -311,7 +319,7 @@ def save_private_note(
         note.note = body.note
     db.commit()
 
-    return _application_envelope(application, db, user, opening_id)
+    return PrivateNoteResponse(application={"id": application_id, "private_note": body.note})
 
 
 def _committee_note_or_404(
@@ -339,17 +347,17 @@ def _require_committee_note_author(
         )
 
 
-@router.post("/{application_id}/committee-notes", response_model=ApplicationEnvelope)
+@router.post("/{application_id}/committee-notes", response_model=CommitteeNotesResponse)
 def add_committee_note(
     application_id: int,
     body: CommitteeNoteWrite,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> CommitteeNotesResponse:
     """Add one attributed application-wide note visible to the committee."""
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    _lock_mutable_application_or_404(db, opening_id, application_id)
     db.add(
         ApplicationCommitteeNote(
             application_id=application_id,
@@ -358,12 +366,14 @@ def add_committee_note(
         )
     )
     db.commit()
-    return _application_envelope(application, db, user, opening_id)
+    return CommitteeNotesResponse(application={
+        "id": application_id, "committee_notes": committee_notes(db, application_id, user.id),
+    })
 
 
 @router.patch(
     "/{application_id}/committee-notes/{note_id}",
-    response_model=ApplicationEnvelope,
+    response_model=CommitteeNotesResponse,
 )
 def update_committee_note(
     application_id: int,
@@ -372,19 +382,21 @@ def update_committee_note(
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> CommitteeNotesResponse:
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    _lock_mutable_application_or_404(db, opening_id, application_id)
     note = _committee_note_or_404(db, application_id, note_id)
     _require_committee_note_author(note, user)
     note.body = body.body
     db.commit()
-    return _application_envelope(application, db, user, opening_id)
+    return CommitteeNotesResponse(application={
+        "id": application_id, "committee_notes": committee_notes(db, application_id, user.id),
+    })
 
 
 @router.delete(
     "/{application_id}/committee-notes/{note_id}",
-    response_model=ApplicationEnvelope,
+    response_model=CommitteeNotesResponse,
 )
 def delete_committee_note(
     application_id: int,
@@ -392,45 +404,47 @@ def delete_committee_note(
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> CommitteeNotesResponse:
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    _lock_mutable_application_or_404(db, opening_id, application_id)
     note = _committee_note_or_404(db, application_id, note_id)
     _require_committee_note_author(note, user)
     db.delete(note)
     db.commit()
-    return _application_envelope(application, db, user, opening_id)
+    return CommitteeNotesResponse(application={
+        "id": application_id, "committee_notes": committee_notes(db, application_id, user.id),
+    })
 
 
-@router.put("/{application_id}/star", response_model=ApplicationEnvelope)
+@router.put("/{application_id}/star", response_model=FavouriteResponse)
 def add_star(
     application_id: int,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> FavouriteResponse:
     """Star (favourite) this applicant for the current member. Idempotent: the row's
     existence is the state, so re-starring is a no-op guarded by the unique
     constraint. A personal working aid — no effect on ranking, eligibility, or reports."""
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    _lock_mutable_application_or_404(db, opening_id, application_id)
     if not is_starred(db, application_id, user.id):
         db.add(ApplicationStar(application_id=application_id, user_id=user.id))
         db.commit()
 
-    return _application_envelope(application, db, user, opening_id)
+    return FavouriteResponse(application={"id": application_id, "starred_by_me": True})
 
 
-@router.delete("/{application_id}/star", response_model=ApplicationEnvelope)
+@router.delete("/{application_id}/star", response_model=FavouriteResponse)
 def remove_star(
     application_id: int,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> FavouriteResponse:
     """Unstar this applicant for the current member. No-op if not starred."""
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    _lock_mutable_application_or_404(db, opening_id, application_id)
     star = db.scalar(
         select(ApplicationStar).where(
             ApplicationStar.application_id == application_id,
@@ -441,19 +455,19 @@ def remove_star(
         db.delete(star)
         db.commit()
 
-    return _application_envelope(application, db, user, opening_id)
+    return FavouriteResponse(application={"id": application_id, "starred_by_me": False})
 
 
-@router.put("/{application_id}/shortlist", response_model=ApplicationEnvelope)
+@router.put("/{application_id}/shortlist", response_model=ShortlistResponse)
 def add_to_shortlist(
     application_id: int,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> ShortlistResponse:
     """Add an applicant to the committee's shared shortlist, idempotently."""
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    _lock_mutable_application_or_404(db, opening_id, application_id)
     if not is_shortlisted(db, opening_id, application_id):
         db.add(
             ApplicationShortlist(
@@ -468,19 +482,19 @@ def add_to_shortlist(
             # Another member added the same shared row between our read and write.
             # The requested state already exists, so preserve idempotent PUT semantics.
             db.rollback()
-    return _application_envelope(application, db, user, opening_id)
+    return ShortlistResponse(application={"id": application_id, "shortlisted": True})
 
 
-@router.delete("/{application_id}/shortlist", response_model=ApplicationEnvelope)
+@router.delete("/{application_id}/shortlist", response_model=ShortlistResponse)
 def remove_from_shortlist(
     application_id: int,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> ApplicationEnvelope:
+) -> ShortlistResponse:
     """Remove an applicant from the committee's shared shortlist, idempotently."""
     opening_id = resolve_visible_opening_id(db, opening_id)
-    application = _get_mutable_application_or_404(db, opening_id, application_id)
+    _lock_mutable_application_or_404(db, opening_id, application_id)
     db.execute(
         delete(ApplicationShortlist).where(
             ApplicationShortlist.opening_id == opening_id,
@@ -488,4 +502,4 @@ def remove_from_shortlist(
         )
     )
     db.commit()
-    return _application_envelope(application, db, user, opening_id)
+    return ShortlistResponse(application={"id": application_id, "shortlisted": False})

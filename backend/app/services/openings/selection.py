@@ -16,6 +16,7 @@ from app.db.models import (
     OpeningPhase,
     User,
 )
+from app.services.applications.locking import lock_application
 from app.services.applications.retention import refresh_application_retention
 from app.services.applications.selected import (
     revoke_selected_applicant_access,
@@ -98,6 +99,8 @@ def confirm_opening_selection(
     decided_by: User,
     now: datetime | None = None,
 ) -> None:
+    # Application first: withdrawal and selection use the same lifecycle boundary.
+    lock_application(db, application_id)
     _lock_opening_decision(db, opening)
     existing = selected_participation(db, opening.id)
     if opening.decided_at is not None:

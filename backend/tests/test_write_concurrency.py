@@ -26,8 +26,8 @@ from tests.applicant.support import sample_answers
 from tests.db_support import memory_engine
 
 
-def request_sessions(*, closed: bool):
-    factory = sessionmaker(bind=memory_engine(foreign_keys=True), autoflush=False)
+def request_sessions(*, closed: bool, engine=None):
+    factory = sessionmaker(bind=engine or memory_engine(foreign_keys=True), autoflush=False)
     now = datetime.now(UTC)
     today = pacific_today()
     with factory() as db:

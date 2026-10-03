@@ -4,8 +4,9 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 
+from app.api.applications import routes
 from app.api.dependencies import require_current_user
 from app.db.models import (
     ApplicationCommitteeNote,
@@ -24,6 +25,47 @@ from tests.committee_app_support import (
 from tests.committee_app_support import (
     setup_committee_app as setup_app,
 )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(("method", "path", "body", "fields"), [
+    ("PUT", "note", {"note": "Synthetic note"}, {"id", "privateNote"}),
+    ("PUT", "star", None, {"id", "starredByMe"}),
+    ("DELETE", "star", None, {"id", "starredByMe"}),
+    ("PUT", "shortlist", None, {"id", "shortlisted"}),
+    ("DELETE", "shortlist", None, {"id", "shortlisted"}),
+    ("POST", "committee-notes", {"body": "Synthetic context"}, {"id", "committeeNotes"}),
+    ("PATCH", "status", {"status": "eligible"}, {
+        "id", "status", "statusSource", "stale", "autoStatus", "autoStatusSource", "hardFilterReasons",
+    }),
+])
+async def test_mutations_acknowledge_only_owned_fields_without_rebuilding_detail(
+    monkeypatch, method, path, body, fields,
+) -> None:
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application_id = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic").id
+
+    def unexpected_detail(*_args):
+        pytest.fail("A mutation should not rebuild the full candidate detail")
+
+    monkeypatch.setattr(routes, "serialize_detail", unexpected_detail)
+    queries = []
+
+    def record(_connection, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            queries.append(statement)
+
+    event.listen(db.get_bind(), "before_cursor_execute", record)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+            response = await client.request(method, f"/applications/{application_id}/{path}", json=body)
+        assert response.status_code == 200
+        assert set(response.json()["application"]) == fields
+        assert not any("FROM analyses" in query or "FROM member_rankings" in query for query in queries)
+        if path != "status":
+            assert not any("FROM application_ai_results" in query for query in queries)
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", record)
 
 
 @pytest.mark.anyio

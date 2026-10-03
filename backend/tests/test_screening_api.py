@@ -266,7 +266,8 @@ async def test_human_override_is_sticky_and_snapshots_fingerprint() -> None:
         assert patched["statusSource"] == "human"
         assert patched["stale"] is False
         # Flags are preserved through the override.
-        assert patched["flagCount"] == 1
+        detail = (await client.get(f"/applications/{flagged.id}")).json()["application"]
+        assert detail["flagCount"] == 1
 
         # A re-run must not flip the human status or go stale, even though the
         # cached result still flows through the status hook. The pool must change
@@ -321,7 +322,8 @@ async def test_clear_override_restores_machine_status() -> None:
         assert cleared["status"] == "ineligible"
         assert cleared["statusSource"] == "ai"
         assert cleared["stale"] is False
-        assert cleared["flagCount"] == 1
+        detail = (await client.get(f"/applications/{flagged.id}")).json()["application"]
+        assert detail["flagCount"] == 1
 
 
 @pytest.mark.anyio

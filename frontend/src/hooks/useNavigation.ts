@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type SetStateAction, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import * as api from "../api/applications";
 import type { ApplicationDetail, ViewTab } from "../types";
@@ -166,7 +166,7 @@ export function useNavigation(options: {
     activeTab,
     selectedApplication,
     selectedApplicationReadOnly,
-    setSelectedApplication: (application: ApplicationDetail | null) => {
+    setSelectedApplication: (application: SetStateAction<ApplicationDetail | null>) => {
       requests.invalidate();
       setSelectedApplication(application);
     },

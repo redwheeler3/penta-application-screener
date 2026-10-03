@@ -17,6 +17,7 @@ from app.db.models import (
     User,
 )
 from app.schemas.openings import DirectSelectionOpeningCreate
+from app.services.applications.locking import lock_application
 from app.services.applications.retention import refresh_application_retention
 from app.services.applications.selected import revoke_selected_applicant_access
 
@@ -79,6 +80,7 @@ def create_direct_selection_opening(
     now = now or datetime.now(UTC)
     if values.move_in_date <= pacific_today(now=now):
         raise Problem("invalid_settings", detail="The move-in date must be in the future.")
+    lock_application(db, values.application_id)
     application = available_previous_applicant(db, values.application_id)
     if application is None:
         raise Problem(

@@ -34,6 +34,8 @@ export function CandidateNotes(props: {
   const savedPrivateNote = useRef(props.privateNote);
   const privateSaveQueue = useRef<Promise<void>>(Promise.resolve());
   const privateRequests = useRequestScope(props.applicationId);
+  const editorRef = useRef({ adding, newNote, editingId, editingBody });
+  editorRef.current = { adding, newNote, editingId, editingBody };
 
   useEffect(
     () => () => {
@@ -55,6 +57,7 @@ export function CandidateNotes(props: {
     const inScope = privateRequests.capture();
     setPrivateStatus("saving");
     privateSaveQueue.current = privateSaveQueue.current.then(async () => {
+      if (revision !== privateRevision.current) return;
       // Compare after earlier writes finish. Reverting to a previously saved value
       // still needs a write if an in-flight edit has since changed the server.
       let saved = note === savedPrivateNote.current;
@@ -99,14 +102,15 @@ export function CandidateNotes(props: {
     event.preventDefault();
     const body = newNote.trim();
     if (!body) return;
+    const submitted = newNote;
     setCommitteeBusy(true);
     setCommitteeError(null);
     const saved = await props.onAddCommitteeNote(props.applicationId, body);
     setCommitteeBusy(false);
-    if (saved) {
+    if (saved && editorRef.current.adding && editorRef.current.newNote === submitted) {
       setNewNote("");
       setAdding(false);
-    } else {
+    } else if (!saved) {
       setCommitteeError("Could not add the note. Try again.");
     }
   }
@@ -115,14 +119,15 @@ export function CandidateNotes(props: {
     event.preventDefault();
     const body = editingBody.trim();
     if (!body) return;
+    const submitted = editingBody;
     setCommitteeBusy(true);
     setCommitteeError(null);
     const saved = await props.onUpdateCommitteeNote(props.applicationId, noteId, body);
     setCommitteeBusy(false);
-    if (saved) {
+    if (saved && editorRef.current.editingId === noteId && editorRef.current.editingBody === submitted) {
       setEditingId(null);
       setEditingBody("");
-    } else {
+    } else if (!saved) {
       setCommitteeError("Could not update the note. Try again.");
     }
   }

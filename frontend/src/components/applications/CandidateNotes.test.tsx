@@ -77,10 +77,42 @@ describe("CandidateNotes", () => {
     expect(screen.getByText("Saved")).toBeInTheDocument();
   });
 
+  it("skips intermediate private drafts queued behind a pending save", async () => {
+    const first = deferred<boolean>();
+    const save = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue(true);
+    renderNotes({ onSavePrivateNote: save });
+    const input = screen.getByRole("textbox", { name: "My private notes" });
+    fireEvent.change(input, { target: { value: "First" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    for (const value of ["Intermediate", "Newest"]) {
+      fireEvent.change(input, { target: { value } });
+      fireEvent.blur(input);
+    }
+    await act(async () => { first.resolve(true); });
+    expect(save.mock.calls).toEqual([[42, "First"], [42, "Newest"]]);
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it.each(["add", "edit"])("retains a newer committee draft after a pending %s", async (mode) => {
+    const pending = deferred<boolean>();
+    renderNotes({ onAddCommitteeNote: () => pending.promise, onUpdateCommitteeNote: () => pending.promise });
+    fireEvent.click(screen.getByRole("tab", { name: /Committee notes/ }));
+    fireEvent.click(screen.getByRole("button", { name: mode === "add" ? "Add committee note" : "Edit" }));
+    const editor = screen.getByRole("textbox", { name: mode === "add" ? "New committee note" : "Edit note by Committee Member" });
+    fireEvent.change(editor, { target: { value: "Submitted" } });
+    fireEvent.click(screen.getByRole("button", { name: mode === "add" ? "Add note" : "Save" }));
+    fireEvent.change(editor, { target: { value: "Typed while saving" } });
+    await act(async () => { pending.resolve(true); });
+    expect(editor).toHaveValue("Typed while saving");
+    expect(screen.getByRole("button", { name: mode === "add" ? "Add note" : "Save" })).toBeEnabled();
+  });
+
   it("keeps private autosave and committee publishing visibly separate", async () => {
     const user = userEvent.setup();
     const callbacks = renderNotes();
 
+    await user.click(screen.getByRole("tab", { name: "My notes" }));
     expect(screen.getByText("Only you can see this.")).toBeInTheDocument();
     const privateNote = screen.getByRole("textbox", { name: "My private notes" });
     fireEvent.change(privateNote, { target: { value: "Updated private context" } });

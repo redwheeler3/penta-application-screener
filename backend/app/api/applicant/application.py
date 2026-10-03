@@ -53,6 +53,7 @@ from app.services.applications.intake import (
     publish_working_copy,
     save_working_copy,
 )
+from app.services.applications.locking import lock_application
 from app.services.applications.retention import refresh_application_retention
 from app.services.auth.passwordless import (
     revoke_identity_magic_links,
@@ -240,6 +241,9 @@ def withdraw_applicant_application(
     db: Session = Depends(get_db),
 ) -> WithdrawApplicationResponse:
     """Withdraw one application and every opening participation from ordinary access."""
+    application = lock_application(db, application.id)
+    if application is None:
+        raise Problem("unauthorized", detail="Application access required.")
     require_application_not_selected(db, application)
     now = datetime.now(UTC)
     cancel_queued_application_emails(db, application.id)
