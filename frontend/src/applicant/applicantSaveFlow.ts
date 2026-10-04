@@ -183,9 +183,9 @@ export function createApplicantSaveFlow({
     });
     if (intent === "submit" && applicationId != null
       && snapshot === workingSnapshot(draftRef.current, stateRef.current.openingIds)) {
-      clearApplicationDraft(applicationId);
+      await clearApplicationDraft(applicationId);
     }
-    return true;
+    return inSession();
   }
 
   async function emailReturnLink(): Promise<boolean> {

@@ -45,7 +45,7 @@ import type { ApplicantDraft, ApplicantOpening } from "./types";
 export function useApplicantPersistence(
   draft: ApplicantDraft,
   setDraft: Dispatch<SetStateAction<ApplicantDraft>>,
-  onRememberDeviceChange: (remember: boolean) => void,
+  onRememberDeviceChange: (remember: boolean) => void | Promise<void>,
 ) {
   const draftRef = useRef(draft);
   const applicationReads = useRequestScope();
@@ -203,7 +203,8 @@ export function useApplicantPersistence(
       const body = await linkBody(response);
       if (!inSession()) return;
       if (body.state === "email_in_use" && body.applicationId != null) {
-        onRememberDeviceChange(rememberDevice);
+        await onRememberDeviceChange(rememberDevice);
+        if (!inSession()) return;
         updatePersistence({ applicationId: body.applicationId });
         await restoreApplication(body.applicationId);
         if (!inSession()) return;
@@ -218,7 +219,8 @@ export function useApplicantPersistence(
         updatePersistence({ phase: body.state === "invalid" || body.state === "abandoned" ? "link_invalid" : "link_expired" });
         return;
       }
-      onRememberDeviceChange(rememberDevice);
+      await onRememberDeviceChange(rememberDevice);
+      if (!inSession()) return;
       updatePersistence({
         applicationId: body.applicationId,
         reviewAfterAccess: body.purpose !== "email_change" && body.pendingIntent === "submit",
@@ -456,7 +458,9 @@ export function useApplicantPersistence(
 
   async function discardDraft(): Promise<void> {
     endSessionWork();
-    if (applicationId != null) clearApplicationDraft(applicationId);
+    const inSession = sessionWork.capture();
+    if (applicationId != null) await clearApplicationDraft(applicationId);
+    if (!inSession()) return;
     updatePersistence({
       pendingDraftToken: null,
       openingIds: defaultOpeningIds(openings),

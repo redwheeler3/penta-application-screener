@@ -338,6 +338,12 @@ Closing a window is not treated as a guaranteed security boundary because browse
 session cookies and tabs. People using a shared device should leave the opt-in unchecked and
 explicitly sign out when finished. Sign-out clears the relevant cookie and browser-held applicant
 data in addition to revoking the server session.
+Remembered draft writes and clearing share a browser Web Lock. Each tab binds writes to the
+consent lifetime stored in the preference value; clearing or replacing that value invalidates
+older queued saves. A tab receiving a storage reset stops browser persistence while keeping
+its in-memory answers. The leaving warning stays active until the exact current draft has
+been stored or saved to the server. Browser storage failures, or unavailable cross-tab locking,
+keep answers in memory and do not claim that browser recovery is available.
 
 Signing out revokes the current server-side session immediately. **Sign out all devices** revokes
 every session for that identity. Administrators can revoke a committee member's sessions, and

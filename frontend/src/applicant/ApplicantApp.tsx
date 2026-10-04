@@ -42,12 +42,8 @@ import {
   applicantGoogleSignInUrl,
   takeApplicantGoogleAccessResult,
 } from "./api";
-import {
-  hasDraftContent,
-  remembersDevice,
-  saveApplicationDraft,
-  setRememberDevice,
-} from "./draftStorage";
+import { hasDraftContent } from "./draftStorage";
+import { useRememberedApplicantDraft } from "./useRememberedApplicantDraft";
 import { emptyApplicantDraft, residenceHistoryCutoff } from "./applicationDraft";
 import { useApplicantPersistence } from "./useApplicantPersistence";
 import { useEmailDeliveryStatus } from "../hooks/useEmailDeliveryStatus";
@@ -55,10 +51,8 @@ import { useEmailDeliveryStatus } from "../hooks/useEmailDeliveryStatus";
 export function ApplicantApp() {
   const emailDelayed = useEmailDeliveryStatus();
   const [draft, setDraft] = useState(emptyApplicantDraft);
-  const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
-  const [rememberDevice, setRememberDeviceState] = useState(remembersDevice);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const [clearingDraft, setClearingDraft] = useState(false);
@@ -71,31 +65,11 @@ export function ApplicantApp() {
   const persistence = useApplicantPersistence(draft, setDraft, changeRememberDevice);
   const housingHistoryCutoff = residenceHistoryCutoff(persistence.openings);
 
-  useEffect(() => {
-    if (
-      !persistence.authenticated
-      || !rememberDevice
-      || persistence.applicationId == null
-      || persistence.workingRevision == null
-    ) return;
-    const timeout = window.setTimeout(
-      () => setSavedAt(saveApplicationDraft(
-        persistence.applicationId!,
-        draft,
-        persistence.openingIds,
-        persistence.workingRevision!,
-      )),
-      350,
-    );
-    return () => window.clearTimeout(timeout);
-  }, [
-    draft,
-    persistence.applicationId,
-    persistence.authenticated,
-    persistence.openingIds,
-    persistence.workingRevision,
-    rememberDevice,
-  ]);
+  const browserDraft = useRememberedApplicantDraft({
+    authenticated: persistence.authenticated, applicationId: persistence.applicationId,
+    workingRevision: persistence.workingRevision, draft, openingIds: persistence.openingIds,
+  });
+  const { savedAt, rememberDevice } = browserDraft;
 
   useEffect(() => {
     if (!persistence.reviewAfterAccess) return;
@@ -108,17 +82,17 @@ export function ApplicantApp() {
 
   useEffect(() => {
     if (
-      (persistence.authenticated && rememberDevice) ||
       !persistence.hasUnsavedChanges ||
       !hasDraftContent(draft)
     ) return;
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (browserDraft.currentDraftIsStored()) return;
       event.preventDefault();
       event.returnValue = true;
     };
     window.addEventListener("beforeunload", warnBeforeLeaving);
     return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
-  }, [draft, persistence.authenticated, persistence.hasUnsavedChanges, rememberDevice]);
+  }, [draft, persistence.hasUnsavedChanges, browserDraft]);
 
   useEffect(() => {
     if (
@@ -206,14 +180,12 @@ export function ApplicantApp() {
     setClearingDraft(false);
     void persistence.discardDraft();
     setDraft(emptyApplicantDraft());
-    setSavedAt(null);
+    browserDraft.reset();
     setReviewing(false);
   }
 
-  function changeRememberDevice(remember: boolean): void {
-    setRememberDevice(remember);
-    setRememberDeviceState(remember);
-    if (!remember) setSavedAt(null);
+  async function changeRememberDevice(remember: boolean): Promise<void> {
+    await browserDraft.changeRememberDevice(remember);
   }
 
   async function signOut(): Promise<void> {
@@ -229,10 +201,9 @@ export function ApplicantApp() {
 
   function resetApplicantStateAfterExit(): void {
     setDraft(emptyApplicantDraft());
-    setSavedAt(null);
+    browserDraft.reset();
     setReviewing(false);
     setDeclarationAccepted(false);
-    setRememberDeviceState(false);
     setEmailChangeOpen(false);
     setWithdrawConfirmOpen(false);
     setClearingDraft(false);

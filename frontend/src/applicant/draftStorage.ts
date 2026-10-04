@@ -15,15 +15,45 @@ type StoredDrafts = Record<string, StoredDraft>;
 export type LoadedDraft = Omit<StoredDraft, "savedAt"> & { savedAt: Date };
 
 export function remembersDevice(): boolean {
-  return localStorage.getItem(REMEMBER_DEVICE_KEY) === "true";
+  return rememberedStorageScope() !== null;
 }
 
-export function setRememberDevice(remember: boolean): void {
-  if (remember) localStorage.setItem(REMEMBER_DEVICE_KEY, "true");
-  else {
-    localStorage.removeItem(REMEMBER_DEVICE_KEY);
-    localStorage.removeItem(DRAFTS_KEY);
+export function rememberedStorageScope(): string | null {
+  try {
+    return localStorage.getItem(REMEMBER_DEVICE_KEY);
+  } catch {
+    return null;
   }
+}
+
+async function withStorageLock<T>(operation: () => T): Promise<T> {
+  if (!navigator.locks) return operation();
+  return navigator.locks.request(DRAFTS_KEY, operation);
+}
+
+export async function setRememberDevice(remember: boolean): Promise<string | null> {
+  return withStorageLock(() => {
+    if (!remember) {
+      localStorage.removeItem(REMEMBER_DEVICE_KEY);
+      localStorage.removeItem(DRAFTS_KEY);
+      return null;
+    }
+    if (!navigator.locks) return null; // server saves remain available without browser persistence
+    // Store the consent lifetime in the existing preference value, not a separate record.
+    const scope = crypto.randomUUID();
+    localStorage.setItem(REMEMBER_DEVICE_KEY, scope);
+    return scope;
+  });
+}
+
+export function observeRememberedStorage(onChange: () => void): () => void {
+  const changed = (event: StorageEvent) => {
+    if (event.storageArea === localStorage && (event.key === null || event.key === REMEMBER_DEVICE_KEY)) {
+      onChange();
+    }
+  };
+  window.addEventListener("storage", changed);
+  return () => window.removeEventListener("storage", changed);
 }
 
 export function loadApplicationDraft(applicationId: number): LoadedDraft | null {
@@ -32,7 +62,7 @@ export function loadApplicationDraft(applicationId: number): LoadedDraft | null 
   if (!stored) return null;
   const savedAt = new Date(stored.savedAt);
   if (!Number.isFinite(savedAt.getTime())) {
-    clearApplicationDraft(applicationId);
+    void clearApplicationDraft(applicationId);
     return null;
   }
   const defaults = emptyApplicantDraft();
@@ -52,33 +82,44 @@ export function loadApplicationDraft(applicationId: number): LoadedDraft | null 
   };
 }
 
-export function saveApplicationDraft(
+export async function saveApplicationDraft(
   applicationId: number,
   draft: ApplicantDraft,
   openingIds: number[],
   baseRevision: number,
+  consentScope: string,
   now = new Date(),
-): Date {
-  const drafts = readDrafts();
-  drafts[String(applicationId)] = {
-    savedAt: now.toISOString(),
-    draft,
-    openingIds,
-    baseRevision,
-  };
-  writeDrafts(drafts);
-  return now;
+): Promise<Date | null> {
+  if (!navigator.locks) return null;
+  return withStorageLock(() => {
+    if (rememberedStorageScope() !== consentScope) return null;
+    const drafts = readDrafts();
+    drafts[String(applicationId)] = {
+      savedAt: now.toISOString(),
+      draft,
+      openingIds,
+      baseRevision,
+    };
+    writeDrafts(drafts);
+    return now;
+  });
 }
 
-export function clearApplicationDraft(applicationId: number): void {
-  const drafts = readDrafts();
-  delete drafts[String(applicationId)];
-  writeDrafts(drafts);
+export async function clearApplicationDraft(applicationId: number): Promise<void> {
+  const scope = rememberedStorageScope();
+  await withStorageLock(() => {
+    if (scope === null || rememberedStorageScope() !== scope) return;
+    const drafts = readDrafts();
+    delete drafts[String(applicationId)];
+    writeDrafts(drafts);
+  });
 }
 
-export function clearApplicantStorage(): void {
-  localStorage.removeItem(DRAFTS_KEY);
-  localStorage.removeItem(REMEMBER_DEVICE_KEY);
+export async function clearApplicantStorage(): Promise<void> {
+  await withStorageLock(() => {
+    localStorage.removeItem(DRAFTS_KEY);
+    localStorage.removeItem(REMEMBER_DEVICE_KEY);
+  });
 }
 
 export function hasDraftContent(draft: ApplicantDraft): boolean {

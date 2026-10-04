@@ -46,7 +46,7 @@ export function createApplicantWithdrawalFlow({
       updatePersistence({ withdrawalStatus: "error", withdrawalMessage: problem.detail });
       return false;
     }
-    clearApplicantStorage();
+    await clearApplicantStorage();
     endSessionWork();
     updatePersistence((state) => resetApplicantSession(state, "withdrawn"));
     return true;
@@ -69,7 +69,7 @@ export function createApplicantWithdrawalFlow({
       await fail(response);
       return false;
     }
-    clearApplicantStorage();
+    await clearApplicantStorage();
     endSessionWork();
     updatePersistence((state) => resetApplicantSession(state));
     void restorePublicOpenings();
