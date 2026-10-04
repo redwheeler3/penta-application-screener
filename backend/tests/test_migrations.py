@@ -13,6 +13,81 @@ from app.db.models import Base
 from app.schemas.settings import AppSettings
 
 
+def test_monotonic_identity_migration_preserves_every_row_and_detaches_comparison(tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.models import (
+        RECORD_ID_FLOOR,
+        ApplicantDraft,
+        ApplicantDraftIntent,
+        Application,
+        ApplicationAIResult,
+        ApplicationAISelection,
+        ApplicationCommitteeNote,
+        BrowserSession,
+        PasswordlessIdentityKind,
+        User,
+        UserRole,
+    )
+
+    backend = Path(__file__).parents[1]
+    url = f"sqlite:///{(tmp_path / 'record-identity.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    engine = create_engine(url)
+    try:
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "alembic"))
+        command.upgrade(config, "9f0a1b2c3d4e")
+        now = datetime.now(UTC)
+        with Session(engine) as db:
+            db.add_all([
+                User(id=1, email="synthetic@example.com", display_name="Synthetic", role=UserRole.ADMIN),
+                Application(id=2, primary_email="applicant@example.com", raw_row={}, raw_row_hash="synthetic", normalized={}),
+            ])
+            db.flush()
+            db.add(ApplicantDraft(id=3, email="applicant@example.com", intent=ApplicantDraftIntent.SAVE,
+                application_id=2, draft_token_hash="synthetic-draft", created_at=now, saved_at=now, expires_on=now.date() + timedelta(days=1)))
+            db.flush()
+            db.add_all([
+                BrowserSession(id=4, identity_kind=PasswordlessIdentityKind.APPLICANT, application_id=2,
+                    reconciliation_draft_id=3, token_hash="synthetic-session", created_at=now, last_activity_at=now,
+                    idle_expires_at=now + timedelta(days=1), absolute_expires_at=now + timedelta(days=2)),
+                ApplicationCommitteeNote(id=5, application_id=2, author_user_id=1, body="Synthetic note"),
+                ApplicationAIResult(id=6, application_id=2, kind="screening", cache_key="synthetic-result", model_id="synthetic",
+                    prompt_version="synthetic", output={"flags": []}, input_tokens=100, output_tokens=50, cost_usd=0.1),
+            ])
+            db.flush()
+            db.add(ApplicationAISelection(application_id=2, kind="screening", result_id=6))
+            db.commit()
+        with engine.connect() as connection:
+            tables = connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'alembic_version'").scalars().all()
+            before = {name: connection.exec_driver_sql(f'SELECT * FROM "{name}" ORDER BY rowid').all() for name in tables}
+        command.upgrade(config, "head")
+        with engine.begin() as connection:
+            for name in tables:
+                assert connection.exec_driver_sql(f'SELECT * FROM "{name}" ORDER BY rowid').all() == before[name]
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.exec_driver_sql("DELETE FROM applicant_drafts WHERE id=3")
+            assert connection.exec_driver_sql("SELECT reconciliation_draft_id FROM browser_sessions WHERE id=4").scalar_one() is None
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+        with Session(engine) as db:
+            created = Application(primary_email="new@example.com", raw_row={}, raw_row_hash="new", normalized={})
+            db.add(created)
+            db.commit()
+            first_id = created.id
+            assert RECORD_ID_FLOOR < first_id < 2**53
+            db.delete(created)
+            db.commit()
+            next_record = Application(primary_email="next@example.com", raw_row={}, raw_row_hash="next", normalized={})
+            db.add(next_record)
+            db.commit()
+            assert next_record.id > first_id
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
 def test_failed_run_metadata_migration_preserves_existing_costs_and_unknown_units(tmp_path, monkeypatch) -> None:
     backend = Path(__file__).parents[1]
     url = f"sqlite:///{(tmp_path / 'failed-run-metadata.db').as_posix()}"

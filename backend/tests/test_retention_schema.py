@@ -9,7 +9,6 @@ APPLICATION_OWNED_FOREIGN_KEYS = {
     ("magic_link_tokens", "application_id", "applications"),
     ("magic_link_tokens", "applicant_draft_id", "applicant_drafts"),
     ("browser_sessions", "application_id", "applications"),
-    ("browser_sessions", "reconciliation_draft_id", "applicant_drafts"),
     ("email_deliveries", "application_id", "applications"),
     ("email_deliveries", "magic_link_token_id", "magic_link_tokens"),
     ("email_deliveries", "applicant_draft_id", "applicant_drafts"),
@@ -30,6 +29,7 @@ def test_every_application_owned_foreign_key_cascades() -> None:
         for foreign_key in table.foreign_keys
         if foreign_key.column.table.name
         in {"applications", "applicant_drafts", "magic_link_tokens"}
+        and foreign_key.parent.name != "reconciliation_draft_id"
     }
 
     assert actual == APPLICATION_OWNED_FOREIGN_KEYS
@@ -37,3 +37,9 @@ def test_every_application_owned_foreign_key_cascades() -> None:
         column = Base.metadata.tables[table_name].columns[column_name]
         foreign_key = next(iter(column.foreign_keys))
         assert foreign_key.ondelete == "CASCADE"
+
+
+def test_comparison_copy_does_not_own_the_authenticated_session() -> None:
+    column = Base.metadata.tables["browser_sessions"].columns["reconciliation_draft_id"]
+    assert column.nullable is True
+    assert next(iter(column.foreign_keys)).ondelete == "SET NULL"

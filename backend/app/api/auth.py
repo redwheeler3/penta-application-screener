@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.api.dependencies import optional_current_user
 from app.api.session_cookie import (
@@ -9,11 +10,11 @@ from app.api.session_cookie import (
     set_session_cookie,
 )
 from app.core.config import Settings, get_settings
-from app.core.google_oauth import authorized_google_identity, get_oauth
+from app.core.google_oauth import GoogleIdentity, authorized_google_identity, get_oauth
 from app.db.models import PasswordlessIdentityKind, User
 from app.db.session import get_db
 from app.schemas.auth import CurrentUser, LogoutResponse, MeResponse
-from app.services.auth.allowlist import get_entry
+from app.services.auth.allowlist import lock_entry
 from app.services.auth.denied_sign_ins import record_denied_sign_in
 from app.services.auth.passwordless import (
     create_browser_session,
@@ -50,10 +51,17 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     if identity is None:
         return _google_sign_in_denied()
 
+    # OAuth network I/O is async; SQLite waits belong on a worker thread.
+    return await run_in_threadpool(_complete_google_sign_in, request, db, identity, remember_device)
+
+
+def _complete_google_sign_in(
+    request: Request, db: Session, identity: GoogleIdentity, remember_device: bool,
+) -> RedirectResponse:
     # Access gate: only allowlisted emails may sign in, and the entry's role is the
     # user's role. A non-listed account is bounced back to the login screen with a
     # flag (an OAuth redirect can't carry a problem+json body) rather than admitted.
-    entry = get_entry(db, identity.email)
+    entry = lock_entry(db, identity.email)
     if entry is None:
         record_denied_sign_in(
             db,

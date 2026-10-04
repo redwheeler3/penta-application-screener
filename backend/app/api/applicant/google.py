@@ -5,10 +5,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.api.session_cookie import session_token, set_session_cookie
 from app.core.config import get_settings
-from app.core.google_oauth import authorized_google_identity, get_oauth
+from app.core.google_oauth import GoogleIdentity, authorized_google_identity, get_oauth
 from app.db.models import PasswordlessIdentityKind
 from app.db.session import get_db
 from app.services.auth.applicant import authenticate_applicant
@@ -46,6 +47,13 @@ async def applicant_google_callback(
     if identity is None:
         return _applicant_redirect("denied")
 
+    # OAuth network I/O is async; SQLite waits belong on a worker thread.
+    return await run_in_threadpool(_complete_applicant_google_sign_in, request, db, identity, remember_device)
+
+
+def _complete_applicant_google_sign_in(
+    request: Request, db: Session, identity: GoogleIdentity, remember_device: bool,
+) -> RedirectResponse:
     current_token = session_token(request, PasswordlessIdentityKind.APPLICANT)
     current = (
         authenticate_applicant(db, current_token)

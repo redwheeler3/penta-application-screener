@@ -43,7 +43,6 @@ from app.services.applications.access import (
     draft_belongs_to_application,
     lock_application_revision,
     pending_email_change,
-    purge_never_submitted_application,
     require_application_editable,
     require_application_not_selected,
     require_matching_email,
@@ -51,11 +50,13 @@ from app.services.applications.access import (
 from app.services.applications.answers import (
     working_answers_for,
 )
+from app.services.applications.drafts import revoke_application_drafts
 from app.services.applications.intake import (
     publish_working_copy,
     save_working_copy,
 )
 from app.services.applications.locking import lock_application
+from app.services.applications.purge import purge_never_submitted_application
 from app.services.applications.retention import refresh_application_retention
 from app.services.auth.passwordless import (
     revoke_identity_magic_links,
@@ -265,6 +266,7 @@ def withdraw_applicant_application(
     require_application_not_selected(db, application)
     now = datetime.now(UTC)
     cancel_queued_application_emails(db, application.id)
+    revoke_application_drafts(db, application.id, now=now)
     if application.submitted_at is None:
         purge_never_submitted_application(db, application)
         db.commit()

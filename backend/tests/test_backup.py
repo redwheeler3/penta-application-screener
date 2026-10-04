@@ -74,6 +74,52 @@ def test_restore_replaces_db_and_snapshots_current_first(temp_engine):
         assert conn.execute(text("SELECT count(*) FROM runs")).scalar() == 2
 
 
+def test_restore_preserves_the_live_identity_high_water_mark(temp_engine):
+    with temp_engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE identities (id INTEGER PRIMARY KEY AUTOINCREMENT, marker TEXT)")
+        conn.exec_driver_sql("INSERT INTO identities (marker) VALUES ('original')")
+    saved = backup.create_backup(engine=temp_engine)
+    with temp_engine.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO identities (marker) VALUES ('later')")
+        later_id = conn.exec_driver_sql("SELECT MAX(id) FROM identities").scalar_one()
+    backup.restore_backup(saved, engine=temp_engine)
+    with temp_engine.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO identities (marker) VALUES ('replacement')")
+        assert conn.exec_driver_sql("SELECT MAX(id) FROM identities").scalar_one() > later_id
+
+
+def test_restore_does_not_delete_a_later_generation_of_a_legacy_id(temp_engine):
+    with temp_engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE applications (id INTEGER PRIMARY KEY, created_at TEXT, marker TEXT)")
+        conn.exec_driver_sql("INSERT INTO applications VALUES (1, '2026-10-04 12:00:00', 'new generation')")
+    saved = backup.create_backup(engine=temp_engine)
+    path = backup._sqlite_path(temp_engine)
+    with sqlite3.connect(path) as conn:
+        backup._ensure_deletion_ledger(conn)
+        conn.execute("INSERT INTO retention_deletions (record_kind, record_id, retention_rule, due_on, deleted_at) "
+            "VALUES ('application', 1, 'one_year', '2026-10-01', '2026-10-01 12:00:00')")
+    backup.restore_backup(saved, engine=temp_engine)
+    with temp_engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT marker FROM applications WHERE id=1").scalar_one() == "new generation"
+
+
+def test_ambiguous_legacy_restore_fails_before_replacing_live_data(temp_engine):
+    with temp_engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE applications (id INTEGER PRIMARY KEY, created_at TEXT)")
+        conn.exec_driver_sql("INSERT INTO applications VALUES (1, '2026-10-04 12:00:00')")
+    saved = backup.create_backup(engine=temp_engine)
+    path = backup._sqlite_path(temp_engine)
+    with sqlite3.connect(path) as conn:
+        backup._ensure_deletion_ledger(conn)
+        conn.execute("INSERT INTO retention_deletions (record_kind, record_id, retention_rule, due_on, deleted_at) "
+            "VALUES ('application', 1, 'one_year', '2026-10-04', '2026-10-04 12:00:00.500000')")
+        conn.execute("INSERT INTO runs (note) VALUES ('live data')")
+    with pytest.raises(RuntimeError, match="ambiguous"):
+        backup.restore_backup(saved, engine=temp_engine)
+    with temp_engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM runs").scalar_one() == 3
+
+
 def test_restore_rejects_a_corrupt_backup(temp_engine, tmp_path):
     bogus = tmp_path / "corrupt.db"
     bogus.write_bytes(b"this is not a sqlite database")

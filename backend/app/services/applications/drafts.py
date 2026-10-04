@@ -3,10 +3,11 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.problems import Problem
 from app.core.text import normalize_email
 from app.core.time import as_utc, pacific_today
 from app.db.models import (
@@ -19,6 +20,7 @@ from app.db.models import (
     MagicLinkToken,
 )
 from app.schemas.applicant.answers import WorkingApplicationAnswers
+from app.services.applications.locking import lock_application
 from app.services.applications.retention import draft_expiry_for_opening_ids
 from app.services.auth.tokens import new_token, token_hash
 
@@ -90,6 +92,9 @@ def save_collision_copy(
 ) -> ApplicantDraft:
     """Preserve the latest guest copy without invalidating an email already in flight."""
     now = now or datetime.now(UTC)
+    application = lock_application(db, application.id)
+    if application is None or application.withdrawn_at is not None or application.primary_email != normalize_email(str(answers.applicant.email)):
+        raise Problem("stale_application", detail="Application access changed while saving. Try again.")
     record = latest_pending_draft_for_email(db, application.primary_email, now=now)
     expires_on = draft_expiry_for_opening_ids(db, opening_ids)
     if expires_on is None:
@@ -118,11 +123,15 @@ def save_collision_copy(
 
 
 def pending_draft_for_token(db: Session, raw_token: str) -> ApplicantDraft | None:
+    record = draft_record_for_token(db, raw_token)
+    return record if record is not None and draft_is_available(record) else None
+
+
+def draft_record_for_token(db: Session, raw_token: str) -> ApplicantDraft | None:
+    """Resolve a recognizable private-copy credential, including expired or resolved copies."""
     record = db.scalar(
-        select(ApplicantDraft).where(ApplicantDraft.draft_token_hash == token_hash(raw_token))
+        select(ApplicantDraft).where(ApplicantDraft.draft_token_hash == token_hash(raw_token)).execution_options(populate_existing=True)
     )
-    if record is None or not draft_is_available(record):
-        return None
     return record
 
 
@@ -144,6 +153,7 @@ def latest_pending_draft_for_email(
         )
         .order_by(ApplicantDraft.saved_at.desc())
         .limit(1)
+        .execution_options(populate_existing=True)
     )
 
 
@@ -173,6 +183,13 @@ def draft_is_available(record: ApplicantDraft, *, now: datetime | None = None) -
         and record.resolved_at is None
         and record.expires_on > pacific_today(now=now)
     )
+
+
+def revoke_application_drafts(db: Session, application_id: int, *, now: datetime) -> None:
+    """Invalidate associated private copies when identity or applicant access ends."""
+    db.execute(update(ApplicantDraft).where(ApplicantDraft.application_id == application_id,
+        ApplicantDraft.revoked_at.is_(None)).values(revoked_at=now)
+        .execution_options(synchronize_session=False))
 
 
 def applicant_email_request_allowed(

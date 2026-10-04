@@ -39,6 +39,7 @@ class RequestAccessLinkRequest(RequestModel):
 class RequestAccessLinkResponse(ResponseModel):
     accepted: bool = True
     current_answers_saved: bool
+    working_revision: int | None = None
     email_status: EmailSendStatus
 
 

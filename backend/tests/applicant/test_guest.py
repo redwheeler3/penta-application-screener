@@ -230,6 +230,7 @@ async def test_return_link_request_does_not_reveal_whether_application_exists() 
     assert existing.json() == missing.json() == {
         "accepted": True,
         "currentAnswersSaved": False,
+        "workingRevision": None,
         "emailStatus": "sent",
     }
     assert "emailSent" not in existing.json() | missing.json()
@@ -283,6 +284,7 @@ async def test_selected_email_request_is_generic_in_browser_and_specific_in_mail
     assert selected.json() == unknown.json() == {
         "accepted": True,
         "currentAnswersSaved": False,
+        "workingRevision": None,
         "emailStatus": "sent",
     }
     assert sender.messages[0].kind == "application_selected_locked"

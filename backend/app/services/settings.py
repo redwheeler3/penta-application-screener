@@ -1,6 +1,7 @@
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from app.db.models import AdminSetting
@@ -17,15 +18,9 @@ def get_app_settings(db: Session) -> AppSettings:
 
 
 def save_app_settings(db: Session, settings: AppSettings) -> AppSettings:
-    record = db.scalar(select(AdminSetting).where(AdminSetting.key == APP_SETTINGS_KEY))
     payload = settings.model_dump(mode="json")
-
-    if record is None:
-        record = AdminSetting(key=APP_SETTINGS_KEY, value=payload)
-        db.add(record)
-    else:
-        record.value = payload
-
+    db.execute(insert(AdminSetting).values(key=APP_SETTINGS_KEY, value=payload)
+        .on_conflict_do_update(index_elements=[AdminSetting.key],
+            set_={"value": payload, "updated_at": func.now()}))
     db.commit()
     return settings
-

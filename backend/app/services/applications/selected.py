@@ -10,6 +10,7 @@ from app.db.models import (
     OpeningOutcome,
     PasswordlessIdentityKind,
 )
+from app.services.applications.drafts import revoke_application_drafts
 from app.services.auth.passwordless import (
     revoke_identity_magic_links,
     revoke_identity_sessions,
@@ -38,6 +39,7 @@ def revoke_selected_applicant_access(
 ) -> None:
     """End every applicant credential when the committee selects the household."""
     now = now or datetime.now(UTC)
+    revoke_application_drafts(db, application_id, now=now)
     cancel_queued_application_emails(
         db,
         application_id,

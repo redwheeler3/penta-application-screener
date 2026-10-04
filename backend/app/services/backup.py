@@ -19,9 +19,14 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
-from sqlalchemy import Engine, text
+from alembic.config import Config
+from sqlalchemy import Engine, create_engine, text
 
+from alembic import command
+from app.core.time import as_utc
+from app.db.models import RECORD_ID_FLOOR
 from app.db.session import engine as default_engine
 
 # Keep this many most-recent backups; older ones are pruned. A snapshot is a few MB and
@@ -131,19 +136,36 @@ def restore_backup(source: Path, *, engine: Engine | None = None) -> Path:
     db_path = _sqlite_path(eng)
     if source == db_path:
         raise ValueError("Choose a backup file, not the live database.")
-    with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as saved:
-        _check_integrity(saved, source)
-        deletion_ledger = _read_deletion_ledger(db_path)
-        if db_path.exists():
-            create_backup(engine=eng, tag="pre-restore")
-        eng.dispose()
-        # SQLite replaces the database through its journal protocol, so crash-left
-        # WAL pages cannot overlay the restored snapshot. Close pooled connections first.
-        with closing(sqlite3.connect(str(db_path))) as destination:
-            saved.backup(destination)
-    _reapply_deletion_ledger(db_path, deletion_ledger)
-    with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)) as restored:
-        _check_integrity(restored, db_path)
+    candidate: Path | None = None
+    try:
+        with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as saved:
+            _check_integrity(saved, source)
+            deletion_ledger = _read_deletion_ledger(db_path)
+            sequences = {}
+            if db_path.exists():
+                with closing(sqlite3.connect(str(db_path))) as live:
+                    sequences = _read_sequences(live)
+            # Prepare and validate the complete restore before replacing live data.
+            with NamedTemporaryFile(dir=db_path.parent, prefix="restore-", suffix=".db", delete=False) as temporary:
+                candidate = Path(temporary.name)
+            with closing(sqlite3.connect(str(candidate))) as prepared:
+                saved.backup(prepared)
+        _reapply_deletion_ledger(candidate, deletion_ledger)
+        _upgrade_restored_schema(candidate)
+        _preserve_sequences(candidate, sequences)
+        with closing(sqlite3.connect(str(candidate))) as prepared:
+            _check_integrity(prepared, candidate)
+            if db_path.exists():
+                create_backup(engine=eng, tag="pre-restore")
+            eng.dispose()
+            # SQLite's journal protocol prevents crash-left WAL pages from overlaying the copy.
+            with closing(sqlite3.connect(str(db_path))) as destination:
+                prepared.backup(destination)
+        with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)) as restored:
+            _check_integrity(restored, db_path)
+    finally:
+        if candidate is not None:
+            candidate.unlink(missing_ok=True)
     return db_path
 
 
@@ -151,6 +173,48 @@ def _check_integrity(conn: sqlite3.Connection, path: Path) -> None:
     result = conn.execute("PRAGMA integrity_check").fetchone()
     if not result or result[0] != "ok":
         raise RuntimeError(f"Database failed integrity check ({result}): {path}")
+    if conn.execute("PRAGMA foreign_key_check").fetchone() is not None:
+        raise RuntimeError(f"Database has invalid foreign keys: {path}")
+
+
+def _read_sequences(conn: sqlite3.Connection) -> dict[str, int]:
+    if not _table_exists(conn, "sqlite_sequence"):
+        return {}
+    return {name: int(seq) for name, seq in conn.execute("SELECT name, seq FROM sqlite_sequence")}
+
+
+def _preserve_sequences(db_path: Path, sequences: dict[str, int]) -> None:
+    """Restoring data cannot rewind identities held by browsers or deferred work."""
+    if not sequences:
+        return
+    with closing(sqlite3.connect(str(db_path))) as conn, conn:
+        if not _table_exists(conn, "sqlite_sequence"):
+            raise RuntimeError("This snapshot cannot preserve record identities; use a migrated backup.")
+        current = _read_sequences(conn)
+        for name, seq in sequences.items():
+            if not _table_exists(conn, name):
+                continue
+            value = max(seq, current.get(name, 0))
+            updated = conn.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = ?", (value, name))
+            if not updated.rowcount:
+                conn.execute("INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)", (name, value))
+
+
+def _upgrade_restored_schema(db_path: Path) -> None:
+    """Migrate a project snapshot in isolation before publishing it as the live database."""
+    with closing(sqlite3.connect(str(db_path))) as conn:
+        if not _table_exists(conn, "alembic_version"):
+            return
+    backend = Path(__file__).resolve().parents[2]
+    config = Config(str(backend / "alembic.ini"))
+    config.set_main_option("script_location", str(backend / "alembic"))
+    prepared_engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    try:
+        with prepared_engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
+    finally:
+        prepared_engine.dispose()
 
 
 def _read_deletion_ledger(db_path: Path) -> list[tuple[str, int, str, str, str]]:
@@ -183,20 +247,44 @@ def _reapply_deletion_ledger(
                 "FROM retention_deletions"
             )
         )
-        entries = {(row[0], row[1]): row for row in restored_ledger}
-        entries.update({(row[0], row[1]): row for row in ledger})
+        entries = {}
+        for row in [*restored_ledger, *ledger]:
+            key = (row[0], row[1])
+            if key not in entries or _utc_timestamp(row[4]) > _utc_timestamp(entries[key][4]):
+                entries[key] = row
         for row in entries.values():
             kind, record_id, retention_rule, due_on, deleted_at = row
-            if kind == "application":
+            covered = _record_is_covered(conn, kind, record_id, deleted_at)
+            if kind == "application" and covered:
                 _delete_restored_application(conn, record_id)
-            elif kind == "applicant_draft":
+            elif kind == "applicant_draft" and covered:
                 _delete_restored_draft(conn, record_id)
             conn.execute(
-                "INSERT OR IGNORE INTO retention_deletions "
+                "INSERT INTO retention_deletions "
                 "(record_kind, record_id, retention_rule, due_on, deleted_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(record_kind, record_id) DO UPDATE SET "
+                "retention_rule = excluded.retention_rule, due_on = excluded.due_on, deleted_at = excluded.deleted_at",
                 (kind, record_id, retention_rule, due_on, deleted_at),
             )
+
+
+def _utc_timestamp(value: str) -> datetime:
+    return as_utc(datetime.fromisoformat(value))
+
+
+def _record_is_covered(conn: sqlite3.Connection, kind: str, record_id: int, deleted_at: str) -> bool:
+    table = {"application": "applications", "applicant_draft": "applicant_drafts"}.get(kind)
+    if table is None or not _table_exists(conn, table) or not _column_exists(conn, table, "created_at"):
+        return True
+    row = conn.execute(f"SELECT created_at FROM {table} WHERE id = ?", (record_id,)).fetchone()
+    if row is None:
+        return True
+    created, deleted = _utc_timestamp(row[0]), _utc_timestamp(deleted_at)
+    if created > deleted:
+        return False  # A later generation is not the record covered by this deletion.
+    if record_id < RECORD_ID_FLOOR and created.microsecond == 0 and created == deleted.replace(microsecond=0):
+        raise RuntimeError("This legacy snapshot has an ambiguous reused record ID; choose a different backup.")
+    return True
 
 
 def _delete_restored_application(conn: sqlite3.Connection, application_id: int) -> None:
@@ -220,6 +308,8 @@ def _delete_restored_application(conn: sqlite3.Connection, application_id: int) 
 
 
 def _delete_restored_draft(conn: sqlite3.Connection, draft_id: int) -> None:
+    if _column_exists(conn, "browser_sessions", "reconciliation_draft_id"):
+        conn.execute("UPDATE browser_sessions SET reconciliation_draft_id = NULL WHERE reconciliation_draft_id = ?", (draft_id,))
     token_ids = _ids_for(conn, "magic_link_tokens", "applicant_draft_id", draft_id)
     _delete_delivery_references(conn, None, [draft_id], token_ids)
     _delete_ids(conn, "magic_link_tokens", token_ids)

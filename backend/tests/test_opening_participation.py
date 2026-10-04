@@ -247,6 +247,28 @@ def test_archiving_discards_an_unsubmitted_private_withdrawal() -> None:
     assert states[0].participating is True
 
 
+def test_retention_discard_advances_the_working_revision_once() -> None:
+    from app.services.applications.retention import refresh_application_retention
+
+    db = _session()
+    application = _application(db)
+    opening = _opening(db, open_date=date(2026, 5, 1), close_date=date(2026, 6, 1),
+        move_in_date=date(2026, 8, 1), decided=True)
+    application.working_answers = {"private": "Synthetic unsent change"}
+    application.submitted_at = NOW
+    application.working_saved_at = NOW
+    db.add(ApplicationParticipation(application_id=application.id, opening_id=opening.id, applied_at=NOW))
+    db.commit()
+    revision = application.working_revision
+    refresh_application_retention(db, application)
+    db.commit()
+    assert application.working_revision == revision + 1
+    assert application.working_answers == application.raw_row
+    refresh_application_retention(db, application)
+    db.commit()
+    assert application.working_revision == revision + 1
+
+
 def test_closed_opening_allows_withdrawal_but_archived_opening_does_not() -> None:
     db = _session()
     application = _application(db)

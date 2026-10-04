@@ -63,6 +63,7 @@ def applicant_opening_states(
             Opening.intake_mode == OpeningIntakeMode.APPLICATIONS,
         )
         .order_by(Opening.move_in_date, Opening.id)
+        .execution_options(populate_existing=True)
     ).all()
     states = []
     for opening in openings:

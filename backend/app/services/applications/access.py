@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
-from sqlalchemy import delete as sql_delete
-from sqlalchemy import or_, select, update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.problems import Problem
@@ -15,8 +14,6 @@ from app.db.models import (
     ApplicantDraft,
     ApplicantDraftIntent,
     Application,
-    BrowserSession,
-    EmailDelivery,
     MagicLinkPurpose,
     MagicLinkToken,
     PasswordlessIdentityKind,
@@ -28,6 +25,7 @@ from app.schemas.applicant.answers import (
 from app.services.applications.answers import working_answers_for
 from app.services.applications.drafts import (
     draft_is_available,
+    revoke_application_drafts,
 )
 from app.services.applications.intake import (
     create_application,
@@ -42,35 +40,6 @@ from app.services.openings.participation import (
     applicant_opening_states,
     application_is_editable,
 )
-
-
-def purge_never_submitted_application(db: Session, application: Application) -> None:
-    """Physically remove a draft-only application and its access records."""
-    draft_ids = select(ApplicantDraft.id).where(ApplicantDraft.application_id == application.id)
-    link_ids = select(MagicLinkToken.id).where(
-        or_(
-            MagicLinkToken.application_id == application.id,
-            MagicLinkToken.applicant_draft_id.in_(draft_ids),
-        )
-    )
-    db.execute(
-        sql_delete(EmailDelivery).where(
-            or_(
-                EmailDelivery.application_id == application.id,
-                EmailDelivery.applicant_draft_id.in_(draft_ids),
-                EmailDelivery.magic_link_token_id.in_(link_ids),
-            )
-        )
-    )
-    db.execute(sql_delete(MagicLinkToken).where(MagicLinkToken.id.in_(link_ids)))
-    db.execute(sql_delete(ApplicantDraft).where(ApplicantDraft.id.in_(draft_ids)))
-    db.execute(
-        sql_delete(BrowserSession).where(
-            BrowserSession.identity_kind == PasswordlessIdentityKind.APPLICANT,
-            BrowserSession.application_id == application.id,
-        )
-    )
-    db.delete(application)
 
 
 def applicant_link(db: Session, token: str) -> MagicLinkToken | None:
@@ -105,15 +74,15 @@ def claim_link_target(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink
         return _claim_email_change(db, link)
     if link.application_id is not None:
         application = _active_application(db, link.application_id)
-        if application is not None and application_is_selected(db, application.id):
+        if application is not None and not application_is_editable(db, application):
             return ClaimedApplicantLink(None, state="unavailable")
         return ClaimedApplicantLink(
             application,
             state="valid" if application is not None else "abandoned",
         )
-    draft = link.applicant_draft
+    draft = db.get(ApplicantDraft, link.applicant_draft_id, populate_existing=True) if link.applicant_draft_id is not None else None
     if draft is None or not draft_is_available(draft):
-        return ClaimedApplicantLink(None)
+        return ClaimedApplicantLink(None, state="abandoned")
     application = _active_application(db, draft.application_id)
     if application is None:
         application = db.scalar(
@@ -123,6 +92,10 @@ def claim_link_target(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink
             )
         )
     if application is not None:
+        if application.primary_email != draft.email:
+            return ClaimedApplicantLink(None, state="abandoned")
+        if not application_is_editable(db, application):
+            return ClaimedApplicantLink(None, state="unavailable")
         draft.application_id = application.id
         if pending_copy_needed(application, draft):
             return ClaimedApplicantLink(
@@ -132,9 +105,11 @@ def claim_link_target(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink
             )
         _resolve_pending_draft(application, draft)
         return ClaimedApplicantLink(application, draft.intent)
+    if not new_applications_are_open(db):
+        return ClaimedApplicantLink(None, state="unavailable")
     answers = draft_answers(draft)
     if answers is None:
-        return ClaimedApplicantLink(None)
+        return ClaimedApplicantLink(None, state="abandoned")
     application = create_application(
         db,
         draft.email,
@@ -174,6 +149,7 @@ def _claim_email_change(db: Session, link: MagicLinkToken) -> ClaimedApplicantLi
         save_working_copy(application, updated_answers, saved_at=datetime.now(UTC))
     application.primary_email = link.email
     application.google_subject = None
+    revoke_application_drafts(db, application.id, now=datetime.now(UTC))
     return ClaimedApplicantLink(
         application,
         previous_email=old_email,
@@ -226,6 +202,7 @@ def draft_belongs_to_application(
     return bool(
         draft is not None
         and draft.application_id == application.id
+        and draft.email == application.primary_email
         and draft_is_available(draft)
     )
 
@@ -267,7 +244,7 @@ def access_target_is_editable(
 
 
 def _active_application(db: Session, application_id: int | None) -> Application | None:
-    application = db.get(Application, application_id) if application_id is not None else None
+    application = db.get(Application, application_id, populate_existing=True) if application_id is not None else None
     return application if application is not None and application.withdrawn_at is None else None
 
 

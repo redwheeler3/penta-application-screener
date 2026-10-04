@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Barrier
 
 import pytest
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, event, select, update
 from sqlalchemy.orm import sessionmaker
 
 from app.core.time import pacific_today
@@ -90,8 +90,11 @@ def test_preferences_changed_during_delivery_survive_acceptance(request_sessions
 
         summary = retry_queued_emails(db, UpdatingSender(), now=now)
         assert summary.accepted == 1
-        assert updated_ids == [subscription_id]  # SQLite can reuse the deleted row ID.
-        subscription = db.get(VacancySubscription, subscription_id, populate_existing=True)
+        if edit == "resubscribe":
+            assert updated_ids[0] > subscription_id
+        else:
+            assert updated_ids == [subscription_id]
+        subscription = db.get(VacancySubscription, updated_ids[0], populate_existing=True)
         assert subscription is not None
         assert subscription.wants_three_bedroom is True
         assert subscription.wants_two_bedroom is False
@@ -116,7 +119,11 @@ def test_reused_subscription_id_does_not_consume_another_email_request(request_s
         old_id, now = queue_notification(db, overlap=overlap)
         delete_subscription(db, email="synthetic@example.com")
         other = save_subscription(db, email="other@example.com", unit_sizes={2}, source="public website", consented_at=now + timedelta(seconds=1))
-        assert other.id == old_id
+        # Exercise an existing legacy collision as well as new monotonic allocation.
+        db.execute(update(VacancySubscription).where(VacancySubscription.id == other.id).values(id=old_id)
+            .execution_options(synchronize_session=False))
+        db.commit()
+        other = db.get(VacancySubscription, old_id, populate_existing=True)
         sender = CapturedEmailSender()
         result = retry_queued_emails(db, sender, now=now)
         assert result.accepted == (1 if overlap else 0)

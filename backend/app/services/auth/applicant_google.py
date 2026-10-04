@@ -21,6 +21,7 @@ from app.services.applications.drafts import (
     revoke_other_pending_drafts,
 )
 from app.services.applications.intake import create_application
+from app.services.applications.locking import lock_application_identity
 from app.services.applications.retention import draft_expiry_for_opening_ids
 from app.services.applications.selected import application_is_selected
 from app.services.openings.participation import (
@@ -51,14 +52,15 @@ def claim_or_create_google_application(
     """Attach Google to one existing, claimed-draft, or new application."""
     now = now or datetime.now(UTC)
     normalized_email = normalize_email(email)
+    lock_application_identity(db, normalized_email)
     subject_application = db.scalar(
-        select(Application).where(Application.google_subject == google_subject)
+        select(Application).where(Application.google_subject == google_subject).execution_options(populate_existing=True)
     )
     email_application = db.scalar(
         select(Application).where(
             Application.primary_email == normalized_email,
             Application.withdrawn_at.is_(None),
-        )
+        ).execution_options(populate_existing=True)
     )
 
     if subject_application is not None and (

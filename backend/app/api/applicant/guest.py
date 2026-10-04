@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.applicant.dependencies import (
@@ -46,6 +46,7 @@ from app.services.applications.access import (
 )
 from app.services.applications.drafts import (
     applicant_email_request_allowed,
+    draft_record_for_token,
     latest_pending_draft_for_email,
     pending_draft_for_token,
     revoke_other_pending_drafts,
@@ -57,7 +58,10 @@ from app.services.applications.intake import (
     publish_working_copy,
     save_working_copy,
 )
+from app.services.applications.locking import lock_application_identity
+from app.services.applications.purge import purge_draft
 from app.services.applications.selected import application_is_selected
+from app.services.auth.tokens import token_hash
 from app.services.email.sender import EmailSender, get_email_sender
 from app.services.email.transactional import (
     EmailSendOutcome,
@@ -141,6 +145,7 @@ def save_applicant_draft(
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> PendingDraftResponse:
+    lock_application_identity(db, str(body.answers.applicant.email))
     require_new_applications_open(db)
     now = datetime.now(UTC)
     validate_working_opening_selection(db, None, body.opening_ids, now=now)
@@ -191,6 +196,7 @@ def submit_guest_application(
     """Publish a first application without making email access a submission gate."""
     if not body.declaration_accepted:
         raise Problem("declaration_required", detail="Accept the declaration before submitting.")
+    lock_application_identity(db, str(body.answers.applicant.email))
     require_new_applications_open(db)
     now = datetime.now(UTC)
     email = normalize_email(str(body.answers.applicant.email))
@@ -245,10 +251,12 @@ def submit_guest_application(
 def delete_applicant_draft(
     body: AccessLinkRequest, db: Session = Depends(get_db)
 ) -> Response:
-    record = pending_draft_for_token(db, body.token)
+    db.execute(update(ApplicantDraft).where(ApplicantDraft.draft_token_hash == token_hash(body.token))
+        .values(saved_at=ApplicantDraft.saved_at).execution_options(synchronize_session=False))
+    record = draft_record_for_token(db, body.token)
     if record is not None:
-        record.revoked_at = datetime.now(UTC)
-        db.commit()
+        purge_draft(db, record, now=datetime.now(UTC), retention_rule="explicit_draft_delete")
+    db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -272,6 +280,7 @@ def request_applicant_access_link(
     now = datetime.now(UTC)
     email = normalize_email(str(body.answers.applicant.email))
 
+    acknowledged_revision = None
     if current is not None:
         lock_application_revision(db, current, body.base_revision)
         require_application_editable(db, current)
@@ -283,8 +292,10 @@ def request_applicant_access_link(
             saved_at=now,
             opening_ids=body.opening_ids,
         )
+        acknowledged_revision = current.working_revision
         target: Application | ApplicantDraft = current
     else:
+        lock_application_identity(db, email)
         application = db.scalar(
             select(Application).where(
                 Application.primary_email == email,
@@ -361,5 +372,6 @@ def request_applicant_access_link(
 
     return RequestAccessLinkResponse(
         current_answers_saved=current is not None,
+        working_revision=acknowledged_revision,
         email_status=outcome.value,
     )

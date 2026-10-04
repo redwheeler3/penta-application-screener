@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.time import pacific_today
+from app.core.time import as_utc, pacific_today
 from app.db.models import (
     ApplicantDraft,
     Application,
@@ -67,6 +67,15 @@ def refresh_application_retention(db: Session, application: Application) -> None
 def _discard_private_working_copy(application: Application) -> None:
     if application.submitted_at is None:
         return
+    changed = (
+        application.working_answers != application.raw_row
+        or application.working_content_hash != application.raw_row_hash
+        or bool(application.working_opening_ids)
+        or application.working_saved_at is None
+        or as_utc(application.working_saved_at) != as_utc(application.submitted_at)
+    )
+    if changed:
+        application.working_revision += 1
     application.working_answers = dict(application.raw_row)
     application.working_content_hash = application.raw_row_hash
     application.working_saved_at = application.submitted_at

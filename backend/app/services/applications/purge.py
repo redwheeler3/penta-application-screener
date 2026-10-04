@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import or_, select, update
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from app.core.time import pacific_today
@@ -11,8 +13,12 @@ from app.db.models import (
     ApplicantDraft,
     Application,
     ApplicationParticipation,
+    BrowserSession,
+    EmailDelivery,
     Feedback,
+    MagicLinkToken,
     OpeningOutcome,
+    PasswordlessIdentityKind,
     RetentionDeletion,
 )
 from app.services.applications.locking import lock_application
@@ -88,15 +94,7 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
             db.commit()
             continue
         draft = db.get(ApplicantDraft, draft_id, populate_existing=True)
-        _record_deletion(
-            db,
-            record_kind="applicant_draft",
-            record_id=draft.id,
-            retention_rule="draft_actionability",
-            due_on=min(draft.expires_on, today),
-            now=now,
-        )
-        db.delete(draft)
+        purge_draft(db, draft, now=now, retention_rule="draft_actionability")
         db.commit()
         drafts_purged += 1
 
@@ -125,12 +123,48 @@ def _record_deletion(
     due_on,
     now: datetime,
 ) -> None:
-    db.add(
-        RetentionDeletion(
-            record_kind=record_kind,
-            record_id=record_id,
-            retention_rule=retention_rule,
-            due_on=due_on,
-            deleted_at=now,
+    # The latest deletion bound covers older snapshot generations of an identifier.
+    values = {"retention_rule": retention_rule, "due_on": due_on, "deleted_at": now}
+    db.execute(insert(RetentionDeletion).values(record_kind=record_kind, record_id=record_id, **values)
+        .on_conflict_do_update(index_elements=[RetentionDeletion.record_kind, RetentionDeletion.record_id],
+            set_=values, where=RetentionDeletion.deleted_at <= now))
+
+
+def purge_draft(db: Session, draft: ApplicantDraft, *, now: datetime, retention_rule: str) -> None:
+    """Remove one temporary copy, retaining its deletion fact in the caller's transaction."""
+    _record_deletion(db, record_kind="applicant_draft", record_id=draft.id,
+        retention_rule=retention_rule, due_on=min(draft.expires_on, pacific_today(now=now)), now=now)
+    db.execute(update(BrowserSession).where(BrowserSession.reconciliation_draft_id == draft.id)
+        .values(reconciliation_draft_id=None).execution_options(synchronize_session=False))
+    db.delete(draft)
+
+
+def purge_never_submitted_application(db: Session, application: Application) -> None:
+    """Physically remove a draft-only application and its access records."""
+    _record_deletion(db, record_kind="application", record_id=application.id,
+        retention_rule="explicit_application_delete", due_on=pacific_today(), now=datetime.now(UTC))
+    draft_ids = select(ApplicantDraft.id).where(ApplicantDraft.application_id == application.id)
+    link_ids = select(MagicLinkToken.id).where(
+        or_(
+            MagicLinkToken.application_id == application.id,
+            MagicLinkToken.applicant_draft_id.in_(draft_ids),
         )
     )
+    db.execute(
+        sql_delete(EmailDelivery).where(
+            or_(
+                EmailDelivery.application_id == application.id,
+                EmailDelivery.applicant_draft_id.in_(draft_ids),
+                EmailDelivery.magic_link_token_id.in_(link_ids),
+            )
+        )
+    )
+    db.execute(sql_delete(MagicLinkToken).where(MagicLinkToken.id.in_(link_ids)))
+    db.execute(sql_delete(ApplicantDraft).where(ApplicantDraft.id.in_(draft_ids)))
+    db.execute(
+        sql_delete(BrowserSession).where(
+            BrowserSession.identity_kind == PasswordlessIdentityKind.APPLICANT,
+            BrowserSession.application_id == application.id,
+        )
+    )
+    db.delete(application)

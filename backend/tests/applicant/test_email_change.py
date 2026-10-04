@@ -3,6 +3,7 @@ from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.db.models import (
+    ApplicantDraft,
     Application,
     BrowserSession,
     EmailDelivery,
@@ -47,6 +48,33 @@ async def test_email_change_retries_keep_the_requested_address_and_session():
             json={"token": link_from_email(delivered), "switchCurrent": False})
         assert confirmed.json()["state"] == "valid"
         assert db.scalar(select(Application)).primary_email == "new-address@example.com"
+
+
+@pytest.mark.anyio
+async def test_email_change_cannot_reissue_access_through_an_old_queued_guest_copy():
+    from tests.applicant.support import sample_answers
+
+    app, db, sender = app_and_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        await save_draft(client)
+        await client.post("/applicant/access-links/open", json={"token": link_from_email(sender), "switchCurrent": False})
+        app.dependency_overrides[get_email_sender] = QuotaBlockedSender
+        checked = await client.post("/applicant/submissions/check", json={"answers": sample_answers(introduction="Other browser copy")})
+        assert checked.json()["emailStatus"] == "failed"
+        queued = db.scalar(select(EmailDelivery).where(EmailDelivery.state == EmailDeliveryState.QUEUED))
+        assert queued.applicant_draft_id is not None
+        app.dependency_overrides[get_email_sender] = lambda: sender
+        await client.post("/applicant/application/email-change", json={"newEmail": "new-address@example.com"})
+        confirmed = await client.post("/applicant/access-links/open", json={"token": link_from_email(sender), "switchCurrent": False})
+        assert confirmed.json()["state"] == "valid"
+    db.expire_all()
+    assert db.get(ApplicantDraft, queued.applicant_draft_id).revoked_at is not None
+    delivery = CapturedEmailSender()
+    assert retry_queued_emails(db, delivery).accepted == 0
+    assert delivery.messages == []
+    db.refresh(queued)
+    assert queued.state == EmailDeliveryState.FAILED
+    assert queued.last_error_code == "ApplicantDraftUnavailable"
 
 
 @pytest.mark.anyio

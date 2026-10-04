@@ -34,7 +34,7 @@ from app.schemas.passwordless_auth import (
     MagicLinkRequest,
     MagicLinkRequestResponse,
 )
-from app.services.auth.allowlist import get_entry
+from app.services.auth.allowlist import get_entry, lock_entry
 from app.services.auth.passwordless import (
     consume_magic_link,
     create_browser_session,
@@ -60,7 +60,7 @@ def request_committee_magic_link(
     sender: EmailSender = Depends(get_email_sender),
 ) -> MagicLinkRequestResponse:
     email = normalize_email(body.email)
-    entry = get_entry(db, email)
+    entry = lock_entry(db, email)
     if entry is not None:
         user = upsert_committee_user(db, email=email, role=entry.role)
         send_magic_link(

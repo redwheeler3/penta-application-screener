@@ -20,6 +20,7 @@ from app.db.models import (
     PasswordlessIdentityKind,
     VacancySubscription,
 )
+from app.services.applications.drafts import draft_is_available
 from app.services.applications.selected import application_is_selected
 from app.services.auth.passwordless import issue_magic_link
 from app.services.email.delivery import (
@@ -190,6 +191,7 @@ EXPECTED_FAILURE_CODES = frozenset(
         "OpeningNoLongerOpen",
         "ApplicationNoLongerNotifiable",
         "SubmissionNoLongerDue",
+        "ApplicantDraftUnavailable",
     }
 )
 FAILURE_BANNER_WINDOW = timedelta(days=7)
@@ -467,6 +469,9 @@ def _build_magic_link_retry(
     identity_kind = delivery.recipient_kind
     purpose = MagicLinkPurpose(str(intent["purpose"]))
     if identity_kind == PasswordlessIdentityKind.APPLICANT:
+        if delivery.applicant_draft is not None and not draft_is_available(delivery.applicant_draft, now=now):
+            delivery.last_error_code = "ApplicantDraftUnavailable"
+            return None
         recipient = delivery.application or delivery.applicant_draft
         if recipient is None:
             return None

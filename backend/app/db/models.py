@@ -25,7 +25,12 @@ from sqlalchemy.types import JSON
 
 
 class Base(DeclarativeBase):
-    pass
+    # Database identities remain unique across deletion, delayed work and restore.
+    __table_args__ = {"sqlite_autoincrement": True}
+
+
+# Future allocation skips the legacy range while remaining an exact browser integer.
+RECORD_ID_FLOOR = 2**52
 
 
 class UserRole(StrEnum):
@@ -244,7 +249,7 @@ class DailyMaintenanceRun(TimestampMixin, Base):
     """One durable lease for one maintenance task on one Pacific calendar day."""
 
     __tablename__ = "daily_maintenance_runs"
-    __table_args__ = (UniqueConstraint("task", "pacific_date"),)
+    __table_args__ = (UniqueConstraint("task", "pacific_date"), {"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     task: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
@@ -262,7 +267,7 @@ class RetentionDeletion(Base):
     """Non-identifying proof that one aggregate was removed under a retention rule."""
 
     __tablename__ = "retention_deletions"
-    __table_args__ = (UniqueConstraint("record_kind", "record_id"),)
+    __table_args__ = (UniqueConstraint("record_kind", "record_id"), {"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     record_kind: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -284,6 +289,7 @@ class Application(TimestampMixin, Base):
             sqlite_where=text("withdrawn_at IS NULL"),
             postgresql_where=text("withdrawn_at IS NULL"),
         ),
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -338,6 +344,7 @@ class Opening(TimestampMixin, Base):
             "unit_size_bedrooms BETWEEN 1 AND 3", name="ck_opening_unit_size"
         ),
         CheckConstraint("housing_charge_cents >= 0", name="ck_opening_housing_charge"),
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -396,6 +403,7 @@ class VacancySubscription(TimestampMixin, Base):
             "wants_one_bedroom OR wants_two_bedroom OR wants_three_bedroom",
             name="ck_vacancy_subscription_has_unit_size",
         ),
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -431,6 +439,7 @@ class ApplicationParticipation(TimestampMixin, Base):
             unique=True,
             sqlite_where=text("outcome = 'selected'"),
         ),
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -479,6 +488,7 @@ class ApplicantDraft(Base):
     """A private draft that has not yet been claimed through an applicant session."""
 
     __tablename__ = "applicant_drafts"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
@@ -517,6 +527,7 @@ class MagicLinkToken(Base):
             "AND application_id IS NULL AND applicant_draft_id IS NULL)",
             name="ck_magic_link_token_identity",
         ),
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -569,6 +580,7 @@ class BrowserSession(Base):
             "OR (identity_kind = 'committee' AND user_id IS NOT NULL AND application_id IS NULL)",
             name="ck_browser_session_identity",
         ),
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -581,7 +593,7 @@ class BrowserSession(Base):
         ForeignKey("applications.id", ondelete="CASCADE"), index=True
     )
     reconciliation_draft_id: Mapped[int | None] = mapped_column(
-        ForeignKey("applicant_drafts.id", ondelete="CASCADE"), index=True
+        ForeignKey("applicant_drafts.id", ondelete="SET NULL"), index=True
     )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     token_hash: Mapped[str] = mapped_column(
@@ -624,6 +636,7 @@ class EmailDelivery(TimestampMixin, Base):
             "AND application_id IS NULL AND applicant_draft_id IS NULL)",
             name="ck_email_delivery_recipient",
         ),
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -680,7 +693,7 @@ class MemberEligibility(TimestampMixin, Base):
     """
 
     __tablename__ = "member_eligibility"
-    __table_args__ = (UniqueConstraint("opening_id", "application_id", "user_id"),)
+    __table_args__ = (UniqueConstraint("opening_id", "application_id", "user_id"), {"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -717,7 +730,7 @@ class MemberRules(TimestampMixin, Base):
     """
 
     __tablename__ = "member_rules"
-    __table_args__ = (UniqueConstraint("opening_id", "user_id"),)
+    __table_args__ = (UniqueConstraint("opening_id", "user_id"), {"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Nullable only for a pre-M24 global row retained as migration history.
@@ -742,7 +755,7 @@ class ApplicationNote(TimestampMixin, Base):
     """
 
     __tablename__ = "application_notes"
-    __table_args__ = (UniqueConstraint("application_id", "user_id"),)
+    __table_args__ = (UniqueConstraint("application_id", "user_id"), {"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -766,6 +779,7 @@ class ApplicationCommitteeNote(TimestampMixin, Base):
     """
 
     __tablename__ = "application_committee_notes"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -790,7 +804,7 @@ class ApplicationStar(TimestampMixin, Base):
     """
 
     __tablename__ = "application_stars"
-    __table_args__ = (UniqueConstraint("application_id", "user_id"),)
+    __table_args__ = (UniqueConstraint("application_id", "user_id"), {"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -814,7 +828,7 @@ class ApplicationShortlist(TimestampMixin, Base):
     """
 
     __tablename__ = "application_shortlist"
-    __table_args__ = (UniqueConstraint("opening_id", "application_id"),)
+    __table_args__ = (UniqueConstraint("opening_id", "application_id"), {"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -843,6 +857,7 @@ class ApplicationAIResult(TimestampMixin, Base):
     """
 
     __tablename__ = "application_ai_results"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -1024,7 +1039,7 @@ class MemberRanking(TimestampMixin, Base):
     """
 
     __tablename__ = "member_rankings"
-    __table_args__ = (UniqueConstraint("analysis_id", "user_id"),)
+    __table_args__ = (UniqueConstraint("analysis_id", "user_id"), {"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     analysis_id: Mapped[int] = mapped_column(

@@ -4,6 +4,7 @@ from sqlalchemy import event, func, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.applicant import application as routes
+from app.api.applicant import guest
 from app.core.problems import Problem
 from app.db.models import (
     Application,
@@ -12,6 +13,7 @@ from app.db.models import (
     EmailDeliveryState,
 )
 from app.schemas.applicant.contracts import (
+    RequestAccessLinkRequest,
     SaveApplicationRequest,
     SubmitApplicationRequest,
 )
@@ -56,6 +58,27 @@ def test_save_acknowledges_its_own_revision_after_another_tab_commits():
                 first, first.get(Application, applicant_id))
     with factory() as observer:
         assert observer.get(Application, applicant_id).working_answers["essays"]["household_introduction"] == "Newer draft"
+
+
+def test_return_link_acknowledges_its_revision_before_provider_wait():
+    factory, applicant_id, opening_id = setup()
+
+    class LaterSaveSender(CapturedEmailSender):
+        def send(self, message):
+            with factory() as second:
+                routes.save_applicant_application(save_body(opening_id, 2, "Newer draft"),
+                    second, second.get(Application, applicant_id))
+            return super().send(message)
+
+    with factory() as db:
+        acknowledged = guest.request_applicant_access_link(
+            RequestAccessLinkRequest.model_validate({"answers": sample_answers("synthetic@example.com"),
+                "openingIds": [opening_id], "baseRevision": 1}),
+            db.get(Application, applicant_id), db, LaterSaveSender())
+        assert acknowledged.current_answers_saved is True
+        assert acknowledged.working_revision == 2
+    with factory() as observer:
+        assert observer.get(Application, applicant_id).working_revision == 3
 
 
 @pytest.mark.anyio

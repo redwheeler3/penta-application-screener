@@ -30,6 +30,14 @@ class SeedAdminProtectedError(ValueError):
     """Raised when code tries to demote or remove a permanent seed admin."""
 
 
+def lock_entry(db: Session, email: str) -> AccessAllowlistEntry | None:
+    """Resolve current sign-in authority while holding SQLite's writer through user changes."""
+    db.execute(update(AccessAllowlistEntry).where(AccessAllowlistEntry.email == normalize_email(email))
+        .values(role=AccessAllowlistEntry.role, updated_at=AccessAllowlistEntry.updated_at)
+        .execution_options(synchronize_session=False))
+    return get_entry(db, email)
+
+
 def lock_admin_changes(db: Session, actor_id: int) -> User | None:
     """Serialize access mutations, then reload the actor's authority under the writer lock.
 

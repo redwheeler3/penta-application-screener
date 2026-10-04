@@ -181,6 +181,7 @@ async def test_authenticated_return_link_saves_current_answers_before_emailing()
     assert response.json() == {
         "accepted": True,
         "currentAnswersSaved": True,
+        "workingRevision": application.working_revision,
         "emailStatus": "sent",
     }
     assert application.working_answers["essays"]["household_introduction"] == (
