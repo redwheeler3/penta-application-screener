@@ -23,6 +23,7 @@ from app.db.models import (
 from app.services.auth.tokens import new_token, token_hash
 
 MAGIC_LINK_LIFETIME = timedelta(days=7)
+SESSION_ACTIVITY_WRITE_INTERVAL = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -343,7 +344,7 @@ def authenticate_browser_session(
     now: datetime | None = None,
     idle_lifetime: timedelta | None = None,
 ) -> BrowserSession | None:
-    """Validate a session and extend its idle deadline without exceeding its hard limit."""
+    """Validate every request; coalesce idle-deadline writes within five minutes."""
     now = now or datetime.now(UTC)
     settings = get_settings()
     idle_lifetime = idle_lifetime or timedelta(days=settings.session_idle_days)
@@ -351,7 +352,7 @@ def authenticate_browser_session(
         select(BrowserSession).where(
             BrowserSession.token_hash == token_hash(token),
             BrowserSession.identity_kind == identity_kind,
-        )
+        ).execution_options(populate_existing=True)
     )
     if record is None or record.revoked_at is not None:
         return None
@@ -360,9 +361,27 @@ def authenticate_browser_session(
         db.flush()
         return None
 
-    record.last_activity_at = now
-    record.idle_expires_at = min(now + idle_lifetime, as_utc(record.absolute_expires_at))
-    db.flush()
+    # Short test/custom lifetimes must still slide before the idle deadline. For
+    # ordinary seven-day sessions, browsing stays read-only between five-minute touches.
+    interval = min(SESSION_ACTIVITY_WRITE_INTERVAL, idle_lifetime / 2)
+    if now - as_utc(record.last_activity_at) < interval:
+        return record
+    updated = db.scalar(update(BrowserSession).where(
+        BrowserSession.id == record.id,
+        BrowserSession.revoked_at.is_(None),
+        BrowserSession.idle_expires_at > now,
+        BrowserSession.absolute_expires_at > now,
+        BrowserSession.last_activity_at <= now - interval,
+    ).values(last_activity_at=now, idle_expires_at=min(now + idle_lifetime, as_utc(record.absolute_expires_at)))
+        .returning(BrowserSession)
+        .execution_options(synchronize_session=False, populate_existing=True))
+    if updated is not None:
+        return updated
+    # A concurrent touch or revocation won. Reload rather than shortening its newer
+    # deadline or returning an identity that was revoked while this touch waited.
+    db.refresh(record)
+    if record.revoked_at is not None or as_utc(record.idle_expires_at) <= now or as_utc(record.absolute_expires_at) <= now:
+        return None
     return record
 
 

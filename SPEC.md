@@ -329,6 +329,10 @@ the cookie and authenticated applicant draft storage may survive browser restart
 server-side session expires after 7 days without activity or after 30 days in total, whichever
 comes first. Ordinary activity may extend the idle deadline but never the absolute deadline. These
 are explicit product settings, not framework defaults.
+Session activity and idle-deadline writes are coalesced over five minutes, so ordinary
+authenticated reads do not contend for SQLite's writer. The recorded idle deadline may trail
+the latest activity by up to five minutes; revocation and both expiry limits are still checked
+on every request. Conditional touches preserve a newer deadline or concurrent revocation.
 
 Closing a window is not treated as a guaranteed security boundary because browsers may restore
 session cookies and tabs. People using a shared device should leave the opt-in unchecked and
