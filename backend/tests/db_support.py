@@ -4,7 +4,16 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db.models import Base
+from app.ai.result_selection import select_results
+from app.db.models import ApplicationAIResult, Base
+
+
+def add_selected_result(db: Session, result: ApplicationAIResult) -> ApplicationAIResult:
+    """Seed an AI result that was consumed by its producer, as a real pass would do."""
+    db.add(result)
+    db.flush()
+    select_results(db, [(result.application_id, result.kind, result.id)])
+    return result
 
 
 def memory_engine(*, foreign_keys: bool = False) -> Engine:

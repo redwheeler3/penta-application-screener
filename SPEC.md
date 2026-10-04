@@ -1194,6 +1194,21 @@ Each of the ~5 committee members screens independently — their own eligibility
 
 **Union eligible pool.** Within the selected opening, an applicant is in the **committee-eligible union** if they pass *any* member's effective screen (that member's rules *or* an explicit override) — a derived predicate over the per-member views, not new stored state. Discovery and scoring operate on this union floor; applicants whom no member passes are never scored — preserving "don't score applicants who won't clear the screen." A member's ranked list is the opening's shared analysis **filtered to their eligible view and weighted by their tiers** — pure math, instant, free.
 
+**Selected AI evidence.** Screening findings, candidate scores, detail provenance, and
+consolidation vectors read the result last consumed for each applicant and kind, including
+cache hits. `ApplicationAISelection` references the existing result ID; it never copies
+outputs or changes the original producer, model, prompt, reasoning, or usage. Scores stay
+shared across members and openings by canonical dimension key. Cache references update in
+one batch after inputs are captured; fresh references commit with their result. Historical
+rows are migrated to their previously displayed newest result because earlier cache choices
+were not recorded.
+
+Local synthetic measurement (2026-10-03, SQLite WAL/FULL, 15 repetitions, median):
+100 applicants × 15 dimensions with 30,000 historical rows read in 5.7 ms versus
+37.1 ms with newest-row selection. Switching 1,500 references and committing took
+8.0 ms; unchanged references took 3.0 ms. A fresh result's existing commit grew from
+0.72 to 1.05 ms. These isolate database overhead and are not production latency promises.
+
 **How cost stays low (the payoff).** The score cache keys on `(raw_row_hash, dimension_key, model_identity, reasoning, prompt_version)` with no member id, opening id, or provider route, so sharing rides on *applicant and criterion identity*, not pool identity. An applicant scored once is free for another member or opening when matching inputs recur, and the same pinned model can reuse that work after moving between Bedrock and its direct API. **Staleness is per-opening and per-member**, and reduces to a cache-gap check: a member sees "re-rank needed" only when their eligible view references an applicant not yet in that opening's analysis. Member A marking applicant X eligible ambers only A's badge in that opening; once A runs it, X grounds discovery + gets scored, and B — including X later in the same opening — rides the cache with no new spend. Pool-specific discovery still runs for each opening. A new dimension surfaced by one member's Rank lands on every member's board for that opening at **weight 0** (inert until that member tiers it), so it costs others nothing until they opt in. **Screening is shared within an opening:** its scope is the union of applications that pass at least one member's deterministic rules, and one cached integrity/pet-fact result serves every member when application content, model, reasoning, and prompt version match. Eligibility-rule changes can change that union, but rule values do not enter the screening prompt or its version. Staleness is detectable when an application enters the union without a matching cached result — the amber signal shows uncached work waiting before any run.
 
 **Dimension survival on re-rank:** an opening's shared set keeps any dimension in **any** member's working tier for that opening; a dimension drops only when no member has it working-tiered there.

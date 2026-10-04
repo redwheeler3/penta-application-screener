@@ -23,6 +23,7 @@ from app.services.eligibility.evaluation import (
     union_eligible_application_ids,
 )
 from tests.application_support import activate_application, current_opening_id
+from tests.db_support import add_selected_result
 
 
 def make_session() -> Session:
@@ -73,7 +74,7 @@ def set_member_rules(db: Session, user_id: int, **overrides: object) -> None:
 
 def screen_flagged(db: Session, application_id: int) -> None:
     """Cache a screening result with a flag, so the machine verdict reads ineligible/ai."""
-    db.add(
+    add_selected_result(db,
         ApplicationAIResult(
             application_id=application_id,
             kind="screening",
@@ -90,7 +91,7 @@ def screen_pets(db: Session, application_id: int, *, dogs: int = 0, cats: int = 
                 other_pets: list[str] | None = None) -> None:
     """Cache a screening result carrying only extracted pet facts (no flags), so the pet hard
     filter has facts to judge on read."""
-    db.add(
+    add_selected_result(db,
         ApplicationAIResult(
             application_id=application_id,
             kind="screening",

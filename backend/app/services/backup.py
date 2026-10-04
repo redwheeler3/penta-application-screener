@@ -43,6 +43,7 @@ _APPLICATION_CHILD_TABLES = (
     "application_stars",
     "application_shortlist",
     "application_ai_results",
+    "application_ai_selections",
 )
 
 

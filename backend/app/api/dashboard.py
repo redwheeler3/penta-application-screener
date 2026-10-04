@@ -18,7 +18,7 @@ from app.core.problems import Problem
 from app.core.time import as_utc
 from app.db.models import (
     Analysis,
-    ApplicationAIResult,
+    ApplicationAISelection,
     User,
     UserRole,
 )
@@ -252,18 +252,18 @@ def _result_exists(
     prefix: str | None = None,
     application_ids: list[int] | None = None,
 ) -> bool:
-    """Whether any ``ApplicationAIResult`` matches — exact ``kind`` or a ``prefix`` of it
+    """Whether any selected AI result matches — exact ``kind`` or a ``prefix`` of it
     (e.g. ``dimension_scoring:`` matches the per-dimension scoring rows)."""
     match = (
-        ApplicationAIResult.kind == kind
+        ApplicationAISelection.kind == kind
         if prefix is None
-        else ApplicationAIResult.kind.startswith(prefix)
+        else ApplicationAISelection.kind.startswith(prefix)
     )
-    query = select(ApplicationAIResult.id).where(match)
+    query = select(ApplicationAISelection.result_id).where(match)
     if application_ids is not None:
         if not application_ids:
             return False
-        query = query.where(ApplicationAIResult.application_id.in_(application_ids))
+        query = query.where(ApplicationAISelection.application_id.in_(application_ids))
     return db.scalar(query.limit(1)) is not None
 
 

@@ -19,6 +19,7 @@ APPLICATION_OWNED_FOREIGN_KEYS = {
     ("application_stars", "application_id", "applications"),
     ("application_shortlist", "application_id", "applications"),
     ("application_ai_results", "application_id", "applications"),
+    ("application_ai_selections", "application_id", "applications"),
 }
 
 

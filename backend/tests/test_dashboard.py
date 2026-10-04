@@ -24,6 +24,7 @@ from app.db.models import (
 from app.db.session import get_db
 from tests.app_support import shared_test_app
 from tests.application_support import activate_application, current_opening_id
+from tests.db_support import add_selected_result
 
 SUBMITTED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -314,7 +315,7 @@ async def test_workflow_flags_track_progress() -> None:
         assert workflow["screened"] is False
 
         # A quality-flag result exists -> that step is done; essays still not.
-        db.add(ApplicationAIResult(
+        add_selected_result(db, ApplicationAIResult(
             application_id=application.id, kind="screening", cache_key="k1",
             model_id="m", prompt_version="v1", output={"flags": []},
         ))
@@ -335,7 +336,7 @@ async def test_workflow_flags_track_progress() -> None:
         assert workflow["candidatesScored"] is False
 
         # A dimension-scoring result (per-run prefixed kind) -> scoring done.
-        db.add(ApplicationAIResult(
+        add_selected_result(db, ApplicationAIResult(
             application_id=application.id, kind="dimension_scoring:abc123", cache_key="k3",
             model_id="m", prompt_version="v1", output={"scores": []},
         ))
@@ -495,13 +496,13 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
     activate_application(db, b)
 
     # a: current result (cache key computed from its present content + model).
-    db.add(ApplicationAIResult(
+    add_selected_result(db, ApplicationAIResult(
         application_id=a.id, kind=SCREENING_KIND,
         cache_key=cache_key(application=a, kind=SCREENING_KIND, model_id=model, prompt_version=SCREENING_VERSION),
         model_id=model, prompt_version=SCREENING_VERSION, output={"flags": []},
     ))
     # b: a result keyed to prior content -> does not match its current hash -> stale.
-    db.add(ApplicationAIResult(
+    add_selected_result(db, ApplicationAIResult(
         application_id=b.id, kind=SCREENING_KIND, cache_key="stale-key",
         model_id=model, prompt_version=SCREENING_VERSION, output={"flags": []},
     ))
@@ -552,7 +553,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     db.commit()
 
     # Score only ONE of the two dimensions -> incomplete.
-    db.add(ApplicationAIResult(
+    add_selected_result(db, ApplicationAIResult(
         application_id=a.id, kind=kind_for_dimension("community"),
         cache_key=cache_key(application=a, kind=kind_for_dimension("community"), model_id=model, prompt_version=SCORING_VERSION),
         model_id=model, prompt_version=SCORING_VERSION, output={"score": 0.7, "confidence": "high", "rationale": "", "evidence": "", "dimension_key": "community"},
@@ -567,7 +568,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     assert dashboard["workflow"]["rankingCurrent"] is False
 
     # Score the second dimension too -> complete.
-    db.add(ApplicationAIResult(
+    add_selected_result(db, ApplicationAIResult(
         application_id=a.id, kind=kind_for_dimension("skills"),
         cache_key=cache_key(application=a, kind=kind_for_dimension("skills"), model_id=model, prompt_version=SCORING_VERSION),
         model_id=model, prompt_version=SCORING_VERSION, output={"score": 0.5, "confidence": "low", "rationale": "", "evidence": "", "dimension_key": "skills"},

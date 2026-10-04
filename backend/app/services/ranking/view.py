@@ -14,36 +14,26 @@ here and arithmetic in the domain keeps the formula (``impact = weight ·
 
 from __future__ import annotations
 
-from collections.abc import Collection
-
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only
 
 from app.ai.dimension_scoring import applications_to_score, kind_for_dimension
 from app.ai.schemas import PoolDimensionReport
-from app.db.models import Application, ApplicationAIResult
+from app.db.models import Application, ApplicationAIResult, ApplicationAISelection
 from app.domain.ranking import CandidateScores, ScoredDimension
 from app.services.ranking.dimensions import current_dimension_report
 
 
-def _latest_score_ids(application_ids: Collection[int], kinds: Collection[str]):
-    return select(
-        ApplicationAIResult.id,
-        func.row_number().over(
-            partition_by=(ApplicationAIResult.application_id, ApplicationAIResult.kind),
-            order_by=(ApplicationAIResult.created_at.desc(), ApplicationAIResult.id.desc()),
-        ).label("position"),
-    ).where(ApplicationAIResult.kind.in_(kinds), ApplicationAIResult.application_id.in_(application_ids)).subquery()
-
-
-def latest_application_scores(db: Session, application_id: int, report: PoolDimensionReport) -> list[ApplicationAIResult]:
-    """Newest score and provenance rows for one applicant, excluding history and narratives."""
-    ordered = _latest_score_ids([application_id], [kind_for_dimension(dim.key) for dim in report.dimensions])
+def selected_application_scores(db: Session, application_id: int, report: PoolDimensionReport) -> list[ApplicationAIResult]:
+    """Selected score and provenance rows for one applicant, excluding unused narratives."""
     return list(db.scalars(select(ApplicationAIResult).options(load_only(
         ApplicationAIResult.kind, ApplicationAIResult.output, ApplicationAIResult.model_id,
         ApplicationAIResult.reasoning_effort, ApplicationAIResult.prompt_version,
         ApplicationAIResult.input_tokens, ApplicationAIResult.output_tokens, ApplicationAIResult.cost_usd,
-    )).join(ordered, ordered.c.id == ApplicationAIResult.id).where(ordered.c.position == 1)))
+    )).join(ApplicationAISelection, ApplicationAISelection.result_id == ApplicationAIResult.id).where(
+        ApplicationAISelection.application_id == application_id,
+        ApplicationAISelection.kind.in_([kind_for_dimension(dim.key) for dim in report.dimensions]),
+    )))
 
 
 def scored_dimensions(report: PoolDimensionReport, outputs: dict[str, dict]) -> list[ScoredDimension]:
@@ -85,14 +75,14 @@ def candidate_scores(
     if not by_id or not report.dimensions:
         return []
 
-    # Fetch only the newest row per applicant and dimension in one query, with
-    # row ID breaking timestamp ties. Keep report order when assembling vectors.
+    # Fetch selected results in one query. The consumer can differ from the original
+    # producer of a content-addressed cache row. Keep report order in assembled vectors.
     kinds = [kind_for_dimension(dim.key) for dim in report.dimensions]
     ids = set(by_id) - ({captured_candidate.application_id} if captured_candidate is not None else set())
-    ordered = _latest_score_ids(ids, kinds)
     rows = db.execute(select(
-        ApplicationAIResult.application_id, ApplicationAIResult.kind, ApplicationAIResult.output,
-    ).join(ordered, ordered.c.id == ApplicationAIResult.id).where(ordered.c.position == 1))
+        ApplicationAISelection.application_id, ApplicationAISelection.kind, ApplicationAIResult.output,
+    ).join(ApplicationAISelection, ApplicationAISelection.result_id == ApplicationAIResult.id).where(
+        ApplicationAISelection.application_id.in_(ids), ApplicationAISelection.kind.in_(kinds)))
     outputs_by_app: dict[int, dict[str, dict]] = {app_id: {} for app_id in by_id}
     for app_id, kind, output in rows:
         outputs_by_app[app_id][kind] = output or {}

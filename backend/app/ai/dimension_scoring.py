@@ -42,6 +42,7 @@ from app.ai.prompt_fragments import (
     INJECTION_GUARD_NOTE,
 )
 from app.ai.provider import AIProvider, AIResult, Usage
+from app.ai.result_selection import select_results
 from app.ai.schemas import (
     DimensionScore,
     DimensionScoringReport,
@@ -166,14 +167,15 @@ def _to_score_dimensions(
     report: PoolDimensionReport,
     model_id: str,
     reasoning_effort: ReasoningEffort | None = None,
-) -> tuple[list[PoolDimension], dict[str, DimensionScore], float]:
+) -> tuple[list[PoolDimension], dict[str, DimensionScore], float, list[tuple[int, str, int]]]:
     """Split a candidate's dimensions into (to-score, cached) by per-key cache hit.
-    Returns the dimensions still to score, cached scores keyed by dimension key, and
-    the cost of regenerating the cached rows on the currently selected route.
+    Returns pending dimensions, cached scores, their avoided cost on the selected
+    route, and references to the reused rows. This planning step never writes.
     """
     to_score: list[PoolDimension] = []
     cached: dict[str, DimensionScore] = {}
     cached_saved_usd = 0.0
+    references = []
     for dim in report.dimensions:
         outcome = cached_outcome(
             db,
@@ -191,7 +193,9 @@ def _to_score_dimensions(
                 {**outcome.output.model_dump(), "dimension_key": dim.key}
             )
             cached_saved_usd += outcome.cost_usd
-    return to_score, cached, cached_saved_usd
+            assert outcome.result_id is not None
+            references.append((application.id, kind_for_dimension(dim.key), outcome.result_id))
+    return to_score, cached, cached_saved_usd, references
 
 
 def missing_dimensions_by_application(
@@ -399,10 +403,12 @@ def score_dimensions(
     # Plan each candidate on the main thread (cache lookups touch the ORM): which
     # dimensions still need scoring, and the cached ones to merge in.
     plans: list[ScoringPlan] = []
+    references = []
     for application in applications:
-        to_score, cached, cached_saved_usd = _to_score_dimensions(
+        to_score, cached, cached_saved_usd, reused = _to_score_dimensions(
             db, application, report, model_id, reasoning_effort
         )
+        references.extend(reused)
         # Workers must never touch an ORM instance: storing an earlier candidate commits
         # on the main thread and expires session objects while slower workers are still
         # building prompts. Snapshot the applicant input before the pool starts.
@@ -419,6 +425,10 @@ def score_dimensions(
             dimensions_to_score=to_score, cached_scores=cached,
             cached_saved_usd=cached_saved_usd, result_cache_keys=result_keys,
         ))
+
+    if references:
+        select_results(db, references)
+        db.commit()
 
     def call(plan: ScoringPlan) -> AIResult | None:
         if not plan.dimensions_to_score:

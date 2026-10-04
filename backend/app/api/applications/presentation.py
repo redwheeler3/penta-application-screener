@@ -35,7 +35,7 @@ from app.schemas.applications import (
     ScreeningFlagOut,
 )
 from app.services.applications.content import extract_essays
-from app.services.applications.screening_results import latest_screening_results
+from app.services.applications.screening_results import selected_screening_results
 from app.services.applications.shared_shortlist import is_shortlisted
 from app.services.applications.stars import is_starred
 from app.services.eligibility.evaluation import (
@@ -64,8 +64,8 @@ from app.services.ranking.member_state import (
 )
 from app.services.ranking.view import (
     candidate_scores,
-    latest_application_scores,
     scored_dimensions,
+    selected_application_scores,
 )
 
 
@@ -149,7 +149,7 @@ def _pet_facts_out(output: dict[str, Any] | None) -> PetFactsOut | None:
 def eligibility_update(app: Application, db: Session, user: User, opening_id: int) -> EligibilityUpdate:
     """Current eligibility fields without loading essays, notes, or ranking scores."""
     rules = rules_config_for(db, user.id, opening_id)
-    result = latest_screening_results(db, [app.id]).get(app.id)
+    result = selected_screening_results(db, [app.id]).get(app.id)
     flags = active_flags((result.output or {}).get("flags", []) if result else None, rules.disabled_checks)
     facts = pet_facts_from_screening(result.output) if result else None
     reasons = hard_filter_reasons_for(rules, app, pet_facts=facts)
@@ -169,7 +169,7 @@ def serialize_detail(
     # The raw source row and AI narrative are shown to any committee member: they're
     # trusted screeners, and these just back the data the member already sees.
     rules_config = rules_config_for(db, user.id, opening_id)
-    flag_result = latest_screening_results(db, [app.id]).get(app.id)
+    flag_result = selected_screening_results(db, [app.id]).get(app.id)
     # Active flags drive both the displayed findings and the member's verdict.
     flags = active_flags(
         (flag_result.output or {}).get("flags", []) if flag_result else None,
@@ -215,7 +215,7 @@ def serialize_detail(
 
     analysis = get_current_analysis(db, opening_id)
     report = current_dimension_report(analysis) if analysis is not None else None
-    results = latest_application_scores(db, app.id, report) if report is not None else []
+    results = selected_application_scores(db, app.id, report) if report is not None else []
     scoring_trace = _dimension_scoring_trace(results)
     captured_candidate = CandidateScores(
         application_id=app.id, name=app.applicant_name,

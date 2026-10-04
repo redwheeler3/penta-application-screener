@@ -13,6 +13,45 @@ from app.db.models import Base
 from app.schemas.settings import AppSettings
 
 
+def test_result_selection_migration_preserves_history_and_previous_display(tmp_path, monkeypatch) -> None:
+    backend = Path(__file__).parents[1]
+    url = f"sqlite:///{(tmp_path / 'selected-results.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "alembic"))
+        command.upgrade(config, "6c7d8e9f0a1b")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("INSERT INTO applications "
+                "(id, primary_email, raw_row, raw_row_hash, normalized, working_revision, synthetic_data, created_at, updated_at) "
+                "VALUES (1, 'synthetic@example.com', '{}', 'synthetic', '{}', 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+            for result_id, kind, created_at in [
+                (1, "screening", "2026-10-01"), (2, "screening", "2026-10-02"),
+                (3, "screening", "2026-10-02"), (4, "dimension_scoring:criterion", "2026-10-01"),
+            ]:
+                connection.exec_driver_sql("INSERT INTO application_ai_results "
+                    "(id, application_id, kind, cache_key, model_id, prompt_version, output, input_tokens, output_tokens, cost_usd, created_at, updated_at) "
+                    "VALUES (?, 1, ?, ?, 'synthetic', 'test', '{}', 0, 0, 0, ?, ?)",
+                    (result_id, kind, str(result_id), created_at, created_at))
+        engine.dispose()
+        command.upgrade(config, "head")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            assert connection.exec_driver_sql("SELECT application_id, kind, result_id FROM application_ai_selections ORDER BY kind").all() == [
+                (1, "dimension_scoring:criterion", 4), (1, "screening", 3),
+            ]
+            assert connection.exec_driver_sql("SELECT COUNT(*) FROM application_ai_results").scalar_one() == 4
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.exec_driver_sql("DELETE FROM applications WHERE id = 1")
+            assert connection.exec_driver_sql("SELECT COUNT(*) FROM application_ai_selections").scalar_one() == 0
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+        engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+
 def test_publication_migration_preserves_openings_and_enforces_request_identity(tmp_path, monkeypatch) -> None:
     from sqlalchemy.exc import IntegrityError
 

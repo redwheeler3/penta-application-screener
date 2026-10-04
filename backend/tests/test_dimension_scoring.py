@@ -9,6 +9,7 @@ whole-pool ceiling estimate.
 
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -21,6 +22,7 @@ from app.ai.dimension_scoring import (
     score_dimensions,
 )
 from app.ai.mock_provider import MockProvider
+from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
 from app.ai.schemas import (
     DimensionScore,
     DimensionScoringReport,
@@ -28,7 +30,9 @@ from app.ai.schemas import (
     PoolDimensionReport,
     ScoreConfidence,
 )
+from app.ai.score_vectors import load_score_vectors
 from app.db.models import (
+    Analysis,
     Application,
     ApplicationAIResult,
     Base,
@@ -37,6 +41,7 @@ from app.db.models import (
 )
 from app.schemas.settings import AppSettings
 from app.services.ranking.freshness import rank_inputs_fingerprint
+from app.services.ranking.view import candidate_scores, selected_application_scores
 from tests.application_support import activate_application, current_opening_id
 
 
@@ -105,6 +110,47 @@ def run_scores(db, provider, apps, report, settings):
             max_workers=2,
         )
     )
+
+
+@pytest.mark.parametrize("new_consumer", [False, True])
+@pytest.mark.parametrize("mixed", [False, True])
+def test_cached_scores_and_provenance_match_ranking_and_consolidation(new_consumer, mixed) -> None:
+    db = make_db()
+    application = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    settings = AppSettings()
+    original_model = settings.ai.dimension_scoring_model
+    provider = MockProvider()
+    report = report_with(["community", "skills"])
+    provider.queue(a_scoring_report(["community", "skills"]), model_id=original_model)
+    run_scores(db, provider, [application], report, settings)
+    original_ids = {row.id for row in selected_application_scores(db, application.id, report)}
+    alternate_model = MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"]
+    assert alternate_model != original_model
+    settings.ai.dimension_scoring_model = alternate_model
+    alternate = a_scoring_report(["community", "skills"])
+    for score in alternate.scores:
+        score.score = -0.6
+    provider.queue(alternate, model_id=alternate_model)
+    run_scores(db, provider, [application], report, settings)
+    if new_consumer:
+        application.withdrawn_at = datetime.now(UTC)
+        db.commit()
+        application = add_eligible(db, email="reapplication@example.com", raw_hash="synthetic")
+    settings.ai.dimension_scoring_model = original_model
+    if mixed:
+        report = report_with(["community", "skills", "new"])
+        provider.queue(a_scoring_report(["new"]), model_id=original_model)
+    result = run_scores(db, provider, [application], report, settings)[0]
+    analysis = Analysis(opening_id=current_opening_id(db), dimension_report=report.model_dump(mode="json"))
+    displayed = candidate_scores(db, analysis)[0]
+    assert [score.score for score in displayed.scores] == [score.score for score in result.outcome.output.scores]
+    assert all(score.score == 0.7 for score in displayed.scores)
+    rows = selected_application_scores(db, application.id, report)
+    assert original_ids <= {row.id for row in rows}
+    assert {row.model_id for row in rows} == {original_model}
+    vectors = load_score_vectors(db)
+    assert all(vectors[dim.key][application.id] == 0.7 for dim in report.dimensions)
+    assert len(provider.calls) == (3 if mixed else 2)
 
 
 def test_kind_is_keyed_by_dimension_key() -> None:

@@ -869,6 +869,24 @@ class ApplicationAIResult(TimestampMixin, Base):
     application: Mapped[Application] = relationship()
 
 
+class ApplicationAISelection(Base):
+    """The result last used for an applicant and kind, whether fresh or cached.
+
+    Results retain their original producer and provenance. A content-addressed cache
+    hit can belong to another application; the consumer's reference lives here.
+    """
+
+    __tablename__ = "application_ai_selections"
+
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), primary_key=True
+    )
+    kind: Mapped[str] = mapped_column(String(80), primary_key=True)
+    result_id: Mapped[int] = mapped_column(
+        ForeignKey("application_ai_results.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+
 class RunCostLedger(TimestampMixin, Base):
     """One row per completed AI run (a Screen, full Rank, or score-current update) — the
     header. This is the authoritative source of *per-run* cost:

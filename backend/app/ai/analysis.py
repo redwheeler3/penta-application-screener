@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.ai.model_catalog import ReasoningEffort, model_identity
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
+from app.ai.result_selection import select_results
 from app.db.models import Application, ApplicationAIResult
 
 # Work item / result types for run_in_pool.
@@ -99,6 +100,8 @@ class AnalysisOutcome:
     output_tokens: int = 0
     # The model's reasoning narrative, if the provider surfaced one.
     narrative: str | None = None
+    # Single cacheable results carry their existing identity; assembled reports do not.
+    result_id: int | None = None
 
 
 def cache_key(
@@ -277,6 +280,7 @@ def cached_outcome(
         ),
         cached=True,
         narrative=existing.narrative,
+        result_id=existing.id,
     )
 
 
@@ -311,6 +315,9 @@ def store_result(
         cost_usd=call_cost,
     )
     db.add(record)
+    db.flush()
+    result_id = record.id
+    select_results(db, [(application.id, kind, result_id)])
     db.commit()
     return AnalysisOutcome(
         output=result.output,
@@ -319,6 +326,7 @@ def store_result(
         input_tokens=result.usage.input_tokens,
         output_tokens=result.usage.output_tokens,
         narrative=result.narrative,
+        result_id=result_id,
     )
 
 
@@ -427,9 +435,10 @@ def screen_applications(
             on_result(application, outcome)
         return PassResult(application=application, outcome=outcome)
 
-    # Cache lookups and prompt building touch the ORM, so do them here. Cached
-    # applications finish immediately; the rest are queued with a prebuilt prompt.
+    # Capture every input before selecting cached results: commits and callbacks
+    # can expire ORM objects, but must not change a pending model call's input.
     pending: list[tuple[Application, str, str]] = []
+    reused: list[tuple[Application, AnalysisOutcome]] = []
     for application in applications:
         cached = cached_outcome(
             db, application, kind=kind, schema=schema, model_id=model_id,
@@ -437,13 +446,23 @@ def screen_applications(
             reasoning_effort=reasoning_effort,
         )
         if cached is not None:
-            yield finish(application, cached)
+            reused.append((application, cached))
         else:
             key = cache_key(
                 application=application, kind=kind, model_id=model_id,
                 prompt_version=prompt_version, reasoning_effort=reasoning_effort,
             )
             pending.append((application, build_prompt(application), key))
+
+    references = []
+    for application, outcome in reused:
+        assert outcome.result_id is not None
+        references.append((application.id, kind, outcome.result_id))
+    if references:
+        select_results(db, references)
+        db.commit()
+    for application, outcome in reused:
+        yield finish(application, outcome)
 
     def call_model(item: tuple[Application, str, str]) -> AIResult:
         # Pure: no session, no ORM — safe to run in a worker thread.

@@ -11,7 +11,7 @@ from app.schemas.settings import AppSettings
 from app.services.ranking.member_state import get_or_create_member_ranking
 from app.services.ranking.pipeline import _stream_consolidate
 from tests.application_support import current_opening_id
-from tests.db_support import memory_session
+from tests.db_support import add_selected_result, memory_session
 from tests.ranking_support import a_pattern_report, add_eligible, setup_app
 
 
@@ -22,7 +22,7 @@ def test_current_vectors_preserve_history_values_and_nomination_order():
     for key in ("z_first", "a_second", "m_third"):
         for applicant_id in range(1, 5):
             for version in range(10):
-                db.add(ApplicationAIResult(application_id=applicant_id, kind=f"dimension_scoring:{key}",
+                add_selected_result(db, ApplicationAIResult(application_id=applicant_id, kind=f"dimension_scoring:{key}",
                     cache_key=f"synthetic-{key}-{applicant_id}-{version}", model_id="synthetic", prompt_version="test",
                     created_at=now + timedelta(seconds=version), output={"score": applicant_id * (version + 1) / 100},
                     narrative="Synthetic history that is not needed for vectors"))
@@ -52,13 +52,13 @@ def test_current_vectors_preserve_history_values_and_nomination_order():
     assert "application_ai_results.cache_key" not in queries[0]
 
 
-def test_latest_vector_breaks_timestamp_ties_by_row_id_and_ignores_other_passes():
+def test_selected_vectors_ignore_other_passes():
     db = memory_session()
     now = datetime.now(UTC)
     for index, (kind, score) in enumerate([
         ("dimension_scoring:criterion", -0.8), ("dimension_scoring:criterion", 0.6), ("screening", 0.9),
     ]):
-        db.add(ApplicationAIResult(application_id=1, kind=kind, cache_key=f"synthetic-{index}",
+        add_selected_result(db, ApplicationAIResult(application_id=1, kind=kind, cache_key=f"synthetic-{index}",
             model_id="synthetic", prompt_version="test", created_at=now, output={"score": score}))
     db.commit()
     assert load_score_vectors(db) == {"criterion": {1: 0.6}}

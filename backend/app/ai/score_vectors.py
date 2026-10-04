@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.dimension_scoring import KIND_PREFIX
-from app.db.models import ApplicationAIResult
+from app.db.models import ApplicationAIResult, ApplicationAISelection
 
 # Correlation at/above which a dimension pair is nominated as a suspected duplicate.
 # Default 0.8 catches subtler forks. A nomination is followed by a definition-based
@@ -50,34 +50,31 @@ def pearson(xs: list[float], ys: list[float]) -> float | None:
 
 
 def load_score_vectors(db: Session) -> dict[str, dict[int, float]]:
-    """Every dimension key ever scored → {application_id: latest score}.
+    """Every selected dimension key → {consumer application_id: selected score}.
 
-    Reads the newest row per (key, candidate), ordered by timestamp and row ID,
-    using the same tie-breaking rule as the ranker. History and narratives stay in the DB.
+    Uses the same selected results as the ranker. First-seen criterion order is
+    preserved across cache changes; history and narratives stay in the DB.
     """
     first_seen_order = {
         "partition_by": ApplicationAIResult.kind,
         "order_by": (ApplicationAIResult.created_at, ApplicationAIResult.id),
     }
-    latest = (
+    history = (
         select(
+            ApplicationAIResult.id,
             ApplicationAIResult.kind,
             ApplicationAIResult.application_id,
             ApplicationAIResult.output,
             func.first_value(ApplicationAIResult.created_at).over(**first_seen_order).label("first_seen_at"),
             func.first_value(ApplicationAIResult.id).over(**first_seen_order).label("first_seen_id"),
-            func.row_number().over(
-                partition_by=(ApplicationAIResult.kind, ApplicationAIResult.application_id),
-                order_by=(ApplicationAIResult.created_at.desc(), ApplicationAIResult.id.desc()),
-            ).label("position"),
         )
         .where(ApplicationAIResult.kind.like(f"{KIND_PREFIX}:%"))
         .subquery()
     )
-    rows = db.execute(select(latest.c.kind, latest.c.application_id, latest.c.output)
-        .where(latest.c.position == 1)
+    rows = db.execute(select(history.c.kind, ApplicationAISelection.application_id, history.c.output)
+        .join(ApplicationAISelection, ApplicationAISelection.result_id == history.c.id)
         # Equal correlations retain criterion order in the nomination list and model prompt.
-        .order_by(latest.c.first_seen_at, latest.c.first_seen_id, latest.c.application_id))
+        .order_by(history.c.first_seen_at, history.c.first_seen_id, ApplicationAISelection.application_id))
     vectors: dict[str, dict[int, float]] = {}
     for kind, application_id, output in rows:
         key = kind.split(":", 1)[1]  # strip the "dimension_scoring:" prefix

@@ -19,6 +19,7 @@ from app.ai.pricing import cost_usd, price_for_model
 from app.ai.provider import Usage
 from app.ai.schemas import ScreeningReport
 from app.db.models import Application, ApplicationAIResult, Base
+from app.services.applications.screening_results import selected_screening_results
 
 MODEL = MODEL_IDS_BY_ROUTE["bedrock"]["haiku"]
 KIND = "screening"
@@ -58,6 +59,43 @@ def seed_cached(db: Session, provider: MockProvider, app: Application) -> None:
 
 def clean_report() -> ScreeningReport:
     return ScreeningReport(flags=[])
+
+
+@pytest.mark.parametrize("new_consumer", [False, True])
+@pytest.mark.parametrize("cache_setting", ["model", "prompt", "reasoning"])
+def test_screening_display_follows_the_consumed_cache_result(new_consumer, cache_setting) -> None:
+    db = make_session()
+    application = make_application(db)
+    provider = MockProvider()
+    original = {"model_id": MODEL, "prompt_version": VERSION, "reasoning_effort": None}
+    alternate = dict(original)
+    alternate[{"model": "model_id", "prompt": "prompt_version", "reasoning": "reasoning_effort"}[cache_setting]] = {
+        "model": MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"], "prompt": "alternate", "reasoning": "high",
+    }[cache_setting]
+
+    def run(app, options):
+        return next(screen_applications(db, provider, applications=[app], kind=KIND, schema=ScreeningReport,
+            build_prompt=lambda _app: "Synthetic", max_workers=1, **options)).outcome
+
+    provider.queue(clean_report(), model_id=MODEL, narrative="Original synthetic provenance")
+    first = run(application, original)
+    provider.queue(ScreeningReport.model_validate({"flags": [{
+        "category": "fake_contact", "summary": "Synthetic", "evidence": "Example",
+    }], "pets": {"dogs": 2}}), model_id=alternate["model_id"], narrative="Alternate synthetic provenance")
+    later = run(application, alternate)
+    assert selected_screening_results(db, [application.id])[application.id].id == later.result_id
+    if new_consumer:
+        application = make_application(db, email="reapplication@example.com")
+    reused = run(application, original)
+    displayed = selected_screening_results(db, [application.id])[application.id]
+    assert reused.cached
+    assert displayed.id == first.result_id
+    assert displayed.output["flags"] == []
+    assert displayed.narrative == "Original synthetic provenance"
+    assert displayed.model_id == MODEL
+    assert displayed.prompt_version == VERSION
+    assert displayed.reasoning_effort is None
+    assert len(provider.calls) == 2
 
 
 def test_store_result_persists_effective_reasoning_effort() -> None:

@@ -1,4 +1,4 @@
-"""Latest screening evidence stays consistent across flags, pet facts, and traces."""
+"""Selected screening evidence stays consistent across flags, pet facts, and traces."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -6,13 +6,13 @@ from sqlalchemy import event
 
 from app.db.models import Application, ApplicationAIResult
 from app.services.applications.screening_results import (
-    latest_screening_results,
     screening_findings_by_app,
+    selected_screening_results,
 )
-from tests.db_support import memory_session
+from tests.db_support import add_selected_result, memory_session
 
 
-def test_latest_results_are_scoped_and_use_id_to_break_timestamp_ties() -> None:
+def test_selected_results_are_scoped_by_consumer_and_kind() -> None:
     with memory_session() as db:
         applications = [
             Application(primary_email=f"review-{index}@example.com", raw_row={}, raw_row_hash=str(index))
@@ -42,8 +42,10 @@ def test_latest_results_are_scoped_and_use_id_to_break_timestamp_ties() -> None:
             model_id="mock", prompt_version="test", created_at=now + timedelta(seconds=1), output={},
         )
         db.add_all([old, first, latest, unrelated, other_pass])
-        db.flush()
-        results = latest_screening_results(db, [applications[0].id, applications[2].id])
+        add_selected_result(db, latest)
+        add_selected_result(db, unrelated)
+        add_selected_result(db, other_pass)
+        results = selected_screening_results(db, [applications[0].id, applications[2].id])
         assert list(results) == [applications[0].id]
         assert results[applications[0].id].id == latest.id
 
@@ -54,7 +56,7 @@ def test_flags_and_pets_share_one_query_and_never_reuse_older_pet_facts() -> Non
         db.add(application)
         db.flush()
         now = datetime.now(UTC)
-        db.add_all([
+        rows = [
             ApplicationAIResult(
                 application_id=application.id, kind="screening", cache_key="pets",
                 model_id="mock", prompt_version="test", created_at=now - timedelta(seconds=1),
@@ -65,8 +67,9 @@ def test_flags_and_pets_share_one_query_and_never_reuse_older_pet_facts() -> Non
                 model_id="mock", prompt_version="test", created_at=now,
                 output={"flags": [{"category": "fake_contact"}]},
             ),
-        ])
-        db.flush()
+        ]
+        for row in rows:
+            add_selected_result(db, row)
         statements = []
 
         def capture_query(_connection, _cursor, statement, _parameters, _context, _executemany):
@@ -77,7 +80,7 @@ def test_flags_and_pets_share_one_query_and_never_reuse_older_pet_facts() -> Non
         assert flags[application.id] == [{"category": "fake_contact"}]
         assert application.id not in pets
         assert len(statements) == 1
-        assert latest_screening_results(db, []) == {}
+        assert selected_screening_results(db, []) == {}
         assert len(statements) == 1
 
 
@@ -86,7 +89,7 @@ def test_clean_screening_preserves_zero_pet_counts_and_empty_flags() -> None:
         application = Application(primary_email="review@example.com", raw_row={}, raw_row_hash="review")
         db.add(application)
         db.flush()
-        db.add(ApplicationAIResult(
+        add_selected_result(db, ApplicationAIResult(
             application_id=application.id, kind="screening", cache_key="clean",
             model_id="mock", prompt_version="test",
             output={"flags": [], "pets": {"dogs": 0, "cats": 0, "other_pets": []}},
