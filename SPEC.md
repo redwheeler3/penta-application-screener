@@ -662,6 +662,12 @@ or an explicit application-withdrawal flow. Server retention cleanup cannot eras
 browser that never returns; remembered-device storage is therefore an applicant-controlled device
 copy rather than part of the server retention guarantee.
 
+Clearing a guest copy physically removes its answers and credential/delivery references;
+it detaches any pending-comparison reference without ending application authentication.
+Explicit draft/profile deletion leaves the same non-identifying deletion fact as scheduled
+purge. Discarding private working changes advances the working revision only when that
+copy changes, so an earlier browser cannot continue treating discarded answers as saved.
+
 Once an applicant affirmatively submits for one or more openings, the latest committee decision
 affecting that application is its single retention anchor. Applications with no selected
 participation are retained for one year after that decision; a withdrawal changes access and scope
@@ -686,6 +692,13 @@ hard-purge ledger. Local restoration uses SQLite's backup API so leftover WAL pa
 override the selected snapshot, retains a pre-restore recovery point, and checks the reopened
 database's integrity. Only a non-identifying audit fact that a record was deleted under a named
 retention rule may remain in the live database.
+
+Integer record IDs use persistent, monotonic SQLite allocation. Existing IDs remain unchanged;
+future allocation skips the legacy range and remains representable by browser numbers. Local
+restore prepares a separate candidate database, reapplies the newest deletion bounds, upgrades
+its schema and preserves live allocation high-water marks before replacing data through SQLite's
+journal protocol. A later record generation is not deleted by an older fact; an ambiguous legacy
+match stops the restore before live replacement. Integrity and foreign-key checks cover the result.
 
 Retention is enforced automatically and opportunistically at most once per Pacific calendar day
 when the deployed service receives ordinary browser or API traffic. Health checks, static assets,
@@ -1227,6 +1240,9 @@ cache units. Historical scoring call counts can reflect dimension units because 
 replies were not recorded separately. The live run total uses whole-call usage and price;
 per-dimension token allocation cannot reduce its reported cost.
 
+A candidate's complete fresh score vector and consumed references publish in one transaction.
+Storage failure rolls that vector back; other successfully saved candidates remain available.
+
 Failed Rank phases preserve known completed replies from earlier passes and the failing pass,
 including processing errors after a reply. The ledger records the failed stage and error type;
 Insights labels failed attempts and cumulative known spending, and failed attempts do not train
@@ -1235,6 +1251,19 @@ that cleanup was skipped while the usable ranking completes.
 Cache-hit rates use explicit fresh/cache dimension units, not provider-call counts. Historical
 rows without recorded units remain unknown; the additive migration preserves their costs,
 attribution, and completed status without guessing a cache percentage.
+
+Screening and score-current failures follow the same known-usage rule, including storage errors
+after a reply. HTTP interruption rolls back pending results and releases the run lease, then
+records already-returned usage as an interrupted attempt in a separate expense transaction.
+It neither publishes cancelled results nor duplicates a completed ledger. Cache-unit and
+latency measurements for those receipts remain unknown. Calls still running at cleanup and
+billing without returned usage require provider reconciliation; cleanup does not await providers.
+Failure logs retain operation and exception class without provider traceback text or criterion keys.
+
+Local synthetic measurements (2026-10-04, auth/network/provider time excluded): screening
+preparation for 100 applicants fell from 15 to 9 SELECTs (ten-sample median 9.65 to 5.32 ms).
+Persisting 20 candidates with 15 dimensions on SQLite WAL/FULL fell from 300 to 20 commits
+(three-sample median 415.56 to 194.53 ms). These isolate local overhead, not production latency.
 
 Local synthetic measurement (2026-10-03, SQLite WAL/FULL, 15 repetitions, median):
 100 applicants × 15 dimensions with 30,000 historical rows read in 5.7 ms versus

@@ -28,6 +28,10 @@ SQLAlchemy -> SQLite
 
 The frontend never talks directly to SQLite, an AI provider, or an email provider.
 
+Ordinary requests keep their deadline through the complete response body. Streaming requests
+bound the initial handshake and retain caller cancellation for the body; parser/consumer failure
+closes the reader. Account-owned run controls cancel their stream when the workspace unmounts.
+
 ## Two browser surfaces
 
 The same frontend bundle selects its entry surface from the host in production and the query
@@ -36,8 +40,10 @@ string in development:
 - committee screener: `screener.pentacoop.com` or the normal local root;
 - applicant form: `applications.pentacoop.com` or `http://localhost:5173/?applicant`.
 
-`frontend/src/main.tsx` chooses the surface. `App.tsx` owns the committee shell, while
-`ApplicantApp.tsx` owns intake. Shared branding and account controls live in small components
+`frontend/src/main.tsx` chooses the surface. `App.tsx` owns authentication and mounts
+`CommitteeWorkspace.tsx` per account; that workspace owns committee data, drafts and pending
+work. Sign-out and account switching dispose it. `ApplicantApp.tsx` owns intake.
+Shared branding and account controls live in small components
 rather than being duplicated between them.
 `hooks/useCandidateActions.ts` owns committee status, note, favourite, and shortlist writes and
 their view refreshes. It updates the open detail only while the same applicant and opening remain
@@ -68,6 +74,12 @@ cleanup stops renewal and releases the owned lease even before the first body ch
 generator resume binds its cancellation context separately because ASGI may change worker threads.
 Run completion and proposal restoration retain their opening generation, so an earlier run
 cannot clear another opening's candidate or restore its old proposals into that workspace.
+
+`WorkStreamingResponse` supplies that HTTP lifetime to both leased runs and evals.
+`RunCostRecorder` observes in-memory pass meters in the stream's copied worker context.
+Normal ledger recording marks its receipt complete; interruption rolls back results and releases
+the lease before using a separate short session to record already-returned expense facts.
+Cleanup does not wait for active provider calls, and unknown cache units/latencies stay unknown.
 
 `components/admin/OpeningsPanel.tsx` owns the opening list and navigation between workflows.
 `OpeningEditor.tsx` owns the editable opening draft, notification-audience preview, publication,
@@ -437,6 +449,17 @@ The central tables are:
 SQLAlchemy models live in `backend/app/db/models.py`. Alembic migrations are the only supported
 way to change an existing database. Additive migrations apply in place; never delete the local
 database without explicit approval.
+
+Integer identities use SQLite AUTOINCREMENT rather than reusable row IDs. Migration retains
+existing identities and reserves the future allocation range; opaque IDs remain exact browser
+numbers. Restore prepares and migrates a candidate snapshot before replacement, retains live
+allocation counters and deletion bounds, and checks integrity and foreign keys. Temporary
+comparison copies reference an application session without owning its authentication lifetime.
+
+`ai.analysis.stage_result` stages a cache result and consumed reference in a caller-owned
+transaction. Single-result screening uses the committing wrapper; dimension scoring commits
+the complete candidate vector once. `applications/purge.py` owns explicit and scheduled hard
+deletion, including non-identifying recovery facts.
 
 Ranking state is intentionally split by ownership: `backend/app/services/ranking/analysis.py`
 persists the shared committee analysis, `backend/app/services/ranking/member_state.py` owns each
