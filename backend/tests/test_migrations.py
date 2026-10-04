@@ -13,6 +13,32 @@ from app.db.models import Base
 from app.schemas.settings import AppSettings
 
 
+def test_run_renewal_migration_preserves_an_active_acquisition(tmp_path, monkeypatch) -> None:
+    backend = Path(__file__).parents[1]
+    url = f"sqlite:///{(tmp_path / 'run-renewal.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "alembic"))
+        command.upgrade(config, "7d8e9f0a1b2c")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("INSERT INTO users (id, email, display_name, role, is_active, created_at, updated_at) "
+                "VALUES (1, 'synthetic@example.com', 'Synthetic', 'member', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+            connection.exec_driver_sql("UPDATE run_lock SET holder_user_id = 1, kind = 'rank', held_since = '2026-10-03 12:00:00'")
+        engine.dispose()
+        command.upgrade(config, "head")
+        engine = create_engine(url)
+        with engine.connect() as connection:
+            row = connection.exec_driver_sql("SELECT holder_user_id, kind, held_since, renewed_at FROM run_lock").one()
+            assert row == (1, "rank", "2026-10-03 12:00:00", "2026-10-03 12:00:00")
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+        engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+
 def test_result_selection_migration_preserves_history_and_previous_display(tmp_path, monkeypatch) -> None:
     backend = Path(__file__).parents[1]
     url = f"sqlite:///{(tmp_path / 'selected-results.db').as_posix()}"

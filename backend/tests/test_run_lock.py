@@ -8,7 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db.models import Base, User, UserRole
+from app.core.time import as_utc
+from app.db.models import Base, RunLock, User, UserRole
 from app.services.run_lock import (
     LEASE_TTL,
     RunLease,
@@ -16,6 +17,7 @@ from app.services.run_lock import (
     ensure_lock_row,
     rank_run_in_progress,
     release_run_lock,
+    renew_run_lock,
 )
 
 
@@ -37,6 +39,23 @@ def test_acquire_then_contended() -> None:
     db = make_db()
     assert acquire_run_lock(db, user_id=1, kind="rank") is not None
     assert acquire_run_lock(db, user_id=2, kind="screen") is None  # still held by user 1
+
+
+def test_renewal_preserves_acquisition_and_expires_from_last_activity() -> None:
+    db = make_db()
+    now = datetime.now(UTC)
+    lease = acquire_run_lock(db, user_id=1, kind="rank", now=now)
+    renewed_at = now + timedelta(minutes=14)
+    assert renew_run_lock(db, lease, now=renewed_at)
+    assert renew_run_lock(db, lease, now=renewed_at - timedelta(seconds=1))
+    assert as_utc(db.get(RunLock, 1, populate_existing=True).renewed_at) == renewed_at
+    assert rank_run_in_progress(db, now=now + timedelta(minutes=17))
+    assert acquire_run_lock(db, user_id=2, kind="screen", now=now + timedelta(minutes=17)) is None
+    replacement = acquire_run_lock(db, user_id=2, kind="screen", now=renewed_at + LEASE_TTL + timedelta(seconds=1))
+    assert replacement is not None
+    assert not renew_run_lock(db, lease, now=renewed_at + LEASE_TTL + timedelta(seconds=2))
+    release_run_lock(db, lease)
+    assert acquire_run_lock(db, user_id=1, kind="screen", now=renewed_at + LEASE_TTL + timedelta(seconds=2)) is None
 
 
 def test_release_frees_the_lease() -> None:

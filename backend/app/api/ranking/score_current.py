@@ -1,7 +1,7 @@
 """Fill missing scores for the current criteria without creating a new analysis."""
 
 import time
-from collections.abc import Iterator
+from collections.abc import Generator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -29,6 +29,7 @@ from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.pipeline import SCORES, ScoreTally
 from app.services.run_lock import acquire_run_lock, release_run_lock
+from app.services.run_stream import leased_run_stream
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/ranking")
@@ -96,50 +97,47 @@ def score_current(
         release_run_lock(db, lease)
         raise
 
-    def stream() -> Iterator[str]:
-        try:
-            yield emit(PhaseEvent(phase=SCORES, total=plan.to_analyze))
-            tally = ScoreTally()
-            started = time.perf_counter()
-            processed = 0
-            for result in score_planned_dimensions(db, provider, plan=plan, max_workers=settings.ai.max_workers):
-                tally.add(result)
-                if not result.failed and result.fresh_units == 0:
-                    continue
-                processed += 1
-                yield emit(
-                    ProgressEvent(
-                        phase=SCORES,
-                        processed=processed,
-                        total=plan.to_analyze,
-                    )
-                )
-            if tally.failed == 0:
-                record_rank_inputs(db, analysis, inputs_fingerprint)
-            record_run_cost(
-                db,
-                kind=SCORE_CURRENT_KIND,
-                passes={
-                    "Dimension scoring": tally.as_pass_cost(
-                        settings.ai.dimension_scoring_model
-                    )
-                },
-                durations_ms={
-                    "Dimension scoring": round((time.perf_counter() - started) * 1000)
-                },
-                estimated_usd=estimate["estimated_usd"],
-                triggered_by_user_id=user.id,
-                opening_id=opening_id,
-            )
+    def stream() -> Generator[str]:
+        yield emit(PhaseEvent(phase=SCORES, total=plan.to_analyze))
+        tally = ScoreTally()
+        started = time.perf_counter()
+        processed = 0
+        for result in score_planned_dimensions(db, provider, plan=plan, max_workers=settings.ai.max_workers):
+            tally.add(result)
+            if not result.failed and result.fresh_units == 0:
+                continue
+            processed += 1
             yield emit(
-                RankSummary(
-                    dimensions=len(report.dimensions),
-                    scored=processed,
-                    failed=tally.failed,
-                    total_cost_usd=round(tally.cost_usd, 4),
+                ProgressEvent(
+                    phase=SCORES,
+                    processed=processed,
+                    total=plan.to_analyze,
                 )
             )
-        finally:
-            release_run_lock(db, lease)
+        if tally.failed == 0:
+            record_rank_inputs(db, analysis, inputs_fingerprint)
+        record_run_cost(
+            db,
+            kind=SCORE_CURRENT_KIND,
+            passes={
+                "Dimension scoring": tally.as_pass_cost(
+                    settings.ai.dimension_scoring_model
+                )
+            },
+            durations_ms={
+                "Dimension scoring": round((time.perf_counter() - started) * 1000)
+            },
+            estimated_usd=estimate["estimated_usd"],
+            triggered_by_user_id=user.id,
+            opening_id=opening_id,
+        )
+        yield emit(
+            RankSummary(
+                dimensions=len(report.dimensions),
+                scored=processed,
+                failed=tally.failed,
+                total_cost_usd=round(tally.cost_usd, 4),
+            )
+        )
 
-    return StreamingResponse(stream(), media_type="application/x-ndjson")
+    return StreamingResponse(leased_run_stream(db, lease, stream(), phase=SCORES), media_type="application/x-ndjson")

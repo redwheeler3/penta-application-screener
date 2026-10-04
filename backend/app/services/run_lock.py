@@ -13,9 +13,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
+from app.core.time import as_utc
 from app.db.models import RunLock
 
 # The single lease row's fixed id (seeded by migration).
@@ -30,6 +31,10 @@ LEASE_TTL = timedelta(minutes=15)
 class RunLease:
     user_id: int
     acquired_at: datetime
+
+
+class RunLeaseLost(RuntimeError):
+    """The run must stop because its acquisition no longer owns a live lease."""
 
 
 def ensure_lock_row(db: Session) -> None:
@@ -64,12 +69,30 @@ def acquire_run_lock(
         update(RunLock)
         .where(
             RunLock.id == LOCK_ID,
-            (RunLock.holder_user_id.is_(None)) | (RunLock.held_since < cutoff),
+            (RunLock.holder_user_id.is_(None)) | (RunLock.renewed_at < cutoff),
         )
-        .values(holder_user_id=user_id, kind=kind, held_since=now)
+        .values(holder_user_id=user_id, kind=kind, held_since=now, renewed_at=now)
     )
     db.commit()
     return RunLease(user_id=user_id, acquired_at=now) if result.rowcount == 1 else None
+
+
+def renew_run_lock(db: Session, lease: RunLease, *, now: datetime | None = None, commit: bool = True) -> bool:
+    """Renew only a live acquisition; with commit=False, fence the caller's transaction.
+
+    This conditional write holds SQLite's writer through the result commit, so a
+    replacement cannot take ownership between verification and persistence.
+    """
+    now = now or datetime.now(UTC)
+    with db.no_autoflush:
+        result = db.execute(update(RunLock).where(
+            RunLock.id == LOCK_ID, RunLock.holder_user_id == lease.user_id,
+            RunLock.held_since == lease.acquired_at, RunLock.renewed_at >= now - LEASE_TTL,
+        ).values(renewed_at=case((RunLock.renewed_at > now, RunLock.renewed_at), else_=now))
+            .execution_options(synchronize_session=False))
+    if commit:
+        db.commit()
+    return result.rowcount == 1
 
 
 def release_run_lock(db: Session, lease: RunLease) -> None:
@@ -81,7 +104,7 @@ def release_run_lock(db: Session, lease: RunLease) -> None:
             RunLock.holder_user_id == lease.user_id,
             RunLock.held_since == lease.acquired_at,
         )
-        .values(holder_user_id=None, kind=None, held_since=None)
+        .values(holder_user_id=None, kind=None, held_since=None, renewed_at=None)
     )
     db.commit()
 
@@ -96,12 +119,7 @@ def rank_run_in_progress(db: Session, *, now: datetime | None = None) -> bool:
     so editing during them is safe. TTL-expired leases are ignored (a crashed run frees it)."""
     lease = db.scalar(select(RunLock).where(RunLock.id == LOCK_ID)
         .execution_options(populate_existing=True))
-    if lease is None or lease.kind != "rank" or lease.held_since is None:
+    if lease is None or lease.kind != "rank" or lease.renewed_at is None:
         return False
     now = now or datetime.now(UTC)
-    # SQLite's DateTime(timezone=True) round-trips as a naive datetime, so normalize to UTC-
-    # aware before comparing (the acquire path sidesteps this by comparing DB-side in SQL).
-    held_since = lease.held_since
-    if held_since.tzinfo is None:
-        held_since = held_since.replace(tzinfo=UTC)
-    return held_since >= now - LEASE_TTL
+    return as_utc(lease.renewed_at) >= now - LEASE_TTL

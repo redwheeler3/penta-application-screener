@@ -1,6 +1,6 @@
 """HTTP boundary for estimating and starting a full Rank run."""
 
-from collections.abc import Iterator
+from collections.abc import Generator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -31,7 +31,8 @@ from app.services.ranking.analysis import (
 )
 from app.services.ranking.estimates import build_rank_estimate
 from app.services.ranking.pipeline import stream_rank
-from app.services.run_lock import acquire_run_lock, release_run_lock
+from app.services.run_lock import acquire_run_lock
+from app.services.run_stream import leased_run_stream
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/ranking")
@@ -121,16 +122,14 @@ def rank_run(
             detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
         )
 
-    def stream() -> Iterator[str]:
-        try:
-            yield from stream_rank(
-                db,
-                provider,
-                settings,
-                user,
-                opening_id=opening_id,
-                estimated_usd=float(estimate["estimated_usd"]),
-            )
-        finally:
-            release_run_lock(db, lease)
-    return StreamingResponse(stream(), media_type="application/x-ndjson")
+    def stream() -> Generator[str]:
+        yield from stream_rank(
+            db,
+            provider,
+            settings,
+            user,
+            opening_id=opening_id,
+            estimated_usd=float(estimate["estimated_usd"]),
+        )
+
+    return StreamingResponse(leased_run_stream(db, lease, stream(), phase="criteria"), media_type="application/x-ndjson")

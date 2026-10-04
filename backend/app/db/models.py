@@ -176,7 +176,7 @@ class RunLock(TimestampMixin, Base):
     spend and — for a full Rank — strand a MemberRanking (last-writer-wins on the current
     ``Analysis``). There is no in-process lock that would survive multiple web workers, so the
     serialization lives in the DB: one fixed row (``id=1``, seeded by migration), claimed by an
-    atomic conditional UPDATE and released in the run stream's ``finally``. ``held_since`` backs
+    atomic conditional UPDATE and released in the run stream's ``finally``. ``renewed_at`` backs
     a TTL steal so a crashed run can't wedge the system forever. A Postgres deployment can
     use the same lease or replace it with a native advisory lock."""
 
@@ -186,9 +186,10 @@ class RunLock(TimestampMixin, Base):
     # Who holds the lease and what they're running; NULL when free.
     holder_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     kind: Mapped[str | None] = mapped_column(String(20))  # screen | rank | rank_scores
-    # When the current holder claimed it — the TTL-steal reference (a lease older than the TTL
-    # is presumed dead and reclaimable). NULL when free.
+    # Stable acquisition identity, retained across renewals. NULL when free.
     held_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Latest heartbeat or guarded commit; leases without activity past the TTL are reclaimable.
+    renewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Feedback(TimestampMixin, Base):

@@ -92,4 +92,3 @@ def build_rank_estimate(
         "estimated_usd": total,
         "approximate": True,
     }
-
