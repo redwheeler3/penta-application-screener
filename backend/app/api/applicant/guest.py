@@ -1,8 +1,9 @@
 """Guest application entry, private-draft saving, and access-link requests."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -60,11 +61,12 @@ from app.services.applications.selected import application_is_selected
 from app.services.email.sender import EmailSender, get_email_sender
 from app.services.email.transactional import (
     EmailSendOutcome,
-    send_application_confirmation,
+    queue_submission_confirmation,
     send_application_unavailable,
     send_magic_link,
     send_selected_application_locked,
 )
+from app.services.maintenance import get_outbox_runner
 from app.services.openings.participation import (
     applicant_opening_states,
     application_is_editable,
@@ -181,8 +183,10 @@ def save_applicant_draft(
 )
 def submit_guest_application(
     body: GuestSubmitApplicationRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
+    outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
 ) -> GuestSubmitApplicationResponse:
     """Publish a first application without making email access a submission gate."""
     if not body.declaration_accepted:
@@ -231,8 +235,9 @@ def submit_guest_application(
         if draft is not None and draft.email == email:
             draft.application_id = application.id
             draft.resolved_at = now
+    queue_submission_confirmation(db, application)
     db.commit()
-    send_application_confirmation(db, sender, application, submitted=True, now=now)
+    background_tasks.add_task(outbox_runner, sender)
     return GuestSubmitApplicationResponse()
 
 

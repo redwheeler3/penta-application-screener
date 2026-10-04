@@ -146,6 +146,8 @@ def validate_residence_history(
     openings: list[Opening],
 ) -> None:
     """Require addresses back through two years before the earliest selected close date."""
+    if not openings:
+        return
     cutoff = two_years_before(min(opening.application_close_date for opening in openings))
     oldest_move_in = (
         answers.previous_residences[-1].move_in_date

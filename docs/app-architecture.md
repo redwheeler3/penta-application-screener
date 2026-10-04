@@ -112,6 +112,9 @@ email changes and session exit live in `applicantEmailFlow.ts` and `applicantWit
 Save completion acknowledges the draft snapshot captured before the request, so edits made
 while saving remain unsaved. Save actions read one live state reference at request boundaries;
 the captured request snapshot remains the acknowledgement baseline when the response arrives.
+Applicant save responses capture their answers and revision before commit. Submission also
+stages its confirmation in that transaction; the outbox delivers after the response, so provider
+latency cannot turn another tab's later revision into the earlier save's acknowledgement.
 Email-identity refreshes use the same application read scope; saves and session exit invalidate
 older identity responses before they can restore cleared fields or falsely flag this browser's save.
 Rejected network requests and unreadable acknowledgements report an unconfirmed action and

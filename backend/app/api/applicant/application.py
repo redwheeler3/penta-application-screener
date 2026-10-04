@@ -1,8 +1,9 @@
 """Authenticated applicant reads, edits, submission, email change, and withdrawal."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -63,9 +64,10 @@ from app.services.auth.passwordless import (
 from app.services.email.delivery import cancel_queued_application_emails
 from app.services.email.sender import EmailSender, get_email_sender
 from app.services.email.transactional import (
-    send_application_confirmation,
+    queue_submission_confirmation,
     send_magic_link,
 )
+from app.services.maintenance import get_outbox_runner
 from app.services.openings.participation import (
     applicant_opening_states,
     application_is_editable,
@@ -218,16 +220,20 @@ def save_applicant_application(
         saved_at=now,
         opening_ids=body.opening_ids,
     )
+    db.flush()
+    acknowledged = get_applicant_application(application, db)
     db.commit()
-    return get_applicant_application(application, db)
+    return acknowledged
 
 
 @router.post("/application/submit", response_model=ApplicantApplicationResponse)
 def submit_applicant_application(
     body: SubmitApplicationRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     application: Application = Depends(require_current_application),
+    outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
 ) -> ApplicantApplicationResponse:
     if not body.declaration_accepted:
         raise Problem("declaration_required", detail="Accept the declaration before submitting.")
@@ -237,10 +243,11 @@ def submit_applicant_application(
     now = datetime.now(UTC)
     openings = validate_opening_selection(db, application, body.opening_ids, now=now)
     publish_working_copy(db, application, body.answers, openings, submitted_at=now)
+    queue_submission_confirmation(db, application)
+    acknowledged = get_applicant_application(application, db)
     db.commit()
-    send_application_confirmation(db, sender, application, submitted=True, now=now)
-    restored = get_applicant_application(application, db)
-    return restored
+    background_tasks.add_task(outbox_runner, sender)
+    return acknowledged
 
 
 @router.post("/application/withdraw", response_model=WithdrawApplicationResponse)

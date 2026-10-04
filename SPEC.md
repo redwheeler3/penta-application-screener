@@ -132,9 +132,9 @@ for Google, email, and guest access because authentication does not publish an a
 For an authenticated applicant, the corresponding **Save and review** action first persists the
 private working copy and opens the review only after that save succeeds. A signed-out **Review
 application** action validates and previews the in-page answers without creating a server record or
-sending email. **Submit application** then publishes the application immediately and emails a
-confirmation with secure access for future edits; initial submission does not wait for the
-applicant to follow that link.
+sending email. **Submit application** publishes the application and queues its confirmation in
+one transaction, then returns before provider delivery. The confirmation carries secure access
+for future edits; initial submission does not wait for the applicant to follow that link.
 An authenticated primary applicant may edit while at least one published opening is open or while
 they participate in a closed opening that has no decision. Before the next open date, or after every
 relevant opening has a decision, application content is read-only. An applicant-withdrawn legal-hold

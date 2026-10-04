@@ -147,45 +147,31 @@ def send_magic_link(
     return EmailSendOutcome.SENT if delivered else EmailSendOutcome.FAILED
 
 
-def send_application_confirmation(
+def queue_submission_confirmation(
     db: Session,
-    sender: EmailSender,
     application: Application,
-    *,
-    submitted: bool,
-    now: datetime | None = None,
-) -> bool:
-    """Send a fresh return credential after a deliberate save or publication."""
-    now = now or datetime.now(UTC)
-    issued = issue_magic_link(
-        db,
-        identity_kind=PasswordlessIdentityKind.APPLICANT,
-        email=application.primary_email,
-        purpose=MagicLinkPurpose.APPLICANT_ACCESS,
-        application_id=application.id,
-        now=now,
-    )
+) -> None:
+    """Queue confirmation with the publication; the outbox issues its access credential."""
+    db.flush()
+    timelines = application_confirmation_timelines(db, application.id)
+    if not timelines:
+        # Withdrawing from every opening publishes the edit without a submission timeline.
+        return
     message = application_confirmation_email(
         application_id=application.id,
         email=application.primary_email,
-        token=issued.token,
-        submitted=submitted,
-        opening_timelines=(
-            application_confirmation_timelines(db, application.id)
-            if submitted
-            else []
-        ),
+        token="queued",
+        submitted=True,
+        opening_timelines=timelines,
         settings=get_settings(),
     )
-    return deliver_email(
+    queue_email(
         db,
-        sender,
         message,
         recipient_kind=PasswordlessIdentityKind.APPLICANT,
         application_id=application.id,
-        magic_link_token=issued.record,
-        retry_intent=ApplicationConfirmationRetryIntent(type="application_confirmation", submitted=submitted),
-        now=now,
+        idempotency_key=f"application-submitted:{application.id}:revision:{application.working_revision}",
+        retry_intent=ApplicationConfirmationRetryIntent(type="application_confirmation", submitted=True),
     )
 
 
