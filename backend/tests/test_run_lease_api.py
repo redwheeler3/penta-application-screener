@@ -9,7 +9,14 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import ScreeningReport
-from app.db.models import Analysis, ApplicationAIResult, RunLock, User, UserRole
+from app.db.models import (
+    Analysis,
+    ApplicationAIResult,
+    Opening,
+    RunLock,
+    User,
+    UserRole,
+)
 from app.services.ranking.analysis import create_analysis
 from app.services.run_lock import LEASE_TTL, acquire_run_lock
 from tests.application_support import current_opening_id
@@ -21,6 +28,32 @@ from tests.ranking_support import (
     setup_app,
     stream_events,
 )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("kind", ["rank", "screen", "score-current"])
+async def test_preflight_rechecks_finality_after_lease_acquisition(monkeypatch, kind):
+    app, db, provider = setup_app(UserRole.MEMBER)
+    add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    opening_id = current_opening_id(db)
+    module = importlib.import_module({"rank": "app.api.ranking.run", "screen": "app.api.screening",
+        "score-current": "app.api.ranking.score_current"}[kind])
+    original = module.acquire_run_lock
+
+    def finalize_then_claim(session, **kwargs):
+        with Session(db.bind) as other:
+            other.execute(update(Opening).where(Opening.id == opening_id).values(decided_at=datetime.now(UTC)))
+            other.commit()
+        return original(session, **kwargs)
+
+    monkeypatch.setattr(module, "acquire_run_lock", finalize_then_claim)
+    route = {"rank": "/ranking/run", "screen": "/screening/run", "score-current": "/ranking/score-current"}[kind]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post(route)
+    assert response.status_code == 409
+    assert response.json()["code"] == "opening_finalized"
+    assert provider.calls == []
+    assert db.get(RunLock, 1, populate_existing=True).holder_user_id is None
 
 
 @pytest.mark.anyio
@@ -44,7 +77,7 @@ async def test_superseded_runs_report_failure_and_cannot_persist_results(monkeyp
         provider.queue(ScreeningReport(flags=[]))
     else:
         module = importlib.import_module("app.ai.dimension_scoring")
-        function = "store_result"
+        function = "stage_result"
         route = "/ranking/score-current"
         create_analysis(db, user=db.scalar(select(User).where(User.id != other_user_id)),
             opening_id=current_opening_id(db), report=a_pattern_report(), narrative=None, inputs_fingerprint="original")
@@ -53,11 +86,12 @@ async def test_superseded_runs_report_failure_and_cannot_persist_results(monkeyp
     replacement = []
 
     def supersede_before_write(*args, **kwargs):
-        with Session(db.bind) as other:
-            now = datetime.now(UTC)
-            other.execute(update(RunLock).values(renewed_at=now - LEASE_TTL - timedelta(seconds=1)))
-            other.commit()
-            replacement.append(acquire_run_lock(other, user_id=other_user_id, kind="rank", now=now))
+        if not replacement:
+            with Session(db.bind) as other:
+                now = datetime.now(UTC)
+                other.execute(update(RunLock).values(renewed_at=now - LEASE_TTL - timedelta(seconds=1)))
+                other.commit()
+                replacement.append(acquire_run_lock(other, user_id=other_user_id, kind="rank", now=now))
         return original(*args, **kwargs)
 
     monkeypatch.setattr(module, function, supersede_before_write)

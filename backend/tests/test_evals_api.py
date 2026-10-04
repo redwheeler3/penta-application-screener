@@ -8,7 +8,9 @@ wiring without spend.
 """
 
 import json
+from threading import Event
 
+import anyio
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, select
@@ -27,6 +29,7 @@ from app.api.dependencies import get_ai_provider, require_current_user
 from app.db.models import Base, EvalRun, User, UserRole
 from app.db.session import get_db
 from tests.app_support import shared_test_app
+from tests.db_support import memory_session
 
 pytestmark = pytest.mark.anyio
 
@@ -51,6 +54,52 @@ def setup_app():
     provider = MockProvider()
     app.dependency_overrides[get_ai_provider] = lambda: provider
     return app, db, provider
+
+
+@pytest.mark.parametrize("version", ["2.3", "2.4"])
+async def test_eval_disconnect_stops_silent_work_and_queued_cases(monkeypatch, version):
+    from app.api.evals._shared import over_cases, stream
+    from app.schemas.evals import InvariantsResponse
+
+    monkeypatch.setattr("app.services.stream_worker.HEARTBEAT_SECONDS", 0.01)
+    started, finish, finished = Event(), Event(), Event()
+    calls, sent = [], []
+
+    def case_work(case, _delta):
+        calls.append(case)
+        started.set()
+        try:
+            assert finish.wait(4)
+            return case
+        finally:
+            finished.set()
+
+    def work(delta):
+        over_cases([1, 2, 3], case_work, on_delta=delta, max_workers=1)
+        return InvariantsResponse.model_construct()
+
+    async def receive():
+        assert await anyio.to_thread.run_sync(started.wait, 2)
+        await anyio.sleep(0.05)
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.body" and message.get("body"):
+            sent.append(json.loads(message["body"]))
+
+    with memory_session() as db:
+        response = stream(db, "scoring", "synthetic", work)
+        try:
+            with anyio.fail_after(2):
+                await response({"type": "http", "asgi": {"spec_version": version}}, receive, send)
+            assert not finished.is_set()
+            assert calls == [1]
+            assert any(event["type"] == "ping" for event in sent)
+            assert db.scalar(select(EvalRun)) is None
+        finally:
+            finish.set()
+            if started.is_set():
+                assert await anyio.to_thread.run_sync(finished.wait, 2)
 
 
 async def _stream_events(client: AsyncClient, url: str) -> list[dict]:

@@ -6,28 +6,34 @@ from collections.abc import Generator
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.ai.analysis import SpendingCapExceeded, enforce_cap
+from app.ai.analysis import SpendingCapExceeded, enforce_cap, exception_type_name
 from app.ai.dimension_scoring import (
     applications_to_score,
     plan_dimension_scoring,
     score_planned_dimensions,
 )
 from app.ai.dimension_scoring_cost import estimate_scoring_plan
+from app.ai.pricing import MeasuredProvider
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.core.problems import Problem
+from app.core.work_cancellation import WorkCancelled
 from app.db.models import User
 from app.db.session import get_db
-from app.schemas.events import PhaseEvent, ProgressEvent, RankSummary, emit
+from app.schemas.events import ErrorEvent, PhaseEvent, ProgressEvent, RankSummary, emit
 from app.schemas.ranking import ScoreCurrentEstimateResponse
 from app.services.applications.scope import resolve_visible_opening_id
-from app.services.cost_report import SCORE_CURRENT_KIND, record_run_cost
+from app.services.cost_report import (
+    SCORE_CURRENT_KIND,
+    RunCostRecorder,
+    record_run_cost,
+)
 from app.services.openings.selection import require_ai_actions_available
 from app.services.ranking.analysis import get_current_analysis, record_rank_inputs
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.pipeline import SCORES, ScoreTally
-from app.services.run_lock import acquire_run_lock, release_run_lock
+from app.services.run_lock import RunLeaseLost, acquire_run_lock, release_run_lock
 from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings
 
@@ -102,22 +108,35 @@ def score_current(
         started = time.perf_counter()
         processed = 0
         scored = 0
-        for result in score_planned_dimensions(db, provider, plan=plan, max_workers=settings.ai.max_workers):
-            tally.add(result)
-            if not result.failed and result.fresh_units == 0:
-                continue
-            processed += 1
-            if not result.failed:
-                scored += 1
-            yield emit(
-                ProgressEvent(
-                    phase=SCORES,
-                    processed=processed,
-                    total=plan.to_analyze,
+        measured = MeasuredProvider(provider, label="Dimension scoring")
+        try:
+            for result in score_planned_dimensions(db, measured, plan=plan, max_workers=settings.ai.max_workers):
+                tally.add(result)
+                if not result.failed and result.fresh_units == 0:
+                    continue
+                processed += 1
+                if not result.failed:
+                    scored += 1
+                yield emit(
+                    ProgressEvent(
+                        phase=SCORES,
+                        processed=processed,
+                        total=plan.to_analyze,
+                    )
                 )
-            )
-        if tally.failed == 0:
-            record_rank_inputs(db, analysis, inputs_fingerprint)
+            if tally.failed == 0:
+                record_rank_inputs(db, analysis, inputs_fingerprint)
+        except (WorkCancelled, RunLeaseLost):
+            raise
+        except Exception as error:
+            db.rollback()
+            record_run_cost(db, kind=SCORE_CURRENT_KIND, status="failed", failed_pass="Dimension scoring",
+                failure_type=exception_type_name(error)[:120],
+                passes={"Dimension scoring": measured.failed_pass_cost(tally.as_pass_cost(settings.ai.dimension_scoring_model))},
+                durations_ms={"Dimension scoring": round((time.perf_counter() - started) * 1000)},
+                estimated_usd=estimate["estimated_usd"], triggered_by_user_id=user.id, opening_id=opening_id)
+            yield emit(ErrorEvent(phase=SCORES, message="Scoring stopped early. Saved results remain available."))
+            return
         record_run_cost(
             db,
             kind=SCORE_CURRENT_KIND,
@@ -142,4 +161,5 @@ def score_current(
             )
         )
 
-    return RunStreamingResponse(db, lease, stream(), phase=SCORES)
+    return RunStreamingResponse(db, lease, stream(), phase=SCORES,
+        cost=RunCostRecorder(SCORE_CURRENT_KIND, estimate["estimated_usd"], user.id, opening_id))

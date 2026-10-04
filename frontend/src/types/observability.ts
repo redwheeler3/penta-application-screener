@@ -74,7 +74,7 @@ export type TrendPoint = {
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
-  durationMs: number;
+  durationMs: number | null;
   failedCalls: number;
   cacheHitRate: number | null; // over cacheable units; null when none
   dimensions: number | null; // live dimension count (full rank only)
@@ -94,7 +94,7 @@ export type PassTrendPoint = {
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
-  durationMs: number;
+  durationMs: number | null;
   failedCalls: number;
 };
 

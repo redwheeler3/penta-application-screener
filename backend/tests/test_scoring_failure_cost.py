@@ -59,7 +59,7 @@ async def test_incomplete_retries_keep_usage_and_only_successes_count_as_scored(
 
 
 @pytest.mark.parametrize("completed_reply", [False, True])
-def test_provider_failure_retains_only_returned_usage_and_original_error_type(monkeypatch, completed_reply) -> None:
+def test_provider_failure_retains_only_returned_usage_and_original_error_type(monkeypatch, caplog, completed_reply) -> None:
     _app, db, provider = setup_app(UserRole.MEMBER)
     application = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
     report, settings = a_pattern_report(), AppSettings()
@@ -70,13 +70,14 @@ def test_provider_failure_retains_only_returned_usage_and_original_error_type(mo
         if completed_reply and len(attempts) == 1:
             return AIResult(output=DimensionScoringReport(scores=[a_scoring_report().scores[0]]),
                 usage=Usage(input_tokens=1000, output_tokens=200), model_id=kwargs["model_id"])
-        raise TimeoutError("Synthetic timeout")
+        raise TimeoutError("synthetic-sensitive-provider-output")
 
     monkeypatch.setattr(provider, "structured_output", fail_after_partial)
     result = next(score_dimensions(db, provider, applications=[application], report=report,
         settings=settings, max_workers=1))
     assert result.failed
     assert result.error_type == "TimeoutError"
+    assert "synthetic-sensitive-provider-output" not in caplog.text
     assert result.failure_cost.calls == int(completed_reply)
     assert result.failure_cost.input_tokens == 1000 * int(completed_reply)
     assert result.failure_cost.output_tokens == 200 * int(completed_reply)

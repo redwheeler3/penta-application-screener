@@ -8,12 +8,15 @@ The spending cap checks the pre-run estimate; cumulative known spending has no c
 
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass, field
+from threading import Lock
 from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.pricing import PassCost
+from app.ai.pricing import MeasuredProvider, PassCost
 from app.core.time import utc_isoformat
 from app.db.models import RunCostLedger, RunPassCost
 from app.schemas.observability import (
@@ -46,6 +49,49 @@ SCORE_CURRENT_KIND = "rank_scores"
 # consolidation) always call Bedrock fresh, so a "saved by cache" figure is N/A — the UI
 # shows "—", never $0, so structural absence of caching doesn't read as failure.
 CACHEABLE_PASSES = {"Screening", "Dimension scoring"}
+RUN_COST_RECORDER_KEY = "run_cost_recorder"
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class RunCostRecorder:
+    """Keep already-returned spending when HTTP cleanup stops an unfinished run.
+
+    Workers register in-memory meters only. Cleanup writes expense facts in its
+    own short session after result fencing and lease release; no cancelled result
+    is published and no provider is awaited for additional usage.
+    """
+
+    kind: str
+    estimated_usd: float
+    triggered_by_user_id: int
+    opening_id: int | None
+    recorded: bool = False
+    _meters: dict[str, MeasuredProvider] = field(default_factory=dict)
+    _lock: Lock = field(default_factory=Lock)
+
+    def observe(self, label: str, meter: MeasuredProvider) -> None:
+        with self._lock:
+            self._meters[label] = meter
+
+    def record_interrupted(self, bind) -> None:
+        if self.recorded:
+            return
+        with self._lock:
+            meters = dict(self._meters)
+        labels = {"screen": SCREEN_PASS_LABELS, FULL_RANK_KIND: RANK_PASS_LABELS,
+            SCORE_CURRENT_KIND: SCORE_CURRENT_PASS_LABELS}[self.kind]
+        passes = {label: meters[label].snapshot() if label in meters else PassCost() for label in labels}
+        if not any(cost.calls or cost.failed_calls for cost in passes.values()):
+            return
+        try:
+            with Session(bind=bind) as receipt:
+                record_run_cost(receipt, kind=self.kind, status="failed", failed_pass="Interrupted",
+                    failure_type="WorkInterrupted", passes=passes, estimated_usd=self.estimated_usd,
+                    triggered_by_user_id=self.triggered_by_user_id, opening_id=self.opening_id)
+            self.recorded = True
+        except Exception as error:
+            log.warning("Interrupted run expense recording failed: %s", type(error).__name__)
 
 
 def opening_label(run: RunCostLedger) -> str | None:
@@ -113,6 +159,9 @@ def record_run_cost(
     )
     db.add(header)
     db.commit()
+    recorder = db.info.get(RUN_COST_RECORDER_KEY)
+    if recorder is not None:
+        recorder.recorded = True
 
 
 # --- Cumulative report (all-time spend, grouped by triggering run) ----------------

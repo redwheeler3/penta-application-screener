@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.ai.analysis import SpendingCapExceeded, enforce_cap
-from app.ai.pricing import PassCost
+from app.ai.analysis import SpendingCapExceeded, enforce_cap, exception_type_name
+from app.ai.pricing import MeasuredProvider, PassCost
 from app.ai.provider import AIProvider
 from app.ai.screening import (
     PassResult,
@@ -16,9 +16,11 @@ from app.ai.screening import (
 )
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.core.problems import Problem
+from app.core.work_cancellation import WorkCancelled
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.events import (
+    ErrorEvent,
     ItemErrorEvent,
     PhaseEvent,
     ProgressEvent,
@@ -28,9 +30,9 @@ from app.schemas.events import (
 from app.schemas.screening import ScreeningEstimateResponse
 from app.schemas.settings import AppSettings
 from app.services.applications.scope import resolve_visible_opening_id
-from app.services.cost_report import record_run_cost
+from app.services.cost_report import RunCostRecorder, record_run_cost
 from app.services.openings.selection import require_ai_actions_available
-from app.services.run_lock import acquire_run_lock
+from app.services.run_lock import RunLeaseLost, acquire_run_lock, release_run_lock
 from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings
 
@@ -118,36 +120,6 @@ def run(
     fails fast with a 402.
     """
     opening_id = resolve_visible_opening_id(db, opening_id)
-    require_ai_actions_available(db, opening_id)
-    settings: AppSettings = get_app_settings(db)
-
-    estimate_result = estimate_screening(db, opening_id, settings)
-
-    # Block a no-op re-run: nothing uncached means every result is a cache hit
-    # reproducing identical output. Mirrors the Rank chain's pool-fingerprint gate.
-    if int(estimate_result["to_analyze"]) == 0:
-        raise Problem(
-            "unchanged_pool",
-            detail="Screening is already up to date for these applicants. "
-            "Wait for a new or edited application before re-screening.",
-        )
-
-    try:
-        enforce_cap(estimate_result, settings.ai.spending_cap_usd)
-    except SpendingCapExceeded as exc:
-        # 402 Payment Required: the run was blocked by the configured cap.
-        raise Problem(
-            "cap_exceeded",
-            detail=str(exc),
-            cap_usd=settings.ai.spending_cap_usd,
-            estimated_usd=estimate_result["estimated_usd"],
-        ) from exc
-
-    applications = applications_for_screening(db, opening_id)
-
-    # Serialize against other in-flight runs: a concurrent Screen or Rank would waste
-    # shared spend and (for Rank) strand a MemberRanking. Claim the lease before streaming;
-    # 409 if another run holds it. Released in the stream's finally.
     lease = acquire_run_lock(db, user_id=user.id, kind="screen")
     if lease is None:
         raise Problem(
@@ -155,30 +127,76 @@ def run(
             detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
         )
 
+    try:
+        require_ai_actions_available(db, opening_id)
+        settings: AppSettings = get_app_settings(db)
+
+        applications = applications_for_screening(db, opening_id)
+        estimate_result = estimate_screening(db, opening_id, settings, applications=applications)
+
+        # Block a no-op re-run: nothing uncached means every result is a cache hit
+        # reproducing identical output. Mirrors the Rank chain's pool-fingerprint gate.
+        if int(estimate_result["to_analyze"]) == 0:
+            raise Problem(
+                "unchanged_pool",
+                detail="Screening is already up to date for these applicants. "
+                "Wait for a new or edited application before re-screening.",
+            )
+
+        try:
+            enforce_cap(estimate_result, settings.ai.spending_cap_usd)
+        except SpendingCapExceeded as exc:
+            # 402 Payment Required: the run was blocked by the configured cap.
+            raise Problem(
+                "cap_exceeded",
+                detail=str(exc),
+                cap_usd=settings.ai.spending_cap_usd,
+                estimated_usd=estimate_result["estimated_usd"],
+            ) from exc
+
+
+    except BaseException:
+        release_run_lock(db, lease)
+        raise
+
     def stream() -> Generator[str]:
         total = len(applications)
         tally = RunTally()
         yield emit(PhaseEvent(phase=PHASE, total=total))
         started = time.perf_counter()
-        results = run_screening(
-            db,
-            provider,
-            applications=applications,
-            settings=settings,
-            max_workers=settings.ai.max_workers,
-        )
-        for processed, result in enumerate(results, start=1):
-            tally.add(result)
-            if result.failed:
-                # Surface the failed application (non-fatal), then keep streaming.
-                yield emit(
-                    ItemErrorEvent(
-                        phase=PHASE,
-                        application_id=result.application.id,
-                        message=result.error,
+        measured = MeasuredProvider(provider, label="Screening")
+        try:
+            results = run_screening(
+                db,
+                measured,
+                applications=applications,
+                settings=settings,
+                max_workers=settings.ai.max_workers,
+            )
+            for processed, result in enumerate(results, start=1):
+                tally.add(result)
+                if result.failed:
+                    # Surface the failed application (non-fatal), then keep streaming.
+                    yield emit(
+                        ItemErrorEvent(
+                            phase=PHASE,
+                            application_id=result.application.id,
+                            message=result.error,
+                        )
                     )
-                )
-            yield emit(ProgressEvent(phase=PHASE, processed=processed, total=total))
+                yield emit(ProgressEvent(phase=PHASE, processed=processed, total=total))
+
+        except (WorkCancelled, RunLeaseLost):
+            raise
+        except Exception as error:
+            db.rollback()
+            record_run_cost(db, kind="screen", status="failed", failed_pass="Screening",
+                failure_type=exception_type_name(error)[:120],
+                passes={"Screening": measured.failed_pass_cost(tally.as_pass_cost(settings.ai.screening_model))},
+                durations_ms={"Screening": round((time.perf_counter() - started) * 1000)},
+                estimated_usd=float(estimate_result["estimated_usd"]), triggered_by_user_id=user.id, opening_id=opening_id)
+            yield emit(ErrorEvent(phase=PHASE, message="Screening stopped early. Saved results remain available."))
+            return
 
         # Persist this run's cost + cache breakdown (the only point the fresh/cached
         # split is known). Screen is a single pass.
@@ -202,4 +220,5 @@ def run(
             )
         )
 
-    return RunStreamingResponse(db, lease, stream(), phase=PHASE)
+    return RunStreamingResponse(db, lease, stream(), phase=PHASE,
+        cost=RunCostRecorder("screen", float(estimate_result["estimated_usd"]), user.id, opening_id))

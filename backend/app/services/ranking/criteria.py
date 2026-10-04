@@ -102,7 +102,7 @@ def run_criteria_passes(
     diverse. All audits describe the model output before persisted keys are adopted.
     """
     durations: dict[str, int] = {}
-    meters = {label: MeasuredProvider(provider) for label in (
+    meters = {label: MeasuredProvider(provider, label=label) for label in (
         "Pattern discovery", "Dimension decomposition", "Dimension matching")}
     failed_pass = "Pattern discovery"
     started = time.perf_counter()

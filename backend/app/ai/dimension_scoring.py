@@ -32,7 +32,7 @@ from app.ai.analysis import (
     log,
     retry_per_application_timeout,
     run_in_pool,
-    store_result,
+    stage_result,
 )
 from app.ai.applicant_facts import applicant_facts
 from app.ai.model_catalog import ReasoningEffort
@@ -326,8 +326,8 @@ def _score_all_dimensions(
                 # No applicant id in scope here (we hold only the rendered block); the caller
                 # score_dimensions logs the id around this call.
                 log.warning(
-                    "Dimension scoring omitted %d dimension(s); re-asking (attempt %d): %s",
-                    len(remaining), attempt + 1, [d.key for d in remaining],
+                    "Dimension scoring omitted %d dimension(s); re-asking (attempt %d)",
+                    len(remaining), attempt + 1,
                 )
         if remaining:
             raise IncompleteScoringError(
@@ -471,7 +471,7 @@ def score_planned_dimensions(
             error_type = exception_type_name(cause)
             log.warning(
                 "Dimension scoring failed for application %s: %s",
-                application.id, error_type, exc_info=error,
+                application.id, error_type,
             )
             yield PassResult(
                 application=application, outcome=None,
@@ -496,27 +496,32 @@ def score_planned_dimensions(
         share = _split_usage(result.usage, len(plan.dimensions_to_score))
         call_cost = cost_usd(result.model_id, result.usage)
         fresh_count = 0
-        for dim in plan.dimensions_to_score:
-            # _score_all_dimensions guarantees every pending dimension is present, so index
-            # directly — a KeyError here would mean that contract broke, and failing
-            # loud beats silently skipping.
-            score = fresh[dim.key]
-            store_result(
-                db, application,
-                kind=kind_for_dimension(dim.key), result_cache_key=plan.result_cache_keys[dim.key],
-                prompt_version=PROMPT_VERSION,
-                reasoning_effort=reasoning_effort,
-                result=AIResult(
-                    output=score, usage=share, model_id=result.model_id,
-                    # No narrative: the scoring prompt requests no reasoning preamble
-                    # (structured output only), so this per-decision pass's reasoning IS
-                    # the per-dimension rationale + evidence in `score`, surfaced on the
-                    # candidate detail page. Persisting the call preamble would duplicate
-                    # one near-empty string across every dimension row, read by nothing.
-                    narrative=None,
-                ),
-            )
-            fresh_count += 1
+        try:
+            for dim in plan.dimensions_to_score:
+                # _score_all_dimensions guarantees every pending dimension is present, so index
+                # directly — a KeyError here would mean that contract broke, and failing
+                # loud beats silently skipping.
+                score = fresh[dim.key]
+                stage_result(
+                    db, application,
+                    kind=kind_for_dimension(dim.key), result_cache_key=plan.result_cache_keys[dim.key],
+                    prompt_version=PROMPT_VERSION,
+                    reasoning_effort=reasoning_effort,
+                    result=AIResult(
+                        output=score, usage=share, model_id=result.model_id,
+                        # No narrative: the scoring prompt requests no reasoning preamble
+                        # (structured output only), so this per-decision pass's reasoning IS
+                        # the per-dimension rationale + evidence in `score`, surfaced on the
+                        # candidate detail page. Persisting the call preamble would duplicate
+                        # one near-empty string across every dimension row, read by nothing.
+                        narrative=None,
+                    ),
+                )
+                fresh_count += 1
+            db.commit()  # Publish the complete candidate vector and its references together.
+        except Exception:
+            db.rollback()
+            raise
         # The candidate's fresh tokens are the whole call's usage (each stored row got a
         # 1/parts share; summing them back rounds down to ~the call total). Report the
         # call's usage and price directly so the run ledger stays exact.

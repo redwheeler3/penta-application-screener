@@ -112,7 +112,7 @@ class TrendPoint(ResponseModel):
     cost_usd: float
     input_tokens: int
     output_tokens: int
-    duration_ms: int
+    duration_ms: int | None
     failed_calls: int
     # Cache-hit rate over cacheable units this run (cached / (cached + fresh)); null when
     # the run had no cacheable work.
@@ -132,7 +132,7 @@ class PassTrendPoint(ResponseModel):
     cost_usd: float
     input_tokens: int
     output_tokens: int
-    duration_ms: int
+    duration_ms: int | None
     failed_calls: int
 
 

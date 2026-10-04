@@ -10,7 +10,7 @@ whole-pool ceiling estimate.
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -35,6 +35,7 @@ from app.db.models import (
     Analysis,
     Application,
     ApplicationAIResult,
+    ApplicationAISelection,
     Base,
     User,
     UserRole,
@@ -56,6 +57,42 @@ def make_db() -> Session:
     db.add(User(email="m@x.com", display_name="M", role=UserRole.MEMBER, is_active=True))
     db.commit()
     return db
+
+
+@pytest.mark.parametrize("storage_fails", [False, True])
+def test_candidate_vector_and_consumed_references_publish_atomically(monkeypatch, storage_fails):
+    from app.ai import dimension_scoring
+
+    db = make_db()
+    application = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    report = report_with(["a", "b", "c"])
+    provider = MockProvider()
+    provider.queue(a_scoring_report(["a", "b", "c"]))
+    staged = dimension_scoring.stage_result
+    calls, commits = [], []
+
+    def stage(*args, **kwargs):
+        outcome = staged(*args, **kwargs)
+        calls.append(True)
+        if storage_fails and len(calls) == 2:
+            raise ValueError("Synthetic storage failure after staging a partial vector")
+        return outcome
+
+    monkeypatch.setattr(dimension_scoring, "stage_result", stage)
+    event.listen(db, "after_commit", lambda _session: commits.append(True))
+    results = score_dimensions(db, provider, applications=[application], report=report,
+        settings=AppSettings(), max_workers=1)
+    if storage_fails:
+        with pytest.raises(ValueError, match="partial vector"):
+            list(results)
+        assert commits == []
+        assert db.scalar(select(ApplicationAIResult)) is None
+        assert db.scalar(select(ApplicationAISelection)) is None
+    else:
+        assert len(list(results)) == 1
+        assert commits == [True]
+        assert len(db.scalars(select(ApplicationAIResult)).all()) == 3
+        assert len(db.scalars(select(ApplicationAISelection)).all()) == 3
 
 
 def add_eligible(db: Session, *, email: str, raw_hash: str) -> Application:

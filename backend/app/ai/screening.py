@@ -132,11 +132,11 @@ def applications_for_screening(db: Session, opening_id: int) -> list[Application
 
 
 def estimate_screening(
-    db: Session, opening_id: int, settings: AppSettings
+    db: Session, opening_id: int, settings: AppSettings, *, applications: list[Application] | None = None,
 ) -> CostEstimate:
     return estimate_cost(
         db,
-        applications=applications_for_screening(db, opening_id),
+        applications=applications if applications is not None else applications_for_screening(db, opening_id),
         kind=KIND,
         model_id=settings.ai.screening_model,
         prompt_version=screening_prompt_version(),

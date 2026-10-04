@@ -23,6 +23,7 @@ from app.schemas.ranking import (
 )
 from app.schemas.settings import AppSettings
 from app.services.applications.scope import resolve_visible_opening_id
+from app.services.cost_report import RunCostRecorder
 from app.services.openings.selection import require_ai_actions_available
 from app.services.ranking.analysis import (
     get_current_analysis,
@@ -30,7 +31,7 @@ from app.services.ranking.analysis import (
 )
 from app.services.ranking.estimates import build_rank_estimate
 from app.services.ranking.pipeline import stream_rank
-from app.services.run_lock import acquire_run_lock
+from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings
 
@@ -90,36 +91,38 @@ def rank_run(
     Discovery is one call, so it emits a phase line and its result, no progress.
     """
     opening_id = resolve_visible_opening_id(db, opening_id)
-    require_ai_actions_available(db, opening_id)
-    settings: AppSettings = get_app_settings(db)
-    if not eligible_applications(db, opening_id):
-        raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
-
-    # An unchanged pool needs no re-rank, but one is allowed: discovery is nondeterministic,
-    # so re-running deliberately gives the committee a fresh set of criteria. The
-    # confirmation card is the gate (it flags that nothing requires a re-run); a member who
-    # confirms here has opted in on purpose.
-    estimate = build_rank_estimate(db, opening_id, settings)
-    try:
-        enforce_cap(estimate, settings.ai.spending_cap_usd)
-    except SpendingCapExceeded as exc:
-        raise Problem(
-            "cap_exceeded",
-            detail=str(exc),
-            cap_usd=settings.ai.spending_cap_usd,
-            estimated_usd=float(estimate["estimated_usd"]),
-        ) from exc
-
-    # Serialize against other in-flight runs. The full Rank is the run whose overlap
-    # is genuinely destructive — two concurrent Ranks each create an Analysis and
-    # last-writer-wins strands the loser's MemberRanking — so this guard is what closes that
-    # hazard. Released in the stream's finally (covers the early return + any pass raising).
     lease = acquire_run_lock(db, user_id=user.id, kind="rank")
     if lease is None:
         raise Problem(
             "run_in_progress",
             detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
         )
+
+    try:
+        require_ai_actions_available(db, opening_id)
+        settings: AppSettings = get_app_settings(db)
+        pool = eligible_applications(db, opening_id)
+        if not pool:
+            raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
+
+        # An unchanged pool needs no re-rank, but one is allowed: discovery is nondeterministic,
+        # so re-running deliberately gives the committee a fresh set of criteria. The
+        # confirmation card is the gate (it flags that nothing requires a re-run); a member who
+        # confirms here has opted in on purpose.
+        estimate = build_rank_estimate(db, opening_id, settings, pool=pool)
+        try:
+            enforce_cap(estimate, settings.ai.spending_cap_usd)
+        except SpendingCapExceeded as exc:
+            raise Problem(
+                "cap_exceeded",
+                detail=str(exc),
+                cap_usd=settings.ai.spending_cap_usd,
+                estimated_usd=float(estimate["estimated_usd"]),
+            ) from exc
+
+    except BaseException:
+        release_run_lock(db, lease)
+        raise
 
     def stream() -> Generator[str]:
         yield from stream_rank(
@@ -131,4 +134,5 @@ def rank_run(
             estimated_usd=float(estimate["estimated_usd"]),
         )
 
-    return RunStreamingResponse(db, lease, stream(), phase="criteria")
+    return RunStreamingResponse(db, lease, stream(), phase="criteria",
+        cost=RunCostRecorder("rank", float(estimate["estimated_usd"]), user.id, opening_id))

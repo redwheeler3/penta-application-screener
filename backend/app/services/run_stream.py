@@ -4,24 +4,24 @@ import logging
 from collections.abc import Generator
 from threading import Event, Thread
 
-import anyio
 from sqlalchemy import event
 from sqlalchemy.orm import Session
-from starlette.responses import StreamingResponse
-from starlette.types import Receive, Scope, Send
 
+from app.ai.pricing import observe_cost_meters
 from app.core.work_cancellation import (
     WorkCancelled,
     cancellation_scope,
     check_cancelled,
 )
 from app.schemas.events import ErrorEvent, emit
+from app.services.cost_report import RUN_COST_RECORDER_KEY, RunCostRecorder
 from app.services.run_lock import (
     RunLease,
     RunLeaseLost,
     release_run_lock,
     renew_run_lock,
 )
+from app.services.work_stream import WorkStreamingResponse
 
 RENEWAL_INTERVAL_SECONDS = 60
 log = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 
 def leased_run_stream(
     db: Session, lease: RunLease, events: Generator[str], *, phase: str, cancelled: Event | None = None,
+    cost: RunCostRecorder | None = None,
 ) -> Generator[str]:
     """Keep a live run leased during provider waits and guard all commits in its session.
 
@@ -69,7 +70,7 @@ def leased_run_stream(
         while True:
             # ASGI may resume a synchronous generator on a different worker thread.
             # Bind and reset context around each resume, never across a yield.
-            with cancellation_scope(stop):
+            with cancellation_scope(stop), observe_cost_meters(cost.observe if cost is not None else None):
                 check_cancelled()
                 try:
                     line = next(events)
@@ -93,69 +94,38 @@ def leased_run_stream(
             db.rollback()
             if heartbeat.ident is not None:
                 heartbeat.join()
-            release_run_lock(db, lease)
+            try:
+                release_run_lock(db, lease)
+            finally:
+                if db.info.get(RUN_COST_RECORDER_KEY) is cost:
+                    db.info.pop(RUN_COST_RECORDER_KEY, None)
+                if cost is not None:
+                    cost.record_interrupted(bind)
 
 
-class RunStreamingResponse(StreamingResponse):
-    """Own source cleanup even when ASGI stops before consuming the first body chunk."""
+class RunStreamingResponse(WorkStreamingResponse):
+    """Add lease ownership to the shared HTTP worker-stream lifetime."""
 
-    def __init__(self, db: Session, lease: RunLease, events: Generator[str], *, phase: str):
-        self._db, self._lease, self._events = db, lease, events
-        self._cancelled = Event()
+    def __init__(self, db: Session, lease: RunLease, events: Generator[str], *, phase: str,
+                 cost: RunCostRecorder | None = None):
+        self._db, self._lease, self._run_events = db, lease, events
         self._started = False
+        self._cost = cost
+        if cost is not None:
+            db.info[RUN_COST_RECORDER_KEY] = cost
+        cancelled = Event()
 
-        def content() -> Generator[str]:
+        def leased_content() -> Generator[str]:
             self._started = True
-            yield from leased_run_stream(db, lease, events, phase=phase, cancelled=self._cancelled)
+            yield from leased_run_stream(db, lease, events, phase=phase, cancelled=cancelled, cost=cost)
 
-        self._content = content()
-        super().__init__(self._content, media_type="application/x-ndjson")
+        super().__init__(leased_content(), cancelled=cancelled)
 
     def _close(self) -> None:
-        self._content.close()
+        super()._close()
         if not self._started:
-            # Closing an unstarted generator does not enter its finally block.
-            self._events.close()
+            self._run_events.close()
             self._db.rollback()
             release_run_lock(self._db, self._lease)
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        async def monitored_receive():
-            message = await receive()
-            if message["type"] == "http.disconnect":
-                self._cancelled.set()
-            return message
-
-        async def monitored_send(message):
-            try:
-                await send(message)
-            except BaseException:
-                self._cancelled.set()
-                raise
-
-        try:
-            version = tuple(int(part) for part in scope.get("asgi", {}).get("spec_version", "2.0").split("."))
-            if scope["type"] == "http" and version >= (2, 4):
-                # This transport mode relies on send failures; also observe disconnects
-                # while a provider is silent and there is nothing available to send.
-                try:
-                    async with anyio.create_task_group() as tasks:
-                        async def watch_disconnect():
-                            await self.listen_for_disconnect(monitored_receive)
-                            tasks.cancel_scope.cancel()
-
-                        tasks.start_soon(watch_disconnect)
-                        await super().__call__(scope, monitored_receive, monitored_send)
-                        tasks.cancel_scope.cancel()
-                except BaseExceptionGroup as error:
-                    if len(error.exceptions) == 1:
-                        raise error.exceptions[0] from None
-                    raise
-            else:
-                await super().__call__(scope, monitored_receive, monitored_send)
-        finally:
-            self._cancelled.set()
-            # Disconnect cancellation must not cancel its own database cleanup.
-            with anyio.CancelScope(shield=True):
-                await anyio.to_thread.run_sync(self._close)
-                await self.body_iterator.aclose()
+            if self._db.info.get(RUN_COST_RECORDER_KEY) is self._cost:
+                self._db.info.pop(RUN_COST_RECORDER_KEY, None)

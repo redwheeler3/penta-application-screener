@@ -50,7 +50,7 @@ export function MetricsPanel(): ReactNode {
 function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
   const { runs } = props;
   const maxCost = Math.max(...runs.map((r) => r.costUsd));
-  const maxDur = Math.max(...runs.map((r) => r.durationMs));
+  const maxDur = Math.max(...runs.map((r) => r.durationMs ?? 0));
   // The dims column is always present so the Screen and Rank tables share one layout
   // and line up; Screen rows have no dimension count and show "—".
   return (
@@ -78,7 +78,7 @@ function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
             <tr key={i}>
               <td className="cost-pass-name">{formatPacificDateTime(r.at)}</td>
               <td className={r.status === "failed" ? "metric-failed" : ""} title={r.failedPass ? `Failed during ${r.failedPass}` : undefined}>
-                {r.status === "failed" ? "Failed" : "Completed"}
+                {r.status === "failed" ? r.failedPass === "Interrupted" ? "Interrupted" : "Failed" : "Completed"}
               </td>
               <td className="cost-pass-name">{r.opening ?? "Legacy / unscoped"}</td>
               <td className="cost-pass-name">{r.triggeredBy ?? "—"}</td>
@@ -87,8 +87,8 @@ function RunTable(props: { title: string; runs: TrendPoint[] }): ReactNode {
                 {money(r.costUsd)}
               </td>
               <td className="cost-num">
-                <Bar value={r.durationMs} max={maxDur} />
-                {secs(r.durationMs)}
+                <Bar value={r.durationMs ?? 0} max={maxDur} />
+                {r.durationMs === null ? "—" : secs(r.durationMs)}
               </td>
               <td className="cost-num">{pct(r.cacheHitRate)}</td>
               <td className={`cost-num${r.failedCalls > 0 ? " metric-failed" : ""}`}>{r.failedCalls}</td>

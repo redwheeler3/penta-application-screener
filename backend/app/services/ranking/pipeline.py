@@ -228,7 +228,7 @@ def _stream_criteria(
                 triggered_by_user_id=user.id, opening_id=opening_id)
         log.warning(
             "Rank criteria phase failed: %s",
-            exception_type_name(exc), exc_info=exc,
+            exception_type_name(exc),
         )
         yield emit(
             StreamErrorEvent(
@@ -258,28 +258,42 @@ def _stream_criteria(
     # from match_history — the same history the match pass matched against — so its
     # tier placement AND cached score carry forward, and the displayed text stays
     # the wording that score was computed against.
-    report = adopt_matched_keys(work.report, work.new_to_old, match_history)
-    # Carry committee intent forward across ALL runs: restore each key's most-recent
-    # tier placement, and flag every dimension absent from the immediately-prior run
-    # (new OR revived) for triage — the new-vs-revived label is derived at read time.
-    layout, new_dimension_keys = carry_forward_layout(
-        new_report=report,
-        scaffold_tiers=scaffold_tiers,
-        most_recent_tier_by_key=tier_by_key,
-        immediately_prior_keys=immediately_prior_keys,
-    )
-    # Create the shared analysis and seed THIS member's ranking of it (tier placements
-    # carried forward above ARE their kept set — no separate field to thread through;
-    # create_analysis clears the consumed proposals on the new ranking).
-    analysis = create_analysis(
-        db, user=user, opening_id=opening_id, report=report, inputs_fingerprint=inputs_fingerprint,
-        narrative=work.narrative,
-        tier_layout=layout, new_dimension_keys=new_dimension_keys,
-        match_audit=work.match_audit,
-        fan_out_audit=work.fan_out_audit,
-        decompose_audit=work.decompose_audit,
-    )
-    member_ranking = get_or_create_member_ranking(db, analysis, user)
+    try:
+        report = adopt_matched_keys(work.report, work.new_to_old, match_history)
+        # Carry committee intent forward across ALL runs: restore each key's most-recent
+        # tier placement, and flag every dimension absent from the immediately-prior run
+        # (new OR revived) for triage — the new-vs-revived label is derived at read time.
+        layout, new_dimension_keys = carry_forward_layout(
+            new_report=report,
+            scaffold_tiers=scaffold_tiers,
+            most_recent_tier_by_key=tier_by_key,
+            immediately_prior_keys=immediately_prior_keys,
+        )
+        # Create the shared analysis and seed THIS member's ranking of it (tier placements
+        # carried forward above ARE their kept set — no separate field to thread through;
+        # create_analysis clears the consumed proposals on the new ranking).
+        analysis = create_analysis(
+            db, user=user, opening_id=opening_id, report=report, inputs_fingerprint=inputs_fingerprint,
+            narrative=work.narrative,
+            tier_layout=layout, new_dimension_keys=new_dimension_keys,
+            match_audit=work.match_audit,
+            fan_out_audit=work.fan_out_audit,
+            decompose_audit=work.decompose_audit,
+        )
+        member_ranking = get_or_create_member_ranking(db, analysis, user)
+    except (WorkCancelled, RunLeaseLost):
+        raise
+    except Exception as error:
+        db.rollback()
+        known = {"Pattern discovery": work.discovery_cost, "Dimension decomposition": work.decompose_cost,
+            "Dimension matching": work.match_cost}
+        record_run_cost(db, kind="rank", status="failed", failed_pass="Criteria persistence",
+            failure_type=exception_type_name(error)[:120],
+            passes={label: known.get(label, PassCost()) for label in RANK_PASS_LABELS},
+            durations_ms=work.durations, estimated_usd=estimated_usd, triggered_by_user_id=user.id, opening_id=opening_id)
+        yield emit(StreamErrorEvent(phase=CRITERIA,
+            message="Saving ranking criteria failed. Previously saved results remain available."))
+        return None
     yield emit(
         NoticeEvent(
             phase=CRITERIA,
@@ -387,7 +401,7 @@ def _stream_consolidate(
         exc = worker.error
         log.warning(
             "Rank consolidation phase failed: %s",
-            exception_type_name(exc), exc_info=exc,
+            exception_type_name(exc),
         )
         yield emit(WarningEvent(phase=CONSOLIDATE,
             message="Duplicate-criteria cleanup could not finish. Current criteria and scores were kept."))
@@ -425,8 +439,8 @@ def stream_rank(
     score_tally = ScoreTally()
     failed_pass = "Dimension scoring"
     started = time.perf_counter()
-    scoring_meter = MeasuredProvider(provider)
-    consolidation_meter = MeasuredProvider(provider)
+    scoring_meter = MeasuredProvider(provider, label="Dimension scoring")
+    consolidation_meter = MeasuredProvider(provider, label="Dimension consolidation")
     try:
         total_cost = (
             criteria.discovery_cost + criteria.decompose_cost + criteria.match_cost
@@ -462,7 +476,9 @@ def stream_rank(
     except Exception as error:
         db.rollback()
         active_meter = scoring_meter if failed_pass == "Dimension scoring" else consolidation_meter
-        recorded[failed_pass] = active_meter.snapshot()
+        recorded[failed_pass] = active_meter.failed_pass_cost(
+            score_tally.as_pass_cost(settings.ai.dimension_scoring_model)
+            if failed_pass == "Dimension scoring" else PassCost())
         durations[failed_pass] = round((time.perf_counter() - started) * 1000)
         record_run_cost(db, kind="rank", status="failed", failed_pass=failed_pass,
             failure_type=exception_type_name(error)[:120],

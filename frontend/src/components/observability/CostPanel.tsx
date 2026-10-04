@@ -99,7 +99,9 @@ export function CostPanel(): ReactNode {
                     <td colSpan={4}>
                       {RUN_LABELS[run.kind]}
                       {run.status === "failed" ? (
-                        <span className="metric-failed">{` · Failed during ${run.failedPass ?? "the run"} · known usage only`}</span>
+                        <span className="metric-failed">{run.failedPass === "Interrupted"
+                          ? " · Interrupted · known usage only"
+                          : ` · Failed during ${run.failedPass ?? "the run"} · known usage only`}</span>
                       ) : null}
                       {openingStamp(run)}{triggeredByStamp(run)}{reconciliation(run)}
                     </td>

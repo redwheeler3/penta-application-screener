@@ -16,7 +16,10 @@ Claude traces and the conservative unknown-model fallback.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from threading import Lock
 from typing import Protocol
 
@@ -185,13 +188,29 @@ class PassCost:
         return self.__add__(other)  # type: ignore[arg-type]
 
 
+_meter_observer: ContextVar[Callable[[str, MeasuredProvider], None] | None] = ContextVar("cost_meter_observer", default=None)
+
+
+@contextmanager
+def observe_cost_meters(observer: Callable[[str, MeasuredProvider], None] | None) -> Iterator[None]:
+    """Register pass meters with their owning stream, including copied worker contexts."""
+    token = _meter_observer.set(observer)
+    try:
+        yield
+    finally:
+        _meter_observer.reset(token)
+
+
 class MeasuredProvider:
     """Retain returned usage independently of later pass validation or processing."""
 
-    def __init__(self, provider: AIProvider):
+    def __init__(self, provider: AIProvider, *, label: str = ""):
         self.provider = provider
         self._cost = PassCost()
         self._lock = Lock()
+        observer = _meter_observer.get()
+        if label and observer is not None:
+            observer(label, self)
 
     def structured_output(self, **kwargs) -> AIResult:
         try:
@@ -209,3 +228,14 @@ class MeasuredProvider:
     def snapshot(self) -> PassCost:
         with self._lock:
             return self._cost
+
+    def failed_pass_cost(self, completed: PassCost) -> PassCost:
+        """Retain all returned replies and acknowledged reuse after processing aborts.
+
+        The unfinished candidate's cache-unit count is unknown. Do not infer it
+        from reply counts or include replies twice by adding the completed tally.
+        """
+        measured = self.snapshot()
+        return replace(measured, cached_count=completed.cached_count,
+            cached_saved_usd=completed.cached_saved_usd,
+            failed_calls=max(measured.failed_calls, completed.failed_calls + 1))

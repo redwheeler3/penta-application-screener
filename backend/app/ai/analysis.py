@@ -300,7 +300,24 @@ def store_result(
     result: AIResult,
     reasoning_effort: ReasoningEffort | None = None,
 ) -> AnalysisOutcome:
-    """Price a fresh model result, persist it, and return its outcome.
+    """Commit one fresh cache result and its consumed reference."""
+    outcome = stage_result(db, application, kind=kind, result_cache_key=result_cache_key,
+        prompt_version=prompt_version, result=result, reasoning_effort=reasoning_effort)
+    db.commit()
+    return outcome
+
+
+def stage_result(
+    db: Session,
+    application: Application,
+    *,
+    kind: str,
+    result_cache_key: str,
+    prompt_version: str,
+    result: AIResult,
+    reasoning_effort: ReasoningEffort | None = None,
+) -> AnalysisOutcome:
+    """Stage a fresh cache result and consumed reference in the caller's transaction.
 
     The caller captures ``result_cache_key`` with the model input, before any call or
     commit can refresh the application. Persistence must never relabel an old answer
@@ -324,7 +341,6 @@ def store_result(
     db.flush()
     result_id = record.id
     select_results(db, [(application.id, kind, result_id)])
-    db.commit()
     return AnalysisOutcome(
         output=result.output,
         cost_usd=call_cost,
@@ -515,7 +531,7 @@ def screen_applications(
             error_type = exception_type_name(error)
             log.warning(
                 "AI pass %r failed for application %s: %s",
-                kind, application.id, error_type, exc_info=error,
+                kind, application.id, error_type,
             )
             yield PassResult(
                 application=application, outcome=None,

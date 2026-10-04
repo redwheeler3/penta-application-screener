@@ -10,9 +10,14 @@ from sqlalchemy.orm import Session
 from starlette.requests import ClientDisconnect
 
 from app.ai.analysis import run_in_pool
+from app.ai.mock_provider import MockProvider
+from app.ai.pricing import MeasuredProvider, cost_usd
+from app.ai.provider import Usage
+from app.ai.schemas import ScreeningReport
 from app.core.work_cancellation import cancellation_event
-from app.db.models import Application, Base, RunLock, User, UserRole
+from app.db.models import Application, Base, RunCostLedger, RunLock, User, UserRole
 from app.services import run_stream
+from app.services.cost_report import RunCostRecorder
 from app.services.run_lock import acquire_run_lock, ensure_lock_row
 from app.services.run_stream import RunStreamingResponse, leased_run_stream
 from app.services.stream_worker import StreamWorker
@@ -56,6 +61,51 @@ def engine_for(tmp_path):
     engine = create_engine(f"sqlite:///{(tmp_path / 'http-run.db').as_posix()}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     return engine
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("version", ["2.3", "2.4"])
+async def test_disconnect_keeps_returned_usage_without_publishing_cancelled_results(tmp_path, version):
+    engine = engine_for(tmp_path)
+    stopped = anyio.Event()
+    provider = MockProvider()
+    provider.queue(ScreeningReport(flags=[]), input_tokens=1000, output_tokens=200)
+    try:
+        with Session(engine) as db:
+            lease = setup(db)
+
+            def source():
+                measured = MeasuredProvider(provider, label="Screening")
+                measured.structured_output(model_id="mock-model", schema=ScreeningReport, prompt="synthetic")
+                db.add(Application(primary_email="uncommitted@example.com", raw_row={}, raw_row_hash="synthetic"))
+                db.flush()
+                yield "known usage\n"
+                db.commit()
+
+            response = RunStreamingResponse(db, lease, source(), phase="screen",
+                cost=RunCostRecorder("screen", 0.1, 1, None))
+
+            async def receive():
+                await stopped.wait()
+                return {"type": "http.disconnect"}
+
+            async def send(message):
+                if message["type"] == "http.response.body":
+                    stopped.set()
+                    await anyio.sleep_forever()
+
+            with anyio.fail_after(2):
+                await response({"type": "http", "asgi": {"spec_version": version}}, receive, send)
+            assert db.scalar(select(Application)) is None
+            ledgers = db.scalars(select(RunCostLedger)).all()
+            assert len(ledgers) == 1
+            assert ledgers[0].status == "failed"
+            assert ledgers[0].failed_pass == "Interrupted"
+            assert ledgers[0].passes[0].calls == 1
+            assert ledgers[0].passes[0].cost_usd == pytest.approx(cost_usd("mock-model", Usage(input_tokens=1000, output_tokens=200)))
+            assert db.get(RunLock, 1, populate_existing=True).holder_user_id is None
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.anyio

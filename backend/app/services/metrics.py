@@ -31,6 +31,7 @@ def metrics_report(db: Session) -> MetricsReport:
     passes: list[PassTrendPoint] = []
     for ledger in ledgers:
         rows = ledger.passes
+        interrupted = ledger.failed_pass == "Interrupted"
         # Cache-hit rate over cacheable units only: a pass that can't cache (discovery)
         # shouldn't dilute the rate toward 0. None when there was no cacheable work.
         cacheable = [r for r in rows if r.label in CACHEABLE_PASSES]
@@ -47,7 +48,7 @@ def metrics_report(db: Session) -> MetricsReport:
                 cost_usd=round(sum(r.cost_usd for r in rows), 6),
                 input_tokens=sum(r.input_tokens for r in rows),
                 output_tokens=sum(r.output_tokens for r in rows),
-                duration_ms=sum(r.duration_ms for r in rows),
+                duration_ms=None if interrupted else sum(r.duration_ms for r in rows),
                 failed_calls=sum(r.failed_calls for r in rows),
                 cache_hit_rate=hit_rate,
                 dimensions=ledger.dimension_count,
@@ -62,7 +63,7 @@ def metrics_report(db: Session) -> MetricsReport:
                 cost_usd=round(r.cost_usd, 6),
                 input_tokens=r.input_tokens,
                 output_tokens=r.output_tokens,
-                duration_ms=r.duration_ms,
+                duration_ms=None if interrupted else r.duration_ms,
                 failed_calls=r.failed_calls,
             )
             for r in rows

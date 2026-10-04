@@ -8,10 +8,7 @@ routes, not the machinery under them.
 
 from __future__ import annotations
 
-import queue
-import threading
 from collections.abc import Iterator
-from typing import Any
 
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -19,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.ai.model_catalog import ReasoningEffort
 from app.ai.provider import AIProvider
 from app.core.problems import Problem
+from app.core.work_cancellation import WorkCancelled, check_cancelled
 from app.db.models import EvalRun
 from app.evals.case_store import UnknownEvalError, list_cases
 from app.schemas.base import ResponseModel
@@ -26,6 +24,8 @@ from app.schemas.evals import StabilityRun
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
 from app.schemas.settings import effective_reasoning_effort
 from app.services.settings import get_app_settings
+from app.services.stream_worker import StreamWorker
+from app.services.work_stream import WorkStreamingResponse
 
 # Default K for a stability run when the UI doesn't override it (K≥5 to trust a "stable"
 # verdict, per the CLI habit), bounded so the default run's cost is predictable.
@@ -63,40 +63,28 @@ def stream(db: Session, eval_key: str, prompt_version: str, work) -> StreamingRe
     from the provider's ``on_delta`` callback, hence the queue. The request-scoped ``db``
     lives for the whole stream (as the Rank job's does), so persistence uses it directly."""
     def gen() -> Iterator[str]:
-        q: queue.Queue[str | None] = queue.Queue()
         thinking_parts: list[str] = []
-        outcome: dict[str, Any] = {}
-
-        def on_delta(text: str) -> None:
-            q.put(text)
-
-        def do_work() -> None:
-            try:
-                outcome["result"] = work(on_delta)
-            except Exception as exc:  # surfaced as a stream error below
-                outcome["error"] = exc
-            finally:
-                q.put(None)
-
-        worker = threading.Thread(target=do_work, daemon=True)
-        worker.start()
-        while True:
-            item = q.get()
-            if item is None:
-                break
-            thinking_parts.append(item)
-            yield emit(ThinkingEvent(phase=eval_key, text=item))
+        worker: StreamWorker[str, ResponseModel] = StreamWorker()
+        worker.start(work)
+        for is_ping, item in worker.drain(eval_key):
+            if is_ping:
+                yield item
+            elif item is not None:
+                thinking_parts.append(item)
+                yield emit(ThinkingEvent(phase=eval_key, text=item))
         worker.join()
-
-        if "error" in outcome:
+        if worker.error is not None:
+            if isinstance(worker.error, WorkCancelled):
+                raise worker.error
             from app.schemas.events import ErrorEvent
-            yield emit(ErrorEvent(phase=eval_key, message=f"{type(outcome['error']).__name__}: {outcome['error']}"))
+            yield emit(ErrorEvent(phase=eval_key, message=f"{type(worker.error).__name__}: {worker.error}"))
             return
-        result: ResponseModel = outcome["result"]
+        check_cancelled()
+        result = worker.result
         persist(db, eval_key, prompt_version, result, "".join(thinking_parts))
         yield emit(EvalSummaryEvent(eval=eval_key, result=result.model_dump(by_alias=True)))
 
-    return StreamingResponse(gen(), media_type="application/x-ndjson")
+    return WorkStreamingResponse(gen())
 
 
 def select(items: list, case: str | None, key):
