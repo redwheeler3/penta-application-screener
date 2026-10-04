@@ -129,6 +129,9 @@ Committee link inspection and exchange have a retryable connection state; retry 
 again before deciding whether to exchange it or offer an account choice. Sign-in requests are
 ordered, and resetting the form invalidates older responses. Access-allowlist writes hold their
 busy state through response parsing and preserve invitation drafts edited during a request.
+Shared AI settings allow one automatic read-recovery cycle after the dashboard becomes ready;
+persistent failures leave Retry visible. Failed saves, including rejected requests and unreadable
+acknowledgements, keep the draft and report failure through the normal save notification.
 Vacancy support actions belong to the accepted exact-email lookup. Editing that address invalidates
 pending work and hides its actions; deletion uses the accepted subscription's email.
 Subscription saves upsert atomically on normalized email while preserving first consent. Each

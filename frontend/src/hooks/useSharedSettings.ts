@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import * as api from "../api/settings";
 import { retryWithBackoff } from "../retry";
@@ -13,6 +13,7 @@ export function useSharedSettings(options: {
   const [isSaving, setIsSaving] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const reads = useRequestScope();
+  const dashboardRecoveryAttempted = useRef(false);
 
   async function load(): Promise<void> {
     const isCurrent = reads.begin();
@@ -49,15 +50,20 @@ export function useSharedSettings(options: {
       setDraft((current) => current === submitted ? payload.settings : current);
       setLoadFailed(false);
       return true;
+    } catch {
+      return false;
     } finally {
       if (isCurrent()) setIsSaving(false);
     }
   }
 
   useEffect(() => {
-    if (options.dashboardReady && loadFailed) retry();
-    // `load` and `retry` intentionally close over the latest state; this effect is gated by
-    // the two primitive conditions that determine whether recovery is needed.
+    if (options.dashboardReady && loadFailed && !dashboardRecoveryAttempted.current) {
+      // One recovery cycle after the service becomes ready, then leave Retry visible.
+      dashboardRecoveryAttempted.current = true;
+      retry();
+    }
+    // Recovery uses the latest read workflow when these two conditions change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.dashboardReady, loadFailed]);
 

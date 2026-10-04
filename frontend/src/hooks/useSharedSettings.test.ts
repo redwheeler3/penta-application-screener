@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import * as api from "../api/settings";
 import { deferred } from "../testSupport";
@@ -25,6 +25,53 @@ const withCap = (spendingCapUsd: number): AppSettings => ({ ai: { ...settings.ai
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.fetchSettings).mockResolvedValue(payload(settings));
+});
+
+afterEach(() => vi.useRealTimers());
+
+it("settles persistent load failures after one dashboard recovery cycle", async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.fetchSettings).mockRejectedValue(new Error("Synthetic unavailable"));
+  const { result, rerender } = renderHook(({ ready }) => useSharedSettings({ dashboardReady: ready }), {
+    initialProps: { ready: false },
+  });
+  let loading!: Promise<void>;
+  act(() => { loading = result.current.load(); });
+  await act(async () => { await vi.runAllTimersAsync(); await loading; });
+  expect(api.fetchSettings).toHaveBeenCalledTimes(5);
+  expect(result.current.loadFailed).toBe(true);
+  rerender({ ready: true });
+  await act(() => vi.runAllTimersAsync());
+  expect(api.fetchSettings).toHaveBeenCalledTimes(10);
+  expect(result.current.loadFailed).toBe(true);
+  rerender({ ready: false });
+  rerender({ ready: true });
+  await act(() => vi.runAllTimersAsync());
+  expect(api.fetchSettings).toHaveBeenCalledTimes(10);
+
+  vi.mocked(api.fetchSettings).mockResolvedValue(payload(settings));
+  act(() => result.current.retry());
+  await act(() => vi.runAllTimersAsync());
+  expect(result.current.draft).toEqual(settings);
+  expect(result.current.loadFailed).toBe(false);
+});
+
+it.each(["network", "unreadable response"])("handles a %s save failure and preserves edits", async (failure) => {
+  const pending = deferred<Response>();
+  vi.mocked(api.saveSettings).mockReturnValueOnce(pending.promise);
+  const { result } = renderHook(() => useSharedSettings({ dashboardReady: false }));
+  await act(() => result.current.load());
+  let saving!: Promise<boolean>;
+  act(() => { saving = result.current.save(); });
+  act(() => result.current.setDraft(withCap(22)));
+  await act(async () => {
+    if (failure === "network") pending.reject(new Error("Synthetic network failure"));
+    else pending.resolve(new Response("not json", { status: 200 }));
+    expect(await saving).toBe(false);
+  });
+  expect(result.current.saved?.settings.ai.spendingCapUsd).toBe(10);
+  expect(result.current.draft?.ai.spendingCapUsd).toBe(22);
+  expect(result.current.isSaving).toBe(false);
 });
 
 it("acknowledges the submitted snapshot while preserving edits made during a save", async () => {
