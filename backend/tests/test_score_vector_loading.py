@@ -5,6 +5,7 @@ from sqlalchemy import event, select
 
 from app.ai.dimension_consolidation import build_prompt, nominate_pairs
 from app.ai.mock_provider import MockProvider
+from app.ai.pricing import MeasuredProvider
 from app.ai.score_vectors import load_score_vectors
 from app.db.models import Analysis, ApplicationAIResult, User, UserRole
 from app.schemas.settings import AppSettings
@@ -81,7 +82,7 @@ def test_consolidation_reads_scores_on_the_request_thread():
 
     event.listen(db.get_bind(), "before_cursor_execute", record_sql)
     try:
-        list(_stream_consolidate(db, MockProvider(), AppSettings(), analysis, member, a_pattern_report()))
+        list(_stream_consolidate(db, MeasuredProvider(MockProvider()), AppSettings(), analysis, member, a_pattern_report()))
     finally:
         event.remove(db.get_bind(), "before_cursor_execute", record_sql)
     assert score_read_threads == [request_thread]

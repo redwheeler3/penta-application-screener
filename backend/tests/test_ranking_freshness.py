@@ -43,7 +43,7 @@ def test_discovery_keeps_its_starting_fingerprint_when_the_pool_changes(monkeypa
         )
 
     monkeypatch.setattr("app.services.ranking.pipeline.run_criteria_passes", delayed_criteria)
-    stream = _stream_criteria(db, provider, settings, user, opening_id)
+    stream = _stream_criteria(db, provider, settings, user, opening_id, estimated_usd=0.2)
     try:
         while True:
             try:

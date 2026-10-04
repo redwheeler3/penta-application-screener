@@ -1227,6 +1227,15 @@ cache units. Historical scoring call counts can reflect dimension units because 
 replies were not recorded separately. The live run total uses whole-call usage and price;
 per-dimension token allocation cannot reduce its reported cost.
 
+Failed Rank phases preserve known completed replies from earlier passes and the failing pass,
+including processing errors after a reply. The ledger records the failed stage and error type;
+Insights labels failed attempts and cumulative known spending, and failed attempts do not train
+normal rerun cost estimates. Best-effort consolidation errors retain their known cost and warn
+that cleanup was skipped while the usable ranking completes.
+Cache-hit rates use explicit fresh/cache dimension units, not provider-call counts. Historical
+rows without recorded units remain unknown; the additive migration preserves their costs,
+attribution, and completed status without guessing a cache percentage.
+
 Local synthetic measurement (2026-10-03, SQLite WAL/FULL, 15 repetitions, median):
 100 applicants × 15 dimensions with 30,000 historical rows read in 5.7 ms versus
 37.1 ms with newest-row selection. Switching 1,500 references and committing took

@@ -17,9 +17,10 @@ from app.ai.dimension_discovery import (
     discover_patterns_fanout,
 )
 from app.ai.dimension_matching import match_dimensions
-from app.ai.pricing import PassCost
+from app.ai.pricing import MeasuredProvider, PassCost
 from app.ai.provider import AIProvider
 from app.ai.schemas import PoolDimension, PoolDimensionReport
+from app.core.work_cancellation import WorkCancelled
 from app.db.models import Application
 from app.schemas.events import CriteriaStage
 from app.schemas.settings import AppSettings
@@ -44,6 +45,14 @@ class CriteriaPassResult:
     fan_out_audit: dict[str, Any]
     decompose_audit: dict[str, Any]
     match_audit: dict[str, Any]
+
+
+class CriteriaFailure(Exception):
+    """The original failure plus known spend and durations up to the failed stage."""
+
+    def __init__(self, cause: Exception, failed_pass: str, costs: dict[str, PassCost], durations: dict[str, int]):
+        self.cause, self.failed_pass, self.costs, self.durations = cause, failed_pass, costs, durations
+        super().__init__(str(cause))
 
 
 def discovery_audit(fan_out: FanOutDiscovery) -> dict[str, Any]:
@@ -93,37 +102,50 @@ def run_criteria_passes(
     diverse. All audits describe the model output before persisted keys are adopted.
     """
     durations: dict[str, int] = {}
-    on_delta(CriteriaStageChange("discovering"))
+    meters = {label: MeasuredProvider(provider) for label in (
+        "Pattern discovery", "Dimension decomposition", "Dimension matching")}
+    failed_pass = "Pattern discovery"
     started = time.perf_counter()
-    fan_out = discover_patterns_fanout(
-        provider, applications=applications, settings=settings,
-        k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
-    )
-    durations["Pattern discovery"] = round((time.perf_counter() - started) * 1000)
-    reports = fan_out.reports
-
-    on_delta(CriteriaStageChange("settling"))
-    started = time.perf_counter()
-    decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
-        provider, reports=reports, settings=settings, kept=kept, on_delta=on_delta,
-    )
-    durations["Dimension decomposition"] = round((time.perf_counter() - started) * 1000)
-    # Committee requests cannot silently disappear through a merge or omission.
-    decomposition, folded_requests = enforce_committee_requests(decomposition, reports, kept=kept)
-    # Pool-grounded explanations come from discoverers; decomposition never sees the pool.
-    report = to_pool_report(decomposition, reports, kept=kept)
-    narrative = decompose_narrative or fan_out.narrative
-
-    new_to_old: dict[str, str] = {}
-    match_narrative: str | None = None
-    match_cost = PassCost()
-    if match_history is not None:
-        on_delta(CriteriaStageChange("matching"))
+    try:
+        on_delta(CriteriaStageChange("discovering"))
         started = time.perf_counter()
-        new_to_old, match_narrative, match_cost = match_dimensions(
-            provider, old=match_history, new=report, settings=settings, on_delta=on_delta,
+        fan_out = discover_patterns_fanout(
+            meters[failed_pass], applications=applications, settings=settings,
+            k=settings.ai.discovery_fan_out, seeds=seeds, on_delta=on_delta,
         )
-        durations["Dimension matching"] = round((time.perf_counter() - started) * 1000)
+        durations["Pattern discovery"] = round((time.perf_counter() - started) * 1000)
+        reports = fan_out.reports
+
+        failed_pass = "Dimension decomposition"
+        on_delta(CriteriaStageChange("settling"))
+        started = time.perf_counter()
+        decomposition, decompose_narrative, decompose_cost = decompose_dimensions(
+            meters[failed_pass], reports=reports, settings=settings, kept=kept, on_delta=on_delta,
+        )
+        durations["Dimension decomposition"] = round((time.perf_counter() - started) * 1000)
+        # Committee requests cannot silently disappear through a merge or omission.
+        decomposition, folded_requests = enforce_committee_requests(decomposition, reports, kept=kept)
+        # Pool-grounded explanations come from discoverers; decomposition never sees the pool.
+        report = to_pool_report(decomposition, reports, kept=kept)
+        narrative = decompose_narrative or fan_out.narrative
+
+        new_to_old: dict[str, str] = {}
+        match_narrative: str | None = None
+        match_cost = PassCost()
+        if match_history is not None:
+            failed_pass = "Dimension matching"
+            on_delta(CriteriaStageChange("matching"))
+            started = time.perf_counter()
+            new_to_old, match_narrative, match_cost = match_dimensions(
+                meters[failed_pass], old=match_history, new=report, settings=settings, on_delta=on_delta,
+            )
+            durations["Dimension matching"] = round((time.perf_counter() - started) * 1000)
+
+    except WorkCancelled:
+        raise
+    except Exception as error:
+        durations[failed_pass] = round((time.perf_counter() - started) * 1000)
+        raise CriteriaFailure(error, failed_pass, {label: meter.snapshot() for label, meter in meters.items()}, durations) from error
 
     return CriteriaPassResult(
         report=report, narrative=narrative, new_to_old=new_to_old,

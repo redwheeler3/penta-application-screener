@@ -477,6 +477,8 @@ def score_planned_dimensions(
                 application=application, outcome=None,
                 error=str(cause), error_type=error_type,
                 failure_cost=error.spent if isinstance(error, ScoringFailure) else None,
+                fresh_units=len(plan.dimensions_to_score),
+                cached_units=len(plan.cached_scores), cached_saved_usd=plan.cached_saved_usd,
             )
             continue
         if result is None:  # fully cached

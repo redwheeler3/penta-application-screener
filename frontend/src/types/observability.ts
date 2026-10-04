@@ -51,6 +51,9 @@ export type InsightRunKind = "screen" | "rank" | "rank_scores";
 
 export type LastRunCost = {
   kind: InsightRunKind;
+  status: "completed" | "failed";
+  failedPass: string | null;
+  failureType: string | null;
   at: string; // ISO timestamp
   freshUsd: number;
   cachedSavedUsd: number;
@@ -62,10 +65,12 @@ export type LastRunCost = {
 };
 
 // GET /observability/metrics — operational trends across all runs.
-// One point per completed run, oldest→newest.
+// One point per recorded attempt, oldest→newest.
 export type TrendPoint = {
   at: string;
   kind: InsightRunKind;
+  status: "completed" | "failed";
+  failedPass: string | null;
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
@@ -99,7 +104,7 @@ export type MetricsReport = {
 };
 
 // The most recent Screen, full Rank, and score-current update, each with fresh spend +
-// cache savings. A run is null if that type has not completed since ledgering began.
+// cache savings. A run is null if that type has not been recorded since ledgering began.
 export type LastRunsReport = {
   screen: LastRunCost | null;
   rank: LastRunCost | null;

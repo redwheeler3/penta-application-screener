@@ -889,11 +889,11 @@ class ApplicationAISelection(Base):
 
 
 class RunCostLedger(TimestampMixin, Base):
-    """One row per completed AI run (a Screen, full Rank, or score-current update) — the
+    """One row per recorded AI attempt (a Screen, full Rank, or score-current update) — the
     header. This is the authoritative source of *per-run* cost:
     ``ApplicationAIResult`` is a reuse cache with no
     run-id stamp, so a run's fresh vs. cached split can't be reconstructed after the fact —
-    it must be recorded as the run completes. The per-pass breakdown (tokens, cost, cache)
+    it must be recorded as the attempt finishes. Status distinguishes completed and failed work. The per-pass breakdown (tokens, cost, cache)
     lives in child ``RunPassCost`` rows, one per pass, so a token/model breakdown is a
     first-class queryable column rather than buried in a JSON blob.
 
@@ -908,6 +908,9 @@ class RunCostLedger(TimestampMixin, Base):
     )  # screen | rank | rank_scores
     # Final Rank count at completion; None means it was not measured for this run.
     dimension_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed", server_default="completed")
+    failed_pass: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    failure_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # The pre-run cost projection (the number the confirmation card showed the committee),
     # captured so estimate-vs-actual drift is queryable. 0.0 means no estimate is available.
     estimated_usd: Mapped[float] = mapped_column(
@@ -933,25 +936,24 @@ class RunCostLedger(TimestampMixin, Base):
 
 
 class RunPassCost(TimestampMixin, Base):
-    """One pass's spend within a completed run — the single source of per-pass cost
+    """One pass's known spend within a recorded run — the single source of per-pass cost
     for BOTH pool-level passes (discovery, decompose, match, consolidate) and per-
     application passes (screening, scoring). Every pass writes the same shape here, so the
     Observability cost surfaces read one table instead of stitching together criteria keys,
     summed cache rows, and a JSON blob.
 
-    ``calls`` is fresh model calls (per-dimension units for scoring); ``input_tokens`` /
+    ``calls`` counts completed provider replies; ``fresh_units`` counts cache misses.
+    ``input_tokens`` /
     ``output_tokens`` / ``cost_usd`` are that fresh spend. ``cached_count`` /
     ``cached_saved_usd`` are the cache side — reused units and their estimated cost on
     the selected route (what caching avoided). A never-cached pass leaves those 0.
     ``model_id`` is the model the pass ran on ("" when the pass made no call this run,
     e.g. a skipped match on a first run).
 
-    ``duration_ms`` is the pass's wall-clock, measured at the pass level,
-    NOT summed from parallel calls (that would be CPU time). ``failed_calls`` counts model
-    calls that errored: real for the per-application passes (a failure is non-fatal, the
-    run continues), ~always 0 for the pool passes (a failure aborts the run before it
-    records). Retry counts are deliberately absent — they happen inside the AWS SDK
-    (adaptive, max_attempts=5) and aren't surfaced without hooking boto's event system.
+    ``duration_ms`` is measured per pass, never summed across parallel calls.
+    ``failed_calls`` counts failed candidate operations for application passes and
+    failed structured calls for opaque passes. SDK-internal retries are not separately
+    observable; application-level returned replies are counted in ``calls``.
     """
 
     __tablename__ = "run_pass_cost"
@@ -963,6 +965,8 @@ class RunPassCost(TimestampMixin, Base):
     label: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     model_id: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     calls: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Historical rows did not distinguish provider replies from cache units.
+    fresh_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)

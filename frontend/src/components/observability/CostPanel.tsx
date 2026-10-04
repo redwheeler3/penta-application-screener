@@ -24,7 +24,7 @@ const tokensCell = (input: number, output: number) =>
 
 // Compare the pre-run ceiling with actual spend; only overruns need emphasis.
 function reconciliation(run: LastRunCost): ReactNode {
-  if (run.estimatedUsd <= 0) return null;
+  if (run.status === "failed" || run.estimatedUsd <= 0) return null;
   const drift = run.freshUsd - run.estimatedUsd;
   const pct = Math.round((drift / run.estimatedUsd) * 100);
   const over = drift > 0;
@@ -97,7 +97,11 @@ export function CostPanel(): ReactNode {
                 <tbody key={i}>
                   <tr className="cost-group-head">
                     <td colSpan={4}>
-                      {RUN_LABELS[run.kind]}{openingStamp(run)}{triggeredByStamp(run)}{reconciliation(run)}
+                      {RUN_LABELS[run.kind]}
+                      {run.status === "failed" ? (
+                        <span className="metric-failed">{` · Failed during ${run.failedPass ?? "the run"} · known usage only`}</span>
+                      ) : null}
+                      {openingStamp(run)}{triggeredByStamp(run)}{reconciliation(run)}
                     </td>
                     <td className="cost-num">{run.cachedSavedUsd > 0 ? money(run.cachedSavedUsd) : "—"}</td>
                     <td className="cost-num">{money(run.freshUsd)}</td>
@@ -122,7 +126,7 @@ export function CostPanel(): ReactNode {
       <div className="cost-section">
         <div className="cost-block-head">
           <span className="observability-label">
-            Cumulative spend <span className="cost-scope">· All openings</span>
+            Cumulative known spend <span className="cost-scope">· All openings</span>
           </span>
           <span className="cost-block-total">{`$${cost.totalCostUsd.toFixed(2)}`} spent</span>
         </div>

@@ -17,10 +17,12 @@ Claude traces and the conservative unknown-model fallback.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Lock
 from typing import Protocol
 
 from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
-from app.ai.provider import Usage
+from app.ai.provider import AIProvider, AIResult, Usage
+from app.core.work_cancellation import WorkCancelled
 
 
 class Tally(Protocol):
@@ -36,6 +38,7 @@ class Tally(Protocol):
     input_tokens: int
     output_tokens: int
     cached_saved_usd: float
+    fresh_units: int
 
 
 @dataclass(frozen=True)
@@ -119,18 +122,14 @@ class PassCost:
     """
 
     calls: int = 0
+    fresh_units: int | None = None
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
     cached_count: int = 0
     cached_saved_usd: float = 0.0
-    # Model calls that errored out. Meaningful for the per-application passes (screening,
-    # scoring), where a failure is non-fatal and per-item — the run continues, this counts
-    # the casualties. ~Always 0 for the pool passes (discovery/decompose/match/consolidate),
-    # where a failure is fatal: the run aborts before recording, so there's no partial
-    # count to keep. Latency is NOT here — it's wall-clock per pass, measured at the pass
-    # level and recorded separately (summing it across a fan-out's parallel calls would
-    # give CPU time, not wall-clock).
+    # Failed candidate operations or opaque structured calls. Latency is measured
+    # separately at pass level, rather than summed over concurrent calls.
     failed_calls: int = 0
     # The model the pass ran on. "" when it made no call this run (a skipped match on a
     # first run, a consolidation that nominated nothing). On a fan-out all K calls share
@@ -155,6 +154,7 @@ class PassCost:
         (an all-cached run), so a skipped pass doesn't claim a model."""
         return cls(
             calls=tally.analyzed,
+            fresh_units=tally.fresh_units,
             input_tokens=tally.input_tokens,
             output_tokens=tally.output_tokens,
             cost_usd=tally.cost_usd,
@@ -167,6 +167,8 @@ class PassCost:
     def __add__(self, other: PassCost) -> PassCost:
         return PassCost(
             calls=self.calls + other.calls,
+            fresh_units=(self.fresh_units + other.fresh_units
+                if self.fresh_units is not None and other.fresh_units is not None else None),
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
             cost_usd=self.cost_usd + other.cost_usd,
@@ -181,3 +183,29 @@ class PassCost:
         if other == 0:
             return self
         return self.__add__(other)  # type: ignore[arg-type]
+
+
+class MeasuredProvider:
+    """Retain returned usage independently of later pass validation or processing."""
+
+    def __init__(self, provider: AIProvider):
+        self.provider = provider
+        self._cost = PassCost()
+        self._lock = Lock()
+
+    def structured_output(self, **kwargs) -> AIResult:
+        try:
+            result = self.provider.structured_output(**kwargs)
+        except WorkCancelled:
+            raise
+        except Exception:
+            with self._lock:
+                self._cost += PassCost(failed_calls=1, model_id=kwargs.get("model_id", ""))
+            raise
+        with self._lock:
+            self._cost += PassCost.from_usage(result.model_id, result.usage)
+        return result
+
+    def snapshot(self) -> PassCost:
+        with self._lock:
+            return self._cost

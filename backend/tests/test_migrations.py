@@ -13,6 +13,34 @@ from app.db.models import Base
 from app.schemas.settings import AppSettings
 
 
+def test_failed_run_metadata_migration_preserves_existing_costs_and_unknown_units(tmp_path, monkeypatch) -> None:
+    backend = Path(__file__).parents[1]
+    url = f"sqlite:///{(tmp_path / 'failed-run-metadata.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "alembic"))
+        command.upgrade(config, "8e9f0a1b2c3d")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("INSERT INTO run_cost_ledger (id, kind, estimated_usd, dimension_count, created_at, updated_at) "
+                "VALUES (1, 'rank', 0.25, 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+            connection.exec_driver_sql("INSERT INTO run_pass_cost "
+                "(run_id, label, model_id, calls, input_tokens, output_tokens, cost_usd, cached_count, cached_saved_usd, duration_ms, failed_calls, created_at, updated_at) "
+                "VALUES (1, 'Dimension scoring', 'synthetic', 2, 100, 50, 0.1, 2, 0.05, 500, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+        engine.dispose()
+        command.upgrade(config, "head")
+        engine = create_engine(url)
+        with engine.connect() as connection:
+            assert connection.exec_driver_sql("SELECT status, failed_pass, dimension_count FROM run_cost_ledger").one() == ("completed", None, 2)
+            assert connection.exec_driver_sql("SELECT calls, fresh_units, cost_usd, cached_count FROM run_pass_cost").one() == (2, None, 0.1, 2)
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+        engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+
 def test_run_renewal_migration_preserves_an_active_acquisition(tmp_path, monkeypatch) -> None:
     backend = Path(__file__).parents[1]
     url = f"sqlite:///{(tmp_path / 'run-renewal.db').as_posix()}"

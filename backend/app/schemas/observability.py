@@ -1,5 +1,7 @@
 """Response shapes for the Observability tab's run-level data."""
 
+from typing import Literal
+
 from app.schemas.base import ResponseModel
 
 
@@ -71,6 +73,9 @@ class LastRunPass(ResponseModel):
 
 class LastRunCost(ResponseModel):
     kind: str  # "screen" | "rank" | "rank_scores"
+    status: Literal["completed", "failed"] = "completed"
+    failed_pass: str | None = None
+    failure_type: str | None = None
     at: str  # ISO timestamp of the run
     fresh_usd: float
     cached_saved_usd: float
@@ -96,12 +101,14 @@ class LastRunsReport(ResponseModel):
 
 
 class TrendPoint(ResponseModel):
-    """One completed run as a point on the trend charts, oldest→newest. Per-run rollups
+    """One recorded attempt as a point on the trend charts, oldest→newest. Per-run rollups
     over that run's pass rows; ``dimensions`` is the run's live dimension count for full
     Ranks only — null for Screen and score-current updates."""
 
     at: str  # ISO timestamp of the run
     kind: str  # "screen" | "rank" | "rank_scores"
+    status: Literal["completed", "failed"] = "completed"
+    failed_pass: str | None = None
     cost_usd: float
     input_tokens: int
     output_tokens: int
@@ -130,7 +137,7 @@ class PassTrendPoint(ResponseModel):
 
 
 class MetricsReport(ResponseModel):
-    """GET /observability/metrics — operational trends across all completed runs.
+    """GET /observability/metrics — operational trends across recorded attempts.
     ``runs`` is the per-run rollup (both kinds, oldest→newest);
     ``passes`` is the flattened per-(run, pass) series for the per-pass breakdown.
     Empty lists when no run has completed since ledgering began."""

@@ -1,21 +1,14 @@
-"""Cost aggregation for the Observability tab.
+"""Known spending from recorded AI attempts, grouped by workflow and pass.
 
-Every AI pass — pool-level (discovery, decompose, match, consolidate) and per-
-application (screening, scoring) alike — records its spend the same way: a ``PassCost``
-folded into a ``RunPassCost`` row, one per pass, under a ``RunCostLedger`` header per
-completed run. That single table is the source for both cost surfaces here:
-  - **cumulative** — every dollar/token ever spent, summed across all runs' pass rows.
-  - **last-run** — the most recent Screen, full Rank, and score-current update, each
-    pass's fresh-vs-cached split.
-
-Both are exact and carry a token and model breakdown because the ledger is written as
-each run completes (the only point the fresh/cached split is known) — ``ApplicationAIResult``
-is a reuse cache with no run-id stamp, so per-run cost can't be reconstructed from it
-after the fact. (This is unrelated to the spending cap, which bounds each individual run
-before it starts; the lifetime total has no ceiling of its own.)
+Completed and failed attempts share the RunCostLedger/RunPassCost shape. Returned
+usage is priced; billing without returned usage is not inferred. ApplicationAIResult
+is a reuse cache and cannot reconstruct a run's spend or cache choices after the fact.
+The spending cap checks the pre-run estimate; cumulative known spending has no ceiling.
 """
 
 from __future__ import annotations
+
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -75,8 +68,11 @@ def record_run_cost(
     triggered_by_user_id: int | None = None,
     opening_id: int | None = None,
     dimension_count: int | None = None,
+    status: Literal["completed", "failed"] = "completed",
+    failed_pass: str | None = None,
+    failure_type: str | None = None,
 ) -> None:
-    """Persist a completed run's per-pass cost (``kind`` = "screen" | "rank" |
+    """Persist a recorded attempt's known per-pass cost (``kind`` = "screen" | "rank" |
     "rank_scores"), one
     ``RunPassCost`` row per pass, under a header row. Called as the run's stream finishes
     — the only point the fresh/cached split is known. ``passes`` maps each canonical pass
@@ -93,6 +89,7 @@ def record_run_cost(
     durations_ms = durations_ms or {}
     header = RunCostLedger(
         kind=kind,
+        status=status, failed_pass=failed_pass, failure_type=failure_type,
         dimension_count=dimension_count,
         estimated_usd=round(estimated_usd, 6),
         triggered_by_user_id=triggered_by_user_id,
@@ -102,6 +99,7 @@ def record_run_cost(
                 label=label,
                 model_id=cost.model_id,
                 calls=cost.calls,
+                fresh_units=cost.fresh_units,
                 input_tokens=cost.input_tokens,
                 output_tokens=cost.output_tokens,
                 cost_usd=round(cost.cost_usd, 6),
@@ -200,6 +198,7 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
     ]
     return LastRunCost(
         kind=row.kind,
+        status=row.status, failed_pass=row.failed_pass, failure_type=row.failure_type,
         at=utc_isoformat(row.created_at),
         fresh_usd=round(sum(p.fresh_usd for p in passes), 6),
         cached_saved_usd=round(sum(p.cached_saved_usd for p in passes), 6),
@@ -212,8 +211,8 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
 
 
 def last_runs_report(db: Session) -> LastRunsReport:
-    """The most recent Screen, full Rank, and score-current update, each with fresh
-    spend and cache savings. A run is null if that type has not completed since
+    """The most recent recorded Screen, full Rank, and score-current attempt, each with fresh
+    spend and cache savings. A run is null if that type has not been recorded since
     ledgering began."""
     return LastRunsReport(
         screen=_last_run(db, "screen"),
@@ -256,6 +255,7 @@ def recent_pass_fresh_usd(
             .join(RunCostLedger, RunPassCost.run_id == RunCostLedger.id)
             .where(
                 RunCostLedger.kind == FULL_RANK_KIND,
+                RunCostLedger.status == "completed",
                 RunCostLedger.opening_id == opening_id,
                 RunPassCost.label == pass_label,
             )

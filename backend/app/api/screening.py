@@ -56,6 +56,10 @@ class RunTally:
     # Estimated cost of regenerating reused results on the currently selected route.
     cached_saved_usd: float = 0.0
 
+    @property
+    def fresh_units(self) -> int:
+        return self.analyzed + self.failed
+
     def add(self, result: PassResult) -> None:
         if result.failed:
             self.failed += 1

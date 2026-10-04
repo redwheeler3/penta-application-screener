@@ -1,9 +1,9 @@
 """Operational-metrics trends for the Observability tab.
 
-Every completed run persisted a ``RunCostLedger`` + child ``RunPassCost`` rows (see
+Each recorded attempt persists a ``RunCostLedger`` + child ``RunPassCost`` rows (see
 ``cost_report``). This module reads those rows for cost, tokens, latency, cache-hit rate, and failure
-counts per run and per pass, plus the final dimension count captured with each completed Rank.
-These are persisted run facts; unrelated or incomplete analyses do not supply metrics.
+counts per run and per pass, plus status and the final dimension count captured with each completed Rank.
+These are persisted attempt facts; unrelated analyses do not supply metrics.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from app.services.cost_report import CACHEABLE_PASSES, opening_label
 
 
 def metrics_report(db: Session) -> MetricsReport:
-    """Per-run and per-pass operational trends across all completed runs, oldest→newest."""
+    """Per-run and per-pass operational trends across recorded attempts, oldest→newest."""
     ledgers = list(
         db.scalars(select(RunCostLedger).options(
             selectinload(RunCostLedger.passes),
@@ -35,13 +35,15 @@ def metrics_report(db: Session) -> MetricsReport:
         # shouldn't dilute the rate toward 0. None when there was no cacheable work.
         cacheable = [r for r in rows if r.label in CACHEABLE_PASSES]
         cached = sum(r.cached_count for r in cacheable)
-        fresh = sum(r.calls for r in cacheable)
-        hit_rate = cached / (cached + fresh) if (cached + fresh) else None
+        fresh = sum(r.fresh_units or 0 for r in cacheable)
+        measured = all(r.fresh_units is not None for r in cacheable)
+        hit_rate = cached / (cached + fresh) if measured and (cached + fresh) else None
 
         runs.append(
             TrendPoint(
                 at=utc_isoformat(ledger.created_at),
                 kind=ledger.kind,
+                status=ledger.status, failed_pass=ledger.failed_pass,
                 cost_usd=round(sum(r.cost_usd for r in rows), 6),
                 input_tokens=sum(r.input_tokens for r in rows),
                 output_tokens=sum(r.output_tokens for r in rows),

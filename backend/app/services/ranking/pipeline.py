@@ -14,9 +14,10 @@ from app.ai.analysis import (
 from app.ai.dimension_consolidation import Consolidation, consolidate_dimensions
 from app.ai.dimension_discovery import DiscoverySeeds, eligible_applications
 from app.ai.dimension_scoring import applications_to_score, score_dimensions
-from app.ai.pricing import PassCost
+from app.ai.pricing import MeasuredProvider, PassCost
 from app.ai.provider import AIProvider
 from app.ai.schemas import PoolDimensionReport
+from app.core.work_cancellation import WorkCancelled
 from app.db.models import Analysis, MemberRanking, User
 from app.schemas.events import (
     CriteriaPhaseEvent,
@@ -31,7 +32,7 @@ from app.schemas.events import (
 )
 from app.schemas.events import ErrorEvent as StreamErrorEvent
 from app.schemas.settings import AppSettings
-from app.services.cost_report import record_run_cost
+from app.services.cost_report import RANK_PASS_LABELS, record_run_cost
 from app.services.ranking.analysis import (
     all_known_dimensions,
     apply_consolidation,
@@ -42,6 +43,7 @@ from app.services.ranking.analysis import (
     key_history,
 )
 from app.services.ranking.criteria import (
+    CriteriaFailure,
     CriteriaPassResult,
     CriteriaStageChange,
     run_criteria_passes,
@@ -54,6 +56,7 @@ from app.services.ranking.member_state import (
     get_or_create_member_ranking,
     tier_history,
 )
+from app.services.run_lock import RunLeaseLost
 from app.services.stream_worker import StreamWorker
 
 # Phase names for the rank stream (every event carries one, so the client's
@@ -83,10 +86,18 @@ class ScoreTally:
     processed: int = 0
     # Completed provider replies, distinct from analyzed per-dimension cache units.
     fresh_calls: int = 0
+    failed_units: int = 0
+
+    @property
+    def fresh_units(self) -> int:
+        return self.analyzed + self.failed_units
 
     def add(self, result: PassResult) -> None:
         if result.failed:
             self.failed += 1
+            self.failed_units += result.fresh_units or 0
+            self.cached += result.cached_units or 0
+            self.cached_saved_usd += result.cached_saved_usd or 0.0
             if result.failure_cost is not None:
                 self.fresh_calls += result.failure_cost.calls
                 self.cost_usd += result.failure_cost.cost_usd
@@ -137,7 +148,7 @@ class _CriteriaResult:
 
 
 def _stream_criteria(
-    db: Session, provider: AIProvider, settings: AppSettings, user: User, opening_id: int
+    db: Session, provider: AIProvider, settings: AppSettings, user: User, opening_id: int, estimated_usd: float
 ) -> Generator[str, None, _CriteriaResult | None]:
     """Load prior state, stream the criteria worker, then persist the completed result.
 
@@ -207,7 +218,14 @@ def _stream_criteria(
     worker.join()
 
     if worker.error is not None:
-        exc = worker.error
+        failure = worker.error
+        exc = failure.cause if isinstance(failure, CriteriaFailure) else failure
+        if isinstance(failure, CriteriaFailure):
+            record_run_cost(db, kind="rank", status="failed", failed_pass=failure.failed_pass,
+                failure_type=exception_type_name(exc)[:120],
+                passes={label: failure.costs.get(label, PassCost()) for label in RANK_PASS_LABELS},
+                durations_ms=failure.durations, estimated_usd=estimated_usd,
+                triggered_by_user_id=user.id, opening_id=opening_id)
         log.warning(
             "Rank criteria phase failed: %s",
             exception_type_name(exc), exc_info=exc,
@@ -283,13 +301,13 @@ def _stream_criteria(
 
 def _stream_scoring(
     db: Session, provider: AIProvider, settings: AppSettings,
-    opening_id: int, report: PoolDimensionReport
+    opening_id: int, report: PoolDimensionReport, tally: ScoreTally | None = None
 ) -> Generator[str, None, tuple[ScoreTally, int]]:
     """Phase 2 — score every eligible candidate against the new dimensions, emitting
     per-candidate progress. Returns the run's scoring tally + the pass's wall-clock (ms)."""
     to_score = applications_to_score(db, opening_id)
     yield emit(PhaseEvent(phase=SCORES, total=len(to_score)))
-    tally = ScoreTally()
+    tally = tally if tally is not None else ScoreTally()
     _t0 = time.perf_counter()
     for processed, result in enumerate(
         score_dimensions(
@@ -304,7 +322,7 @@ def _stream_scoring(
 
 
 def _stream_consolidate(
-    db: Session, provider: AIProvider, settings: AppSettings,
+    db: Session, provider: MeasuredProvider, settings: AppSettings,
     analysis: Analysis, member_ranking: MemberRanking, report: PoolDimensionReport,
 ) -> Generator[str, None, tuple[Consolidation, int]]:
     """Phase 2b — consolidate duplicate dimensions.
@@ -371,8 +389,11 @@ def _stream_consolidate(
             "Rank consolidation phase failed: %s",
             exception_type_name(exc), exc_info=exc,
         )
+        yield emit(WarningEvent(phase=CONSOLIDATE,
+            message="Duplicate-criteria cleanup could not finish. Current criteria and scores were kept."))
     consolidation = (
-        Consolidation(merges={}, narrative=None, audit=[], cost=PassCost())
+        Consolidation(merges={}, narrative=None, audit=[],
+            cost=replace(provider.snapshot(), failed_calls=max(1, provider.snapshot().failed_calls)))
         if worker.error is not None
         else worker.result
     )
@@ -395,33 +416,61 @@ def stream_rank(
     estimated_usd: float,
 ) -> Iterator[str]:
     """Run all Rank phases and yield their NDJSON events."""
-    criteria = yield from _stream_criteria(db, provider, settings, user, opening_id)
+    criteria = yield from _stream_criteria(db, provider, settings, user, opening_id, estimated_usd)
     if criteria is None:
         return
-    total_cost = (
-        criteria.discovery_cost + criteria.decompose_cost + criteria.match_cost
-    ).cost_usd
+    recorded = {"Pattern discovery": criteria.discovery_cost, "Dimension decomposition": criteria.decompose_cost,
+        "Dimension matching": criteria.match_cost}
+    durations = dict(criteria.durations)
+    score_tally = ScoreTally()
+    failed_pass = "Dimension scoring"
+    started = time.perf_counter()
+    scoring_meter = MeasuredProvider(provider)
+    consolidation_meter = MeasuredProvider(provider)
+    try:
+        total_cost = (
+            criteria.discovery_cost + criteria.decompose_cost + criteria.match_cost
+        ).cost_usd
 
-    score_tally, scoring_ms = yield from _stream_scoring(
-        db,
-        provider,
-        settings,
-        opening_id,
-        criteria.report,
-    )
-    total_cost += score_tally.cost_usd
+        score_tally, scoring_ms = yield from _stream_scoring(
+            db,
+            scoring_meter,
+            settings,
+            opening_id,
+            criteria.report, tally=score_tally,
+        )
+        total_cost += score_tally.cost_usd
+        recorded["Dimension scoring"] = score_tally.as_pass_cost(settings.ai.dimension_scoring_model)
+        durations["Dimension scoring"] = scoring_ms
 
-    consolidation, consolidate_ms = yield from _stream_consolidate(
-        db,
-        provider,
-        settings,
-        criteria.analysis,
-        criteria.member_ranking,
-        criteria.report,
-    )
-    total_cost += consolidation.cost.cost_usd
-    final_report = current_dimension_report(criteria.analysis)
-    dimension_count = len(final_report.dimensions) if final_report is not None else 0
+        failed_pass = "Dimension consolidation"
+        started = time.perf_counter()
+        consolidation, consolidate_ms = yield from _stream_consolidate(
+            db,
+            consolidation_meter,
+            settings,
+            criteria.analysis,
+            criteria.member_ranking,
+            criteria.report,
+        )
+        total_cost += consolidation.cost.cost_usd
+        final_report = current_dimension_report(criteria.analysis)
+        dimension_count = len(final_report.dimensions) if final_report is not None else 0
+
+    except (WorkCancelled, RunLeaseLost):
+        raise
+    except Exception as error:
+        db.rollback()
+        active_meter = scoring_meter if failed_pass == "Dimension scoring" else consolidation_meter
+        recorded[failed_pass] = active_meter.snapshot()
+        durations[failed_pass] = round((time.perf_counter() - started) * 1000)
+        record_run_cost(db, kind="rank", status="failed", failed_pass=failed_pass,
+            failure_type=exception_type_name(error)[:120],
+            passes={label: recorded.get(label, PassCost()) for label in RANK_PASS_LABELS},
+            durations_ms=durations, estimated_usd=estimated_usd, triggered_by_user_id=user.id, opening_id=opening_id)
+        yield emit(StreamErrorEvent(phase=SCORES if failed_pass == "Dimension scoring" else CONSOLIDATE,
+            message=f"Ranking failed during {failed_pass}. Saved results remain available."))
+        return
 
     record_run_cost(
         db,

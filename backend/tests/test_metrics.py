@@ -29,6 +29,21 @@ def make_session() -> Session:
     return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
 
 
+def test_cache_rate_uses_dimension_units_not_batched_provider_replies() -> None:
+    db = make_session()
+    record_run_cost(db, kind="rank_scores", passes={
+        "Dimension scoring": PassCost(calls=1, fresh_units=5, cached_count=5),
+    })
+    assert metrics_report(db).runs[0].cache_hit_rate == 0.5
+
+
+def test_historical_cache_rate_without_explicit_units_stays_unknown() -> None:
+    db = make_session()
+    db.add(RunCostLedger(kind="rank", passes=[RunPassCost(label="Dimension scoring", calls=1, cached_count=5)]))
+    db.commit()
+    assert metrics_report(db).runs[0].cache_hit_rate is None
+
+
 def test_metrics_report_includes_the_member_who_triggered_a_run() -> None:
     db = make_session()
     db.add(User(email="member@example.com", display_name="Committee Member", role=UserRole.MEMBER))
