@@ -366,17 +366,25 @@ def run_in_pool(
     ordering (a slow call never blocks faster ones), per-item error isolation. Does
     NO DB/ORM work — ``call`` must be session-free, and the caller does all DB work
     on its own thread around this generator.
+
+    Closing or aborting the consumer cancels queued calls without waiting for active
+    calls. Those pure calls may finish, but cannot retain a request transaction.
     """
     if not items:
         return
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(items))) as pool:
+    pool = ThreadPoolExecutor(max_workers=min(max_workers, len(items)))
+    try:
         futures = {pool.submit(call, item): item for item in items}
         for future in as_completed(futures):
             item = futures[future]
             try:
-                yield item, future.result(), None
+                result = future.result()
             except Exception as exc:
                 yield item, None, exc
+            else:
+                yield item, result, None
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 PER_APPLICATION_TIMEOUT_RETRIES = 1

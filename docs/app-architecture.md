@@ -59,6 +59,9 @@ between scoring missing applicants and discovering criteria. Both read run state
 The shared NDJSON reader accepts a final event without a trailing newline and releases its reader
 on completion or failure. Screen, Rank, and Evals require a summary or fatal error before treating
 the stream as finished; an earlier end reports interrupted progress and preserves saved results.
+An interrupted per-applicant worker pool cancels calls that have not started and lets its
+session-free active calls finish independently. Cleanup releases pending database writes
+without waiting for provider responses, so the interrupted run does not hold SQLite's writer.
 Run completion and proposal restoration retain their opening generation, so an earlier run
 cannot clear another opening's candidate or restore its old proposals into that workspace.
 
