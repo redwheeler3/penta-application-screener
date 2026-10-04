@@ -887,6 +887,8 @@ class RunCostLedger(TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(
         String(20), nullable=False, index=True
     )  # screen | rank | rank_scores
+    # Final Rank count at completion; None means it was not measured for this run.
+    dimension_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # The pre-run cost projection (the number the confirmation card showed the committee),
     # captured so estimate-vs-actual drift is queryable. 0.0 means no estimate is available.
     estimated_usd: Mapped[float] = mapped_column(

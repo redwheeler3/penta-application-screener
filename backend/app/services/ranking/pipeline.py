@@ -408,6 +408,8 @@ def stream_rank(
         criteria.report,
     )
     total_cost += consolidation.cost.cost_usd
+    final_report = current_dimension_report(criteria.analysis)
+    dimension_count = len(final_report.dimensions) if final_report is not None else 0
 
     record_run_cost(
         db,
@@ -429,11 +431,12 @@ def stream_rank(
         estimated_usd=estimated_usd,
         triggered_by_user_id=user.id,
         opening_id=opening_id,
+        dimension_count=dimension_count,
     )
 
     yield emit(
         RankSummary(
-            dimensions=len(criteria.report.dimensions),
+            dimensions=dimension_count,
             scored=score_tally.processed,
             failed=score_tally.failed,
             total_cost_usd=round(total_cost, 4),

@@ -301,7 +301,7 @@ async def test_cost_surfaces_agree_on_rank_passes() -> None:
 
 @pytest.mark.anyio
 async def test_observability_metrics_trends_after_a_rank() -> None:
-    # Metrics include run latency, live dimensions, and a per-pass breakdown.
+    # Metrics include run latency, the final dimension count, and a per-pass breakdown.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
@@ -318,7 +318,7 @@ async def test_observability_metrics_trends_after_a_rank() -> None:
         # Latency is measured (wall-clock ms); a real pass takes nonzero time.
         assert run["durationMs"] >= 0
         assert run["failedCalls"] == 0
-        # a_pattern_report has 2 dimensions; the live count carries through.
+        # a_pattern_report has 2 dimensions; the completed run captures that count.
         assert run["dimensions"] == 2
         # Per-pass series covers this run's passes, each with its own duration slot.
         labels = {p["label"] for p in metrics["passes"]}

@@ -45,6 +45,30 @@ def test_publication_migration_preserves_openings_and_enforces_request_identity(
         get_settings.cache_clear()
 
 
+def test_run_dimension_count_migration_preserves_unmeasured_history(tmp_path, monkeypatch) -> None:
+    backend = Path(__file__).parents[1]
+    url = f"sqlite:///{(tmp_path / 'run-dimensions.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "alembic"))
+        command.upgrade(config, "5b6c7d8e9f0a")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("INSERT INTO run_cost_ledger (kind, estimated_usd, created_at, updated_at) "
+                "VALUES ('rank', 0.25, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+        engine.dispose()
+        command.upgrade(config, "head")
+        engine = create_engine(url)
+        with engine.connect() as connection:
+            row = connection.exec_driver_sql("SELECT kind, estimated_usd, dimension_count FROM run_cost_ledger").one()
+            assert row == ("rank", 0.25, None)
+        engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+
 def test_cache_identity_migration_can_build_rank_fingerprints() -> None:
     migration_path = (
         Path(__file__).parents[1]

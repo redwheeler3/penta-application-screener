@@ -163,8 +163,11 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await stream_events(client, "/ranking/run")
+        events = await stream_events(client, "/ranking/run")
+        metrics = (await client.get("/observability/metrics")).json()
 
+    assert next(item for item in events if item["type"] == "summary")["dimensions"] == 1
+    assert metrics["runs"][0]["dimensions"] == 1
     run = get_latest_analysis(db)
     keys = {d["key"] for d in run.dimension_report["dimensions"]}
     # Collapsed 2 → 1: the newer key (financial_stewardship) is aliased into the older.

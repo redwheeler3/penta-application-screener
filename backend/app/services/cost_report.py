@@ -74,6 +74,7 @@ def record_run_cost(
     estimated_usd: float = 0.0,
     triggered_by_user_id: int | None = None,
     opening_id: int | None = None,
+    dimension_count: int | None = None,
 ) -> None:
     """Persist a completed run's per-pass cost (``kind`` = "screen" | "rank" |
     "rank_scores"), one
@@ -92,6 +93,7 @@ def record_run_cost(
     durations_ms = durations_ms or {}
     header = RunCostLedger(
         kind=kind,
+        dimension_count=dimension_count,
         estimated_usd=round(estimated_usd, 6),
         triggered_by_user_id=triggered_by_user_id,
         opening_id=opening_id,
