@@ -134,7 +134,25 @@ class RunStreamingResponse(StreamingResponse):
                 raise
 
         try:
-            await super().__call__(scope, monitored_receive, monitored_send)
+            version = tuple(int(part) for part in scope.get("asgi", {}).get("spec_version", "2.0").split("."))
+            if scope["type"] == "http" and version >= (2, 4):
+                # This transport mode relies on send failures; also observe disconnects
+                # while a provider is silent and there is nothing available to send.
+                try:
+                    async with anyio.create_task_group() as tasks:
+                        async def watch_disconnect():
+                            await self.listen_for_disconnect(monitored_receive)
+                            tasks.cancel_scope.cancel()
+
+                        tasks.start_soon(watch_disconnect)
+                        await super().__call__(scope, monitored_receive, monitored_send)
+                        tasks.cancel_scope.cancel()
+                except BaseExceptionGroup as error:
+                    if len(error.exceptions) == 1:
+                        raise error.exceptions[0] from None
+                    raise
+            else:
+                await super().__call__(scope, monitored_receive, monitored_send)
         finally:
             self._cancelled.set()
             # Disconnect cancellation must not cancel its own database cleanup.

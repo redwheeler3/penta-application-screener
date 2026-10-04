@@ -109,7 +109,8 @@ async def test_disconnect_releases_lease_and_rolls_back_without_garbage_collecti
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("worker_kind", ["pool", "callback"])
-async def test_disconnect_stops_a_silent_wait_and_heartbeat_before_provider_returns(tmp_path, monkeypatch, worker_kind) -> None:
+@pytest.mark.parametrize("version", ["2.3", "2.4"])
+async def test_disconnect_stops_a_silent_wait_and_heartbeat_before_provider_returns(tmp_path, monkeypatch, worker_kind, version) -> None:
     engine = engine_for(tmp_path)
     started, finish, finished = Event(), Event(), Event()
     closed, calls, renewals = [], [], []
@@ -163,7 +164,7 @@ async def test_disconnect_stops_a_silent_wait_and_heartbeat_before_provider_retu
                 pass
 
             with anyio.fail_after(2):
-                await response({"type": "http", "asgi": {"spec_version": "2.3"}}, receive, send)
+                await response({"type": "http", "asgi": {"spec_version": version}}, receive, send)
             assert not finished.is_set()
             assert closed == [True]
             assert calls == [1]
