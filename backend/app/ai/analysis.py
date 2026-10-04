@@ -11,7 +11,8 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable, Iterator
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextvars import copy_context
 from dataclasses import dataclass
 from typing import TypedDict, TypeVar
 
@@ -23,6 +24,11 @@ from app.ai.model_catalog import ReasoningEffort, model_identity
 from app.ai.pricing import cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.ai.result_selection import select_results
+from app.core.work_cancellation import (
+    WorkCancelled,
+    cancellation_event,
+    check_cancelled,
+)
 from app.db.models import Application, ApplicationAIResult
 
 # Work item / result types for run_in_pool.
@@ -374,15 +380,27 @@ def run_in_pool(
         return
     pool = ThreadPoolExecutor(max_workers=min(max_workers, len(items)))
     try:
-        futures = {pool.submit(call, item): item for item in items}
-        for future in as_completed(futures):
-            item = futures[future]
-            try:
-                result = future.result()
-            except Exception as exc:
-                yield item, None, exc
-            else:
-                yield item, result, None
+        def run(item: T) -> R:
+            check_cancelled()
+            return call(item)
+
+        futures = {pool.submit(copy_context().run, run, item): item for item in items}
+        pending = set(futures)
+        timeout = 0.25 if cancellation_event() is not None else None
+        while pending:
+            check_cancelled()
+            completed, pending = wait(pending, timeout=timeout, return_when=FIRST_COMPLETED)
+            for future in completed:
+                check_cancelled()
+                item = futures[future]
+                try:
+                    result = future.result()
+                except WorkCancelled:
+                    raise
+                except Exception as exc:
+                    yield item, None, exc
+                else:
+                    yield item, result, None
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
 
@@ -400,6 +418,7 @@ def retry_per_application_timeout(
     retrying only the missing applicant lets the rest of the batch stay cached.
     """
     for attempt in range(PER_APPLICATION_TIMEOUT_RETRIES + 1):
+        check_cancelled()
         try:
             return call()
         except TimeoutError:

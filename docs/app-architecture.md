@@ -62,6 +62,10 @@ the stream as finished; an earlier end reports interrupted progress and preserve
 An interrupted per-applicant worker pool cancels calls that have not started and lets its
 session-free active calls finish independently. Cleanup releases pending database writes
 without waiting for provider responses, so the interrupted run does not hold SQLite's writer.
+`RunStreamingResponse` owns HTTP disconnect and send-failure cleanup for Screen, Rank, and
+score-only runs. Its cooperative cancellation signal reaches worker pools and callback waits;
+cleanup stops renewal and releases the owned lease even before the first body chunk. Each
+generator resume binds its cancellation context separately because ASGI may change worker threads.
 Run completion and proposal restoration retain their opening generation, so an earlier run
 cannot clear another opening's candidate or restore its old proposals into that workspace.
 

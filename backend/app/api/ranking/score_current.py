@@ -4,7 +4,6 @@ import time
 from collections.abc import Generator
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import SpendingCapExceeded, enforce_cap
@@ -29,7 +28,7 @@ from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.pipeline import SCORES, ScoreTally
 from app.services.run_lock import acquire_run_lock, release_run_lock
-from app.services.run_stream import leased_run_stream
+from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/ranking")
@@ -69,7 +68,7 @@ def score_current(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
-) -> StreamingResponse:
+) -> RunStreamingResponse:
     """Fill missing scores without changing the current dimensions or tier layout."""
     opening_id = resolve_visible_opening_id(db, opening_id)
     lease = acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND)
@@ -140,4 +139,4 @@ def score_current(
             )
         )
 
-    return StreamingResponse(leased_run_stream(db, lease, stream(), phase=SCORES), media_type="application/x-ndjson")
+    return RunStreamingResponse(db, lease, stream(), phase=SCORES)

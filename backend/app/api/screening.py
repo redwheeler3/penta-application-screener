@@ -3,7 +3,6 @@ from collections.abc import Generator
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import SpendingCapExceeded, enforce_cap
@@ -32,7 +31,7 @@ from app.services.applications.scope import resolve_visible_opening_id
 from app.services.cost_report import record_run_cost
 from app.services.openings.selection import require_ai_actions_available
 from app.services.run_lock import acquire_run_lock
-from app.services.run_stream import leased_run_stream
+from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings
 
 router = APIRouter(prefix="/screening", tags=["screening"])
@@ -106,7 +105,7 @@ def run(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
     provider: AIProvider = Depends(get_ai_provider),
-) -> StreamingResponse:
+) -> RunStreamingResponse:
     """Run the screening pass over the candidate applications, streaming progress.
 
     Responds as newline-delimited JSON (NDJSON): one ``{"type":"progress",...}``
@@ -199,4 +198,4 @@ def run(
             )
         )
 
-    return StreamingResponse(leased_run_stream(db, lease, stream(), phase=PHASE), media_type="application/x-ndjson")
+    return RunStreamingResponse(db, lease, stream(), phase=PHASE)
