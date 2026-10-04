@@ -278,6 +278,8 @@ detail navigation use that boundary. Background refresh failures preserve the la
 data within the current workspace. Tier and proposal writes share a serial queue in `useRanking.ts`;
 queued writes retain their opening and analysis scope, and only the latest edit's response updates
 its optimistic display. A write for an opening the member has left cannot update the new workspace.
+Every ranking mutation invalidates older board reads. A failed save waits for already-queued
+edits to settle, then reloads the displayed board or the current-run metadata if no board is loaded.
 Backend edits hold the run-lease row from the policy check through commit, so Rank cannot start
 between checking the current analysis and saving a tier or proposal. Member JSON is reloaded
 under the writer lock before merging independently editable fields. First eligibility-rule saves

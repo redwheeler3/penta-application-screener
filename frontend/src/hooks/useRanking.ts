@@ -98,6 +98,11 @@ export function useRanking(
   function enqueueMutation(isCurrent: RequestIsCurrent, request: () => Promise<Response>) {
     pendingMutations.current.add(isCurrent);
     currentReads.invalidate();
+    boardReads.invalidate();
+    setRankingLoadState((state) => {
+      if (state !== "loading") return state;
+      return boardRef.current !== null ? "ready" : "idle";
+    });
     const result = mutationQueue.current.then(() => isCurrent() ? request() : undefined);
     mutationQueue.current = result.then(() => {}, () => {});
     return result.finally(() => { pendingMutations.current.delete(isCurrent); });
@@ -182,6 +187,14 @@ export function useRanking(
     }
   }
 
+  async function reloadAfterSaveFailure(isLatest: RequestIsCurrent, requiresBoard = false) {
+    // Let already-queued edits settle before reading their combined server state.
+    await mutationQueue.current;
+    if (!isLatest()) return;
+    if (requiresBoard || boardRef.current !== null) await loadRanking();
+    else await refreshRankingRun();
+  }
+
   async function saveTiers(
     next: Tier[], acknowledgedKeys: string[] = [], acknowledgedRequestedKeys: string[] = [],
   ): Promise<void> {
@@ -189,7 +202,6 @@ export function useRanking(
     const inScope = mutations.capture();
     const version = ++tierSaveVersion.current;
     const isLatest = () => inScope() && version === tierSaveVersion.current;
-    boardReads.invalidate();
     tiersRef.current = next;
     setTiers(next);
     try {
@@ -214,13 +226,13 @@ export function useRanking(
         const { handled, message } = await handleSaveFailure(response, isLatest);
         if (!handled && isLatest()) {
           onError(message ?? "Could not update the tiers.");
-          await loadRanking();
+          await reloadAfterSaveFailure(isLatest, true);
         }
       }
     } catch {
       if (!isLatest()) return;
       onError("Could not update the tiers.");
-      await loadRanking();
+      await reloadAfterSaveFailure(isLatest, true);
     }
   }
 
@@ -262,13 +274,13 @@ export function useRanking(
         const { handled, message } = await handleSaveFailure(response, isLatest);
         if (!handled && isLatest()) {
           onError(message ?? "Could not save the suggested criteria.");
-          await refreshRankingRun();
+          await reloadAfterSaveFailure(isLatest);
         }
       }
     } catch {
       if (!isLatest()) return;
       onError("Could not save the suggested criteria.");
-      await refreshRankingRun();
+      await reloadAfterSaveFailure(isLatest);
     }
   }
 

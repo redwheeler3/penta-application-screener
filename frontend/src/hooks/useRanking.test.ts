@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import * as api from "../api/ranking";
@@ -24,6 +24,63 @@ const board = (analysisId: number, tiers: Tier[] = []): RankingBoardResponse => 
 });
 const tier = (label: string): Tier[] => [{ id: "important", label, dimensionKeys: [] }];
 beforeEach(() => vi.resetAllMocks());
+
+it("keeps saved proposals when an earlier board refresh finishes late", async () => {
+  const earlier = deferred<RankingBoardResponse>();
+  vi.mocked(api.fetchRankingBoard).mockResolvedValueOnce(board(1)).mockReturnValueOnce(earlier.promise);
+  vi.mocked(api.saveSeeds).mockResolvedValueOnce(Response.json({ proposedDimensions: ["Saved"] }))
+    .mockResolvedValueOnce(Response.json({ proposedDimensions: ["Saved", "Second"] }));
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.loadRanking());
+  let refreshing!: Promise<boolean>;
+  act(() => { refreshing = result.current.loadRanking(); });
+  await act(async () => result.current.addProposal("Saved"));
+  expect(result.current.rankingRun?.proposedDimensions).toEqual(["Saved"]);
+  expect(result.current.rankingLoadState).toBe("ready");
+  await act(async () => { earlier.resolve(board(1)); expect(await refreshing).toBe(false); });
+  expect(result.current.rankingRun?.proposedDimensions).toEqual(["Saved"]);
+  await act(async () => result.current.addProposal("Second"));
+  expect(vi.mocked(api.saveSeeds).mock.calls[1][2].proposedDimensions).toEqual(["Saved", "Second"]);
+});
+
+it.each(["http", "network"])("reconciles a failed proposal with the displayed board after a %s failure", async (failure) => {
+  const saved = board(1);
+  saved.run.proposedDimensions = ["Existing"];
+  saved.ranking.proposedDimensions = ["Existing"];
+  vi.mocked(api.fetchRankingBoard).mockResolvedValue(saved);
+  if (failure === "http") vi.mocked(api.saveSeeds).mockResolvedValue(new Response(null, { status: 503 }));
+  else vi.mocked(api.saveSeeds).mockRejectedValue(new Error("Synthetic network failure"));
+  const error = vi.fn();
+  const { result } = renderHook(() => useRanking(1, error));
+  await act(() => result.current.loadRanking());
+  await act(async () => result.current.addProposal("Rejected"));
+  await waitFor(() => expect(api.fetchRankingBoard).toHaveBeenCalledTimes(2));
+  expect(error).toHaveBeenCalledOnce();
+  expect(api.fetchRankingCurrent).not.toHaveBeenCalled();
+  expect(result.current.rankingRun?.proposedDimensions).toEqual(["Existing"]);
+  expect(result.current.rankingLoadState).toBe("ready");
+});
+
+it("waits for queued tier saves before reconciling a failed proposal", async () => {
+  const proposal = deferred<Response>();
+  const tiers = deferred<Response>();
+  vi.mocked(api.fetchRankingBoard).mockResolvedValueOnce(board(1))
+    .mockResolvedValueOnce(board(1, tier("Accepted")));
+  vi.mocked(api.saveSeeds).mockReturnValue(proposal.promise);
+  vi.mocked(api.saveTiers).mockReturnValue(tiers.promise);
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.loadRanking());
+  await act(async () => result.current.addProposal("Rejected"));
+  let saving!: Promise<void>;
+  act(() => { saving = result.current.saveTiers(tier("Accepted")); });
+  await act(async () => proposal.resolve(new Response(null, { status: 503 })));
+  expect(api.saveTiers).toHaveBeenCalledOnce();
+  expect(api.fetchRankingBoard).toHaveBeenCalledOnce();
+  await act(async () => { tiers.resolve(Response.json(ranking(1))); await saving; });
+  await waitFor(() => expect(api.fetchRankingBoard).toHaveBeenCalledTimes(2));
+  expect(result.current.tiers).toEqual(tier("Accepted"));
+  expect(result.current.rankingRun?.proposedDimensions).toEqual([]);
+});
 
 it("ignores old current-analysis and board responses after an opening change", async () => {
   const oldCurrent = deferred<CurrentRunResponse>();
