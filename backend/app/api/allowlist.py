@@ -7,13 +7,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
 from app.core.problems import Problem
 from app.core.text import normalize_email
-from app.db.models import User, UserRole
+from app.db.models import AccessAllowlistEntry, User, UserRole
 from app.db.session import get_db
 from app.schemas.allowlist import (
     AllowlistEntryOut,
@@ -66,7 +66,15 @@ def _response(db: Session) -> AllowlistResponse:
 
 
 def _admin_count(db: Session) -> int:
-    return sum(1 for e in allowlist.list_entries(db) if e.role == UserRole.ADMIN)
+    return db.scalar(select(func.count()).select_from(AccessAllowlistEntry)
+        .where(AccessAllowlistEntry.role == UserRole.ADMIN)) or 0
+
+
+def _lock_access_management(db: Session, actor: User) -> User:
+    current = allowlist.lock_admin_changes(db, actor.id)
+    if current is None:
+        raise Problem("forbidden", detail="Your admin access changed. Please sign in again.")
+    return current
 
 
 @router.get("/denied-attempts", response_model=DeniedSignInAttemptsResponse)
@@ -112,6 +120,7 @@ def upsert_allowlist_entry(
 ) -> AllowlistMutationResponse:
     """Add an allowed email or change its role. Adding an ``admin`` entry grants
     admin — the allowlist is the role-management surface."""
+    _admin = _lock_access_management(db, _admin)
     target_email = normalize_email(body.email)
     existing = allowlist.get_entry(db, target_email)
     demoting_current_admin = (
@@ -166,6 +175,7 @@ def remove_allowlist_entry(
     db: Session = Depends(get_db),
 ) -> AllowlistResponse:
     """Remove committee access and revoke the account's sessions and unused links."""
+    _lock_access_management(db, _admin)
     existing = allowlist.get_entry(db, email)
     removing_last_admin = (
         existing is not None

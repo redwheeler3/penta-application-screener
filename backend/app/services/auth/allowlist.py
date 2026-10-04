@@ -8,7 +8,7 @@ as permanent administrators and cannot be demoted or removed in-app.
 
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings, resolve_backend_path
@@ -30,11 +30,25 @@ class SeedAdminProtectedError(ValueError):
     """Raised when code tries to demote or remove a permanent seed admin."""
 
 
+def lock_admin_changes(db: Session, actor_id: int) -> User | None:
+    """Serialize access mutations, then reload the actor's authority under the writer lock.
+
+    Current admin entries are the shared protection boundary. SQLite's writer stays
+    held through validation, session revocation, and commit; no email I/O occurs here.
+    """
+    with db.no_autoflush:
+        db.execute(update(AccessAllowlistEntry).where(AccessAllowlistEntry.role == UserRole.ADMIN)
+            .values(role=AccessAllowlistEntry.role, updated_at=AccessAllowlistEntry.updated_at)
+            .execution_options(synchronize_session=False))
+    actor = db.get(User, actor_id, populate_existing=True)
+    return actor if actor is not None and actor.is_active and actor.role == UserRole.ADMIN else None
+
+
 def get_entry(db: Session, email: str) -> AccessAllowlistEntry | None:
     return db.scalar(
         select(AccessAllowlistEntry).where(
             AccessAllowlistEntry.email == normalize_email(email)
-        )
+        ).execution_options(populate_existing=True)
     )
 
 
