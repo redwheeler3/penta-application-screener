@@ -317,6 +317,7 @@ def _stream_consolidate(
     yield emit(PhaseEvent(phase=CONSOLIDATE))
     _t0 = time.perf_counter()
     canonical_rank, known_defs, known_names = key_history(db)
+    vectors = load_score_vectors(db)
 
     worker: StreamWorker[str, Consolidation] = StreamWorker()
 
@@ -325,7 +326,7 @@ def _stream_consolidate(
             provider,
             report=report,
             canonical_rank=canonical_rank,
-            vectors=load_score_vectors(db),
+            vectors=vectors,
             definitions=known_defs,
             names=known_names,
             settings=settings,

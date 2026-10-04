@@ -496,6 +496,10 @@ removed. They do not show an applicant-removal link.
   maintained with manual Open and Close actions. The dates may be equal but cannot run backward:
   open is on or before close, which is on or before move-in. A committee decision, not a calendar
   date, archives the opening.
+  Opening announcements are prepared only while the opening is published and accepting
+  applications. Application recipients are rechecked against the current notification-audience
+  policy before an access credential is issued; obsolete notices are discarded without consuming
+  an unsent notification-list request.
   Publication carries a unique request identity and its original facts. Retrying an uncertain
   response returns that opening without queueing notifications again; separate identities allow
   legitimate openings with identical facts. An uncertain publication keeps its form facts fixed

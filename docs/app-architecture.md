@@ -231,6 +231,10 @@ quota failures retain a small semantic retry intent, not the rendered body. Cred
 rebuilt with a fresh, immediately usable token for each attempt; an unsuccessful attempt revokes
 that token. A newer credential request supersedes an older queued one for the same identity and
 purpose.
+Opening-announcement preparation rechecks the published opening's phase and the recipient's
+current lifecycle under the outbox attempt's writer lock. It uses the publication audience's
+same retained, submitted, non-withdrawn, non-selected application predicate. Expected cancellations
+do not raise a delivery-failure banner or consume an unsent subscription.
 Email-change retries retain the destination and initiating session of the original request.
 Cancelling an email change discards its queued confirmations and revokes its unused credentials
 in one transaction, while other application email intents remain available.
@@ -298,6 +302,9 @@ release matches both, so an expired run cannot release a same-user replacement.
 Ranking score assembly reads the newest result per applicant and criterion in one query, using
 row ID to break equal timestamps. It fetches only the fields used by ranking and preserves criterion
 order for the deterministic calculation.
+Consolidation also loads only current score vectors. It preserves first-seen criterion order so
+equal-correlation nominations keep their model-input order. Database reads occur before the worker
+starts; the worker receives plain vectors instead of sharing the request's database session.
 Candidate details capture their analysis, parsed criteria, and latest score/provenance rows once.
 The pure candidate score snapshot is reused in the pool calculation; that applicant's score rows
 are excluded from the second read. The trace loads current rows without old history or narratives.

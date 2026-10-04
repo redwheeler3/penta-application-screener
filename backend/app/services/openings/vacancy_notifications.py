@@ -1,8 +1,9 @@
 """Build and queue the complete audience when an opening is created."""
 
 from dataclasses import dataclass
+from datetime import date
 
-from sqlalchemy import exists, not_, select
+from sqlalchemy import Select, exists, not_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -125,23 +126,31 @@ def _queue_application_notice(
 
 
 def _notifiable_applications(db: Session) -> list[Application]:
+    return list(db.scalars(_notifiable_applications_query()).all())
+
+
+def notifiable_application(db: Session, application_id: int, *, today: date) -> Application | None:
+    """Reload one recipient using the same lifecycle policy as the publication audience."""
+    return db.scalar(_notifiable_applications_query(today=today)
+        .where(Application.id == application_id).execution_options(populate_existing=True))
+
+
+def _notifiable_applications_query(*, today: date | None = None) -> Select[tuple[Application]]:
     selected = exists(
         select(ApplicationParticipation.id).where(
             ApplicationParticipation.application_id == Application.id,
             ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
         )
     )
-    return list(
-        db.scalars(
-            select(Application)
-            .where(
-                Application.submitted_at.is_not(None),
-                Application.withdrawn_at.is_(None),
-                Application.retention_due_on > pacific_today(),
-                not_(selected),
-            )
-            .order_by(Application.id)
+    return (
+        select(Application)
+        .where(
+            Application.submitted_at.is_not(None),
+            Application.withdrawn_at.is_(None),
+            Application.retention_due_on > (today or pacific_today()),
+            not_(selected),
         )
+        .order_by(Application.id)
     )
 
 

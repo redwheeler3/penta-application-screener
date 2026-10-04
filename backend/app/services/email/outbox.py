@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.text import normalize_email
+from app.core.time import pacific_today
 from app.db.models import (
     EmailDelivery,
     EmailDeliveryState,
     MagicLinkPurpose,
     MagicLinkToken,
     Opening,
+    OpeningPhase,
     PasswordlessIdentityKind,
     VacancySubscription,
 )
@@ -37,6 +39,7 @@ from app.services.email.templates import (
     unsuccessful_application_email,
     vacancy_opening_email,
 )
+from app.services.openings.catalog import opening_phase
 from app.services.openings.notifications import (
     record_unsuccessful_delivery,
     unsuccessful_notice_is_available,
@@ -44,6 +47,7 @@ from app.services.openings.notifications import (
 from app.services.openings.subscriptions import consume_subscription, unit_sizes
 from app.services.openings.vacancy_notifications import (
     application_confirmation_timelines,
+    notifiable_application,
     opening_email_details,
 )
 
@@ -176,6 +180,8 @@ EXPECTED_FAILURE_CODES = frozenset(
         "VacancyRequestUnavailable",
         "OutcomeNoLongerDue",
         "EmailChangeCancelled",
+        "OpeningNoLongerOpen",
+        "ApplicationNoLongerNotifiable",
     }
 )
 FAILURE_BANNER_WINDOW = timedelta(days=7)
@@ -293,12 +299,13 @@ def _build_retry(
     if intent["type"] == "magic_link":
         return _build_magic_link_retry(db, delivery, intent, now=now)
     if intent["type"] == "vacancy_opening":
-        opening = db.get(Opening, int(intent["opening_id"]))
+        opening = _opening_for_notice(db, delivery, int(intent["opening_id"]), now=now)
+        if opening is None:
+            return None
         subscription_id = int(intent["subscription_id"])
         subscription = db.get(VacancySubscription, subscription_id, populate_existing=True)
         if (
-            opening is None
-            or delivery.recipient_email is None
+            delivery.recipient_email is None
             or subscription is None
             or subscription.email != normalize_email(delivery.recipient_email)
             or opening.unit_size_bedrooms not in unit_sizes(subscription)
@@ -388,8 +395,12 @@ def _build_retry(
             None,
         )
     if intent["type"] == "application_opening":
-        opening = db.get(Opening, int(intent["opening_id"]))
+        opening = _opening_for_notice(db, delivery, int(intent["opening_id"]), now=now)
         if opening is None:
+            return None
+        application = notifiable_application(db, application.id, today=pacific_today(now=now))
+        if application is None:
+            delivery.last_error_code = "ApplicationNoLongerNotifiable"
             return None
         issued = issue_magic_link(
             db,
@@ -424,6 +435,18 @@ def _build_retry(
             subscription_consented_at=subscription.consented_at if overlap else None,
         )
     return None
+
+
+def _opening_for_notice(db: Session, delivery: EmailDelivery, opening_id: int, *, now: datetime) -> Opening | None:
+    opening = db.get(Opening, opening_id, populate_existing=True)
+    if (
+        opening is None
+        or opening.published_at is None
+        or opening_phase(opening, today=pacific_today(now=now)) != OpeningPhase.OPEN
+    ):
+        delivery.last_error_code = "OpeningNoLongerOpen"
+        return None
+    return opening
 
 
 def _build_magic_link_retry(

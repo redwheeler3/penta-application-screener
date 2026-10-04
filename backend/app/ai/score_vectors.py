@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from math import sqrt
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.dimension_scoring import KIND_PREFIX
@@ -52,20 +52,37 @@ def pearson(xs: list[float], ys: list[float]) -> float | None:
 def load_score_vectors(db: Session) -> dict[str, dict[int, float]]:
     """Every dimension key ever scored → {application_id: latest score}.
 
-    Reads all ``dimension_scoring:<key>`` rows and keeps the newest per
-    (key, candidate) by ``created_at`` — the same "a re-score supersedes older rows"
-    rule the ranker uses, so this measures the scores the committee actually ranks on.
+    Reads the newest row per (key, candidate), ordered by timestamp and row ID,
+    using the same tie-breaking rule as the ranker. History and narratives stay in the DB.
     """
-    rows = db.scalars(
-        select(ApplicationAIResult)
+    first_seen_order = {
+        "partition_by": ApplicationAIResult.kind,
+        "order_by": (ApplicationAIResult.created_at, ApplicationAIResult.id),
+    }
+    latest = (
+        select(
+            ApplicationAIResult.kind,
+            ApplicationAIResult.application_id,
+            ApplicationAIResult.output,
+            func.first_value(ApplicationAIResult.created_at).over(**first_seen_order).label("first_seen_at"),
+            func.first_value(ApplicationAIResult.id).over(**first_seen_order).label("first_seen_id"),
+            func.row_number().over(
+                partition_by=(ApplicationAIResult.kind, ApplicationAIResult.application_id),
+                order_by=(ApplicationAIResult.created_at.desc(), ApplicationAIResult.id.desc()),
+            ).label("position"),
+        )
         .where(ApplicationAIResult.kind.like(f"{KIND_PREFIX}:%"))
-        .order_by(ApplicationAIResult.created_at)
+        .subquery()
     )
+    rows = db.execute(select(latest.c.kind, latest.c.application_id, latest.c.output)
+        .where(latest.c.position == 1)
+        # Equal correlations retain criterion order in the nomination list and model prompt.
+        .order_by(latest.c.first_seen_at, latest.c.first_seen_id, latest.c.application_id))
     vectors: dict[str, dict[int, float]] = {}
-    for row in rows:
-        key = row.kind.split(":", 1)[1]  # strip the "dimension_scoring:" prefix
-        score = float((row.output or {}).get("score", 0.0))
-        vectors.setdefault(key, {})[row.application_id] = score  # later row wins
+    for kind, application_id, output in rows:
+        key = kind.split(":", 1)[1]  # strip the "dimension_scoring:" prefix
+        score = float((output or {}).get("score", 0.0))
+        vectors.setdefault(key, {})[application_id] = score
     return vectors
 
 
