@@ -193,6 +193,8 @@ def cancel_applicant_email_change(
     db: Session = Depends(get_db),
 ) -> Response:
     require_application_not_selected(db, application)
+    cancel_queued_application_emails(db, application.id,
+        purpose=MagicLinkPurpose.EMAIL_CHANGE, error_code="EmailChangeCancelled")
     revoke_identity_magic_links(
         db,
         identity_kind=PasswordlessIdentityKind.APPLICANT,

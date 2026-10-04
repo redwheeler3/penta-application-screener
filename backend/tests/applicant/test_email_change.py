@@ -5,10 +5,76 @@ from sqlalchemy import select
 from app.db.models import (
     Application,
     BrowserSession,
+    EmailDelivery,
+    EmailDeliveryState,
     MagicLinkPurpose,
     MagicLinkToken,
+    PasswordlessIdentityKind,
+)
+from app.services.email.outbox import retry_queued_emails
+from app.services.email.sender import (
+    CapturedEmailSender,
+    EmailQuotaExceededError,
+    get_email_sender,
 )
 from tests.applicant.support import app_and_db, link_from_email, save_draft
+
+
+class QuotaBlockedSender:
+    def send(self, _message):
+        raise EmailQuotaExceededError("Synthetic provider quota")
+
+
+@pytest.mark.anyio
+async def test_email_change_retries_keep_the_requested_address_and_session():
+    app, db, initial = app_and_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        await save_draft(client)
+        await client.post("/applicant/access-links/open", json={"token": link_from_email(initial), "switchCurrent": False})
+        initiating_id = db.scalar(select(BrowserSession)).id
+        app.dependency_overrides[get_email_sender] = QuotaBlockedSender
+        request = await client.post("/applicant/application/email-change", json={"newEmail": "new-address@example.com"})
+        assert request.json()["emailStatus"] == "failed"
+        assert retry_queued_emails(db, QuotaBlockedSender()).accepted == 0
+        delivered = CapturedEmailSender()
+        assert retry_queued_emails(db, delivered).accepted == 1
+        assert delivered.messages[0].to == ("new-address@example.com",)
+        links = list(db.scalars(select(MagicLinkToken).where(MagicLinkToken.purpose == MagicLinkPurpose.EMAIL_CHANGE)))
+        assert len(links) == 3
+        assert all(link.email == "new-address@example.com" and link.initiating_session_id == initiating_id for link in links)
+        app.dependency_overrides[get_email_sender] = lambda: initial
+        confirmed = await client.post("/applicant/access-links/open",
+            json={"token": link_from_email(delivered), "switchCurrent": False})
+        assert confirmed.json()["state"] == "valid"
+        assert db.scalar(select(Application)).primary_email == "new-address@example.com"
+
+
+@pytest.mark.anyio
+async def test_cancelling_email_change_discards_only_its_queued_confirmation():
+    app, db, sender = app_and_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        await save_draft(client)
+        await client.post("/applicant/access-links/open", json={"token": link_from_email(sender), "switchCurrent": False})
+        app.dependency_overrides[get_email_sender] = QuotaBlockedSender
+        await client.post("/applicant/application/email-change", json={"newEmail": "cancelled@example.com"})
+        change = db.scalar(select(EmailDelivery).where(EmailDelivery.state == EmailDeliveryState.QUEUED))
+        application_id = db.scalar(select(Application.id))
+        other = EmailDelivery(application_id=application_id, message_kind="application_access",
+            recipient_kind=PasswordlessIdentityKind.APPLICANT, state=EmailDeliveryState.QUEUED,
+            retry_intent={"type": "magic_link", "purpose": "applicant_access"})
+        db.add(other)
+        db.commit()
+        cancelled = await client.delete("/applicant/application/email-change")
+        assert cancelled.status_code == 204
+        db.refresh(change)
+        db.refresh(other)
+        assert change.state == EmailDeliveryState.FAILED
+        assert change.last_error_code == "EmailChangeCancelled"
+        assert change.retry_intent is None
+        assert other.state == EmailDeliveryState.QUEUED
+        delivered = CapturedEmailSender()
+        assert retry_queued_emails(db, delivered).accepted == 1
+        assert delivered.messages[0].to == ("avery@example.com",)
 
 
 @pytest.mark.anyio

@@ -231,6 +231,9 @@ quota failures retain a small semantic retry intent, not the rendered body. Cred
 rebuilt with a fresh, immediately usable token for each attempt; an unsuccessful attempt revokes
 that token. A newer credential request supersedes an older queued one for the same identity and
 purpose.
+Email-change retries retain the destination and initiating session of the original request.
+Cancelling an email change discards its queued confirmations and revokes its unused credentials
+in one transaction, while other application email intents remain available.
 `services/email/retry_intents.py` defines the credential-free JSON shapes shared by initial sends,
 opening notifications, and the outbox worker. The ledger stores those same shapes as JSON.
 Initial sends and retries reserve attempts atomically. The existing attempt timestamp supplies a

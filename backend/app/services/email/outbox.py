@@ -175,6 +175,7 @@ EXPECTED_FAILURE_CODES = frozenset(
         "CredentialUsed",
         "VacancyRequestUnavailable",
         "OutcomeNoLongerDue",
+        "EmailChangeCancelled",
     }
 )
 FAILURE_BANNER_WINDOW = timedelta(days=7)
@@ -443,6 +444,12 @@ def _build_magic_link_retry(
             if delivery.application is not None
             else recipient.email
         )
+        if purpose == MagicLinkPurpose.EMAIL_CHANGE:
+            requested_link = delivery.magic_link_token
+            if requested_link is None or requested_link.purpose != purpose:
+                return None
+            # Failed attempts revoke the credential, but its target remains the request's address.
+            email = requested_link.email
     else:
         recipient = delivery.user
         if recipient is None or not recipient.is_active:

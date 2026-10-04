@@ -13,6 +13,7 @@ from app.db.models import (
     ApplicantDraft,
     EmailDelivery,
     EmailDeliveryState,
+    MagicLinkPurpose,
     MagicLinkToken,
     PasswordlessIdentityKind,
 )
@@ -223,19 +224,17 @@ def cancel_queued_application_emails(
     application_id: int,
     *,
     error_code: str = "ApplicationWithdrawn",
+    purpose: MagicLinkPurpose | None = None,
 ) -> None:
     """Discard queued intents made obsolete by an applicant lifecycle change."""
-    deliveries = db.scalars(
-        select(EmailDelivery).where(
-            EmailDelivery.application_id == application_id,
-            EmailDelivery.state == EmailDeliveryState.QUEUED,
-        )
-    ).all()
-    for delivery in deliveries:
-        delivery.state = EmailDeliveryState.FAILED
-        delivery.retry_intent = None
-        delivery.quota_blocked = False
-        delivery.last_error_code = error_code
+    query = update(EmailDelivery).where(
+        EmailDelivery.application_id == application_id,
+        EmailDelivery.state == EmailDeliveryState.QUEUED,
+    )
+    if purpose is not None:
+        query = query.where(EmailDelivery.retry_intent["purpose"].as_string() == purpose.value)
+    db.execute(query.values(state=EmailDeliveryState.FAILED, retry_intent=None,
+        quota_blocked=False, last_error_code=error_code).execution_options(synchronize_session=False))
 
 
 def cancel_queued_committee_emails(
