@@ -64,7 +64,7 @@ export function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Respon
 // (its base pass is `judge`), matching the persisted eval keys.
 export function runEval(
   key: EvalRunMode,
-  opts?: { k?: number; caseKey?: string },
+  opts?: { k?: number; caseKey?: string; signal?: AbortSignal },
 ): Promise<Response> {
   const stabilityMode = key === "stability" || key.endsWith("_stability");
   // The base pass owns the route; the judge's stability variant ("stability") maps to /judge.
@@ -74,7 +74,7 @@ export function runEval(
   if (stabilityMode && opts?.k) params.set("k", String(opts.k));
   if (opts?.caseKey) params.set("case", opts.caseKey);
   const q = params.toString() ? `?${params}` : "";
-  return streamRequest(`/evals/${basePass}${q}`);
+  return streamRequest(`/evals/${basePass}${q}`, opts?.signal);
 }
 
 

@@ -17,17 +17,25 @@ export async function request(
   init: RequestInit = {},
   timeoutMs = ACTION_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  return fetchResponse(path, init, timeoutMs, false);
+}
+
+async function fetchResponse(
+  path: string, init: RequestInit, timeoutMs: number, streaming: boolean,
+): Promise<Response> {
   const controller = new AbortController();
   const callerSignal = init.signal;
-  const abortForCaller = () => controller.abort();
-  if (callerSignal?.aborted) {
-    controller.abort();
-  } else {
-    callerSignal?.addEventListener("abort", abortForCaller, { once: true });
-  }
+  const signal = callerSignal ? AbortSignal.any([callerSignal, controller.signal]) : controller.signal;
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url(path), { ...init, credentials: "include", signal: controller.signal });
+    const response = await fetch(url(path), { ...init, credentials: "include", signal });
+    if (streaming && response.ok) return response;
+    // Ordinary API responses acknowledge an action only after their complete body
+    // arrives. Keep the deadline active through that read, including error bodies.
+    const body = response.body === null ? null : await response.arrayBuffer();
+    return new Response(body, {
+      status: response.status, statusText: response.statusText, headers: response.headers,
+    });
   } catch (error) {
     if (callerSignal?.aborted) throw error;
     const detail = error instanceof DOMException && error.name === "AbortError"
@@ -39,7 +47,6 @@ export async function request(
     });
   } finally {
     window.clearTimeout(timeout);
-    callerSignal?.removeEventListener("abort", abortForCaller);
   }
 }
 
@@ -51,8 +58,10 @@ export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
   return (await response.json()) as T;
 }
 
-export function streamRequest(path: string): Promise<Response> {
-  return request(path, { method: "POST" });
+export function streamRequest(path: string, signal?: AbortSignal): Promise<Response> {
+  // The deadline bounds the handshake; a successful AI stream can run for minutes.
+  // Its caller signal still owns cancellation after the headers have arrived.
+  return fetchResponse(path, { method: "POST", signal }, ACTION_REQUEST_TIMEOUT_MS, true);
 }
 
 export async function streamNdjson<
@@ -92,6 +101,9 @@ export async function streamNdjson<
       for (const line of lines) deliver(line);
     }
   } finally {
+    // A parser/consumer failure must close the HTTP stream, not leave paid work
+    // running after its only consumer stopped reading.
+    await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

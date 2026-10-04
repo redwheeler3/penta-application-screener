@@ -65,10 +65,12 @@ export function useAiRuns(options: {
   const rankEstimateRequest = useRef(0);
   const screeningEstimateAbort = useRef<AbortController | null>(null);
   const rankEstimateAbort = useRef<AbortController | null>(null);
+  const activeRun = useRef<AbortController | null>(null);
 
   useEffect(() => () => {
     screeningEstimateAbort.current?.abort();
     rankEstimateAbort.current?.abort();
+    activeRun.current?.abort();
   }, []);
 
   function cancelScreeningEstimate() {
@@ -133,21 +135,26 @@ export function useAiRuns(options: {
   }
 
   async function runScreening() {
-    if (options.openingId === null || !refreshes.isFor(options.openingId)) return;
+    if (options.openingId === null || !refreshes.isFor(options.openingId) || activeRun.current) return;
+    const controller = new AbortController();
+    activeRun.current = controller;
     const inScope = refreshes.capture();
     setScreeningRunning(true);
     setScreeningEstimate(null);
     setScreeningProgress(null);
     try {
-      const response = await startScreeningRequest(options.openingId);
+      const response = await startScreeningRequest(options.openingId, controller.signal);
+      if (!inScope()) { controller.abort(); return; }
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
+        if (!inScope()) return;
         options.notifications.error(
           problem ? `Screening failed: ${problem}` : "Screening failed.",
         );
       } else {
         let finished = false;
         await streamNdjson<ScreeningStreamEvent>(response.body, (event) => {
+          if (!inScope()) return;
           if (event.type === "progress") {
             setScreeningProgress({ processed: event.processed, total: event.total });
           } else if (event.type === "summary") {
@@ -163,7 +170,7 @@ export function useAiRuns(options: {
             options.notifications.error(event.message || "Screening failed.");
           }
         });
-        if (!finished) {
+        if (!finished && inScope()) {
           options.notifications.error(
             "Screening progress was interrupted before completion was confirmed. " +
             "Review current results before starting another run.",
@@ -176,10 +183,11 @@ export function useAiRuns(options: {
         }
       }
     } catch (error) {
-      options.notifications.error(
+      if (inScope() && !controller.signal.aborted) options.notifications.error(
         error instanceof Error ? `Screening error: ${error.message}` : "Screening error.",
       );
     } finally {
+      if (activeRun.current === controller) activeRun.current = null;
       setScreeningProgress(null);
       setScreeningRunning(false);
     }
@@ -221,7 +229,9 @@ export function useAiRuns(options: {
   }
 
   async function runRank(mode: "discover" | "score-current") {
-    if (options.openingId === null || !refreshes.isFor(options.openingId)) return;
+    if (options.openingId === null || !refreshes.isFor(options.openingId) || activeRun.current) return;
+    const controller = new AbortController();
+    activeRun.current = controller;
     const inScope = refreshes.capture();
     setRankRunning(true);
     cancelRankEstimate();
@@ -234,10 +244,12 @@ export function useAiRuns(options: {
 
     try {
       const response = mode === "discover"
-        ? await startRankRequest(options.openingId)
-        : await startScoreCurrentRequest(options.openingId);
+        ? await startRankRequest(options.openingId, controller.signal)
+        : await startScoreCurrentRequest(options.openingId, controller.signal);
+      if (!inScope()) { controller.abort(); return; }
       if (!response.ok || !response.body) {
         const problem = await readProblem(response);
+        if (!inScope()) return;
         options.notifications.error(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
         if (inScope() && mode === "discover" && priorProposals.length > 0) {
           options.ranking.setDisplayedProposals(priorProposals);
@@ -245,6 +257,7 @@ export function useAiRuns(options: {
       } else {
         let finished = false;
         await streamNdjson<RankingStreamEvent>(response.body, (event) => {
+          if (!inScope()) return;
           if (event.type === "phase") {
             if (event.phase === "criteria") {
               setRankProgress({ phase: "criteria", discoveryWorkers: event.discoveryWorkers });
@@ -280,7 +293,7 @@ export function useAiRuns(options: {
             );
           }
         });
-        if (!finished) {
+        if (!finished && inScope()) {
           options.notifications.error(
             "Ranking progress was interrupted before completion was confirmed. " +
             "Review current results before starting another run.",
@@ -289,11 +302,12 @@ export function useAiRuns(options: {
         if (inScope()) refreshRankingViews();
       }
     } catch (error) {
-      options.notifications.error(
+      if (inScope() && !controller.signal.aborted) options.notifications.error(
         error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.",
       );
       if (inScope()) refreshRankingViews();
     } finally {
+      if (activeRun.current === controller) activeRun.current = null;
       setRankProgress(null);
       setRankRunning(false);
       setRankThinking("");

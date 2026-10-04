@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import * as api from "../api/applications";
 import { deferred } from "../testSupport";
@@ -11,6 +11,16 @@ const payload = (selectedOpeningId: number): api.ApplicationsResponse => ({
 });
 
 beforeEach(() => { vi.resetAllMocks(); window.localStorage.clear(); });
+afterEach(() => vi.restoreAllMocks());
+
+it.each(["getItem", "setItem"] as const)("loads the workspace when optional browser %s is denied", async (operation) => {
+  vi.spyOn(Storage.prototype, operation).mockImplementation(() => { throw new DOMException("Denied", "SecurityError"); });
+  vi.mocked(api.fetchApplications).mockResolvedValue(payload(1));
+  const { result } = renderHook(() => useApplications());
+  await act(() => result.current.loadInitialApplications());
+  expect(result.current.applicationsLoadState).toBe("ready");
+  expect(result.current.selectedOpeningId).toBe(1);
+});
 
 it("ignores an old background refresh after selecting another opening", async () => {
   const old = deferred<api.ApplicationsResponse>();

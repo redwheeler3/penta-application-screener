@@ -29,14 +29,31 @@ function setup(mode: Mode, events: unknown[], finalNewline = true) {
     notifications: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
     refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(),
   };
-  const { result } = renderHook(() => useAiRuns(options));
+  const { result, unmount } = renderHook(() => useAiRuns(options));
   return {
-    result, options,
+    result, options, unmount,
     run: () => mode === "screening" ? result.current.runScreening() : result.current.runRank(mode),
   };
 }
 
 beforeEach(() => vi.resetAllMocks());
+
+it.each(modes)("cancels pending %s work when the authenticated workspace closes", async (mode) => {
+  const { options, run, unmount } = setup(mode, []);
+  const pending = deferred<Response>();
+  const request = mode === "screening" ? screeningApi.runScreening
+    : mode === "discover" ? rankingApi.runRank : rankingApi.scoreCurrent;
+  vi.mocked(request).mockReturnValue(pending.promise);
+  let running!: Promise<void>;
+  act(() => { running = run(); });
+  const signal = vi.mocked(request).mock.calls[0][1]!;
+  unmount();
+  expect(signal.aborted).toBe(true);
+  await act(async () => { pending.resolve(new Response('{"type":"summary","dimensions":1,"scored":1}\n')); await running; });
+  expect(options.notifications.success).not.toHaveBeenCalled();
+  expect(options.notifications.error).not.toHaveBeenCalled();
+  expect(options.refreshDashboard).not.toHaveBeenCalled();
+});
 
 it.each(modes)("reports an interrupted %s run without claiming completion", async (mode) => {
   const { result, options, run } = setup(mode, [{

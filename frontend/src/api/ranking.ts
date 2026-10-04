@@ -38,12 +38,12 @@ export const fetchFanOutAudit = (openingId: number) =>
 
 export const fetchRankEstimate = (openingId: number, signal?: AbortSignal) =>
   getJson<RankEstimateResponse>(`/ranking/run/estimate${openingQuery(openingId)}`, signal);
-export const runRank = (openingId: number) =>
-  streamRequest(`/ranking/run${openingQuery(openingId)}`);
+export const runRank = (openingId: number, signal?: AbortSignal) =>
+  streamRequest(`/ranking/run${openingQuery(openingId)}`, signal);
 export const fetchScoreCurrentEstimate = (openingId: number, signal?: AbortSignal) =>
   getJson<ScoreCurrentEstimateResponse>(`/ranking/score-current/estimate${openingQuery(openingId)}`, signal);
-export const scoreCurrent = (openingId: number) =>
-  streamRequest(`/ranking/score-current${openingQuery(openingId)}`);
+export const scoreCurrent = (openingId: number, signal?: AbortSignal) =>
+  streamRequest(`/ranking/score-current${openingQuery(openingId)}`, signal);
 
 export const fetchRankingBoard = (openingId: number) =>
   getJson<RankingBoardResponse>(`/ranking/board${openingQuery(openingId)}`);

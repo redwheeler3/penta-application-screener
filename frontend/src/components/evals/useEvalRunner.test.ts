@@ -29,6 +29,18 @@ beforeEach(() => {
   vi.mocked(api.fetchLastEvalRun).mockResolvedValue({ runs: [] });
 });
 
+it("cancels an eval owned by a workspace that has closed", async () => {
+  const pending = deferred<Response>();
+  vi.mocked(api.runEval).mockReturnValue(pending.promise);
+  const { result, unmount } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  let running!: Promise<void>;
+  act(() => { running = result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }); });
+  const signal = vi.mocked(api.runEval).mock.calls[0][1]!.signal!;
+  unmount();
+  expect(signal.aborted).toBe(true);
+  await act(async () => { pending.resolve(new Response(null, { status: 503 })); await running; });
+});
+
 it("keeps newly completed results when initial history arrives late", async () => {
   const pending = deferred<{ runs: LastEvalRun[] }>();
   vi.mocked(api.fetchLastEvalRun).mockReturnValueOnce(pending.promise);

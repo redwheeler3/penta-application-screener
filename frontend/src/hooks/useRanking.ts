@@ -33,7 +33,7 @@ export interface RankingState {
   addProposal: (text: string) => void;
   removeProposal: (text: string) => void;
   /** Set the displayed pending proposals directly (no persist) — a discover run consumes
-   * them, so App clears them optimistically when the run starts and restores on failure.
+   * them, so the run controls clear them optimistically and restore on failure.
    * The server is the source of truth; this only steers what the UI shows meanwhile. */
   setDisplayedProposals: (proposed: string[]) => void;
   /** True once we've detected the loaded ranking is no longer current — either a tier/seed
@@ -103,7 +103,15 @@ export function useRanking(
       if (state !== "loading") return state;
       return boardRef.current !== null ? "ready" : "idle";
     });
-    const result = mutationQueue.current.then(() => isCurrent() ? request() : undefined);
+    const result = mutationQueue.current.then(async () => {
+      if (!isCurrent()) return undefined;
+      const response = await request();
+      // A write remains pending through its acknowledgement, not only its headers.
+      // Board reads must not replace an optimistic draft while this body is waiting.
+      return response.ok
+        ? { ok: true, payload: await response.json(), problem: null }
+        : { ok: false, payload: null, problem: await readProblemBody(response) };
+    });
     mutationQueue.current = result.then(() => {}, () => {});
     return result.finally(() => { pendingMutations.current.delete(isCurrent); });
   }
@@ -112,8 +120,7 @@ export function useRanking(
     return [...pendingMutations.current].some((isCurrent) => isCurrent());
   }
 
-  async function handleSaveFailure(response: Response, isCurrent: RequestIsCurrent) {
-    const body = await readProblemBody(response);
+  function handleSaveFailure(body: Awaited<ReturnType<typeof readProblemBody>>, isCurrent: RequestIsCurrent) {
     if (!isCurrent()) return { handled: true, message: null };
     if (body?.code === "stale_analysis") {
       setStaleAnalysis(true);
@@ -210,7 +217,7 @@ export function useRanking(
       ));
       if (!response || !isLatest()) return;
       if (response.ok) {
-        const updated: RankingResponse = await response.json();
+        const updated = response.payload as RankingResponse;
         if (!isLatest()) return;
         boardReads.invalidate();
         boardRef.current = updated;
@@ -223,7 +230,7 @@ export function useRanking(
           return updatedRun;
         });
       } else {
-        const { handled, message } = await handleSaveFailure(response, isLatest);
+        const { handled, message } = handleSaveFailure(response.problem, isLatest);
         if (!handled && isLatest()) {
           onError(message ?? "Could not update the tiers.");
           await reloadAfterSaveFailure(isLatest, true);
@@ -261,7 +268,7 @@ export function useRanking(
       ));
       if (!response || !isLatest()) return;
       if (response.ok) {
-        const echoed: { proposedDimensions: string[] } = await response.json();
+        const echoed = response.payload as { proposedDimensions: string[] };
         if (!isLatest()) return;
         currentReads.invalidate();
         setRankingRun((current) => {
@@ -271,7 +278,7 @@ export function useRanking(
           return updated;
         });
       } else {
-        const { handled, message } = await handleSaveFailure(response, isLatest);
+        const { handled, message } = handleSaveFailure(response.problem, isLatest);
         if (!handled && isLatest()) {
           onError(message ?? "Could not save the suggested criteria.");
           await reloadAfterSaveFailure(isLatest);

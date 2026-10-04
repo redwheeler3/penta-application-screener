@@ -25,6 +25,26 @@ const board = (analysisId: number, tiers: Tier[] = []): RankingBoardResponse => 
 const tier = (label: string): Tier[] => [{ id: "important", label, dimensionKeys: [] }];
 beforeEach(() => vi.resetAllMocks());
 
+it("keeps reads and later writes behind a pending acknowledgement body", async () => {
+  const body = deferred<RankingResponse>();
+  const response = Response.json(ranking(1));
+  vi.spyOn(response, "json").mockReturnValue(body.promise);
+  vi.mocked(api.fetchRankingBoard).mockResolvedValue(board(1, tier("Original")));
+  vi.mocked(api.saveTiers).mockResolvedValue(response);
+  vi.mocked(api.saveSeeds).mockResolvedValue(Response.json({ proposedDimensions: ["Queued"] }));
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.loadRanking());
+  let saving!: Promise<void>;
+  await act(async () => { saving = result.current.saveTiers(tier("Edited")); });
+  await act(async () => result.current.addProposal("Queued"));
+  await act(async () => expect(await result.current.loadRanking()).toBe(false));
+  expect(api.fetchRankingBoard).toHaveBeenCalledOnce();
+  expect(api.saveSeeds).not.toHaveBeenCalled();
+  expect(result.current.tiers).toEqual(tier("Edited"));
+  await act(async () => { body.resolve(ranking(1)); await saving; });
+  await waitFor(() => expect(api.saveSeeds).toHaveBeenCalledOnce());
+});
+
 it("keeps saved proposals when an earlier board refresh finishes late", async () => {
   const earlier = deferred<RankingBoardResponse>();
   vi.mocked(api.fetchRankingBoard).mockResolvedValueOnce(board(1)).mockReturnValueOnce(earlier.promise);

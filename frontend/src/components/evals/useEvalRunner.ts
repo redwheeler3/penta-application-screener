@@ -1,4 +1,4 @@
-import { type SetStateAction, useEffect, useState } from "react";
+import { type SetStateAction, useEffect, useRef, useState } from "react";
 
 import { caseOutcomes, fetchEvalCases, fetchLastEvalRun, runEval, savedRunSummary } from "../../api/evals";
 import { streamNdjson } from "../../api/client";
@@ -33,6 +33,9 @@ export function useEvalRunner(options: {
   const [restored, setRestored] = useState<Record<string, LastEvalRun>>({});
   const historyKey = options.runKeys.join(",");
   const historyReads = useRequestScope(historyKey);
+  const activeRun = useRef<AbortController | null>(null);
+  const runScope = useRequestScope(options.caseEvalKey);
+  useEffect(() => () => { activeRun.current?.abort(); }, []);
 
   function loadCases() {
     const isCurrent = caseReads.begin();
@@ -81,6 +84,10 @@ export function useEvalRunner(options: {
   }, [historyKey]);
 
   async function runMode(mode: EvalRunOption, caseKey?: string) {
+    if (activeRun.current) return;
+    const controller = new AbortController();
+    activeRun.current = controller;
+    const isCurrent = runScope.capture();
     historyReads.invalidate();
     setRestored((current) => {
       const { [mode.evalKey]: _removed, ...remaining } = current;
@@ -88,7 +95,8 @@ export function useEvalRunner(options: {
     });
     setRun({ running: true, thinking: "", error: null });
     try {
-      const response = await runEval(mode.evalKey, { caseKey });
+      const response = await runEval(mode.evalKey, { caseKey, signal: controller.signal });
+      if (!isCurrent()) { controller.abort(); return; }
       if (!response.ok || !response.body) {
         setRun((current) => ({
           ...current,
@@ -99,6 +107,7 @@ export function useEvalRunner(options: {
       }
       let finished = false;
       await streamNdjson<EvalStreamEvent>(response.body, (event) => {
+        if (!isCurrent()) return;
         if (event.type === "thinking") {
           setRun((current) => ({ ...current, thinking: current.thinking + event.text }));
           return;
@@ -127,7 +136,7 @@ export function useEvalRunner(options: {
         });
         void loadLastRuns(false);
       });
-      if (!finished) {
+      if (!finished && isCurrent()) {
         setRun((current) => ({
           ...current,
           running: false,
@@ -136,11 +145,13 @@ export function useEvalRunner(options: {
         }));
       }
     } catch (error) {
-      setRun((current) => ({
+      if (isCurrent() && !controller.signal.aborted) setRun((current) => ({
         ...current,
         running: false,
         error: String(error),
       }));
+    } finally {
+      if (activeRun.current === controller) activeRun.current = null;
     }
   }
 

@@ -60,9 +60,12 @@ export function useApplications(): ApplicationsState {
     setAllApplications(response.applications);
     setOpenings(response.openings);
     setSelectedOpeningId(response.selectedOpeningId);
-    if (response.selectedOpeningId !== null) {
-      window.localStorage.setItem("penta-selected-opening", String(response.selectedOpeningId));
-    }
+    selectedOpeningRef.current = response.selectedOpeningId;
+    try {
+      if (response.selectedOpeningId !== null) {
+        window.localStorage.setItem("penta-selected-opening", String(response.selectedOpeningId));
+      }
+    } catch { /* The optional browser preference must not fail a loaded workspace. */ }
     setApplicationsLoadState("ready");
   }, []);
 
@@ -84,7 +87,9 @@ export function useApplications(): ApplicationsState {
     const isCurrent = requests.begin();
     selectingOpening.current = true;
     try {
-      const stored = Number(window.localStorage.getItem("penta-selected-opening"));
+      let stored = 0;
+      try { stored = Number(window.localStorage.getItem("penta-selected-opening")); }
+      catch { /* Let the server choose an opening when browser storage is denied. */ }
       const requestedOpening = Number.isInteger(stored) && stored > 0 ? stored : null;
       const response = await retryWithBackoff(
         () => api.fetchApplications(requestedOpening),
