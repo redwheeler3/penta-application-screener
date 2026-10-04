@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import ReasoningEffort, model_identity
-from app.ai.pricing import cost_usd
+from app.ai.pricing import PassCost, cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
 from app.ai.result_selection import select_results
 from app.core.work_cancellation import (
@@ -352,6 +352,10 @@ class PassResult:
     # from the ``str()``-flattened ``error`` so failure *modes* stay countable
     # None on success; failures feed operational metrics.
     error_type: str | None = None
+    # Completed replies may have measured usage even when the final scores are unusable.
+    failure_cost: PassCost | None = None
+    # An assembled scoring result can represent several completed provider replies.
+    fresh_calls: int | None = None
 
     @property
     def failed(self) -> bool:

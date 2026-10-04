@@ -40,6 +40,8 @@ class AIResult:
     # The model's free-text reasoning alongside the structured tool call. None when
     # the provider doesn't surface it. Persisted for the admin view, never parsed.
     narrative: str | None = None
+    # Completed structured-output replies represented by this result (aggregates include retries).
+    call_count: int = 1
 
 
 class AIProvider(Protocol):

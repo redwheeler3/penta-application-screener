@@ -2,7 +2,7 @@
 
 import time
 from collections.abc import Callable, Generator, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sqlalchemy.orm import Session
 
@@ -81,12 +81,21 @@ class ScoreTally:
     # analyzed/cached, which count per-dimension UNITS for scoring (a candidate has
     # N dimensions). "N candidates scored" in the UI reads this, not the unit sum.
     processed: int = 0
+    # Completed provider replies, distinct from analyzed per-dimension cache units.
+    fresh_calls: int = 0
 
     def add(self, result: PassResult) -> None:
         if result.failed:
             self.failed += 1
+            if result.failure_cost is not None:
+                self.fresh_calls += result.failure_cost.calls
+                self.cost_usd += result.failure_cost.cost_usd
+                self.input_tokens += result.failure_cost.input_tokens
+                self.output_tokens += result.failure_cost.output_tokens
             return
         self.processed += 1
+        if not result.outcome.cached:
+            self.fresh_calls += result.fresh_calls if result.fresh_calls is not None else 1
         self.input_tokens += result.outcome.input_tokens if result.outcome else 0
         self.output_tokens += result.outcome.output_tokens if result.outcome else 0
         if result.fresh_units is not None or result.cached_units is not None:
@@ -107,7 +116,9 @@ class ScoreTally:
 
     def as_pass_cost(self, model_id: str) -> PassCost:
         """The scoring pass's spend in the shared shape (fresh tokens + cost, cache side)."""
-        return PassCost.from_tally(self, model_id)
+        cost = PassCost.from_tally(self, model_id)
+        return replace(cost, calls=self.fresh_calls,
+            model_id=model_id if self.fresh_calls else "")
 
 
 @dataclass

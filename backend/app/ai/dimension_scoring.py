@@ -36,7 +36,7 @@ from app.ai.analysis import (
 )
 from app.ai.applicant_facts import applicant_facts
 from app.ai.model_catalog import ReasoningEffort
-from app.ai.pricing import cost_usd
+from app.ai.pricing import PassCost, cost_usd
 from app.ai.prompt_fragments import (
     ENGLISH_POLISH_NOTE,
     INJECTION_GUARD_NOTE,
@@ -50,6 +50,7 @@ from app.ai.schemas import (
     PoolDimensionReport,
     ScoreConfidence,
 )
+from app.core.work_cancellation import WorkCancelled
 from app.db.models import Application, ApplicationAIResult, ApplicationAISelection
 from app.schemas.settings import (
     AppSettings,
@@ -272,6 +273,15 @@ class IncompleteScoringError(Exception):
     retries — the candidate's scoring failed rather than being silently partial."""
 
 
+class ScoringFailure(Exception):
+    """An unsuccessful candidate's original error and measured spend before it failed."""
+
+    def __init__(self, cause: Exception, spent: PassCost):
+        self.cause = cause
+        self.spent = spent
+        super().__init__(str(cause))
+
+
 def _score_all_dimensions(
     provider: AIProvider,
     applicant_block: str,
@@ -281,53 +291,58 @@ def _score_all_dimensions(
 ) -> AIResult:
     """One candidate's uncached dimensions, scored COMPLETELY — the initial call plus
     targeted re-asks for any dimensions the model omitted, merged into one result whose
-    usage sums every call. Raises ``IncompleteScoringError`` if the model still omits a
-    dimension after ``MAX_SCORING_RETRIES`` — fail loud, never store a partial.
+    usage sums every call. ``ScoringFailure`` preserves the original error and known
+    spend, including incomplete output after ``MAX_SCORING_RETRIES``. Never store a partial.
 
     No DB work here (runs on a ``run_in_pool`` worker thread); the caller stores the
     returned scores back on the main thread.
     """
     scores: dict[str, DimensionScore] = {}
-    input_tokens = output_tokens = 0
+    spent = PassCost()
     last_model_id = model_id
     remaining = to_score
-    for attempt in range(MAX_SCORING_RETRIES + 1):  # 1 initial + N retries
-        result = retry_per_application_timeout(
-            lambda: provider.structured_output(
-                model_id=model_id,
-                schema=DimensionScoringReport,
-                prompt=_build_prompt(applicant_block, remaining),
-                system_prompt=SYSTEM_PROMPT,
-                reasoning_effort=reasoning_effort,
-            ),
-            operation="Dimension scoring",
-        )
-        input_tokens += result.usage.input_tokens
-        output_tokens += result.usage.output_tokens
-        last_model_id = result.model_id
-        returned = {s.dimension_key: s for s in result.output.scores}
-        for dim in remaining:
-            if dim.key in returned:
-                scores[dim.key] = returned[dim.key]
-        remaining = [d for d in remaining if d.key not in scores]
-        if not remaining:
-            break
-        if attempt < MAX_SCORING_RETRIES:
-            # No applicant id in scope here (we hold only the rendered block); the caller
-            # score_dimensions logs the id around this call.
-            log.warning(
-                "Dimension scoring omitted %d dimension(s); re-asking (attempt %d): %s",
-                len(remaining), attempt + 1, [d.key for d in remaining],
+    try:
+        for attempt in range(MAX_SCORING_RETRIES + 1):  # 1 initial + N retries
+            result = retry_per_application_timeout(
+                lambda: provider.structured_output(
+                    model_id=model_id,
+                    schema=DimensionScoringReport,
+                    prompt=_build_prompt(applicant_block, remaining),
+                    system_prompt=SYSTEM_PROMPT,
+                    reasoning_effort=reasoning_effort,
+                ),
+                operation="Dimension scoring",
             )
-    if remaining:
-        raise IncompleteScoringError(
-            f"model omitted {len(remaining)} dimension(s) after "
-            f"{MAX_SCORING_RETRIES} retries: {[d.key for d in remaining]}"
-        )
+            spent += PassCost.from_usage(result.model_id, result.usage)
+            last_model_id = result.model_id
+            returned = {s.dimension_key: s for s in result.output.scores}
+            for dim in remaining:
+                if dim.key in returned:
+                    scores[dim.key] = returned[dim.key]
+            remaining = [d for d in remaining if d.key not in scores]
+            if not remaining:
+                break
+            if attempt < MAX_SCORING_RETRIES:
+                # No applicant id in scope here (we hold only the rendered block); the caller
+                # score_dimensions logs the id around this call.
+                log.warning(
+                    "Dimension scoring omitted %d dimension(s); re-asking (attempt %d): %s",
+                    len(remaining), attempt + 1, [d.key for d in remaining],
+                )
+        if remaining:
+            raise IncompleteScoringError(
+                f"model omitted {len(remaining)} dimension(s) after "
+                f"{MAX_SCORING_RETRIES} retries: {[d.key for d in remaining]}"
+            )
+    except WorkCancelled:
+        raise
+    except Exception as error:
+        raise ScoringFailure(error, spent) from error
     return AIResult(
         output=DimensionScoringReport(scores=list(scores.values())),
-        usage=Usage(input_tokens=input_tokens, output_tokens=output_tokens),
+        usage=Usage(input_tokens=spent.input_tokens, output_tokens=spent.output_tokens),
         model_id=last_model_id,
+        call_count=spent.calls,
     )
 
 
@@ -441,7 +456,7 @@ def score_planned_dimensions(
             return None  # fully cached → no model call
         assert plan.applicant_block is not None
         # Score COMPLETELY: initial call + targeted re-asks for any omitted dimension.
-        # Raises IncompleteScoringError if the model won't return them all — which
+        # Raises ScoringFailure if the model won't return them all — which
         # run_in_pool surfaces as this candidate's error (fail loud, no partial store).
         return _score_all_dimensions(
             provider, plan.applicant_block, plan.dimensions_to_score, model_id, reasoning_effort
@@ -452,14 +467,16 @@ def score_planned_dimensions(
     ):
         application = plan.application
         if error is not None:
-            error_type = exception_type_name(error)
+            cause = error.cause if isinstance(error, ScoringFailure) else error
+            error_type = exception_type_name(cause)
             log.warning(
                 "Dimension scoring failed for application %s: %s",
                 application.id, error_type, exc_info=error,
             )
             yield PassResult(
                 application=application, outcome=None,
-                error=str(error), error_type=error_type,
+                error=str(cause), error_type=error_type,
+                failure_cost=error.spent if isinstance(error, ScoringFailure) else None,
             )
             continue
         if result is None:  # fully cached
@@ -475,14 +492,14 @@ def score_planned_dimensions(
             continue
         fresh = {s.dimension_key: s for s in result.output.scores}
         share = _split_usage(result.usage, len(plan.dimensions_to_score))
-        call_cost = 0.0
+        call_cost = cost_usd(result.model_id, result.usage)
         fresh_count = 0
         for dim in plan.dimensions_to_score:
             # _score_all_dimensions guarantees every pending dimension is present, so index
             # directly — a KeyError here would mean that contract broke, and failing
             # loud beats silently skipping.
             score = fresh[dim.key]
-            outcome = store_result(
+            store_result(
                 db, application,
                 kind=kind_for_dimension(dim.key), result_cache_key=plan.result_cache_keys[dim.key],
                 prompt_version=PROMPT_VERSION,
@@ -497,11 +514,10 @@ def score_planned_dimensions(
                     narrative=None,
                 ),
             )
-            call_cost += outcome.cost_usd
             fresh_count += 1
         # The candidate's fresh tokens are the whole call's usage (each stored row got a
         # 1/parts share; summing them back rounds down to ~the call total). Report the
-        # call's usage directly so the run ledger's token total stays exact.
+        # call's usage and price directly so the run ledger stays exact.
         yield PassResult(
             application=application,
             outcome=AnalysisOutcome(
@@ -509,6 +525,7 @@ def score_planned_dimensions(
                 input_tokens=result.usage.input_tokens, output_tokens=result.usage.output_tokens,
             ),
             fresh_units=fresh_count,
+            fresh_calls=result.call_count,
             cached_units=len(plan.cached_scores),
             cached_saved_usd=plan.cached_saved_usd,
         )

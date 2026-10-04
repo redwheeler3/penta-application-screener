@@ -101,11 +101,14 @@ def score_current(
         tally = ScoreTally()
         started = time.perf_counter()
         processed = 0
+        scored = 0
         for result in score_planned_dimensions(db, provider, plan=plan, max_workers=settings.ai.max_workers):
             tally.add(result)
             if not result.failed and result.fresh_units == 0:
                 continue
             processed += 1
+            if not result.failed:
+                scored += 1
             yield emit(
                 ProgressEvent(
                     phase=SCORES,
@@ -133,7 +136,7 @@ def score_current(
         yield emit(
             RankSummary(
                 dimensions=len(report.dimensions),
-                scored=processed,
+                scored=scored,
                 failed=tally.failed,
                 total_cost_usd=round(tally.cost_usd, 4),
             )

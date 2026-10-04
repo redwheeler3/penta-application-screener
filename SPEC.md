@@ -1212,6 +1212,14 @@ cache choices, model inputs, and estimate after acquiring the run lease. Estimat
 execution consume the same plan. The pass refreshes references for the whole pool while
 making model calls only for cache misses; switching back to valid saved scores offers
 **Reuse cached scores** with zero AI spend. The criteria and tier layout stay unchanged.
+Completed replies retain their known token usage and cost even if missing scores remain
+after retries or a later call fails. Incomplete candidate scores are never cached. Progress
+counts attempted applicants; the completion summary counts successfully scored applicants.
+Timeout billing without returned usage is unknown and is not inferred. New scoring ledgers
+count completed structured-output replies, including retries, separately from dimension
+cache units. Historical scoring call counts can reflect dimension units because those
+replies were not recorded separately. The live run total uses whole-call usage and price;
+per-dimension token allocation cannot reduce its reported cost.
 
 Local synthetic measurement (2026-10-03, SQLite WAL/FULL, 15 repetitions, median):
 100 applicants × 15 dimensions with 30,000 historical rows read in 5.7 ms versus
