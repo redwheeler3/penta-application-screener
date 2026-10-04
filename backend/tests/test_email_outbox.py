@@ -40,6 +40,56 @@ def _db():
     return memory_session()
 
 
+def test_obsolete_submission_confirmation_does_not_block_other_mail() -> None:
+    db = _db()
+    application = Application(primary_email="withdrawn@example.com", raw_row={}, raw_row_hash="withdrawn")
+    db.add(application)
+    db.flush()
+    confirmation = EmailDelivery(message_kind="application_confirmation", application_id=application.id,
+        recipient_kind=PasswordlessIdentityKind.APPLICANT, state=EmailDeliveryState.QUEUED,
+        retry_intent={"type": "application_confirmation", "submitted": True})
+    db.add_all([confirmation, EmailDelivery(message_kind="application_unavailable",
+        recipient_kind=PasswordlessIdentityKind.APPLICANT, recipient_email="other@example.com",
+        state=EmailDeliveryState.QUEUED, retry_intent={"type": "application_unavailable"})])
+    db.commit()
+    sender = CapturedEmailSender()
+    assert retry_queued_emails(db, sender).accepted == 1
+    assert sender.messages[0].to == ("other@example.com",)
+    assert confirmation.state == EmailDeliveryState.FAILED
+    assert confirmation.last_error_code == "SubmissionNoLongerDue"
+    assert db.scalar(select(MagicLinkToken)) is None
+    assert email_queue_status(db).recent_failed == 0
+
+
+def test_preparation_failure_rolls_back_credentials_and_continues_batch(monkeypatch) -> None:
+    db = _db()
+    application = Application(primary_email="first@example.com", raw_row={}, raw_row_hash="first")
+    db.add(application)
+    db.flush()
+    confirmation = EmailDelivery(message_kind="application_confirmation", application_id=application.id,
+        recipient_kind=PasswordlessIdentityKind.APPLICANT, state=EmailDeliveryState.QUEUED,
+        retry_intent={"type": "application_confirmation", "submitted": False})
+    db.add_all([confirmation, EmailDelivery(message_kind="application_unavailable",
+        recipient_kind=PasswordlessIdentityKind.APPLICANT, recipient_email="other@example.com",
+        state=EmailDeliveryState.QUEUED, retry_intent={"type": "application_unavailable"})])
+    db.commit()
+
+    def fail_template(**_kwargs):
+        assert db.scalar(select(MagicLinkToken)) is not None
+        raise ValueError("synthetic private content must not be retained")
+
+    monkeypatch.setattr(outbox, "application_confirmation_email", fail_template)
+    sender = CapturedEmailSender()
+    assert retry_queued_emails(db, sender).accepted == 1
+    assert sender.messages[0].to == ("other@example.com",)
+    assert confirmation.state == EmailDeliveryState.FAILED
+    assert confirmation.attempt_count == 1
+    assert confirmation.last_error_code == "Preparation:ValueError"
+    assert confirmation.magic_link_token_id is None
+    assert db.scalar(select(MagicLinkToken)) is None
+    assert email_queue_status(db).recent_failed == 1
+
+
 def test_an_overlapping_outbox_worker_cannot_send_the_same_delivery() -> None:
     factory = sessionmaker(bind=memory_engine(), autoflush=False)
     now = datetime.now(UTC)

@@ -102,7 +102,14 @@ def retry_queued_emails(
             db.commit()
             continue
         delivery = db.get(EmailDelivery, delivery_id)
-        built = _build_retry(db, delivery, now=attempt_time)
+        try:
+            # Roll back partial credentials if one intent cannot be prepared, while
+            # retaining its claimed attempt and allowing the rest of the batch to run.
+            with db.begin_nested():
+                built = _build_retry(db, delivery, now=attempt_time)
+        except Exception as error:
+            delivery.last_error_code = f"Preparation:{type(error).__name__}"[:120]
+            built = None
         if built is None:
             vacancy_request = (delivery.retry_intent or {}).get("type") == "vacancy_opening"
             delivery.state = EmailDeliveryState.FAILED
@@ -182,6 +189,7 @@ EXPECTED_FAILURE_CODES = frozenset(
         "EmailChangeCancelled",
         "OpeningNoLongerOpen",
         "ApplicationNoLongerNotifiable",
+        "SubmissionNoLongerDue",
     }
 )
 FAILURE_BANNER_WINDOW = timedelta(days=7)
@@ -331,6 +339,10 @@ def _build_retry(
         return None
     if intent["type"] == "application_confirmation":
         submitted = bool(intent.get("submitted"))
+        timelines = application_confirmation_timelines(db, application.id) if submitted else []
+        if submitted and not timelines:
+            delivery.last_error_code = "SubmissionNoLongerDue"
+            return None
         issued = issue_magic_link(
             db,
             identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -346,11 +358,7 @@ def _build_retry(
                 email=application.primary_email,
                 token=issued.token,
                 submitted=submitted,
-                opening_timelines=(
-                    application_confirmation_timelines(db, application.id)
-                    if submitted
-                    else []
-                ),
+                opening_timelines=timelines,
                 settings=get_settings(),
             ),
             issued.record,
