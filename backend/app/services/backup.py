@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -121,32 +122,41 @@ def restore_backup(source: Path, *, engine: Engine | None = None) -> Path:
     Safety: snapshots the CURRENT live DB first (tag ``pre-restore``) so a mistaken
     restore is itself reversible — the very failure mode that motivated backups. Verifies
     ``source`` passes an integrity check before overwriting, so a corrupt backup can't
-    clobber a good DB. The caller (CLI) is responsible for user confirmation."""
-    import shutil
+    clobber a good DB. The caller stops the backend and obtains user confirmation."""
     eng = _resolve(engine)
     source = source.resolve()
     if not source.exists():
         raise FileNotFoundError(f"Backup not found: {source}")
-    # Integrity-check the backup before trusting it over the live DB.
-    with sqlite3.connect(str(source)) as conn:
-        result = conn.execute("PRAGMA integrity_check").fetchone()
-    if not result or result[0] != "ok":
-        raise RuntimeError(f"Backup failed integrity check ({result}): {source}")
-
     db_path = _sqlite_path(eng)
-    deletion_ledger = _read_deletion_ledger(db_path)
-    if db_path.exists():
-        create_backup(engine=eng, tag="pre-restore")  # recoverable after the restore
-    shutil.copy2(source, db_path)
+    if source == db_path:
+        raise ValueError("Choose a backup file, not the live database.")
+    with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as saved:
+        _check_integrity(saved, source)
+        deletion_ledger = _read_deletion_ledger(db_path)
+        if db_path.exists():
+            create_backup(engine=eng, tag="pre-restore")
+        eng.dispose()
+        # SQLite replaces the database through its journal protocol, so crash-left
+        # WAL pages cannot overlay the restored snapshot. Close pooled connections first.
+        with closing(sqlite3.connect(str(db_path))) as destination:
+            saved.backup(destination)
     _reapply_deletion_ledger(db_path, deletion_ledger)
+    with closing(sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)) as restored:
+        _check_integrity(restored, db_path)
     return db_path
+
+
+def _check_integrity(conn: sqlite3.Connection, path: Path) -> None:
+    result = conn.execute("PRAGMA integrity_check").fetchone()
+    if not result or result[0] != "ok":
+        raise RuntimeError(f"Database failed integrity check ({result}): {path}")
 
 
 def _read_deletion_ledger(db_path: Path) -> list[tuple[str, int, str, str, str]]:
     """Capture the current non-identifying ledger before replacing the main DB file."""
     if not db_path.exists():
         return []
-    with sqlite3.connect(str(db_path)) as conn:
+    with closing(sqlite3.connect(str(db_path))) as conn:
         if not _table_exists(conn, "retention_deletions"):
             return []
         return list(
@@ -163,7 +173,7 @@ def _reapply_deletion_ledger(
     """Prevent an older backup from resurrecting aggregates already purged later."""
     if not ledger:
         return
-    with sqlite3.connect(str(db_path)) as conn:
+    with closing(sqlite3.connect(str(db_path))) as conn, conn:
         conn.execute("PRAGMA foreign_keys=ON")
         _ensure_deletion_ledger(conn)
         restored_ledger = list(

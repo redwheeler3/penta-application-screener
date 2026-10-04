@@ -668,7 +668,9 @@ applicant-identifying delivery records. Production uses daily Fly volume snapsho
 30 days. A snapshot restore may reintroduce data deleted after that snapshot; the bounded backup
 window is the accepted disaster-recovery tradeoff, and production does not maintain a separate
 deletion-preserving restore ledger. The built-in local restore path does reapply its current
-hard-purge ledger. Only a non-identifying audit fact that a record was deleted under a named
+hard-purge ledger. Local restoration uses SQLite's backup API so leftover WAL pages cannot
+override the selected snapshot, retains a pre-restore recovery point, and checks the reopened
+database's integrity. Only a non-identifying audit fact that a record was deleted under a named
 retention rule may remain in the live database.
 
 Retention is enforced automatically and opportunistically at most once per Pacific calendar day

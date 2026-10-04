@@ -5,10 +5,14 @@ a genuine SQLite file, not an in-memory one — passed explicitly to the backup 
 so nothing touches the project's real database.
 """
 
+import sqlite3
+import subprocess
+import sys
+from contextlib import closing
 from datetime import datetime
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 
 from app.services import backup
 
@@ -77,6 +81,46 @@ def test_restore_rejects_a_corrupt_backup(temp_engine, tmp_path):
     # A corrupt backup must be rejected before it can clobber the live DB.
     with pytest.raises(Exception, match=r"integrity|malformed|not a database"):
         backup.restore_backup(bogus, engine=temp_engine)
+
+
+def test_restore_replaces_crash_left_wal_and_preserves_a_recovery_snapshot(tmp_path):
+    live = tmp_path / "synthetic-live.db"
+    saved = tmp_path / "synthetic-backup.db"
+    script = """
+import os, sqlite3, sys
+live = sqlite3.connect(sys.argv[1])
+live.execute('PRAGMA journal_mode=WAL')
+live.execute('PRAGMA wal_autocheckpoint=0')
+live.execute('CREATE TABLE facts (value INTEGER)')
+live.execute('INSERT INTO facts VALUES (1)')
+live.commit()
+saved = sqlite3.connect(sys.argv[2])
+live.backup(saved)
+saved.close()
+live.execute('UPDATE facts SET value=2')
+live.commit()
+os._exit(0)
+"""
+    subprocess.run([sys.executable, "-c", script, str(live), str(saved)], check=True)
+    assert live.with_name(live.name + "-wal").exists()
+    engine = create_engine(f"sqlite:///{live.as_posix()}")
+
+    @event.listens_for(engine, "connect")
+    def use_wal(connection, _record):
+        connection.execute("PRAGMA journal_mode=WAL")
+
+    try:
+        backup.restore_backup(saved, engine=engine)
+        with closing(sqlite3.connect(live)) as restored:
+            assert restored.execute("SELECT value FROM facts").fetchone()[0] == 1
+        recovery = next(path for path in backup.list_backups(engine) if "pre-restore" in path.name)
+        with closing(sqlite3.connect(recovery)) as current:
+            assert current.execute("SELECT value FROM facts").fetchone()[0] == 2
+        # The supplied engine also reopens the restored image after its pool was disposed.
+        with engine.connect() as restored:
+            assert restored.execute(text("SELECT value FROM facts")).scalar_one() == 1
+    finally:
+        engine.dispose()
 
 
 def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
