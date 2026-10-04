@@ -41,7 +41,7 @@ from app.services.ranking.member_state import (
     set_proposals,
     set_tiers,
 )
-from app.services.run_lock import rank_run_in_progress
+from app.services.run_lock import lock_run_state, rank_run_in_progress
 
 router = APIRouter(prefix="/ranking")
 
@@ -67,6 +67,7 @@ def _require_viewed_analysis(
     edit made now (e.g. dragging an axis out of Ignore) would neither reach the run nor survive
     it, and could vanish. Blocking the save (not just warning) is what prevents the loss: the
     member re-does the edit against the fresh board once the run lands."""
+    lock_run_state(db)
     if rank_run_in_progress(db):
         raise Problem(
             "run_in_progress",
@@ -74,6 +75,8 @@ def _require_viewed_analysis(
             "changes on the refreshed criteria.",
         )
     current = get_current_analysis(db, opening_id)
+    if current is not None:
+        db.refresh(current)
     if current is None or current_dimension_report(current) is None:
         raise Problem("run_required", detail="Discover patterns before tiering.")
     if current.id != analysis_id:
@@ -81,7 +84,7 @@ def _require_viewed_analysis(
             "stale_analysis",
             detail="This ranking was refreshed by another member. Reload to see the new criteria.",
         )
-    return get_or_create_member_ranking(db, current, user)
+    return get_or_create_member_ranking(db, current, user, commit=False)
 
 
 

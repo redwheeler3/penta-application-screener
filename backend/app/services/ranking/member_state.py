@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,7 @@ from app.services.ranking.dimensions import current_dimension_report
 
 
 def get_or_create_member_ranking(
-    db: Session, analysis: Analysis, user: User
+    db: Session, analysis: Analysis, user: User, *, commit: bool = True
 ) -> MemberRanking:
     """This member's view of ``analysis``. Named ``get_or_create`` because it WRITES when
     absent: a member who didn't trigger the Rank has no view of the new analysis until they
@@ -56,9 +56,14 @@ def get_or_create_member_ranking(
     )
     db.add(member_ranking)
     try:
-        db.commit()
+        db.flush()
+        if commit:
+            db.commit()
     except IntegrityError:
         db.rollback()
+        if not commit:
+            # A caller-owned policy lock was rolled back too; do not continue the edit.
+            raise
         # A concurrent first read may have materialized this exact member view.
         existing = db.scalar(lookup)
         if existing is None:
@@ -66,6 +71,14 @@ def get_or_create_member_ranking(
         return existing
     db.refresh(member_ranking)
     return member_ranking
+
+
+def _lock_member_state(db: Session, member_ranking: MemberRanking) -> None:
+    """Reload JSON under the writer lock before merging independently editable fields."""
+    db.execute(update(MemberRanking).where(MemberRanking.id == member_ranking.id)
+        .values(run_state=MemberRanking.run_state, updated_at=MemberRanking.updated_at)
+        .execution_options(synchronize_session=False))
+    db.refresh(member_ranking)
 
 
 def dimension_weights(member_ranking: MemberRanking, *, report: PoolDimensionReport | None = None) -> dict[str, float]:
@@ -119,6 +132,7 @@ def set_proposals(
     """
     if proposed_dimensions is None:
         return member_ranking
+    _lock_member_state(db, member_ranking)
     # Trim blanks/whitespace and dedupe while preserving order.
     seen: set[str] = set()
     cleaned: list[str] = []
@@ -432,6 +446,7 @@ def set_tiers(
     newly-arrived); the member dismisses it with the ✕ when they have taken it in. Only
     re-discovery / carry-forward re-flags.
     """
+    _lock_member_state(db, member_ranking)
     report = current_dimension_report(member_ranking.analysis)
     valid_keys = {d.key for d in report.dimensions} if report is not None else set()
     for tier in tier_layout:

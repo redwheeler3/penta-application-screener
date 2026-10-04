@@ -9,7 +9,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from app.core.problems import Problem
@@ -59,12 +60,10 @@ def save_committee_default_rules(
     db: Session, opening_id: int, rules: EligibilityRules
 ) -> EligibilityRules:
     """Upsert the committee-default rules row."""
-    record = db.scalar(select(OpeningRules).where(OpeningRules.opening_id == opening_id))
     payload = rules.model_dump(mode="json")
-    if record is None:
-        db.add(OpeningRules(opening_id=opening_id, rules=payload))
-    else:
-        record.rules = payload
+    db.execute(insert(OpeningRules).values(opening_id=opening_id, rules=payload)
+        .on_conflict_do_update(index_elements=[OpeningRules.opening_id],
+            set_={"rules": payload, "updated_at": func.now()}))
     db.commit()
     return rules
 
@@ -93,17 +92,10 @@ def save_member_rules(
 ) -> EligibilityRules:
     """Upsert this member's ``MemberRules`` row — the copy-on-write divergence from the
     committee default. After this the member reads their own rules, not the default."""
-    record = db.scalar(
-        select(MemberRules).where(
-            MemberRules.user_id == user_id,
-            MemberRules.opening_id == opening_id,
-        )
-    )
     payload = rules.model_dump(mode="json")
-    if record is None:
-        db.add(MemberRules(user_id=user_id, opening_id=opening_id, rules=payload))
-    else:
-        record.rules = payload
+    db.execute(insert(MemberRules).values(user_id=user_id, opening_id=opening_id, rules=payload)
+        .on_conflict_do_update(index_elements=[MemberRules.opening_id, MemberRules.user_id],
+            set_={"rules": payload, "updated_at": func.now()}))
     db.commit()
     return rules
 

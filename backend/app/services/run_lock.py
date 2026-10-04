@@ -41,6 +41,13 @@ def ensure_lock_row(db: Session) -> None:
         db.commit()
 
 
+def lock_run_state(db: Session) -> None:
+    """Hold the lease row while an edit checks policy and commits; do not claim a run."""
+    db.execute(update(RunLock).where(RunLock.id == LOCK_ID)
+        .values(held_since=RunLock.held_since)
+        .execution_options(synchronize_session=False))
+
+
 def acquire_run_lock(
     db: Session, *, user_id: int, kind: str, now: datetime | None = None
 ) -> RunLease | None:
@@ -87,7 +94,8 @@ def rank_run_in_progress(db: Session, *, now: datetime | None = None) -> bool:
     so an axis dragged out of Ignore could silently vanish. Tier/seed saves are blocked while
     this is true. Only 'rank' — screen/score-current hold the lease too but touch no dimensions,
     so editing during them is safe. TTL-expired leases are ignored (a crashed run frees it)."""
-    lease = db.scalar(select(RunLock).where(RunLock.id == LOCK_ID))
+    lease = db.scalar(select(RunLock).where(RunLock.id == LOCK_ID)
+        .execution_options(populate_existing=True))
     if lease is None or lease.kind != "rank" or lease.held_since is None:
         return False
     now = now or datetime.now(UTC)
