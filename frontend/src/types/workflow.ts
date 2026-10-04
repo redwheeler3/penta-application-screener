@@ -47,6 +47,7 @@ export type ScoreCurrentEstimateResponse = {
   eligible: number;
   toAnalyze: number;
   cached: number;
+  cachedToRefresh: number;
   dimensions: number;
   estimatedUsd: number;
   capUsd: number;

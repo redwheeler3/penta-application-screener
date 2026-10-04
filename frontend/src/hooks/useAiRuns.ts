@@ -272,7 +272,9 @@ export function useAiRuns(options: {
             const failedNote = event.failed ? ` ${event.failed} failed and were skipped.` : "";
             options.notifications.success(
               `${mode === "discover" ? "Ranking complete" : "Current criteria updated"}: ` +
-                `${event.dimensions} criteria, ${event.scored} candidates scored ` +
+                (mode === "score-current" && event.scored === 0 && !event.failed
+                  ? `${event.dimensions} criteria, saved scores reused `
+                  : `${event.dimensions} criteria, ${event.scored} candidates scored `) +
                 `(${money(event.totalCostUsd)}).` +
                 failedNote,
             );

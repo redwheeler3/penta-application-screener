@@ -14,8 +14,10 @@ export function RankingRunConfirmation(props: {
 }): ReactNode {
   const { estimate, scoreCurrentEstimate, hasCurrentCriteria, pendingProposals, running, onRun, onCancel } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
+  const hasCachedRefresh = (scoreCurrentEstimate?.cachedToRefresh ?? 0) > 0;
+  const hasScoreUpdates = hasMissingScores || hasCachedRefresh;
   const hasPendingProposals = pendingProposals.length > 0;
-  const preferScoring = hasMissingScores && !hasPendingProposals;
+  const preferScoring = hasScoreUpdates && !hasPendingProposals;
 
   return (
     <div className="run-confirm">
@@ -34,13 +36,19 @@ export function RankingRunConfirmation(props: {
             <strong>Discover new criteria</strong> below to fold it in.
           </p>
         ) : null}
-        {scoreCurrentEstimate && hasMissingScores ? (
+        {scoreCurrentEstimate && hasScoreUpdates ? (
           <>
             <p>
-              <strong>Score missing applicants</strong> against the current {scoreCurrentEstimate.dimensions} criteria.
+              <strong>{hasMissingScores ? "Score missing applicants" : "Reuse cached scores"}</strong> against the current {scoreCurrentEstimate.dimensions} criteria.
               The criteria and your tier layout stay unchanged. Estimated cost{" "}
               <strong>~{money(scoreCurrentEstimate.estimatedUsd)}</strong> (cap ${scoreCurrentEstimate.capUsd.toFixed(2)}).
             </p>
+            {hasCachedRefresh && !hasMissingScores ? (
+              <p>
+                Restore scores for {scoreCurrentEstimate.cachedToRefresh} applicant{scoreCurrentEstimate.cachedToRefresh === 1 ? "" : "s"}{" "}
+                using the saved results for the selected AI settings. No AI calls are needed.
+              </p>
+            ) : null}
             {!scoreCurrentEstimate.withinCap ? (
               <p className="run-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
@@ -48,12 +56,12 @@ export function RankingRunConfirmation(props: {
             ) : null}
           </>
         ) : null}
-        {scoreCurrentEstimate?.toAnalyze === 0 ? (
+        {scoreCurrentEstimate?.toAnalyze === 0 && !hasCachedRefresh ? (
           <p>All {scoreCurrentEstimate.cached} eligible applicants are already scored against these criteria.</p>
         ) : null}
         <div>
           <p>
-            {hasMissingScores ? "Or, " : ""}<strong>Discover new criteria</strong> that distinguish this pool and score all{" "}
+            {hasScoreUpdates ? "Or, " : ""}<strong>Discover new criteria</strong> that distinguish this pool and score all{" "}
             {estimate.eligible} eligible applicant{estimate.eligible === 1 ? "" : "s"} against them.
             Estimated cost <strong>~{money(estimate.estimatedUsd)}</strong> (cap $
             {estimate.capUsd.toFixed(2)}).
@@ -75,14 +83,14 @@ export function RankingRunConfirmation(props: {
         {/* A pending proposal makes Discover the primary action — it's the only run
             that grounds the proposed axis — so score-missing is demoted even when
             scores are short. */}
-        {scoreCurrentEstimate && hasMissingScores ? (
+        {scoreCurrentEstimate && hasScoreUpdates ? (
           <button
             className={preferScoring ? "primary-button" : "secondary-button"}
             type="button"
             onClick={() => onRun("score-current")}
             disabled={running || !scoreCurrentEstimate.withinCap}
           >
-            {running ? "Running…" : "Score missing applicants"}
+            {running ? "Running…" : hasMissingScores ? "Score missing applicants" : "Reuse cached scores"}
           </button>
         ) : null}
         <button
@@ -104,6 +112,7 @@ export function RankingRunConfirmation(props: {
 function confirmationTitle(proposalCount: number, scoreEstimate: ScoreCurrentEstimateResponse | null): string {
   if (proposalCount === 1) return "Apply your proposed criterion?";
   if (proposalCount > 1) return "Apply your proposed criteria?";
+  if (scoreEstimate?.toAnalyze === 0 && scoreEstimate.cachedToRefresh > 0) return "Reuse saved scores?";
   if (scoreEstimate?.toAnalyze === 0) return "Ranking is up to date.";
   if (scoreEstimate) return "Update the ranking?";
   return "Rank the candidates?";

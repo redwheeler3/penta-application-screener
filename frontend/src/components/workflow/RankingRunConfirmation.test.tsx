@@ -11,7 +11,7 @@ const props: ComponentProps<typeof RankingRunConfirmation> = {
     estimatedUsd: 0.8, approximate: true, capUsd: 2, withinCap: true, rankingCurrent: false,
   },
   scoreCurrentEstimate: {
-    eligible: 8, toAnalyze: 2, cached: 6, dimensions: 4, estimatedUsd: 0.05, capUsd: 2, withinCap: true,
+    eligible: 8, toAnalyze: 2, cached: 6, cachedToRefresh: 0, dimensions: 4, estimatedUsd: 0.05, capUsd: 2, withinCap: true,
   },
   hasCurrentCriteria: true,
   pendingProposals: [],
@@ -63,4 +63,15 @@ describe("ranking confirmation", () => {
     expect(screen.getAllByRole("button", { name: "Running…" })).toHaveLength(2);
     for (const button of screen.getAllByRole("button", { name: "Running…" })) expect(button).toBeDisabled();
   });
+});
+
+
+it("offers a free cached refresh without claiming the ranking is already current", () => {
+  render(<RankingRunConfirmation {...props} scoreCurrentEstimate={{
+    ...props.scoreCurrentEstimate!, toAnalyze: 0, cachedToRefresh: 8, estimatedUsd: 0,
+  }} />);
+  expect(screen.getByText("Reuse saved scores?")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reuse cached scores" })).toBeEnabled();
+  expect(screen.getByText(/No AI calls are needed/)).toBeInTheDocument();
+  expect(screen.queryByText("Ranking is up to date.")).not.toBeInTheDocument();
 });

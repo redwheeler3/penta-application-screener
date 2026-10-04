@@ -15,6 +15,7 @@ from app.ai.analysis import CostEstimate, observed_avg_tokens
 from app.ai.dimension_scoring import (
     KIND_PREFIX,
     PROMPT_VERSION,
+    DimensionScoringPlan,
     applications_to_score,
     build_prompt,
     missing_dimensions_by_application,
@@ -52,6 +53,17 @@ _CHARS_PER_TOKEN = 4
 # The scoring estimate is the shared cost-estimate shape (see analysis.CostEstimate);
 # scoring builds it via its own cache-aware fallback ladder rather than the shared engine.
 ScoringEstimate = CostEstimate
+
+
+def estimate_scoring_plan(db: Session, plan: DimensionScoringPlan) -> ScoringEstimate:
+    """Price exactly the misses and captured prompt sizes that execution will consume."""
+    output_per_dim = _avg_output_tokens_per_dimension(db, plan.model_id)
+    estimated = sum(cost_usd(plan.model_id, Usage(
+        input_tokens=app.prompt_length // _CHARS_PER_TOKEN,
+        output_tokens=output_per_dim * len(app.dimensions_to_score),
+    )) for app in plan.applicants if app.dimensions_to_score)
+    return {"total": len(plan.applicants), "to_analyze": plan.to_analyze,
+        "cached": len(plan.applicants) - plan.to_analyze, "estimated_usd": round(estimated, 4)}
 
 
 def _avg_output_tokens_per_dimension(db: Session, model_id: str) -> int:

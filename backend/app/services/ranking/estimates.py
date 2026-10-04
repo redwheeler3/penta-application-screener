@@ -14,12 +14,10 @@ from app.ai.dimension_discovery import eligible_applications, estimate_discovery
 from app.ai.dimension_matching import estimate_match
 from app.ai.dimension_scoring_cost import estimate_dimension_scoring
 from app.ai.schemas import PoolDimension, PoolDimensionReport
-from app.core.problems import Problem
 from app.db.models import Application
 from app.schemas.settings import AppSettings
 from app.services.cost_report import recent_pass_fresh_usd
 from app.services.ranking.analysis import get_current_analysis
-from app.services.ranking.dimensions import current_dimension_report
 
 
 def build_rank_estimate(
@@ -95,20 +93,3 @@ def build_rank_estimate(
         "approximate": True,
     }
 
-
-def current_scoring_estimate(
-    db: Session,
-    opening_id: int,
-    settings: AppSettings,
-) -> tuple[PoolDimensionReport, dict[str, object]]:
-    """Return current criteria and the exact cache-aware score-only estimate."""
-    analysis = get_current_analysis(db, opening_id)
-    report = current_dimension_report(analysis) if analysis is not None else None
-    if report is None:
-        raise Problem(
-            "run_required",
-            detail="Discover ranking criteria before scoring applicants against them.",
-        )
-    return report, estimate_dimension_scoring(
-        db, opening_id, settings, prefer_history=False
-    )

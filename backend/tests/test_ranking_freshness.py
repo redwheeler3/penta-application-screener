@@ -80,7 +80,8 @@ async def test_score_current_keeps_its_starting_fingerprint_after_an_edit(monkey
     scoring_fingerprint = rank_inputs_fingerprint(db, opening_id, settings)
     seen_hashes = []
 
-    def delayed_scores(_db, _provider, *, applications, **_kwargs):
+    def delayed_scores(_db, _provider, *, plan, **_kwargs):
+        applications = [app.application for app in plan.applicants]
         seen_hashes.extend(candidate.raw_row_hash for candidate in applications)
         yield PassResult(
             application=applications[0],
@@ -89,7 +90,7 @@ async def test_score_current_keeps_its_starting_fingerprint_after_an_edit(monkey
         application.raw_row_hash = "edited-during-scoring"
         db.commit()
 
-    monkeypatch.setattr("app.api.ranking.score_current.score_dimensions", delayed_scores)
+    monkeypatch.setattr("app.api.ranking.score_current.score_planned_dimensions", delayed_scores)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         response = await client.post(f"/ranking/score-current?opening_id={opening_id}")
     assert response.status_code == 200

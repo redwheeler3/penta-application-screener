@@ -1207,6 +1207,12 @@ one batch after inputs are captured; fresh references commit with their result. 
 rows are migrated to their previously displayed newest result because earlier cache choices
 were not recorded.
 
+Score-only execution captures the current analysis, eligible pool, effective reasoning,
+cache choices, model inputs, and estimate after acquiring the run lease. Estimate and
+execution consume the same plan. The pass refreshes references for the whole pool while
+making model calls only for cache misses; switching back to valid saved scores offers
+**Reuse cached scores** with zero AI spend. The criteria and tier layout stay unchanged.
+
 Local synthetic measurement (2026-10-03, SQLite WAL/FULL, 15 repetitions, median):
 100 applicants × 15 dimensions with 30,000 historical rows read in 5.7 ms versus
 37.1 ms with newest-row selection. Switching 1,500 references and committing took

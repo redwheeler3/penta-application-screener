@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.ai.analysis import SpendingCapExceeded, enforce_cap
 from app.ai.dimension_scoring import (
-    applications_needing_scores,
     applications_to_score,
-    score_dimensions,
+    plan_dimension_scoring,
+    score_planned_dimensions,
 )
+from app.ai.dimension_scoring_cost import estimate_scoring_plan
 from app.ai.provider import AIProvider
 from app.api.dependencies import get_ai_provider, require_current_user
 from app.core.problems import Problem
@@ -24,7 +25,7 @@ from app.services.applications.scope import resolve_visible_opening_id
 from app.services.cost_report import SCORE_CURRENT_KIND, record_run_cost
 from app.services.openings.selection import require_ai_actions_available
 from app.services.ranking.analysis import get_current_analysis, record_rank_inputs
-from app.services.ranking.estimates import current_scoring_estimate
+from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.pipeline import SCORES, ScoreTally
 from app.services.run_lock import acquire_run_lock, release_run_lock
@@ -42,12 +43,18 @@ def score_current_estimate(
     opening_id = resolve_visible_opening_id(db, opening_id)
     require_ai_actions_available(db, opening_id)
     settings = get_app_settings(db)
-    report, result = current_scoring_estimate(db, opening_id, settings)
+    analysis = get_current_analysis(db, opening_id)
+    report = current_dimension_report(analysis) if analysis is not None else None
+    if report is None:
+        raise Problem("run_required", detail="Discover ranking criteria before scoring applicants against them.")
+    plan = plan_dimension_scoring(db, applications=applications_to_score(db, opening_id), report=report, settings=settings)
+    result = estimate_scoring_plan(db, plan)
     estimated_usd = float(result["estimated_usd"])
     return ScoreCurrentEstimateResponse(
         eligible=int(result["total"]),
         to_analyze=int(result["to_analyze"]),
         cached=int(result["cached"]),
+        cached_to_refresh=len(plan.refresh_application_ids),
         dimensions=len(report.dimensions),
         estimated_usd=estimated_usd,
         cap_usd=settings.ai.spending_cap_usd,
@@ -64,64 +71,51 @@ def score_current(
 ) -> StreamingResponse:
     """Fill missing scores without changing the current dimensions or tier layout."""
     opening_id = resolve_visible_opening_id(db, opening_id)
-    require_ai_actions_available(db, opening_id)
-    settings = get_app_settings(db)
-    report, estimate = current_scoring_estimate(db, opening_id, settings)
-    if estimate["to_analyze"] == 0:
-        raise Problem(
-            "unchanged_pool",
-            detail="Every eligible applicant is already scored against the current criteria.",
-        )
-    try:
-        enforce_cap(estimate, settings.ai.spending_cap_usd)
-    except SpendingCapExceeded as exc:
-        raise Problem(
-            "cap_exceeded",
-            detail=str(exc),
-            cap_usd=settings.ai.spending_cap_usd,
-            estimated_usd=estimate["estimated_usd"],
-        ) from exc
-
     lease = acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND)
     if lease is None:
-        raise Problem(
-            "run_in_progress",
-            detail="Another screening or ranking run is in progress. Try again in about 10 minutes.",
-        )
+        raise Problem("run_in_progress", detail="Another screening or ranking run is in progress. Try again in about 10 minutes.")
+    try:
+        require_ai_actions_available(db, opening_id)
+        settings = get_app_settings(db)
+        analysis = get_current_analysis(db, opening_id)
+        report = current_dimension_report(analysis) if analysis is not None else None
+        if report is None:
+            raise Problem("run_required", detail="Discover ranking criteria before scoring applicants against them.")
+        pool = applications_to_score(db, opening_id)
+        inputs_fingerprint = rank_inputs_fingerprint(db, opening_id, settings, applications=pool)
+        plan = plan_dimension_scoring(db, applications=pool, report=report, settings=settings)
+        estimate = estimate_scoring_plan(db, plan)
+        if plan.to_analyze == 0 and not plan.refresh_application_ids:
+            raise Problem("unchanged_pool", detail="Every eligible applicant already uses the current scores.")
+        try:
+            enforce_cap(estimate, settings.ai.spending_cap_usd)
+        except SpendingCapExceeded as exc:
+            raise Problem("cap_exceeded", detail=str(exc), cap_usd=settings.ai.spending_cap_usd,
+                estimated_usd=estimate["estimated_usd"]) from exc
+    except BaseException:
+        release_run_lock(db, lease)
+        raise
 
     def stream() -> Iterator[str]:
         try:
-            pool = applications_to_score(db, opening_id)
-            inputs_fingerprint = rank_inputs_fingerprint(db, opening_id, settings, applications=pool)
-            candidates = applications_needing_scores(
-                db, pool, report, settings.ai.dimension_scoring_model,
-            )
-            yield emit(PhaseEvent(phase=SCORES, total=len(candidates)))
+            yield emit(PhaseEvent(phase=SCORES, total=plan.to_analyze))
             tally = ScoreTally()
             started = time.perf_counter()
-            for processed, result in enumerate(
-                score_dimensions(
-                    db,
-                    provider,
-                    applications=candidates,
-                    report=report,
-                    settings=settings,
-                    max_workers=settings.ai.max_workers,
-                ),
-                start=1,
-            ):
+            processed = 0
+            for result in score_planned_dimensions(db, provider, plan=plan, max_workers=settings.ai.max_workers):
                 tally.add(result)
+                if not result.failed and result.fresh_units == 0:
+                    continue
+                processed += 1
                 yield emit(
                     ProgressEvent(
                         phase=SCORES,
                         processed=processed,
-                        total=len(candidates),
+                        total=plan.to_analyze,
                     )
                 )
             if tally.failed == 0:
-                analysis = get_current_analysis(db, opening_id)
-                if analysis is not None:
-                    record_rank_inputs(db, analysis, inputs_fingerprint)
+                record_rank_inputs(db, analysis, inputs_fingerprint)
             record_run_cost(
                 db,
                 kind=SCORE_CURRENT_KIND,
@@ -140,7 +134,7 @@ def score_current(
             yield emit(
                 RankSummary(
                     dimensions=len(report.dimensions),
-                    scored=tally.processed,
+                    scored=processed,
                     failed=tally.failed,
                     total_cost_usd=round(tally.cost_usd, 4),
                 )

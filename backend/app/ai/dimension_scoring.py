@@ -27,7 +27,6 @@ from app.ai.analysis import (
     AnalysisOutcome,
     PassResult,
     cache_key,
-    cached_outcome,
     derive_prompt_version,
     exception_type_name,
     log,
@@ -37,6 +36,7 @@ from app.ai.analysis import (
 )
 from app.ai.applicant_facts import applicant_facts
 from app.ai.model_catalog import ReasoningEffort
+from app.ai.pricing import cost_usd
 from app.ai.prompt_fragments import (
     ENGLISH_POLISH_NOTE,
     INJECTION_GUARD_NOTE,
@@ -50,7 +50,7 @@ from app.ai.schemas import (
     PoolDimensionReport,
     ScoreConfidence,
 )
-from app.db.models import Application, ApplicationAIResult
+from app.db.models import Application, ApplicationAIResult, ApplicationAISelection
 from app.schemas.settings import (
     AppSettings,
     effective_reasoning_effort,
@@ -159,43 +159,6 @@ def kind_for_dimension(dimension_key: str) -> str:
 def applications_to_score(db: Session, opening_id: int) -> list[Application]:
     """The UNION-eligible applications — same scope as pattern discovery."""
     return union_eligible_applications(db, opening_id)
-
-
-def _to_score_dimensions(
-    db: Session,
-    application: Application,
-    report: PoolDimensionReport,
-    model_id: str,
-    reasoning_effort: ReasoningEffort | None = None,
-) -> tuple[list[PoolDimension], dict[str, DimensionScore], float, list[tuple[int, str, int]]]:
-    """Split a candidate's dimensions into (to-score, cached) by per-key cache hit.
-    Returns pending dimensions, cached scores, their avoided cost on the selected
-    route, and references to the reused rows. This planning step never writes.
-    """
-    to_score: list[PoolDimension] = []
-    cached: dict[str, DimensionScore] = {}
-    cached_saved_usd = 0.0
-    references = []
-    for dim in report.dimensions:
-        outcome = cached_outcome(
-            db,
-            application,
-            kind=kind_for_dimension(dim.key),
-            schema=DimensionScore,
-            model_id=model_id,
-            prompt_version=PROMPT_VERSION,
-            reasoning_effort=reasoning_effort,
-        )
-        if outcome is None:
-            to_score.append(dim)
-        else:
-            cached[dim.key] = DimensionScore.model_validate(
-                {**outcome.output.model_dump(), "dimension_key": dim.key}
-            )
-            cached_saved_usd += outcome.cost_usd
-            assert outcome.result_id is not None
-            references.append((application.id, kind_for_dimension(dim.key), outcome.result_id))
-    return to_score, cached, cached_saved_usd, references
 
 
 def missing_dimensions_by_application(
@@ -378,56 +341,99 @@ class ScoringPlan:
     cached_scores: dict[str, DimensionScore]
     cached_saved_usd: float
     result_cache_keys: dict[str, str]
+    prompt_length: int
+
+
+@dataclass(frozen=True)
+class DimensionScoringPlan:
+    """Captured criteria, invocation settings, inputs, and cache choices for one pass."""
+
+    report: PoolDimensionReport
+    model_id: str
+    reasoning_effort: ReasoningEffort | None
+    applicants: list[ScoringPlan]
+    cached_references: list[tuple[int, str, int]]
+    refresh_application_ids: set[int]
+
+    @property
+    def to_analyze(self) -> int:
+        return sum(bool(app.dimensions_to_score) for app in self.applicants)
+
+
+def plan_dimension_scoring(
+    db: Session, *, applications: list[Application], report: PoolDimensionReport, settings: AppSettings,
+) -> DimensionScoringPlan:
+    """Capture the whole pool before any commit, using bounded cache reads."""
+    model_id = settings.ai.dimension_scoring_model
+    reasoning_effort = effective_reasoning_effort(model_id, settings.ai.dimension_scoring_reasoning_effort)
+    keys_by_application = {
+        application.id: {dim.key: cache_key(application=application, kind=kind_for_dimension(dim.key),
+            model_id=model_id, prompt_version=PROMPT_VERSION, reasoning_effort=reasoning_effort)
+            for dim in report.dimensions}
+        for application in applications
+    }
+    keys = list({key for by_dimension in keys_by_application.values() for key in by_dimension.values()})
+    cached_rows = {}
+    for start in range(0, len(keys), 500):
+        rows = db.execute(select(ApplicationAIResult.id, ApplicationAIResult.cache_key,
+            ApplicationAIResult.output, ApplicationAIResult.input_tokens, ApplicationAIResult.output_tokens)
+            .where(ApplicationAIResult.cache_key.in_(keys[start:start + 500])))
+        cached_rows.update((row.cache_key, row) for row in rows)
+    selected = {}
+    ids = list(keys_by_application)
+    kinds = [kind_for_dimension(dim.key) for dim in report.dimensions]
+    for start in range(0, len(ids), 500):
+        rows = db.execute(select(ApplicationAISelection.application_id, ApplicationAISelection.kind,
+            ApplicationAISelection.result_id).where(ApplicationAISelection.application_id.in_(ids[start:start + 500]),
+                ApplicationAISelection.kind.in_(kinds)))
+        selected.update(((row.application_id, row.kind), row.result_id) for row in rows)
+
+    plans = []
+    references = []
+    refresh_ids = set()
+    for application in applications:
+        result_keys = keys_by_application[application.id]
+        cached = {}
+        to_score = []
+        cached_saved_usd = 0.0
+        for dim in report.dimensions:
+            row = cached_rows.get(result_keys[dim.key])
+            if row is None:
+                to_score.append(dim)
+                continue
+            cached[dim.key] = DimensionScore.model_validate({**row.output, "dimension_key": dim.key})
+            cached_saved_usd += cost_usd(model_id, Usage(input_tokens=row.input_tokens, output_tokens=row.output_tokens))
+            kind = kind_for_dimension(dim.key)
+            references.append((application.id, kind, row.id))
+            if selected.get((application.id, kind)) != row.id:
+                refresh_ids.add(application.id)
+        applicant_block = _applicant_block(application) if to_score else None
+        plans.append(ScoringPlan(application=application,
+            applicant_block=applicant_block,
+            dimensions_to_score=to_score, cached_scores=cached,
+            cached_saved_usd=cached_saved_usd, result_cache_keys=result_keys,
+            prompt_length=len(_build_prompt(applicant_block, to_score)) if applicant_block is not None else 0))
+    return DimensionScoringPlan(report=report, model_id=model_id, reasoning_effort=reasoning_effort,
+        applicants=plans, cached_references=references, refresh_application_ids=refresh_ids)
 
 
 def score_dimensions(
-    db: Session,
-    provider: AIProvider,
-    *,
-    applications: list[Application],
-    report: PoolDimensionReport,
-    settings: AppSettings,
-    max_workers: int,
+    db: Session, provider: AIProvider, *, applications: list[Application],
+    report: PoolDimensionReport, settings: AppSettings, max_workers: int,
 ) -> Iterator[PassResult]:
-    """Score every candidate, reusing cached per-dimension scores and batching each
-    candidate's uncached dimensions into one model call.
+    """Plan and score a pool; database work stays on the caller's thread."""
+    plan = plan_dimension_scoring(db, applications=applications, report=report, settings=settings)
+    yield from score_planned_dimensions(db, provider, plan=plan, max_workers=max_workers)
 
-    Mirrors ``screen_applications``' session discipline: all ORM work on this
-    thread, only the model call in a worker via ``run_in_pool``.
-    """
-    model_id = settings.ai.dimension_scoring_model
-    reasoning_effort = effective_reasoning_effort(
-        model_id, settings.ai.dimension_scoring_reasoning_effort
-    )
 
-    # Plan each candidate on the main thread (cache lookups touch the ORM): which
-    # dimensions still need scoring, and the cached ones to merge in.
-    plans: list[ScoringPlan] = []
-    references = []
-    for application in applications:
-        to_score, cached, cached_saved_usd, reused = _to_score_dimensions(
-            db, application, report, model_id, reasoning_effort
-        )
-        references.extend(reused)
-        # Workers must never touch an ORM instance: storing an earlier candidate commits
-        # on the main thread and expires session objects while slower workers are still
-        # building prompts. Snapshot the applicant input before the pool starts.
-        applicant_block = _applicant_block(application) if to_score else None
-        result_keys = {
-            dim.key: cache_key(
-                application=application, kind=kind_for_dimension(dim.key), model_id=model_id,
-                prompt_version=PROMPT_VERSION, reasoning_effort=reasoning_effort,
-            )
-            for dim in to_score
-        }
-        plans.append(ScoringPlan(
-            application=application, applicant_block=applicant_block,
-            dimensions_to_score=to_score, cached_scores=cached,
-            cached_saved_usd=cached_saved_usd, result_cache_keys=result_keys,
-        ))
-
-    if references:
-        select_results(db, references)
+def score_planned_dimensions(
+    db: Session, provider: AIProvider, *, plan: DimensionScoringPlan, max_workers: int,
+) -> Iterator[PassResult]:
+    """Consume captured cache choices and score only captured misses, without replanning."""
+    report, model_id, reasoning_effort = plan.report, plan.model_id, plan.reasoning_effort
+    plans = plan.applicants
+    if plan.cached_references:
+        select_results(db, plan.cached_references)
         db.commit()
 
     def call(plan: ScoringPlan) -> AIResult | None:
