@@ -4,7 +4,7 @@ import {
   type UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
 import { logoutApplicant, withdrawApplication } from "./api";
-import { captureApplicantStorage, clearApplicantStorage } from "./draftStorage";
+import { BROWSER_STORAGE_CLEAR_MESSAGE, captureApplicantStorage, clearApplicantStorage } from "./draftStorage";
 import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 type WithdrawalFlowDependencies = {
@@ -47,10 +47,11 @@ export function createApplicantWithdrawalFlow({
       updatePersistence({ withdrawalStatus: "error", withdrawalMessage: problem.detail });
       return false;
     }
-    await clearApplicantStorage(browserSnapshot);
+    const cleared = await clearApplicantStorage(browserSnapshot);
     if (!inSession()) return false;
     endSessionWork();
-    updatePersistence((state) => resetApplicantSession(state, "withdrawn"));
+    updatePersistence((state) => ({ ...resetApplicantSession(state, "withdrawn"),
+      browserStorageMessage: cleared ? "" : BROWSER_STORAGE_CLEAR_MESSAGE }));
     return true;
   }
 
@@ -72,10 +73,11 @@ export function createApplicantWithdrawalFlow({
       await fail(response);
       return false;
     }
-    await clearApplicantStorage(browserSnapshot);
+    const cleared = await clearApplicantStorage(browserSnapshot);
     if (!inSession()) return false;
     endSessionWork();
-    updatePersistence((state) => resetApplicantSession(state));
+    updatePersistence((state) => ({ ...resetApplicantSession(state),
+      browserStorageMessage: cleared ? "" : BROWSER_STORAGE_CLEAR_MESSAGE }));
     void restorePublicOpenings();
     return true;
   }

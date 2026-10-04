@@ -12,6 +12,7 @@ export type ApplicantPersistenceState = {
   phase: PersistencePhase;
   loadRecoveryStage: ServiceRecoveryStage | null;
   message: string;
+  browserStorageMessage: string;
   applicationId: number | null;
   workingRevision: number | null;
   openings: ApplicantOpening[];
@@ -48,6 +49,7 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   phase: "idle",
   loadRecoveryStage: null,
   message: "",
+  browserStorageMessage: "",
   applicationId: null,
   workingRevision: null,
   openings: [],

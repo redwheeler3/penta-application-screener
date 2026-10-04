@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  applicationDraftIsStored,
   observeRememberedStorage,
   rememberedStorageScope,
   saveApplicationDraft,
@@ -20,6 +21,7 @@ type DraftSnapshot = {
 export function useRememberedApplicantDraft(snapshot: DraftSnapshot) {
   const [scope, setScope] = useState(rememberedStorageScope);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [message, setMessage] = useState("");
   const accepted = useRef<DraftSnapshot | null>(null);
   const consentRequest = useRef(0);
 
@@ -28,12 +30,20 @@ export function useRememberedApplicantDraft(snapshot: DraftSnapshot) {
     accepted.current = null;
     setScope(null);
     setSavedAt(null);
+    setMessage("");
   }, []);
 
-  useEffect(() => observeRememberedStorage(reset), [reset]);
+  useEffect(() => observeRememberedStorage(reset, () => {
+    const stored = accepted.current;
+    if (stored && !applicationDraftIsStored(stored.applicationId!, stored.draft, stored.openingIds, stored.workingRevision!)) {
+      accepted.current = null;
+      setSavedAt(null);
+    }
+  }), [reset]);
 
   async function changeRememberDevice(remember: boolean) {
     const request = ++consentRequest.current;
+    setMessage("");
     try {
       const consent = await setRememberDevice(remember);
       if (request !== consentRequest.current) return;
@@ -41,7 +51,10 @@ export function useRememberedApplicantDraft(snapshot: DraftSnapshot) {
       setScope(rememberedStorageScope() === consent ? consent : null);
       setSavedAt(null);
     } catch {
-      if (request === consentRequest.current) reset();
+      if (request === consentRequest.current) {
+        reset();
+        setMessage("Could not update browser storage. Clear this site's data if this is a shared device.");
+      }
     }
   }
 
@@ -73,8 +86,9 @@ export function useRememberedApplicantDraft(snapshot: DraftSnapshot) {
     const stored = accepted.current;
     return scope !== null && rememberedStorageScope() === scope && stored !== null
       && stored.applicationId === snapshot.applicationId && stored.workingRevision === snapshot.workingRevision
-      && stored.draft === snapshot.draft && stored.openingIds === snapshot.openingIds;
+      && stored.draft === snapshot.draft && stored.openingIds === snapshot.openingIds
+      && applicationDraftIsStored(stored.applicationId!, stored.draft, stored.openingIds, stored.workingRevision!);
   }
 
-  return { rememberDevice: scope !== null, savedAt, changeRememberDevice, reset, currentDraftIsStored };
+  return { rememberDevice: scope !== null, savedAt, message, changeRememberDevice, reset, currentDraftIsStored };
 }

@@ -176,10 +176,11 @@ export function ApplicantApp() {
     });
   }
 
-  function discardLocalDraft(): void {
+  async function discardLocalDraft(): Promise<void> {
+    const discarded = draft;
+    if (!(await persistence.discardDraft())) return;
     setClearingDraft(false);
-    void persistence.discardDraft();
-    setDraft(emptyApplicantDraft());
+    setDraft((current) => current === discarded ? emptyApplicantDraft() : current);
     browserDraft.reset();
     setReviewing(false);
   }
@@ -261,6 +262,9 @@ export function ApplicantApp() {
           ) : null}
         </div>
 
+        {persistence.browserStorageMessage || browserDraft.message ? (
+          <p className="application-entry-error" role="alert">{persistence.browserStorageMessage || browserDraft.message}</p>
+        ) : null}
         {persistence.authenticated && googleAccessResult === "session_conflict" ? (
           <div className="application-session-conflict" role="alert">
             <div>
@@ -416,7 +420,7 @@ export function ApplicantApp() {
               {clearingDraft ? (
                 <ClearDraftConfirmation
                   onCancel={() => setClearingDraft(false)}
-                  onConfirm={discardLocalDraft}
+                  onConfirm={() => void discardLocalDraft()}
                 />
               ) : persistence.authenticated ? (
                 <span />

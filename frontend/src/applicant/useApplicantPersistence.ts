@@ -61,6 +61,7 @@ export function useApplicantPersistence(
     phase,
     loadRecoveryStage,
     message,
+    browserStorageMessage,
     applicationId,
     workingRevision,
     openings,
@@ -202,6 +203,10 @@ export function useApplicantPersistence(
       if (!response.ok) return fail(response);
       const body = await linkBody(response);
       if (!inSession()) return;
+      if (body.state === "unavailable") {
+        updatePersistence({ phase: "applications_unavailable" });
+        return;
+      }
       if (body.state === "email_in_use" && body.applicationId != null) {
         await onRememberDeviceChange(rememberDevice);
         if (!inSession()) return;
@@ -456,18 +461,27 @@ export function useApplicantPersistence(
     }
   }
 
-  async function discardDraft(): Promise<void> {
+  async function discardDraft(): Promise<boolean> {
     endSessionWork();
     const inSession = sessionWork.capture();
+    updatePersistence({ phase: "working", message: "" });
+    if (pendingDraftToken) {
+      const response = await deletePendingDraft(pendingDraftToken).catch(() => null);
+      if (!inSession()) return false;
+      if (!response?.ok) {
+        updatePersistence({ message: "Could not clear the saved draft. Your answers are still here; try again.", phase: "error" });
+        return false;
+      }
+    }
     if (applicationId != null) await clearApplicationDraft(applicationId);
-    if (!inSession()) return;
+    if (!inSession()) return false;
     updatePersistence({
       pendingDraftToken: null,
       openingIds: defaultOpeningIds(openings),
       savedAnswers: null,
       phase: "idle",
     });
-    if (pendingDraftToken) await deletePendingDraft(pendingDraftToken);
+    return true;
   }
 
   async function fail(response: Response): Promise<void> {
@@ -557,6 +571,7 @@ export function useApplicantPersistence(
     phase,
     loadRecoveryStage,
     message,
+    browserStorageMessage,
     linkConflict,
     pendingCopy,
     accessEmail,

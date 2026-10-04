@@ -22,7 +22,7 @@ import {
   submitApplication,
   submitGuestApplication,
 } from "./api";
-import { clearApplicationDraft } from "./draftStorage";
+import { BROWSER_STORAGE_CLEAR_MESSAGE, clearApplicationDraft } from "./draftStorage";
 import {
   canonicalAnswers,
   residenceHistoryCutoff,
@@ -183,7 +183,9 @@ export function createApplicantSaveFlow({
     });
     if (intent === "submit" && applicationId != null
       && snapshot === workingSnapshot(draftRef.current, stateRef.current.openingIds)) {
-      await clearApplicationDraft(applicationId);
+      if (!(await clearApplicationDraft(applicationId))) {
+        updatePersistence({ browserStorageMessage: BROWSER_STORAGE_CLEAR_MESSAGE });
+      }
     }
     return inSession();
   }
@@ -205,14 +207,15 @@ export function createApplicantSaveFlow({
     }
     const body = (await response.json()) as {
       currentAnswersSaved: boolean;
+      workingRevision: number | null;
       emailStatus: EmailSendStatus;
     };
     if (!inSession()) return false;
-    if (body.emailStatus === "failed") return false;
     if (body.currentAnswersSaved) {
-      updatePersistence({ savedAnswers: snapshot });
+      invalidateReads();
+      updatePersistence({ savedAnswers: snapshot, workingRevision: body.workingRevision });
     }
-    return true;
+    return body.emailStatus !== "failed";
   }
 
   async function requestEntryLink(email: string): Promise<boolean> {

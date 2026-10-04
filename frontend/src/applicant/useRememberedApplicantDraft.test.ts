@@ -69,6 +69,33 @@ it("merges different applicants' writes under the shared browser lock", async ()
   expect(loadApplicationDraft(2)?.openingIds).toEqual([12]);
 });
 
+it("revokes a recovery acknowledgement when another tab replaces the same applicant's draft", async () => {
+  const scope = (await setRememberDevice(true))!;
+  const { result } = renderHook(() => useRememberedApplicantDraft(snapshot));
+  await act(() => vi.runAllTimersAsync());
+  expect(result.current.currentDraftIsStored()).toBe(true);
+  await saveApplicationDraft(1, { ...snapshot.draft, pets: "Other tab" }, [], 3, scope);
+  // The leaving-page guard is correct even before the asynchronous storage event.
+  expect(result.current.currentDraftIsStored()).toBe(false);
+  act(() => window.dispatchEvent(new StorageEvent("storage", {
+    storageArea: localStorage, key: "penta-application-drafts-v5",
+  })));
+  expect(result.current.savedAt).toBeNull();
+  expect(result.current.rememberDevice).toBe(true);
+});
+
+it("keeps a recovery acknowledgement when another tab saves a different applicant", async () => {
+  const scope = (await setRememberDevice(true))!;
+  const { result } = renderHook(() => useRememberedApplicantDraft(snapshot));
+  await act(() => vi.runAllTimersAsync());
+  await saveApplicationDraft(2, snapshot.draft, [], 1, scope);
+  act(() => window.dispatchEvent(new StorageEvent("storage", {
+    storageArea: localStorage, key: "penta-application-drafts-v5",
+  })));
+  expect(result.current.savedAt).not.toBeNull();
+  expect(result.current.currentDraftIsStored()).toBe(true);
+});
+
 it("keeps newer typing unacknowledged while an older browser save is waiting", async () => {
   await setRememberDevice(true);
   const gate = deferred<void>();

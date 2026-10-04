@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { deferred } from "../testSupport";
 import * as api from "./api";
@@ -117,9 +117,52 @@ it("does not acknowledge edits made while requesting a return access link", asyn
   act(() => { request = result.current.persistence.emailReturnLink(); });
   act(() => result.current.setDraft((draft) => ({ ...draft, pets: "A cat" })));
   await act(async () => {
-    emailed.resolve(Response.json({ currentAnswersSaved: true, emailStatus: "sent" })); await request;
+    emailed.resolve(Response.json({ currentAnswersSaved: true, workingRevision: 2, emailStatus: "sent" })); await request;
   });
   expect(result.current.persistence.hasUnsavedChanges).toBe(true);
+  expect(result.current.persistence.workingRevision).toBe(2);
+});
+afterEach(() => vi.restoreAllMocks());
+
+it.each(["signOut", "withdrawApplication"] as const)("finishes confirmed %s when browser cleanup fails and reports the remaining copy", async (action) => {
+  vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
+  vi.mocked(api.withdrawApplication).mockResolvedValue(Response.json({ withdrawn: true }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new DOMException("Denied", "SecurityError"); });
+  await act(async () => expect(await result.current.persistence[action]()).toBe(true));
+  expect(result.current.persistence.authenticated).toBe(false);
+  expect(result.current.persistence.browserStorageMessage).toContain("Could not clear");
+  expect(result.current.persistence.withdrawalStatus).toBe("idle");
+});
+
+it("retains a saved guest draft when its discard is not acknowledged", async () => {
+  vi.mocked(api.fetchApplication).mockResolvedValue(new Response(null, { status: 401 }));
+  vi.mocked(api.savePendingDraft).mockResolvedValue(Response.json({ draftToken: "synthetic-draft", emailSent: true, emailStatus: "sent" }));
+  vi.mocked(api.deletePendingDraft).mockResolvedValue(new Response(null, { status: 503 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.openingsLoaded).toBe(true));
+  await act(() => result.current.persistence.start("save"));
+  await act(async () => expect(await result.current.persistence.discardDraft()).toBe(false));
+  expect(result.current.persistence.message).toContain("answers are still here");
+  vi.mocked(api.deletePendingDraft).mockResolvedValue(new Response(null, { status: 204 }));
+  await act(async () => expect(await result.current.persistence.discardDraft()).toBe(true));
+  expect(api.deletePendingDraft).toHaveBeenCalledTimes(2);
+});
+
+it.each(["sent", "recent", "failed"])("acknowledges the return-link save when email status is %s", async (emailStatus) => {
+  vi.mocked(api.requestReturnAccessLink).mockResolvedValue(Response.json({
+    currentAnswersSaved: true, workingRevision: 2, emailStatus,
+  }));
+  vi.mocked(api.saveApplication).mockResolvedValue(Response.json(application(3)));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  act(() => result.current.setDraft((draft) => ({ ...draft, pets: "A cat" })));
+  await act(() => result.current.persistence.emailReturnLink());
+  expect(result.current.persistence.workingRevision).toBe(2);
+  expect(result.current.persistence.hasUnsavedChanges).toBe(false);
+  await act(() => result.current.persistence.start("save"));
+  expect(vi.mocked(api.saveApplication).mock.calls[0][2]).toBe(2);
 });
 
 it("requesting entry with another email does not mutate the application draft", async () => {

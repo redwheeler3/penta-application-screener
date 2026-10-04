@@ -3,6 +3,7 @@ import type { ApplicantDraft } from "./types";
 
 const DRAFTS_KEY = "penta-application-drafts-v5";
 const REMEMBER_DEVICE_KEY = "penta-application-remember-device-v1";
+export const BROWSER_STORAGE_CLEAR_MESSAGE = "Could not clear the saved answers in this browser. Clear this site's data if this is a shared device.";
 
 type StoredDraft = {
   savedAt: string;
@@ -51,10 +52,12 @@ export async function setRememberDevice(remember: boolean): Promise<string | nul
   });
 }
 
-export function observeRememberedStorage(onChange: () => void): () => void {
+export function observeRememberedStorage(onChange: () => void, onDraftChange: () => void): () => void {
   const changed = (event: StorageEvent) => {
     if (event.storageArea === localStorage && (event.key === null || event.key === REMEMBER_DEVICE_KEY)) {
       onChange();
+    } else if (event.storageArea === localStorage && event.key === DRAFTS_KEY) {
+      onDraftChange();
     }
   };
   window.addEventListener("storage", changed);
@@ -110,38 +113,57 @@ export async function saveApplicationDraft(
   });
 }
 
-export async function clearApplicationDraft(applicationId: number): Promise<void> {
-  const scope = rememberedStorageScope();
-  await withStorageLock(() => {
-    if (scope === null || rememberedStorageScope() !== scope) return;
-    const drafts = readDrafts();
-    delete drafts[String(applicationId)];
-    writeDrafts(drafts);
-  });
+export function applicationDraftIsStored(
+  applicationId: number, draft: ApplicantDraft, openingIds: number[], baseRevision: number,
+): boolean {
+  const stored = readDrafts()[String(applicationId)];
+  return Boolean(stored && stored.baseRevision === baseRevision
+    && JSON.stringify(stored.draft) === JSON.stringify(draft)
+    && JSON.stringify(stored.openingIds) === JSON.stringify(openingIds));
 }
 
-export async function clearApplicantStorage(snapshot = captureApplicantStorage()): Promise<void> {
-  await withStorageLock(() => {
-    if (rememberedStorageScope() === snapshot.scope) {
-      localStorage.removeItem(DRAFTS_KEY);
-      localStorage.removeItem(REMEMBER_DEVICE_KEY);
-      return;
-    }
-    // A newer sign-in owns consent now. Remove only unchanged records from the
-    // exiting browser snapshot, never a draft written by that newer lifetime.
-    const current = readDrafts();
-    let changed = false;
-    for (const [id, record] of Object.entries(snapshot.drafts)) {
-      if (JSON.stringify(current[id]) === JSON.stringify(record)) {
-        delete current[id];
-        changed = true;
+export async function clearApplicationDraft(applicationId: number): Promise<boolean> {
+  const scope = rememberedStorageScope();
+  try {
+    await withStorageLock(() => {
+      if (scope === null || rememberedStorageScope() !== scope) return;
+      const drafts = readDrafts();
+      delete drafts[String(applicationId)];
+      writeDrafts(drafts);
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function clearApplicantStorage(snapshot = captureApplicantStorage()): Promise<boolean> {
+  try {
+    await withStorageLock(() => {
+      if (rememberedStorageScope() === snapshot.scope) {
+        localStorage.removeItem(DRAFTS_KEY);
+        localStorage.removeItem(REMEMBER_DEVICE_KEY);
+        return;
       }
-    }
-    if (changed) {
-      if (Object.keys(current).length) writeDrafts(current);
-      else localStorage.removeItem(DRAFTS_KEY);
-    }
-  });
+      // A newer sign-in owns consent now. Remove only unchanged records from the
+      // exiting browser snapshot, never a draft written by that newer lifetime.
+      const current = readDrafts();
+      let changed = false;
+      for (const [id, record] of Object.entries(snapshot.drafts)) {
+        if (JSON.stringify(current[id]) === JSON.stringify(record)) {
+          delete current[id];
+          changed = true;
+        }
+      }
+      if (changed) {
+        if (Object.keys(current).length) writeDrafts(current);
+        else localStorage.removeItem(DRAFTS_KEY);
+      }
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function hasDraftContent(draft: ApplicantDraft): boolean {
