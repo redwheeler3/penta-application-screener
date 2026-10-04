@@ -13,6 +13,11 @@ type StoredDraft = {
 type StoredDrafts = Record<string, StoredDraft>;
 
 export type LoadedDraft = Omit<StoredDraft, "savedAt"> & { savedAt: Date };
+export type ApplicantStorageSnapshot = { scope: string | null; drafts: StoredDrafts };
+
+export function captureApplicantStorage(): ApplicantStorageSnapshot {
+  return { scope: rememberedStorageScope(), drafts: readDrafts() };
+}
 
 export function remembersDevice(): boolean {
   return rememberedStorageScope() !== null;
@@ -115,10 +120,27 @@ export async function clearApplicationDraft(applicationId: number): Promise<void
   });
 }
 
-export async function clearApplicantStorage(): Promise<void> {
+export async function clearApplicantStorage(snapshot = captureApplicantStorage()): Promise<void> {
   await withStorageLock(() => {
-    localStorage.removeItem(DRAFTS_KEY);
-    localStorage.removeItem(REMEMBER_DEVICE_KEY);
+    if (rememberedStorageScope() === snapshot.scope) {
+      localStorage.removeItem(DRAFTS_KEY);
+      localStorage.removeItem(REMEMBER_DEVICE_KEY);
+      return;
+    }
+    // A newer sign-in owns consent now. Remove only unchanged records from the
+    // exiting browser snapshot, never a draft written by that newer lifetime.
+    const current = readDrafts();
+    let changed = false;
+    for (const [id, record] of Object.entries(snapshot.drafts)) {
+      if (JSON.stringify(current[id]) === JSON.stringify(record)) {
+        delete current[id];
+        changed = true;
+      }
+    }
+    if (changed) {
+      if (Object.keys(current).length) writeDrafts(current);
+      else localStorage.removeItem(DRAFTS_KEY);
+    }
   });
 }
 
@@ -168,7 +190,8 @@ export function hasAnswersBeyondEmail(draft: ApplicantDraft): boolean {
 
 function readDrafts(): StoredDrafts {
   try {
-    return JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}") as StoredDrafts;
+    const parsed = JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}");
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as StoredDrafts : {};
   } catch {
     return {};
   }

@@ -4,7 +4,7 @@ import {
   type UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
 import { logoutApplicant, withdrawApplication } from "./api";
-import { clearApplicantStorage } from "./draftStorage";
+import { captureApplicantStorage, clearApplicantStorage } from "./draftStorage";
 import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 type WithdrawalFlowDependencies = {
@@ -23,6 +23,7 @@ export function createApplicantWithdrawalFlow({
   restorePublicOpenings,
 }: WithdrawalFlowDependencies) {
   async function withdraw(): Promise<boolean> {
+    const browserSnapshot = captureApplicantStorage();
     endSessionWork();
     const inSession = captureSession();
     updatePersistence({ withdrawalStatus: "working", withdrawalMessage: "" });
@@ -46,7 +47,8 @@ export function createApplicantWithdrawalFlow({
       updatePersistence({ withdrawalStatus: "error", withdrawalMessage: problem.detail });
       return false;
     }
-    await clearApplicantStorage();
+    await clearApplicantStorage(browserSnapshot);
+    if (!inSession()) return false;
     endSessionWork();
     updatePersistence((state) => resetApplicantSession(state, "withdrawn"));
     return true;
@@ -57,6 +59,7 @@ export function createApplicantWithdrawalFlow({
   }
 
   async function signOut(): Promise<boolean> {
+    const browserSnapshot = captureApplicantStorage();
     endSessionWork();
     const inSession = captureSession();
     const response = await logoutApplicant().catch(() => null);
@@ -69,7 +72,8 @@ export function createApplicantWithdrawalFlow({
       await fail(response);
       return false;
     }
-    await clearApplicantStorage();
+    await clearApplicantStorage(browserSnapshot);
+    if (!inSession()) return false;
     endSessionWork();
     updatePersistence((state) => resetApplicantSession(state));
     void restorePublicOpenings();

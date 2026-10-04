@@ -21,8 +21,10 @@ export function useRememberedApplicantDraft(snapshot: DraftSnapshot) {
   const [scope, setScope] = useState(rememberedStorageScope);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const accepted = useRef<DraftSnapshot | null>(null);
+  const consentRequest = useRef(0);
 
   const reset = useCallback(() => {
+    consentRequest.current += 1;
     accepted.current = null;
     setScope(null);
     setSavedAt(null);
@@ -31,13 +33,15 @@ export function useRememberedApplicantDraft(snapshot: DraftSnapshot) {
   useEffect(() => observeRememberedStorage(reset), [reset]);
 
   async function changeRememberDevice(remember: boolean) {
+    const request = ++consentRequest.current;
     try {
       const consent = await setRememberDevice(remember);
+      if (request !== consentRequest.current) return;
       accepted.current = null;
       setScope(rememberedStorageScope() === consent ? consent : null);
       setSavedAt(null);
     } catch {
-      reset();
+      if (request === consentRequest.current) reset();
     }
   }
 

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { deferred } from "../testSupport";
 import { emptyApplicantDraft } from "./applicationDraft";
-import { clearApplicantStorage, loadApplicationDraft, saveApplicationDraft, setRememberDevice } from "./draftStorage";
+import { captureApplicantStorage, clearApplicantStorage, loadApplicationDraft, rememberedStorageScope, saveApplicationDraft, setRememberDevice } from "./draftStorage";
 import { useRememberedApplicantDraft } from "./useRememberedApplicantDraft";
 
 const snapshot = {
@@ -111,6 +111,30 @@ it("handles a rejected consent write without claiming that remembering is enable
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Synthetic quota", "QuotaExceededError"); });
   const { result } = renderHook(() => useRememberedApplicantDraft(snapshot));
   await act(() => result.current.changeRememberDevice(true));
+  expect(result.current.rememberDevice).toBe(false);
+  expect(result.current.currentDraftIsStored()).toBe(false);
+});
+
+it("an older exit preserves a new consent lifetime and its newer draft", async () => {
+  const oldScope = (await setRememberDevice(true))!;
+  await saveApplicationDraft(1, snapshot.draft, [], 3, oldScope);
+  const exiting = captureApplicantStorage();
+  const nextScope = (await setRememberDevice(true))!;
+  const newer = { ...snapshot.draft, pets: "Newer lifetime" };
+  await saveApplicationDraft(1, newer, [], 4, nextScope);
+  await clearApplicantStorage(exiting);
+  expect(rememberedStorageScope()).toBe(nextScope);
+  expect(loadApplicationDraft(1)?.draft.pets).toBe(newer.pets);
+});
+
+it("a delayed consent acknowledgement cannot restore a reset view", async () => {
+  const { result } = renderHook(() => useRememberedApplicantDraft(snapshot));
+  const gate = deferred<void>();
+  void navigator.locks.request("penta-application-drafts-v5", () => gate.promise);
+  let changing!: Promise<void>;
+  act(() => { changing = result.current.changeRememberDevice(true); });
+  act(() => result.current.reset());
+  await act(async () => { gate.resolve(); await changing; });
   expect(result.current.rememberDevice).toBe(false);
   expect(result.current.currentDraftIsStored()).toBe(false);
 });
