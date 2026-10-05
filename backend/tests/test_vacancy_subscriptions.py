@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import require_current_user
 from app.api.vacancy_subscriptions import signup_limiter
+from app.core.config import get_settings
 from app.core.time import as_utc
 from app.db.models import Base, User, UserRole, VacancySubscription
 from app.db.session import get_db
@@ -131,6 +132,54 @@ async def test_public_signup_validates_sizes_and_is_rate_limited() -> None:
 
     assert invalid.status_code == 422
     assert responses[-1].status_code == 429
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("fly_app_name", ["", "penta-test"])
+async def test_forged_forwarding_headers_cannot_bypass_signup_quota(
+    monkeypatch, fly_app_name: str
+) -> None:
+    monkeypatch.setattr(get_settings(), "fly_app_name", fly_app_name)
+    app, db, _ = _app_and_db()
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("192.0.2.1", 1234)),
+        base_url="http://testserver",
+    ) as client:
+        responses = [
+            await client.post(
+                "/vacancy-subscriptions",
+                headers={
+                    "CF-Connecting-IP": f"192.0.2.{index + 10}",
+                    "X-Forwarded-For": f"192.0.2.{index + 10}",
+                    "Fly-Client-IP": "198.51.100.1" if fly_app_name else f"192.0.2.{index + 10}",
+                },
+                json={"email": f"person-{index}@example.com", "unitSizes": [1]},
+            )
+            for index in range(11)
+        ]
+    assert [response.status_code for response in responses] == [200] * 10 + [429]
+    assert len(list(db.scalars(select(VacancySubscription)))) == 10
+
+
+def test_fly_client_addresses_are_validated_and_canonicalized(monkeypatch) -> None:
+    from starlette.requests import Request
+
+    from app.api.vacancy_subscriptions import _client_key
+
+    monkeypatch.setattr(get_settings(), "fly_app_name", "penta-test")
+
+    def client_key(value: str) -> str:
+        return _client_key(Request({
+            "type": "http",
+            "headers": [(b"fly-client-ip", value.encode())],
+            "client": ("192.0.2.1", 1234),
+        }))
+
+    assert client_key("2001:0db8:0000:0000:0000:0000:0000:0001") == "2001:db8::1"
+    assert client_key("::ffff:192.0.2.10") == "192.0.2.10"
+    assert client_key("198.51.100.2") == "198.51.100.2"
+    for invalid in ("garbage", "192.0.2.10, 192.0.2.11", "x" * 1_000):
+        assert client_key(invalid) == "192.0.2.1"
 
 
 @pytest.mark.anyio

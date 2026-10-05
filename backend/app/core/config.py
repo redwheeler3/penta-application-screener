@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # Fly injects this in Machines. Public HTTP traffic then enters through Fly Proxy.
+    fly_app_name: str = ""
     database_url: str = "sqlite:///./data/penta_screener.db"
     session_secret: str = "dev-only-change-me"
     frontend_url: str = "http://localhost:5173"

@@ -202,6 +202,14 @@ app's IPs can change.) Fly auto-issues and renews a free Let's Encrypt cert. Ver
 fly certs check screener.pentacoop.com
 ```
 This uses Fly's **free shared IPv4 + IPv6** — no dedicated IP ($2/mo) needed for a subdomain.
+
+Public vacancy-signup quotas use the validated `Fly-Client-IP` header when Fly's
+injected `FLY_APP_NAME` identifies the deployed runtime. This assumes the configured
+Fly HTTP proxy is the public ingress and Cloudflare remains DNS-only. Direct local
+servers use the transport peer and ignore forwarding headers. If ingress changes,
+review this trust boundary before enabling another proxy. See Fly's
+[request-header contract](https://docs.fly.io/networking/request-headers) and
+[Machine runtime environment](https://fly.io/docs/machines/runtime-environment/).
 On Cloudflare, set the records to **DNS-only (grey cloud)**, not proxied, or cert validation
 fails.
 
