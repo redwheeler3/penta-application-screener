@@ -51,6 +51,27 @@ function renderNotes(overrides: Partial<ComponentProps<typeof CandidateNotes>> &
 }
 
 describe("CandidateNotes", () => {
+  it("updates private text immediately without rerendering the account workspace on each keystroke", () => {
+    const ownerRendered = vi.fn();
+    function Workspace() {
+      ownerRendered();
+      const notes = usePrivateNotes({ onSaved: vi.fn(), onError: vi.fn() });
+      return <CandidateNotes
+        applicationId={42} privateNote="Private context" committeeNotes={[]}
+        privateNoteEditor={notes.editor(42, 1, "Private context")}
+        onAddCommitteeNote={vi.fn()} onUpdateCommitteeNote={vi.fn()} onDeleteCommitteeNote={vi.fn()}
+      />;
+    }
+    render(<Workspace />);
+    fireEvent.click(screen.getByRole("tab", { name: "My notes" }));
+    const rendersBeforeTyping = ownerRendered.mock.calls.length;
+    const input = screen.getByRole("textbox", { name: "My private notes" });
+    fireEvent.change(input, { target: { value: "One" } });
+    fireEvent.change(input, { target: { value: "One two" } });
+    expect(input).toHaveValue("One two");
+    expect(ownerRendered).toHaveBeenCalledTimes(rendersBeforeTyping);
+  });
+
   it("preserves unsaved text when programmatic navigation disposes the editor without blur", async () => {
     vi.useFakeTimers();
     vi.mocked(api.savePrivateNote).mockResolvedValueOnce(new Response(null, { status: 409 }))

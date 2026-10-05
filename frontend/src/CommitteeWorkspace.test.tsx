@@ -29,11 +29,13 @@ vi.mock("./components/applications/ApplicationsList", () => ({
   ApplicationsList: ({ onSelectApplication }: { onSelectApplication: (id: number) => void }) =>
     <button onClick={() => onSelectApplication(7)}>Open synthetic applicant</button>,
 }));
-vi.mock("./components/applications/CandidateDetail", () => ({
-  CandidateDetail: ({ privateNoteEditor }: ComponentProps<typeof CandidateDetail>) =>
-    <textarea aria-label="Private note" value={privateNoteEditor?.body ?? ""}
-      onChange={(event) => privateNoteEditor?.change(event.target.value)} />,
-}));
+vi.mock("./components/applications/CandidateDetail", async () => {
+  const { CandidateNotes } = await import("./components/applications/CandidateNotes");
+  return { CandidateDetail: (props: ComponentProps<typeof CandidateDetail>) =>
+    <CandidateNotes applicationId={props.app.id} privateNote={props.app.privateNote} committeeNotes={[]}
+      privateNoteEditor={props.privateNoteEditor} onAddCommitteeNote={props.onAddCommitteeNote}
+      onUpdateCommitteeNote={props.onUpdateCommitteeNote} onDeleteCommitteeNote={props.onDeleteCommitteeNote} /> };
+});
 vi.mock("./components/admin/OpeningsPanel", () => ({ OpeningsPanel: () => <h3>Openings data</h3> }));
 vi.mock("./components/admin/AccessPanel", () => ({ AccessPanel: () => <h3>Access data</h3> }));
 vi.mock("./components/admin/VacancyNotificationsPanel", () => ({ VacancyNotificationsPanel: () => <h3>Notifications data</h3> }));
@@ -102,11 +104,11 @@ it("lets a member cancel sign-out while a private note is unconfirmed", async ()
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   render(<CommitteeWorkspace user={user} logout={logout} />);
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Open synthetic applicant" })));
-  fireEvent.change(screen.getByRole("textbox", { name: "Private note" }), { target: { value: "Unsaved" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "My private notes" }), { target: { value: "Unsaved" } });
   fireEvent.click(screen.getByRole("button", { name: /Sign out/ }));
   expect(confirm).toHaveBeenCalledOnce();
   expect(logout).not.toHaveBeenCalled();
-  expect(screen.getByRole("textbox", { name: "Private note" })).toHaveValue("Unsaved");
+  expect(screen.getByRole("textbox", { name: "My private notes" })).toHaveValue("Unsaved");
   await act(() => vi.advanceTimersByTimeAsync(600));
   expect(applicationApi.savePrivateNote).toHaveBeenCalledExactlyOnceWith(7, 1, "Unsaved");
 });
@@ -116,7 +118,7 @@ it("resumes note saving if an explicitly confirmed sign-out fails", async () => 
   vi.spyOn(window, "confirm").mockReturnValue(true);
   render(<CommitteeWorkspace user={user} logout={logout} />);
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Open synthetic applicant" })));
-  fireEvent.change(screen.getByRole("textbox", { name: "Private note" }), { target: { value: "Unsaved" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "My private notes" }), { target: { value: "Unsaved" } });
   await act(async () => fireEvent.click(screen.getByRole("button", { name: /Sign out/ })));
   expect(logout).toHaveBeenCalledOnce();
   expect(applicationApi.savePrivateNote).toHaveBeenCalledExactlyOnceWith(7, 1, "Unsaved");

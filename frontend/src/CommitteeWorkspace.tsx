@@ -51,7 +51,7 @@ export function CommitteeWorkspace({ user, logout }: {
   const { toasts, showToast, showError, showWarning, dismissToast } = useToasts();
 
   async function signOut(): Promise<void> {
-    if (privateNotes.hasUnconfirmed && !window.confirm("Some private notes have not been saved. Sign out and discard those drafts?")) return;
+    if (privateNotes.hasUnconfirmed() && !window.confirm("Some private notes have not been saved. Sign out and discard those drafts?")) return;
     privateNotes.suspendWrites();
     const error = await logout();
     if (error) {

@@ -1,27 +1,33 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { savePrivateNote } from "../api/applications";
 import { useRequestScope } from "./useRequestScope";
 
-export type PrivateNoteEditor = {
+type PrivateNoteSnapshot = {
   body: string;
   status: "saved" | "saving" | "error";
+};
+
+export type PrivateNoteEditor = {
+  getSnapshot: () => PrivateNoteSnapshot;
+  subscribe: (listener: () => void) => () => void;
   change: (body: string) => void;
   flush: () => void;
 };
 
 type Draft = {
-  body: string;
+  snapshot: PrivateNoteSnapshot;
   savedBody: string;
   openingId: number;
   revision: number;
-  status: PrivateNoteEditor["status"];
   timer: ReturnType<typeof setTimeout> | null;
   queue: Promise<void>;
+  listeners: Set<() => void>;
 };
 
 /** Account-owned drafts survive editor/tab/opening changes, in memory only. Each
- * applicant has one ordered writer because private notes belong to the applicant. */
+ * applicant has one ordered writer because private notes belong to the applicant.
+ * Editors subscribe directly so typing does not rerender the whole workspace. */
 export function usePrivateNotes(options: {
   onSaved: (applicationId: number, body: string) => void;
   onError: (message: string) => void;
@@ -31,17 +37,23 @@ export function usePrivateNotes(options: {
   current.current = options;
   const requests = useRequestScope();
   const suspended = useRef(false);
-  const [, notify] = useReducer((revision: number) => revision + 1, 0);
+  const releaseConfirmed = useCallback((applicationId: number, draft: Draft) => {
+    // Unsent drafts survive navigation. Confirmed, unobserved notes come from the
+    // next detail read instead of becoming an account-long private-note cache.
+    if (draft.snapshot.status === "saved" && draft.listeners.size === 0 && drafts.current.get(applicationId) === draft) {
+      drafts.current.delete(applicationId);
+    }
+  }, []);
 
   const flush = useCallback((applicationId: number) => {
     const draft = drafts.current.get(applicationId);
-    if (!draft || draft.status === "saved" || suspended.current) return;
+    if (!draft || draft.snapshot.status === "saved" || suspended.current) return;
     if (draft.timer !== null) clearTimeout(draft.timer);
     draft.timer = null;
-    const { body, revision, openingId } = draft;
+    const { snapshot: { body }, revision, openingId } = draft;
     const inAccount = requests.capture();
-    draft.status = "saving";
-    notify();
+    draft.snapshot = { body, status: "saving" };
+    draft.listeners.forEach((listener) => listener());
     draft.queue = draft.queue.then(async () => {
       if (!inAccount() || revision !== draft.revision) return;
       // Compare after preceding writes: reverting during a save still needs a write.
@@ -60,17 +72,18 @@ export function usePrivateNotes(options: {
         if (needsWrite) current.current.onSaved(applicationId, body);
       }
       if (revision === draft.revision) {
-        draft.status = saved ? "saved" : "error";
+        draft.snapshot = { body, status: saved ? "saved" : "error" };
         if (!saved) current.current.onError("Could not save your private note. Your draft is still available in this session.");
-        notify();
+        draft.listeners.forEach((listener) => listener());
+        releaseConfirmed(applicationId, draft);
       }
     });
-  }, [requests]);
+  }, [requests, releaseConfirmed]);
 
   useEffect(() => {
     const accountDrafts = drafts.current;
     const warnBeforeExit = (event: BeforeUnloadEvent) => {
-      if (![...accountDrafts.values()].some((draft) => draft.status !== "saved")) return;
+      if (![...accountDrafts.values()].some((draft) => draft.snapshot.status !== "saved")) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -84,24 +97,37 @@ export function usePrivateNotes(options: {
   }, []);
 
   function editor(applicationId: number, openingId: number, savedBody: string): PrivateNoteEditor {
-    const draft = drafts.current.get(applicationId);
+    const initial: PrivateNoteSnapshot = { body: savedBody, status: "saved" };
+    function getDraft(): Draft {
+      let draft = drafts.current.get(applicationId);
+      if (!draft) {
+        draft = { snapshot: initial, savedBody, openingId, revision: 0,
+          timer: null, queue: Promise.resolve(), listeners: new Set() };
+        drafts.current.set(applicationId, draft);
+      }
+      return draft;
+    }
     return {
-      body: draft?.body ?? savedBody,
-      status: draft?.status ?? "saved",
+      // Repeated reads return the same snapshot object until the draft changes,
+      // as React's useSyncExternalStore requires.
+      getSnapshot: () => drafts.current.get(applicationId)?.snapshot ?? initial,
+      subscribe(listener) {
+        const draft = getDraft();
+        draft.listeners.add(listener);
+        return () => {
+          draft.listeners.delete(listener);
+          releaseConfirmed(applicationId, draft);
+        };
+      },
       change(body) {
         if (suspended.current) return;
-        const next = drafts.current.get(applicationId) ?? {
-          body: savedBody, savedBody, openingId, revision: 0,
-          status: "saved", timer: null, queue: Promise.resolve(),
-        };
-        next.body = body;
+        const next = getDraft();
+        next.snapshot = { body, status: "saving" };
         next.openingId = openingId;
         next.revision += 1;
-        next.status = "saving";
         if (next.timer !== null) clearTimeout(next.timer);
         next.timer = setTimeout(() => flush(applicationId), 600);
-        drafts.current.set(applicationId, next);
-        notify();
+        next.listeners.forEach((listener) => listener());
       },
       flush: () => {
         const latest = drafts.current.get(applicationId);
@@ -121,24 +147,19 @@ export function usePrivateNotes(options: {
     for (const draft of drafts.current.values()) {
       if (draft.timer !== null) clearTimeout(draft.timer);
       draft.timer = null;
-      if (draft.status !== "saved") draft.status = "error";
     }
-    notify();
   }
 
   function resumeWrites() {
     suspended.current = false;
     for (const [applicationId, draft] of drafts.current) {
-      if (draft.status === "saved") continue;
-      draft.status = "saving";
-      flush(applicationId);
+      if (draft.snapshot.status !== "saved") flush(applicationId);
     }
-    notify();
   }
 
   return {
     editor,
-    hasUnconfirmed: [...drafts.current.values()].some((draft) => draft.status !== "saved"),
+    hasUnconfirmed: () => [...drafts.current.values()].some((draft) => draft.snapshot.status !== "saved"),
     suspendWrites,
     resumeWrites,
   };

@@ -62,6 +62,9 @@ const openings: CommitteeOpening[] = [{
   phase: "closed",
 }];
 
+const noteSnapshot = { body: "", status: "saved" as const };
+const noteEditor = { getSnapshot: () => noteSnapshot, subscribe: () => () => {}, change: vi.fn(), flush: vi.fn() };
+
 describe("CandidateDetail", () => {
   it("presents applicant data before essays and styles AI scoring as a peer heading", () => {
     render(
@@ -71,7 +74,7 @@ describe("CandidateDetail", () => {
         onBack={vi.fn()}
         onOverrideStatus={vi.fn()}
         onClearOverride={vi.fn()}
-        privateNoteEditor={{ body: "", status: "saved", change: vi.fn(), flush: vi.fn() }}
+        privateNoteEditor={noteEditor}
         onAddCommitteeNote={vi.fn().mockResolvedValue(true)}
         onUpdateCommitteeNote={vi.fn().mockResolvedValue(true)}
         onDeleteCommitteeNote={vi.fn().mockResolvedValue(true)}
@@ -106,7 +109,7 @@ describe("CandidateDetail", () => {
         onBack={vi.fn()}
         onOverrideStatus={vi.fn()}
         onClearOverride={vi.fn()}
-        privateNoteEditor={{ body: "", status: "saved", change: vi.fn(), flush: vi.fn() }}
+        privateNoteEditor={noteEditor}
         onAddCommitteeNote={vi.fn().mockResolvedValue(true)}
         onUpdateCommitteeNote={vi.fn().mockResolvedValue(true)}
         onDeleteCommitteeNote={vi.fn()}

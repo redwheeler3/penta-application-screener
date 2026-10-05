@@ -1,5 +1,5 @@
 import { LockKeyhole, Plus, UsersRound } from "lucide-react";
-import { type FormEvent, useLayoutEffect, useRef, useState } from "react";
+import { type FormEvent, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { formatPacificDateTime } from "../../format";
 import type { CommitteeNote } from "../../types";
 import type { PrivateNoteEditor } from "../../hooks/usePrivateNotes";
@@ -7,6 +7,7 @@ import type { PrivateNoteEditor } from "../../hooks/usePrivateNotes";
 const MAX_PRIVATE_NOTE_HEIGHT_PX = 150;
 type NotesTab = "private" | "committee";
 let lastOpenTab: NotesTab = "private";
+const noSubscription = () => () => {};
 
 export function CandidateNotes(props: {
   applicationId: number;
@@ -19,8 +20,13 @@ export function CandidateNotes(props: {
   readOnly?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<NotesTab>(lastOpenTab);
-  const privateNote = props.privateNoteEditor?.body ?? props.privateNote;
-  const privateStatus = props.privateNoteEditor?.status ?? "saved";
+  const readOnlyNote = useMemo(() => ({ body: props.privateNote, status: "saved" as const }), [props.privateNote]);
+  const privateDraft = useSyncExternalStore(
+    props.privateNoteEditor?.subscribe ?? noSubscription,
+    props.privateNoteEditor?.getSnapshot ?? (() => readOnlyNote),
+  );
+  const privateNote = privateDraft.body;
+  const privateStatus = privateDraft.status;
   const [newNote, setNewNote] = useState("");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);

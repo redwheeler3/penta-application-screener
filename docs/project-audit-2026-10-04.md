@@ -9,9 +9,46 @@ unrelated admin tools. I do not recommend another broad restructuring or adding 
 concurrency infrastructure.
 
 Reviewed baseline: `main` at `75e0032`, initially clean and synchronized with the locally
-tracked `origin/main`. This is a fresh review after the completed cleanup. Runtime code,
-existing tests, and configuration remain unchanged. Temporary reproduction tests were removed.
-This document records recommendations for review; none of these fixes has been implemented.
+tracked `origin/main`. The audit below describes that pre-implementation baseline; temporary
+reproduction tests were removed. The user approved all four work packages. All five findings
+are now implemented and committed, including the related navigation and responsiveness fixes.
+
+## Implementation complete
+
+| Finding | Result | Commit |
+| --- | --- | --- |
+| F01 — private notes | Account-owned in-memory drafts and per-applicant ordered writes survive editor disposal; failures retain text and offer Retry save; page exit/sign-out warn about unconfirmed work; queued writes are fenced before credentials change | `9dda574`, with the responsiveness follow-up in the completion commit |
+| F02 — navigation | History includes opening and review mode; guarded list selection and detail reads run in parallel; stale work cannot change the opening or reopen detail; unavailable openings cannot silently substitute another pool | `35844ba` |
+| F03/F04 — public limiter | Canonical validated Fly client addresses only in the Fly runtime, transport peers locally; ignored caller-controlled forwarding headers; bounded expiry work and 10,000 live-key ceiling without evicting active quotas | `fab52b4` |
+| F05 — independent admin resources | Configuration owns its load/failure/retry surface; the admin chooser and all five unrelated sections remain available | `e5fef1c` |
+
+Related fixes stay within those owners: narrow save acknowledgements no longer cancel another
+applicant's navigation; the workspace opening effect no longer erases restored detail; late
+ranking reads inspect the live view before redirecting; redundant cross-opening/setup helpers
+were removed. Shared-settings retry and captured-draft acknowledgements remain intact.
+
+The final responsiveness review replaced workspace-wide keystroke updates with a small
+per-applicant subscription using React's `useSyncExternalStore`. A regression first reproduced
+two extra workspace renders for two edits, then verified zero extra owner renders with immediate
+textarea updates. Confirmed notes are released once unobserved rather than cached for the account's
+whole session; unsaved drafts remain available. This is a draft/editor boundary, not a general
+application cache or state framework.
+
+No note acknowledgement blocks internal navigation. Cross-opening history now waits for both
+the correct list context and its detail, concurrently; perceived load time can therefore follow
+the slower response. Admin resource navigation no longer waits for unrelated settings retries.
+Limiter cleanup is capped at 128 expired buckets per request, under its existing in-process lock.
+These are code-path and regression observations, not production latency measurements.
+
+Final checks: **897 backend tests passed, one POSIX-only test skipped**; Ruff passed.
+**258 frontend tests**, ESLint, TypeScript, and production build passed. Build/test cache directories
+retain inherited Windows permissions. The owning-change review found no unresolved approved
+finding; it does not claim that every possible defect has been eliminated. No schema migration,
+database reset, provider/email call, production change, or push was performed.
+
+Drafts are deliberately memory-only; the browser's normal exit warning and explicit discard
+confirmation protect ordinary departures, but do not provide crash recovery. Production ingress
+must remain Fly HTTP Proxy with Cloudflare DNS-only, as documented in `docs/deploy.md`.
 
 ## Coverage
 

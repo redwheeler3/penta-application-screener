@@ -1302,7 +1302,9 @@ committee notes.
 
 Private-note drafts and their ordered autosave queue belong to the authenticated committee
 workspace. Internal tab, applicant, opening, and browser-history navigation preserve unsent text
-without waiting for the network. Failed saves retain the draft and offer **Retry save**; reopening
+without waiting for the network. The editor subscribes to its applicant's draft so typing does
+not rerender the workspace; confirmed, unobserved drafts are released for fresh detail reads.
+Failed saves retain the draft and offer **Retry save**; reopening
 it through another opening lets an explicit retry use that opening's authority checks. Drafts
 stay in memory only. Leaving the page warns while work is unconfirmed, and explicit sign-out
 asks before discarding it. Sign-out fences queued writes before credentials change; a failed
