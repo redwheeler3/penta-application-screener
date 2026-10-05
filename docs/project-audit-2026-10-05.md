@@ -5,7 +5,7 @@
 I recommend addressing **seven confirmed findings in five work packages**, ordered below.
 The highest priorities are binding actions to the page's intended identity, enforcing expiry
 independently of background purge, and reconciling saves with overlapping detail reads.
-There is also an AI-input cache correctness gap, a ranking navigation race, unnecessary
+There is also an AI age-snapshot consistency gap, a ranking navigation race, unnecessary
 maintenance writes, and a selected-household editor mismatch.
 
 This is an audit and recommendation phase. Runtime code remains unchanged. The previous
@@ -23,7 +23,7 @@ recent changes. Their intended ownership boundaries remain useful.
 | R05 | First | A stale tab can act on a replacement session's account or application | Real-authentication HTTP fixtures plus the session hook |
 | R03 | First | Expiry is not consistently enforced before reads, authentication, selection, and email work | Four isolated retention/maintenance reproductions |
 | R01 | First | A delayed detail read can overwrite a newer acknowledged save | Two actual navigation/note interaction reproductions |
-| R06 | Next, with a rollout decision | AI cache and ranking freshness identities omit normalized evidence consumed by the model | Changed input reused an old cached score |
+| R06 | Next, preserve caches | Identical-answer resubmissions recompute age evidence while cached evaluations retain an earlier snapshot | Changed age input with unchanged source/cache identity |
 | R02 | Next | A superseded ranking read can redirect away from a successfully loaded board | Actual ranking and navigation hooks |
 | R04 | With R03 | A no-work closeout sweep takes a write lock and commits for every applicant | Instrumented SQL/commit counts |
 | R07 | With R01 | Selected-household notes look editable but the server rejects their saves | Actual detail component and HTTP boundary |
@@ -171,7 +171,7 @@ failed saves, and new edits during an acknowledgement.
 **Latency:** receipt reconciliation adds no network wait to ordinary navigation. If a matching
 read is restarted, describe and measure that extra read rather than blocking all navigation on saves.
 
-### R06 — Fingerprint the model evidence that can actually change
+### R06 — Stabilize age evidence without birthday-driven cache misses
 
 Owners: [intake normalization](../backend/app/services/applications/intake.py),
 [AI evidence](../backend/app/ai/applicant_facts.py),
@@ -196,22 +196,36 @@ This verifies cache plumbing and stale evidence; it does not make a claim about 
 would score the newer input. Identical-answer resubmission across a birthday is a real path
 through the current normalizer. Changes to consumed normalization code have the same exposure.
 
-**Recommendation:** fingerprint the deterministic evidence consumed by each pass, including its
-normalized view, and use that contract consistently in cache planning and ranking freshness.
-Share the evidence builders with prompt construction so those contracts cannot drift.
-Keep `raw_row_hash` truthful to its raw-source meaning. Preserve equivalent-provider cache reuse,
-matched dimension identities, prior result provenance, and returned-usage accounting.
-Exercise captured work when normalized evidence changes during a call.
+**User decision — 2026-10-05:** avoid a cache miss from this birthday issue. This replaces the
+initial proposal to add normalized ages to the cache identity. No runtime change is implemented yet.
 
-**Regression coverage:** same raw answers with changed normalized evidence, unchanged evidence
-with no unnecessary rerun, adult/child date boundaries, normalization changes, equivalent provider
-routes, partial scoring reuse, and scoring/cache selection during concurrent resubmission.
+**Revised recommendation:** preserve the current source-content cache keys and existing results.
+Stabilize AI age evidence for identical submitted content instead of allowing a later receipt date
+to manufacture a different model input. A birthday, passage of time, or identical-answer
+resubmission must not invalidate cached AI work. Returning to previously submitted content also
+needs a consistent snapshot rather than a newly calculated age attached to an older cache entry.
 
-**Cost/latency decision before implementation:** a new key scheme can make existing caches miss
-on the next manually confirmed Screen/Rank/score-current run. Do not blindly relabel old results
-with current evidence hashes: that would assume the very provenance this audit shows is missing.
-Choose an explicit rollout, preserve history, and show the resulting estimate before paid work.
-No automated production run or blanket regeneration is authorized by this audit.
+Use the existing submission/version history to establish the age reference where its provenance
+is known. Keep cached evaluations tied to the snapshot they actually analyzed; do not rewrite
+their evidence or claim that a newly calculated age was used by an older evaluation. Make age
+reference dates clear in the model evidence and its presentation. The exact snapshot/reference
+handling must be settled before runtime implementation.
+
+Deterministic eligibility currently evaluates ages at the latest submission date. Do not silently
+freeze eligibility to an older age merely to preserve AI caching: its date policy must remain
+explicit, with any intended change agreed separately. Preserve equivalent-provider cache reuse,
+matched dimension identities, prior result provenance, and returned-usage accounting. Other
+evidence-changing normalization corrections need separate review; this birthday repair does not
+authorize a blanket cache-key change.
+
+**Regression coverage:** unchanged answers across adult/child birthdays and repeated submissions;
+reverting to earlier content; cached evaluation provenance versus displayed/eligibility ages;
+genuinely changed answers; equivalent provider routes; partial scoring reuse; and concurrent
+resubmission. Assert stable cache keys, cache hits, and zero fresh model calls for the birthday cases.
+
+**Cost/latency constraint:** no birthday-driven miss, bulk cache invalidation, or automatic AI run.
+Genuine answer, model, or prompt changes retain their existing invalidation behavior. Verify cache
+preservation during implementation rather than relying only on a date-free cache key.
 
 ### R02 — Distinguish absent criteria from a failed or superseded read
 
@@ -302,12 +316,13 @@ selection during debounce/save, a retained failed draft, and display/print parit
    across all access/action/email paths, then remove the measured no-work writes.
 4. **Explicit ranking read outcomes (R02).** Preserve live navigation ownership without treating
    cancellation or failure as absence.
-5. **AI evidence identity (R06).** Agree the cache rollout/cost treatment first, then implement
-   complete evidence fingerprints without changing scoring policy or launching paid work.
+5. **Stable AI age snapshots (R06).** Preserve existing cache keys/results, settle explicit age
+   reference handling, and fix identical-content resubmission without birthday-driven misses.
 
 Default policy recommendations: expiry begins on the existing Pacific purge date; selected
 households remain reviewable but follow the current note-write restriction. Call out departures
-from those defaults as product choices. R06 has the material next-run cost/latency tradeoff.
+from those defaults as product choices. R06 must follow the user's cache-preservation decision;
+the initial broad cache-invalidation proposal is superseded.
 
 Small documentation corrections should accompany their owners: the architecture map still
 attributes private-note writes to the opening-scoped candidate-actions hook; the ranking score
