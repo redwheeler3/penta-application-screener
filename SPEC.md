@@ -1154,6 +1154,11 @@ The screener discovers the differentiating dimensions of *this* pool rather than
 
 **The defining architectural decision (ADR 0005): the LLM extracts scored features; ranking is deterministic math on top.** The model scores each candidate on the discovered dimensions and never opines on importance. Criteria start at zero weight in Ignore. Until a member places at least one criterion in a working tier, applicants are unranked: rank numbers, aggregate fit, and fit bands are absent. The Ranking tab keeps the criteria controls and a persistent notice directing members to choose priorities; it hides the applicant list, View selector, and Print buttons. Applicants remain available in Applications. Moving every criterion back to Ignore restores this unranked state. Each member chooses their own priorities; a weighting change re-runs only the math over cached scores and makes no model call.
 
+An applicant enters the merit-ranked list only after every positively weighted criterion has a
+returned score. Missing scoring work is unknown, distinct from an actual neutral score of zero;
+partial results remain stored for reuse and recovery. Missing unweighted criteria do not delay
+ranking. Bands and contribution means use the rankable shared pool before member-view filtering.
+
 The Rank chain is exposed as a **single button** — the committee never runs the sub-passes individually. In order:
 
 1. **Pattern discovery** (synthesis model, ×K in parallel): reads the whole eligible pool (facts + raw essays) and discovers the dimensions it varies on — name, definition, why-it-differentiates. K blind fresh-context calls; their cross-call disagreement is diversity the next step needs. Committee proposals seed one worker. Targets 5–25 dimensions (empirically ~14–16), biased to split, anti-padding. Dimensions are **oriented so more-is-better fit** (no direction flag — see ADR 0004); "goldilocks" axes reframe to a monotonic concept or split into two more-is-better dimensions.

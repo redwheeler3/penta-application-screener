@@ -158,7 +158,8 @@ def rank_candidates(
 
     Deterministic and stable: fit ties break by ``application_id``, and equal-fit
     candidates share the band of the first of the tie so identical fit never lands
-    in different labels. Without positive weights, list applicants by name with no
+    in different labels. Every positively weighted criterion must have a returned
+    score before a candidate is ranked. Without positive weights, list applicants by name with no
     rank, fit, or band; model scores alone do not establish committee priorities.
     """
     if not any(weight > 0 for weight in weights.values()):
@@ -170,12 +171,15 @@ def rank_candidates(
             not bool(c.name), (c.name or "").casefold(), c.application_id,
         ))]
 
+    selected_keys = {key for key, weight in weights.items() if weight > 0}
+    rankable = [candidate for candidate in candidates
+        if selected_keys <= {score.dimension_key for score in candidate.scores}]
     ordered = sorted(
-        candidates,
+        rankable,
         key=lambda c: (-_fit(c.scores, weights), c.application_id),
     )
 
-    means = _pool_means(candidates)
+    means = _pool_means(rankable)
     total = len(ordered)
     ranked: list[RankedCandidate] = []
     prev_fit: float | None = None

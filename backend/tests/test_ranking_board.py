@@ -6,12 +6,13 @@ from sqlalchemy import event, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.ranking import shortlist
-from app.db.models import Analysis, User, UserRole
+from app.db.models import Analysis, ApplicationAIResult, User, UserRole
 from app.schemas.settings import AppSettings
 from app.services.ranking.analysis import create_analysis
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.member_state import get_or_create_member_ranking
 from tests.application_support import current_opening_id
+from tests.db_support import add_selected_result
 from tests.ranking_support import (
     a_pattern_report,
     a_pattern_report_v2,
@@ -80,3 +81,25 @@ def test_competing_first_reads_return_the_same_member_ranking() -> None:
             first, first.get(Analysis, analysis_id), first.get(User, other_id),
         )
         assert result.id == winner_ids[0]
+
+
+@pytest.mark.anyio
+async def test_board_does_not_rank_cached_ignored_scores_as_missing_selected_scores():
+    app, db, _provider = setup_app(UserRole.MEMBER)
+    application = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    user = db.scalar(select(User))
+    analysis = seed_analysis(db, user, a_pattern_report())
+    analysis_id = analysis.id
+    add_selected_result(db, ApplicationAIResult(application_id=application.id,
+        kind="dimension_scoring:skills_offered", cache_key="synthetic-ignored",
+        model_id="synthetic", prompt_version="synthetic", output={"score": 0.8}))
+    db.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.put("/ranking/tiers", json={"analysisId": analysis_id,
+            "tiers": [{"id": "chosen", "label": "Chosen",
+                "dimensionKeys": ["participation_commitment"]}]})
+        assert response.status_code == 200
+        assert response.json()["candidates"] == []
+        board = (await client.get("/ranking/board")).json()
+        assert board["ranking"]["scoredCount"] == 0
+        assert board["ranking"]["candidates"] == []

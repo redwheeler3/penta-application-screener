@@ -114,6 +114,20 @@ def test_no_priorities_preserve_scores_without_a_merit_order() -> None:
     assert weighted[0].band == "Strong fit"
 
 
+def test_pending_selected_scores_are_not_neutral_scores_or_partial_averages() -> None:
+    pending = candidate(1, b=0.8)
+    neutral = candidate(2, a=0.0, b=0.8)
+    partial = candidate(3, a=0.9)
+    complete = candidate(4, a=0.4, b=0.4)
+    rows = rank_candidates([pending, neutral, partial, complete], {"a": 1.0, "b": 1.0})
+    assert [row.application_id for row in rows] == [2, 4]
+    assert [row.fit for row in rows] == [0.4, 0.4]
+    assert all(sum(c.impact for c in row.contributions) == pytest.approx(0.0) for row in rows)
+    rows = rank_candidates([pending, neutral], {"a": 1.0, "b": 0.0})
+    assert [row.application_id for row in rows] == [2]
+    assert rows[0].fit == 0.0
+
+
 def test_confidence_is_surfaced_not_folded_into_fit() -> None:
     # Two identical scores, different confidence, must produce identical fit:
     # confidence is display-only.
