@@ -163,7 +163,7 @@ IGNORE_TIER_LABEL = "Ignore"
 
 def default_tier_layout() -> list[dict]:
     """The opening *stored* layout: the empty working tiers, no Ignore tier.
-    ``weights_from_tiers`` then falls back to the uniform equal-weight baseline.
+    Unplaced dimensions have zero weight until the member chooses a working tier.
     """
     return [dict(t, dimension_keys=list(t["dimension_keys"])) for t in DEFAULT_WORKING_TIERS]
 
@@ -394,10 +394,7 @@ def weights_from_tiers(
     in no tier has weight ``0``. Only keys in ``dimension_keys`` are returned, so a
     stale entry naming a dropped dimension is ignored.
 
-    If no dimension carries positive weight (empty board, or no tiers), fit would be
-    zero for everyone and the ranking would collapse to an arbitrary order — so this
-    falls back to uniform weights (the equal-weight baseline) until something is
-    tiered.
+    An empty board has no ranking: every dimension remains at zero weight.
     """
     keys = set(dimension_keys)
     tier_count = len(tier_layout)
@@ -409,14 +406,7 @@ def weights_from_tiers(
             if key in keys:
                 placed[key] = weight
 
-    # Unplaced = ignored, weight 0.
-    weights = {key: placed.get(key, 0.0) for key in dimension_keys}
-
-    # Nothing weighted (empty board or no tiers): fall back to uniform.
-    if not any(w > 0.0 for w in weights.values()):
-        return dict.fromkeys(dimension_keys, 1.0)
-
-    return weights
+    return {key: placed.get(key, 0.0) for key in dimension_keys}
 
 
 def set_tiers(
@@ -430,7 +420,7 @@ def set_tiers(
 
     Validates that every placed key is a real dimension of the shared analysis. Only working
     tiers are stored — the UI's Ignore zone is dropped before persisting (an empty layout just
-    means everything is ignored → uniform fallback).
+    means everything is ignored and the applicants are unranked).
 
     ``acknowledged_requested_keys`` dismiss the "requested" provenance pill (badge ✕). Unlike
     new/revived, the requested flag is authoritative on the shared report and is NOT cleared by

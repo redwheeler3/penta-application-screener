@@ -74,9 +74,9 @@ class DimensionContribution:
 class RankedCandidate:
     application_id: int
     name: str | None
-    rank: int  # 1-based position in the ranking
-    fit: float  # -1..+1 weighted average; supporting detail, not the headline
-    band: str  # relative pool-position label (see BANDS)
+    rank: int | None  # 1-based position; absent until a criterion has positive weight
+    fit: float | None  # -1..+1 weighted average; absent without member priorities
+    band: str | None  # relative pool-position label (see BANDS)
     contributions: list[DimensionContribution]
 
 
@@ -158,8 +158,18 @@ def rank_candidates(
 
     Deterministic and stable: fit ties break by ``application_id``, and equal-fit
     candidates share the band of the first of the tie so identical fit never lands
-    in different labels.
+    in different labels. Without positive weights, list applicants by name with no
+    rank, fit, or band; model scores alone do not establish committee priorities.
     """
+    if not any(weight > 0 for weight in weights.values()):
+        return [RankedCandidate(
+            application_id=candidate.application_id, name=candidate.name,
+            rank=None, fit=None, band=None,
+            contributions=_contributions(candidate.scores, weights, {}),
+        ) for candidate in sorted(candidates, key=lambda c: (
+            not bool(c.name), (c.name or "").casefold(), c.application_id,
+        ))]
+
     ordered = sorted(
         candidates,
         key=lambda c: (-_fit(c.scores, weights), c.application_id),

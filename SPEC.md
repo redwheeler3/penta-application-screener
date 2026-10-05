@@ -1152,7 +1152,7 @@ The screener discovers the differentiating dimensions of *this* pool rather than
 
 **The committee expresses what matters with a tier-list maker** (`@dnd-kit`; see ADR 0006): the discovered dimensions are draggable chips sorted into self-defined importance tiers (Critical/Important/Minor by default, plus an Ignore zone), and the ranking re-sorts instantly as deterministic math over the cached scores — **no model call per change**. A future "Criteria Coach" may *ask* questions to help the committee reflect on the weighting they built (not to elicit it).
 
-**The defining architectural decision (ADR 0005): the LLM extracts scored features; ranking is deterministic math on top.** The model scores each candidate on the discovered dimensions and never opines on importance. Weights start equal (an honest "no judgment yet" baseline) and only the committee's tiering moves them, so every deviation traces to a recorded human choice, and a weighting change re-runs only the math over cached scores.
+**The defining architectural decision (ADR 0005): the LLM extracts scored features; ranking is deterministic math on top.** The model scores each candidate on the discovered dimensions and never opines on importance. Criteria start at zero weight in Ignore. Until a member places at least one criterion in a working tier, applicants are unranked: rank numbers, aggregate fit, and fit bands are absent, and applicants are listed by name. Moving every criterion back to Ignore restores this unranked state. Each member chooses their own priorities; a weighting change re-runs only the math over cached scores and makes no model call.
 
 The Rank chain is exposed as a **single button** — the committee never runs the sub-passes individually. In order:
 

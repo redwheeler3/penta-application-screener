@@ -11,9 +11,9 @@ review of the changed workflows. It should not require another request after eac
 Reviewed baseline: `main` at `c072ed3`, initially clean and synchronized with `origin/main`.
 The audit initially changed documentation only. The follow-up removed the separate commit
 approval rule and hook, recorded browser-only API support in SPEC, and inspected aggregate
-production answer-format counts in SQLite read-only mode. No application runtime code,
-database records, deployment, or provider configuration has been changed. Findings below
-remain recommendations, not completed cleanup fixes.
+production answer-format counts in SQLite read-only mode. At audit completion, no application
+runtime code, database records, deployment, or provider configuration had changed. The backlog
+defines the agreed scope; implementation outcomes are recorded at the end of this document.
 
 The goal is code that an engineer can understand without knowing its development history.
 Reduce unnecessary paths and misleading contracts; retain the ordering and ownership that
@@ -48,7 +48,7 @@ approved production aggregate inspection is documented below.
 
 ## Recommended backlog
 
-Priorities describe implementation order and benefit, not security severity. All fourteen
+Priorities describe implementation order and benefit, not security severity. All fifteen
 packages are worthwhile. Small signature/comment edits should accompany their owning package
 rather than becoming a succession of trivial standalone commits.
 
@@ -68,6 +68,7 @@ rather than becoming a succession of trivial standalone commits.
 | M12 | Alongside changes | Reconcile current docs, UI descriptions, and comments | Readers learn the system that actually exists |
 | M13 | Next | Remove unused standalone ranking reads | One coherent board contract for browser and manual tests |
 | M14 | First | Repair stale manual-analysis entrypoints | Diagnostic tools read the current analysis model |
+| M15 | First | Keep applicants unranked until a member chooses priorities | Committee judgment determines ranking |
 
 ### M01 — Give each scoring estimate one purpose
 
@@ -394,11 +395,28 @@ exercise the stale import inside `main`, which explains why that tool can pass i
 tests and still fail when invoked. Add a static/import smoke check for current script model
 references so dormant entrypoint paths receive coverage.
 
+### M15 — Rank only after a member chooses priorities
+
+D01 is approved. Remove the all-Ignore uniform-weight fallback. Criteria remain at zero
+until placed in a working tier. With no positive criterion, return absent rank, aggregate fit,
+and fit band, and list applicants alphabetically rather than presenting a merit order. The
+browser and print output hide ranking numbers/bands and explain how to choose priorities.
+Selecting a criterion starts ranking; clearing all working tiers restores the unranked state.
+
+Preserve cached scores, their evidence and provenance, favourites, shortlist membership,
+opening/member scope, and the existing weighted mathematics. Reweighting makes no model call
+and adds no refresh or synchronization requirement. Candidate details continue to show only
+contributions from criteria the member has actually chosen; raw traces remain available.
+
+Verification: domain ordering/null fields with zero weights, unchanged positive-weight math,
+HTTP transitions from unranked to weighted to unranked, and UI disappearance/reappearance
+of rank numbers and bands. Update old baseline tests instead of retaining a compatibility path.
+
 ## Decisions and changes not recommended by default
 
 ### D01 — All-Ignore ranking policy
 
-`weights_from_tiers` intentionally returns uniform `1.0` weights when no dimension has a
+At the audit baseline, `weights_from_tiers` returned uniform `1.0` weights when no dimension had a
 positive placement. `SPEC.md` describes that baseline, and
 `test_tier_weighting.py` explicitly tests empty/no-tier fallback. This is not a new confirmed
 calculation bug; it conflicts with the README's claim that all unactivated suggestions are inert.
@@ -409,11 +427,9 @@ because tied fits share the first candidate's band, every candidate receives “
 All criterion impacts are zero, although the underlying score explanations remain stored.
 The `1.0` fallback supplies an initial equal-weight ranking before members choose priorities.
 
-Updated recommendation: if the user chooses to remove the fallback, pair that change with an
-explicit unranked state, hiding rank numbers/fit bands until at least one criterion has positive
-weight. All-Ignore should then mean that no criterion influences ranking. Do not remove only
-the fallback and expose the incidental ID order as a merit ranking. This product choice is
-still pending; current ranking behavior has not changed.
+Resolved: the user approved zero weights and an explicit unranked state, hiding rank numbers
+and fit bands until at least one criterion has positive weight. All-Ignore means that no
+criterion influences ranking. Implement this under M15; stored AI scores remain available.
 
 ### D02 — Standalone ranking read endpoints
 
@@ -491,6 +507,9 @@ significant measured latency tradeoffs remain explicit decisions.
 
 Suggested cohesive commits, adjustable to dependency order:
 
+Implement the approved unranked state (M15) as its own first product-behavior commit, then
+continue with the cleanup batches below. API/schema and UI contracts move together.
+
 1. **Recovery tooling:** M10; safe argument handling and truthful command failures, with
    parser/failure tests and updated local-tool documentation.
 2. **Manual analysis tooling:** M14; current model/audit owners, opening scope, and entrypoint coverage.
@@ -531,3 +550,12 @@ Follow-up verification also included a synthetic all-zero/equal-weight compariso
 script model-import validation, production aggregate inspection, and collaboration-rule/hook
 checks. Local commits now require reviewed changes and the relevant checks, not a separate
 approval request; pushes and production changes retain their separate authorization boundaries.
+
+## Implementation results
+
+- M15: implemented zero-weight defaults and nullable rank/fit/band fields; unranked applicants
+  appear alphabetically with explicit guidance. Choosing and clearing priorities is covered
+  in domain, HTTP, and UI regressions. Stored scores and weighted math remain intact.
+  Checks: 878 backend tests, 227 frontend tests, Ruff, ESLint, and production build passed.
+- M01–M14: pending implementation. Validation results and commit IDs will be recorded as each
+  owning batch completes.

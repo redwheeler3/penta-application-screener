@@ -122,6 +122,7 @@ export function RankingView(props: {
 }): ReactNode {
   const { ranking, rankingRun, tiers, proposedDimensions } = props;
   const candidates = ranking.candidates;
+  const hasWeightedCriteria = Object.values(ranking.weights).some((weight) => weight > 0);
   // Saved-list views filter client-side; ranking stays one ordered list and the visible
   // subset keeps its original rank numbers.
   const [candidateView, setCandidateView] = useState<CandidateListView>("all");
@@ -212,6 +213,12 @@ export function RankingView(props: {
         </div>
       ) : (
         <>
+        {!hasWeightedCriteria ? (
+          <p className="panel-hint">
+            Applicants are unranked. Move at least one criterion into an importance tier
+            to choose what matters. Until then, applicants are listed by name.
+          </p>
+        ) : null}
         <div className="ranking-list-toolbar no-print">
           <CandidateListSelect
             value={candidateView}
@@ -246,7 +253,7 @@ export function RankingView(props: {
                 data-app-id={candidate.applicationId}
               >
                 <div className="ranking-row" onClick={() => props.onSelectApplication(candidate.applicationId)}>
-                  <span className="ranking-rank">#{candidate.rank}</span>
+                  {candidate.rank !== null ? <span className="ranking-rank">#{candidate.rank}</span> : null}
                   <div className="ranking-main">
                     <div className="ranking-name-row">
                       <div className="candidate-save-buttons">
@@ -263,7 +270,9 @@ export function RankingView(props: {
                         />
                       </div>
                       <span className="ranking-name">{candidate.name || "Unnamed applicant"}</span>
-                      <span className={`fit-band band-${bandClass(candidate.band)}`}>{candidate.band}</span>
+                      {candidate.band !== null ? (
+                        <span className={`fit-band band-${bandClass(candidate.band)}`}>{candidate.band}</span>
+                      ) : null}
                     </div>
                     <div className="ranking-contributions">
                       {topContributions.map((c) => {

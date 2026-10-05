@@ -97,11 +97,21 @@ def test_zero_weight_dimension_is_excluded_from_fit() -> None:
     assert {c.dimension_key for c in row.contributions} == {"a", "b"}
 
 
-def test_no_weight_at_all_yields_zero_fit() -> None:
-    [row] = rank_candidates(
-        [candidate(1, a=0.9, b=0.9)], {"a": 0.0, "b": 0.0}
-    )
-    assert row.fit == 0.0
+def test_no_priorities_preserve_scores_without_a_merit_order() -> None:
+    scored = [
+        CandidateScores(1, "Zed", candidate(1, a=0.9).scores),
+        CandidateScores(2, "Ada", candidate(2, a=-0.4).scores),
+    ]
+    rows = rank_candidates(scored, {"a": 0.0})
+    assert [row.name for row in rows] == ["Ada", "Zed"]
+    assert all(row.rank is None and row.fit is None and row.band is None for row in rows)
+    assert [row.contributions[0].score for row in rows] == [-0.4, 0.9]
+    assert all(row.contributions[0].impact == 0.0 for row in rows)
+    weighted = rank_candidates(scored, {"a": 1.0})
+    assert weighted[0].name == "Zed"
+    assert weighted[0].rank == 1
+    assert weighted[0].fit == 0.9
+    assert weighted[0].band == "Strong fit"
 
 
 def test_confidence_is_surfaced_not_folded_into_fit() -> None:

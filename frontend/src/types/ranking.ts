@@ -30,9 +30,9 @@ export type DimensionContribution = {
 export type RankedCandidate = {
   applicationId: number;
   name: string | null;
-  rank: number; // 1-based position
-  fit: number; // -1..+1 weighted average — supporting detail, not the headline
-  band: string; // relative pool-position label (Strong fit … Limited)
+  rank: number | null; // 1-based position; null until a criterion has positive weight
+  fit: number | null; // -1..+1 weighted average; null without member priorities
+  band: string | null; // relative pool-position label (Strong fit … Limited)
   contributions: DimensionContribution[];
   // Whether the signed-in member has starred this applicant (private per member).
   starredByMe: boolean;

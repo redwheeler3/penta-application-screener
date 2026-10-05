@@ -218,9 +218,9 @@ class RankedCandidateOut(ResponseModel):
 
     application_id: int
     name: str | None = None
-    rank: int
-    fit: float
-    band: str
+    rank: int | None
+    fit: float | None
+    band: str | None
     contributions: list[DimensionContributionOut]
     # Whether the current member has starred this applicant (private per member).
     starred_by_me: bool = False

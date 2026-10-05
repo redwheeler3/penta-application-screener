@@ -335,7 +335,7 @@ async def test_ranking_before_discovery_is_409() -> None:
 
 
 @pytest.mark.anyio
-async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
+async def test_ranking_requires_and_can_clear_member_priorities() -> None:
     app, db, provider = setup_app(role=UserRole.MEMBER)
     weak = add_eligible(db, email="weak@x.com", raw_hash="h1")
     strong = add_eligible(db, email="strong@x.com", raw_hash="h2")
@@ -352,18 +352,32 @@ async def test_ranking_orders_pool_and_seeds_equal_weights() -> None:
 
         ranking = (await client.get("/ranking")).json()
 
-        # Equal-weight baseline: both dimensions weight 1.0, no AI-proposed weight.
         assert ranking["weights"] == {
-            "participation_commitment": 1.0,
-            "skills_offered": 1.0,
+            "participation_commitment": 0.0,
+            "skills_offered": 0.0,
         }
-        # Strong candidate leads; fit is the plain average under equal weights.
-        candidates = ranking["candidates"]
-        assert [c["applicationId"] for c in candidates] == [strong.id, weak.id]
-        assert candidates[0]["fit"] == 0.9
-        assert candidates[0]["band"] == "Strong fit"
-        assert candidates[0]["shortlisted"] is True
-        assert candidates[1]["shortlisted"] is False
+        assert all(c["rank"] is None and c["fit"] is None and c["band"] is None
+            for c in ranking["candidates"])
+        assert next(c for c in ranking["candidates"] if c["applicationId"] == strong.id)["shortlisted"] is True
+
+        response = await client.put("/ranking/tiers", json={
+            "analysisId": ranking["analysisId"],
+            "tiers": [{"id": "chosen", "label": "Chosen", "dimensionKeys": [
+                "participation_commitment", "skills_offered",
+            ]}],
+        })
+        assert response.status_code == 200
+        weighted = response.json()
+        assert [c["applicationId"] for c in weighted["candidates"]] == [strong.id, weak.id]
+        assert weighted["candidates"][0]["fit"] == 0.9
+        assert weighted["candidates"][0]["band"] == "Strong fit"
+
+        cleared = await client.put("/ranking/tiers", json={
+            "analysisId": ranking["analysisId"], "tiers": [],
+        })
+        assert cleared.status_code == 200
+        assert all(c["rank"] is None and c["band"] is None for c in cleared.json()["candidates"])
+
 
 
 @pytest.mark.anyio
@@ -402,9 +416,10 @@ async def test_rank_chain_runs_criteria_scores() -> None:
         assert summary["scored"] == 2
         assert summary["failed"] == 0
 
-        # The chain produced a current run and a full ranking, strong above weak.
+        # Scores are available, but ranking awaits member priorities.
         ranking = (await client.get("/ranking")).json()
-        assert [c["applicationId"] for c in ranking["candidates"]] == [strong.id, weak.id]
+        assert {c["applicationId"] for c in ranking["candidates"]} == {strong.id, weak.id}
+        assert all(c["rank"] is None for c in ranking["candidates"])
 
 
 @pytest.mark.anyio

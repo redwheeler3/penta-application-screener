@@ -60,7 +60,6 @@ from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
     dimension_weights,
     get_or_create_member_ranking,
-    stored_tiers,
 )
 from app.services.ranking.view import (
     candidate_scores,
@@ -362,14 +361,10 @@ def _dimension_scores(
         return None
     member_ranking = get_or_create_member_ranking(db, analysis, user)
 
-    # An all-Ignore board intentionally falls back to uniform weights so the ranked
-    # list has a stable opening order. It is not a member weighting decision, though,
-    # so applicant details should not present every raw score as relevant.
-    tiers = stored_tiers(member_ranking)
-    if not any(tier.get("dimension_keys") for tier in tiers):
+    weights = dimension_weights(member_ranking, report=report)
+    if not any(weight > 0 for weight in weights.values()):
         return []
 
-    weights = dimension_weights(member_ranking, report=report)
     ranked = rank_candidates(
         candidate_scores(
             db,

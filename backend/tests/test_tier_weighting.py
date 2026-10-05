@@ -56,17 +56,13 @@ def test_unplaced_keys_are_zero() -> None:
     assert weights["d"] == 0.0
 
 
-def test_no_tiers_falls_back_to_uniform() -> None:
-    # An empty board (everything ignored by absence) would zero out fit entirely;
-    # guard with uniform 1.0 so the opening ranking is the equal-weight baseline.
-    assert weights_from_tiers(KEYS, []) == {"a": 1.0, "b": 1.0, "c": 1.0, "d": 1.0}
+def test_no_tiers_leave_all_criteria_unweighted() -> None:
+    assert weights_from_tiers(KEYS, []) == dict.fromkeys(KEYS, 0.0)
 
 
-def test_empty_working_tiers_fall_back_to_uniform() -> None:
-    # The opening default: Critical/Important/Minor exist but are empty, so nothing is placed. No
-    # dimension carries positive weight -> uniform baseline, not an all-zero collapse.
+def test_empty_working_tiers_leave_all_criteria_unweighted() -> None:
     layout = [tier("tier-s", []), tier("tier-a", []), tier("tier-b", [])]
-    assert weights_from_tiers(KEYS, layout) == {"a": 1.0, "b": 1.0, "c": 1.0, "d": 1.0}
+    assert weights_from_tiers(KEYS, layout) == dict.fromkeys(KEYS, 0.0)
 
 
 def test_one_placed_dimension_is_not_uniform() -> None:
