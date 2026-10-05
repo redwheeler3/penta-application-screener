@@ -18,6 +18,7 @@ from app.schemas.settings import (
     EligibilityRulesResponse,
     SettingsResponse,
 )
+from app.services.auth.authority import require_admin_write
 from app.services.eligibility.catalog import ELIGIBILITY_CHECK_CATALOG
 from app.services.eligibility.rules import (
     committee_default_rules,
@@ -97,6 +98,7 @@ def update_settings(
             "ai_provider_not_configured",
             detail="The selected model provider is not configured on this server.",
         )
+    require_admin_write(db, admin.id)
     return build_settings_response(save_app_settings(db, settings))
 
 
@@ -183,6 +185,7 @@ def update_committee_default_rules(
     member keeps their own rules until they reset; every non-diverged member reads the new
     default on their next read."""
     _validate_rules(rules)
+    require_admin_write(db, _admin.id)
     return save_committee_default_rules(
         db, resolve_rules_opening_id(db, opening_id), rules
     )

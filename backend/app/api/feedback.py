@@ -16,6 +16,7 @@ from app.db.models import Feedback, User
 from app.db.session import get_db
 from app.schemas.feedback import FeedbackCreate, FeedbackListResponse, FeedbackOut
 from app.services import feedback as feedback_service
+from app.services.auth.authority import require_admin_write
 from app.version import app_version
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
@@ -85,6 +86,7 @@ def resolve_feedback(
     db: Session = Depends(get_db),
 ) -> FeedbackOut:
     """Mark an item handled (idempotent). It leaves the open list but is retained."""
+    require_admin_write(db, _admin.id)
     feedback = feedback_service.resolve_feedback(db, feedback_id)
     if feedback is None:
         raise Problem("not_found", detail="Feedback not found.")
@@ -98,6 +100,7 @@ def reopen_feedback(
     db: Session = Depends(get_db),
 ) -> FeedbackOut:
     """Move a resolved item back to the open list (idempotent)."""
+    require_admin_write(db, _admin.id)
     feedback = feedback_service.reopen_feedback(db, feedback_id)
     if feedback is None:
         raise Problem("not_found", detail="Feedback not found.")

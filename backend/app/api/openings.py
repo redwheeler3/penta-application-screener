@@ -30,6 +30,7 @@ from app.schemas.openings import (
     PreviousApplicantSearchOut,
     SocketLabsUsageOut,
 )
+from app.services.auth.authority import require_admin_write
 from app.services.auth.passwordless import as_utc
 from app.services.email.sender import EmailSender, get_email_sender
 from app.services.email.socketlabs_usage import (
@@ -196,6 +197,7 @@ def add_opening(
     sender: EmailSender = Depends(get_email_sender),
     outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
 ) -> OpeningCommitOut:
+    require_admin_write(db, _admin.id)
     opening = published_request(db, body)
     if opening is not None:
         background_tasks.add_task(outbox_runner, sender)
@@ -238,6 +240,7 @@ def edit_opening(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> OpeningUpdatedOut:
+    require_admin_write(db, _admin.id)
     update_opening(db, _opening(db, opening_id), body)
     return OpeningUpdatedOut(
         openings=_response(db).openings,

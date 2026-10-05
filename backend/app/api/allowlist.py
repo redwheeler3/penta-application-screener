@@ -24,6 +24,7 @@ from app.schemas.allowlist import (
     DeniedSignInAttemptsResponse,
 )
 from app.services.auth import allowlist
+from app.services.auth.authority import require_admin_write
 from app.services.auth.denied_sign_ins import list_denied_sign_ins
 from app.services.auth.users import upsert_committee_user
 from app.services.email.sender import EmailSender, get_email_sender
@@ -70,13 +71,6 @@ def _admin_count(db: Session) -> int:
         .where(AccessAllowlistEntry.role == UserRole.ADMIN)) or 0
 
 
-def _lock_access_management(db: Session, actor: User) -> User:
-    current = allowlist.lock_admin_changes(db, actor.id)
-    if current is None:
-        raise Problem("forbidden", detail="Your admin access changed. Please sign in again.")
-    return current
-
-
 @router.get("/denied-attempts", response_model=DeniedSignInAttemptsResponse)
 def read_denied_sign_in_attempts(
     _admin: User = Depends(require_admin),
@@ -120,7 +114,7 @@ def upsert_allowlist_entry(
 ) -> AllowlistMutationResponse:
     """Add an allowed email or change its role. Adding an ``admin`` entry grants
     admin — the allowlist is the role-management surface."""
-    _admin = _lock_access_management(db, _admin)
+    _admin = require_admin_write(db, _admin.id)
     target_email = normalize_email(body.email)
     existing = allowlist.get_entry(db, target_email)
     demoting_current_admin = (
@@ -175,7 +169,7 @@ def remove_allowlist_entry(
     db: Session = Depends(get_db),
 ) -> AllowlistResponse:
     """Remove committee access and revoke the account's sessions and unused links."""
-    _lock_access_management(db, _admin)
+    require_admin_write(db, _admin.id)
     existing = allowlist.get_entry(db, email)
     removing_last_admin = (
         existing is not None

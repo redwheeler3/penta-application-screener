@@ -338,3 +338,10 @@ I would leave these alone:
   deletion replay. Screen estimates distinguish cached work needing adoption and allow explicit
   zero-cost application. Regression coverage includes deletion order, multiple consumers,
   replaced references, historical-snapshot restore, and an actual HTTP zero-provider run.
+
+- F05: one administrative write-authority owner now rechecks active admin status under the
+  existing SQLite writer boundary. Shared AI settings, committee-default rules, allowlist,
+  opening creation/update/permanent decisions, feedback administration and vacancy support
+  writes use it. Two-session tests demote or deactivate admitted actors before mutation and
+  verify no partial decision or queued notice. All 954 backend tests passed (one existing skip);
+  Ruff passed. Ordinary reads and provider I/O remain outside this boundary.

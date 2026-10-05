@@ -20,6 +20,7 @@ from app.schemas.openings import DirectSelectionOpeningCreate
 from app.services.applications.locking import lock_application
 from app.services.applications.retention import refresh_application_retention
 from app.services.applications.selected import revoke_selected_applicant_access
+from app.services.auth.authority import require_admin_write
 
 
 def available_previous_applicants_query() -> Select[tuple[Application]]:
@@ -81,6 +82,7 @@ def create_direct_selection_opening(
     if values.move_in_date <= pacific_today(now=now):
         raise Problem("invalid_settings", detail="The move-in date must be in the future.")
     lock_application(db, values.application_id)
+    decided_by = require_admin_write(db, decided_by.id)
     application = available_previous_applicant(db, values.application_id)
     if application is None:
         raise Problem(

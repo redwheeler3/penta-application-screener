@@ -21,6 +21,7 @@ from app.schemas.vacancy_subscriptions import (
     VacancySubscriptionReportOut,
     VacancySubscriptionWrite,
 )
+from app.services.auth.authority import require_admin_write
 from app.services.auth.rate_limit import PublicRateLimiter
 from app.services.openings.subscriptions import (
     VALID_UNIT_SIZES,
@@ -121,6 +122,7 @@ def save_for_support(
     db: Session = Depends(get_db),
 ) -> VacancySubscriptionLookupOut:
     _validate_unit_sizes(body.unit_sizes)
+    require_admin_write(db, _admin.id)
     subscription = save_subscription(
         db,
         email=str(body.email),
@@ -136,6 +138,7 @@ def delete_for_support(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> VacancySubscriptionLookupOut:
+    require_admin_write(db, _admin.id)
     delete_subscription(
         db,
         email=str(body.email),

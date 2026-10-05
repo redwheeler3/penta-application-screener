@@ -22,6 +22,7 @@ from app.services.applications.selected import (
     revoke_selected_applicant_access,
     selected_opening_id,
 )
+from app.services.auth.authority import require_admin_write
 from app.services.openings.catalog import opening_phase
 from app.services.openings.notifications import queue_due_unsuccessful_notices
 
@@ -103,6 +104,7 @@ def confirm_opening_selection(
     # Application first: withdrawal and selection use the same lifecycle boundary.
     lock_application(db, application_id)
     _lock_opening_decision(db, opening)
+    decided_by = require_admin_write(db, decided_by.id)
     existing = selected_participation(db, opening.id)
     if opening.decided_at is not None:
         if existing is not None and existing.application_id == application_id:
@@ -170,6 +172,7 @@ def confirm_no_household_selected(
     now: datetime | None = None,
 ) -> int:
     _lock_opening_decision(db, opening)
+    decided_by = require_admin_write(db, decided_by.id)
     if opening.decided_at is not None:
         if opening.no_household_selected:
             queued = _queue_decision_notices(db, opening, now=now)
