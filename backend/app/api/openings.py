@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_admin
 from app.core.problems import Problem
 from app.core.time import pacific_today
-from app.db.models import Application, Opening, User
+from app.db.models import Opening, User
 from app.db.session import get_db
 from app.schemas.openings import (
     DirectSelectionOpeningCreate,
@@ -54,8 +54,8 @@ from app.services.openings.selection import (
     active_opening_participants,
     confirm_no_household_selected,
     confirm_opening_selection,
+    retained_selected_households,
     selectable_opening_candidates,
-    selected_participation,
 )
 from app.services.openings.vacancy_notifications import (
     VacancyAudience,
@@ -74,19 +74,15 @@ def _opening(db: Session, opening_id: int) -> Opening:
 
 
 def _response(db: Session) -> OpeningsResponse:
-    return OpeningsResponse(
-        openings=[
-            _opening_out(db, opening, submission_count)
-            for opening, submission_count in list_openings(db)
-        ]
-    )
+    openings = list_openings(db)
+    selected = retained_selected_households(db, [opening.id for opening, _ in openings])
+    return OpeningsResponse(openings=[
+        _opening_out(opening, submission_count, selected.get(opening.id))
+        for opening, submission_count in openings
+    ])
 
 
-def _opening_out(db: Session, opening: Opening, submission_count: int) -> OpeningOut:
-    selected = selected_participation(db, opening.id)
-    selected_application = (
-        db.get(Application, selected.application_id) if selected is not None else None
-    )
+def _opening_out(opening: Opening, submission_count: int, selected: tuple[int, str | None] | None) -> OpeningOut:
     phase = opening_phase(opening)
     decision_exists = opening.decided_at is not None
     return OpeningOut(
@@ -102,10 +98,8 @@ def _opening_out(db: Session, opening: Opening, submission_count: int) -> Openin
             as_utc(opening.published_at) if opening.published_at is not None else None
         ),
         submission_count=submission_count,
-        selected_application_id=selected.application_id if selected is not None else None,
-        selected_applicant_name=(
-            selected_application.applicant_name if selected_application is not None else None
-        ),
+        selected_application_id=selected[0] if selected is not None else None,
+        selected_applicant_name=selected[1] if selected is not None else None,
         no_household_selected=opening.no_household_selected,
         needs_decision=(
             opening.move_in_date <= pacific_today()
@@ -308,19 +302,14 @@ def select_no_household(
 
 def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:
     phase = opening_phase(opening)
-    selected = selected_participation(db, opening.id)
+    selected = retained_selected_households(db, [opening.id]).get(opening.id)
     participants = active_opening_participants(db, opening)
-    selected_application = (
-        db.get(Application, selected.application_id) if selected is not None else None
-    )
     return OpeningSelectionOut(
         opening_id=opening.id,
         intake_mode=opening.intake_mode,
         phase=phase,
-        selected_application_id=selected.application_id if selected is not None else None,
-        selected_applicant_name=(
-            selected_application.applicant_name if selected_application is not None else None
-        ),
+        selected_application_id=selected[0] if selected is not None else None,
+        selected_applicant_name=selected[1] if selected is not None else None,
         no_household_selected=opening.no_household_selected,
         active_participant_count=len(participants),
         candidates=[

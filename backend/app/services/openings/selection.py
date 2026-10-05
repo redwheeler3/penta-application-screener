@@ -17,7 +17,10 @@ from app.db.models import (
     User,
 )
 from app.services.applications.locking import lock_application
-from app.services.applications.retention import refresh_application_retention
+from app.services.applications.retention import (
+    current_retention_clause,
+    refresh_application_retention,
+)
 from app.services.applications.selected import (
     revoke_selected_applicant_access,
     selected_opening_id,
@@ -39,6 +42,7 @@ def active_opening_participants(
                 ApplicationParticipation.withdrawn_at.is_(None),
                 Application.submitted_at.is_not(None),
                 Application.withdrawn_at.is_(None),
+                current_retention_clause(),
             )
             .order_by(Application.applicant_name, Application.id)
             .execution_options(populate_existing=True)
@@ -65,6 +69,17 @@ def selected_participation(
             ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
         )
     )
+
+
+def retained_selected_households(db: Session, opening_ids: list[int]) -> dict[int, tuple[int, str | None]]:
+    """Project retained selected household identity/name in one query, without answer blobs."""
+    if not opening_ids:
+        return {}
+    rows = db.execute(select(ApplicationParticipation.opening_id, Application.id, Application.applicant_name)
+        .join(Application, Application.id == ApplicationParticipation.application_id)
+        .where(ApplicationParticipation.opening_id.in_(opening_ids),
+               ApplicationParticipation.outcome == OpeningOutcome.SELECTED, current_retention_clause()))
+    return {opening_id: (application_id, name) for opening_id, application_id, name in rows}
 
 
 def require_ai_actions_available(db: Session, opening_id: int) -> Opening:

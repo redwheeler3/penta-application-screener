@@ -351,3 +351,9 @@ I would leave these alone:
   or newer draft text. Cross-tab Add/Add and Add/Remove, duplicate intent, failed acknowledgement
   and typing during a save are covered. All 956 backend and 279 frontend tests passed, with Ruff,
   ESLint and build passing. Existing run guards and optimistic chip feedback are preserved.
+
+- F07: opening summaries batch projected selected IDs/names and apply current retention.
+  Detail/candidate reads use the same expiry boundary; permanent non-identifying decision facts
+  remain. The 100-opening regression measures two SELECTs and no applicant answer columns.
+  Exact expiry-day, expired, future and indefinite retention cases pass. All 961 backend tests
+  passed (one existing skip), with Ruff passing. No cache or extra refresh loop was introduced.
