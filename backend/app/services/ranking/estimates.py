@@ -12,7 +12,7 @@ from app.ai.dimension_consolidation import estimate_consolidate
 from app.ai.dimension_decomposition import estimate_decompose
 from app.ai.dimension_discovery import eligible_applications, estimate_discovery
 from app.ai.dimension_matching import estimate_match
-from app.ai.dimension_scoring_cost import estimate_dimension_scoring
+from app.ai.dimension_scoring_cost import estimate_rank_scoring
 from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import Application
 from app.schemas.settings import AppSettings
@@ -61,13 +61,12 @@ def build_rank_estimate(
         measured_match = recent_pass_fresh_usd(db, opening_id, "Dimension matching")
         match_usd = measured_match if measured_match is not None else estimate_match(settings)
 
-    scoring_usd = estimate_dimension_scoring(
+    scoring_usd = estimate_rank_scoring(
         db,
         opening_id,
         settings,
-        include_coverage=False,
         candidates=pool,
-    )["estimated_usd"]
+    )
 
     measured_consolidate = recent_pass_fresh_usd(
         db, opening_id, "Dimension consolidation"

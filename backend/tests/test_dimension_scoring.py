@@ -18,6 +18,7 @@ from app.ai.analysis import cache_key
 from app.ai.dimension_scoring import (
     KIND_PREFIX,
     PROMPT_VERSION,
+    applications_to_score,
     kind_for_dimension,
     score_dimensions,
 )
@@ -377,7 +378,7 @@ def test_ceiling_estimate_prices_per_candidate_call() -> None:
         ASSUMED_DIMENSIONS_FIRST_RUN,
         SCORING_FALLBACK_INPUT_TOKENS_PER_CANDIDATE,
         SCORING_FALLBACK_OUTPUT_TOKENS,
-        estimate_dimension_scoring,
+        estimate_rank_scoring,
     )
     from app.ai.pricing import cost_usd
     from app.ai.provider import Usage
@@ -389,7 +390,8 @@ def test_ceiling_estimate_prices_per_candidate_call() -> None:
 
     # No run yet → fallback per-candidate input + per-dimension output × the
     # first-run dimension count; ceiling assumes nothing cached.
-    est = estimate_dimension_scoring(db, current_opening_id(db), settings)
+    est = estimate_rank_scoring(db, current_opening_id(db), settings,
+        candidates=applications_to_score(db, current_opening_id(db)))
     per_candidate = cost_usd(
         settings.ai.dimension_scoring_model,
         Usage(
@@ -398,8 +400,7 @@ def test_ceiling_estimate_prices_per_candidate_call() -> None:
         ),
     )
     expected = round(per_candidate * 2, 4)
-    assert est["estimated_usd"] == expected
-    assert est["to_analyze"] == 2  # candidates (the ceiling assumes none cached)
+    assert est == expected
 
 
 def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
@@ -408,7 +409,7 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
         ASSUMED_DIMENSIONS_FIRST_RUN,
         _avg_output_tokens_per_dimension,
         _per_candidate_input_tokens,
-        estimate_dimension_scoring,
+        estimate_rank_scoring,
     )
     from app.ai.pricing import cost_usd
     from app.ai.provider import Usage
@@ -433,27 +434,49 @@ def test_rerun_estimate_cache_aware_fallback_when_no_history() -> None:
     # NOTE: run_scores does not write a RunCostLedger row (that happens in the API
     # stream), so recent_scoring_fresh_usd() is None here → cache-aware fallback.
 
-    est = estimate_dimension_scoring(db, current_opening_id(db), settings)
+    est = estimate_rank_scoring(db, current_opening_id(db), settings,
+        candidates=applications_to_score(db, current_opening_id(db)))
 
     # Everyone fully cached against the current dims → 0 uncached work → $0 estimate.
-    assert est["cached"] == 2
-    assert est["to_analyze"] == 0
-    assert est["estimated_usd"] == 0.0
+    assert est == 0.0
     # A whole-pool, no-cache ceiling would be strictly higher.
     out_per_dim = _avg_output_tokens_per_dimension(db, settings.ai.dimension_scoring_model)
-    inp = _per_candidate_input_tokens(db, current_opening_id(db), report)
+    inp = _per_candidate_input_tokens([app1, app2], report)
     ceiling = cost_usd(
         settings.ai.dimension_scoring_model,
         Usage(inp, out_per_dim * ASSUMED_DIMENSIONS_FIRST_RUN),
     ) * 2
-    assert est["estimated_usd"] < ceiling
+    assert est < ceiling
+
+
+def test_full_rank_estimate_reuses_the_supplied_pool() -> None:
+    from app.ai.dimension_scoring_cost import estimate_rank_scoring
+    from app.services.ranking.analysis import create_analysis
+
+    db = make_db()
+    application = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    create_analysis(db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
+        report=report_with(["community"]), inputs_fingerprint="synthetic", narrative=None)
+    # The route supplies a loaded pool, not expired ORM attributes.
+    db.refresh(application)
+    statements = []
+
+    @event.listens_for(db.get_bind(), "before_cursor_execute")
+    def record_query(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    estimated = estimate_rank_scoring(db, current_opening_id(db), AppSettings(),
+        candidates=[application])
+    assert estimated > 0
+    assert not any("FROM applications" in statement for statement in statements)
+    assert not any("FROM member_rules" in statement for statement in statements)
 
 
 def test_rerun_estimate_prefers_measured_history() -> None:
     # When prior Rank runs recorded actual fresh scoring spend, the estimate uses a
     # recency-weighted average of that measured cost — the honest predictor — rather
     # than a reconstructed count.
-    from app.ai.dimension_scoring_cost import estimate_dimension_scoring
+    from app.ai.dimension_scoring_cost import estimate_rank_scoring
     from app.ai.pricing import PassCost
     from app.services.cost_report import record_run_cost
     from app.services.ranking.analysis import create_analysis
@@ -478,8 +501,9 @@ def test_rerun_estimate_prefers_measured_history() -> None:
     rank_row(0.40)
     rank_row(0.10)
 
-    est = estimate_dimension_scoring(db, current_opening_id(db), settings)
-    assert est["estimated_usd"] == round((2 * 0.10 + 1 * 0.40) / 3, 4)
+    est = estimate_rank_scoring(db, current_opening_id(db), settings,
+        candidates=applications_to_score(db, current_opening_id(db)))
+    assert est == round((2 * 0.10 + 1 * 0.40) / 3, 4)
 
 
 def test_estimate_is_recorded_and_surfaced_for_reconciliation() -> None:

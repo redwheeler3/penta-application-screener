@@ -214,17 +214,6 @@ def missing_dimensions_by_application(
     }
 
 
-def applications_needing_scores(
-    db: Session, applications: list[Application], report: PoolDimensionReport, model_id: str,
-    reasoning_effort: ReasoningEffort | None = None,
-) -> list[Application]:
-    """Applicants in the supplied eligible pool with a missing score for ``report``."""
-    missing_by_application = missing_dimensions_by_application(
-        db, applications, report, model_id, reasoning_effort
-    )
-    return [app for app in applications if missing_by_application[app.id]]
-
-
 def _split_usage(usage: Usage, parts: int) -> Usage:
     """Divide a batched call's token usage evenly across the dimensions it scored,
     so each per-dimension cache row carries its fair share (and the rows aggregate
