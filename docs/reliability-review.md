@@ -42,10 +42,10 @@ inferred precision.
    the final review. Report coverage and limits. A clean review is evidence, not a
    guarantee that software contains no undiscovered bugs.
 
-Commit and push authority remains task-specific under `.clinerules`. A single
-comprehensive task can authorize multiple focused commits and a final push; it
-does not create standing authority for future tasks. Product decisions, destructive
-operations, and external actions still require their appropriate authorization.
+Agents may make cohesive commits during authorized work under `.clinerules` without
+separate commit approval. Push authorization remains task-specific. Product decisions,
+destructive operations, production changes, and external actions still require their
+appropriate authorization.
 
 ## This round's regression coverage
 
