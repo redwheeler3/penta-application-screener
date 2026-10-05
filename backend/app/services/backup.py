@@ -276,9 +276,11 @@ def _reapply_deletion_ledger(
     if has_results:
         prepared_engine = create_engine(f"sqlite:///{db_path.as_posix()}")
         try:
-            with Session(prepared_engine) as db:
-                prune_unowned_results(db)
-                db.commit()
+            with prepared_engine.begin() as connection:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                with Session(bind=connection) as db:
+                    prune_unowned_results(db)
+                    db.flush()
         finally:
             prepared_engine.dispose()
 

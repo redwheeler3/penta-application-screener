@@ -268,13 +268,15 @@ def test_sqlite_path_rejects_in_memory(tmp_path):
         backup._sqlite_path(create_engine("sqlite:///:memory:"))
 
 
-def test_restore_upgrades_producer_fk_before_replaying_deletions(tmp_path, monkeypatch):
+@pytest.mark.parametrize("expired_consumer", [False, True])
+def test_restore_upgrades_producer_fk_before_replaying_deletions(tmp_path, monkeypatch, expired_consumer):
     from pathlib import Path
 
     from alembic.config import Config
 
     from alembic import command
     from app.core.config import get_settings
+    from app.core.time import pacific_today
     from app.db.models import RECORD_ID_FLOOR
 
     path = tmp_path / "retained-cache.db"
@@ -294,13 +296,16 @@ def test_restore_upgrades_producer_fk_before_replaying_deletions(tmp_path, monke
             conn.execute(text("INSERT INTO application_ai_results (id, application_id, kind, cache_key, model_id, prompt_version, output, input_tokens, output_tokens, cost_usd) VALUES (:id, :producer, 'screening', 'same', 'synthetic', 'v', '{\"flags\": []}', 100, 50, 0.123)"),
                          {"id": result, "producer": producer})
             conn.execute(text("INSERT INTO application_ai_selections (application_id, kind, result_id) VALUES (:consumer, 'screening', :result)"), {"consumer": consumer, "result": result})
+        if expired_consumer:
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE applications SET retention_due_on=:due WHERE id=:consumer"), {"due": pacific_today().isoformat(), "consumer": consumer})
         saved = backup.create_backup(engine=engine)
         with engine.begin() as conn:
             conn.execute(text("INSERT INTO retention_deletions (record_kind, record_id, retention_rule, due_on, deleted_at) VALUES ('application', :producer, 'one_year', '2026-10-05', '2026-10-06 12:00:00')"), {"producer": producer})
         backup.restore_backup(saved, engine=engine)
         with engine.connect() as conn:
-            assert conn.exec_driver_sql("SELECT producer_application_id, cost_usd FROM application_ai_results").one() == (producer, 0.123)
-            assert conn.exec_driver_sql("SELECT application_id, result_id FROM application_ai_selections").one() == (consumer, result)
+            assert conn.exec_driver_sql("SELECT producer_application_id, cost_usd FROM application_ai_results").all() == ([] if expired_consumer else [(producer, 0.123)])
+            assert conn.exec_driver_sql("SELECT application_id, result_id FROM application_ai_selections").all() == ([] if expired_consumer else [(consumer, result)])
             assert conn.exec_driver_sql("SELECT id FROM applications").scalars().all() == [consumer]
             assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
     finally:

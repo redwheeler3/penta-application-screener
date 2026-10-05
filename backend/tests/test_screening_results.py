@@ -99,3 +99,22 @@ def test_clean_screening_preserves_zero_pet_counts_and_empty_flags() -> None:
         assert flags[application.id] == []
         assert pets[application.id].dogs == 0
         assert pets[application.id].cats == 0
+
+
+def test_resubmission_keeps_last_consumed_findings_active_until_explicit_screen():
+    with memory_session(foreign_keys=True) as db:
+        application = Application(primary_email="review@example.com", raw_row={}, raw_row_hash="submitted")
+        db.add(application)
+        db.flush()
+        result = add_selected_result(db, ApplicationAIResult(producer_application_id=application.id,
+            kind="screening", cache_key="consumed", model_id="mock", prompt_version="test",
+            output={"flags": [{"category": "fake_contact"}], "pets": {"dogs": 2, "cats": 0, "other_pets": []}}))
+        result_id = result.id
+        db.commit()
+        application.raw_row_hash = "resubmitted"
+        application.submitted_at = datetime.now(UTC)
+        db.commit()
+        flags, pets = screening_findings_by_app(db, [application.id])
+        assert flags[application.id] == [{"category": "fake_contact"}]
+        assert pets[application.id].dogs == 2
+        assert selected_screening_results(db, [application.id])[application.id].id == result_id
