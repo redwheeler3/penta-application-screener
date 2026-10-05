@@ -11,7 +11,7 @@ from collections import defaultdict
 import sqlalchemy as sa
 
 from alembic import op
-from app.ai.model_catalog import model_identity
+from app.ai.model_catalog import MODEL_IDENTITIES, model_identity
 
 revision = "a47e5c19b203"
 down_revision = "c83d5f917a2b"
@@ -26,8 +26,8 @@ RANK_KEYS = ("adult_count", "child_count", "applicant_age", "co_applicant_age", 
              "applicant_employment_start", "co_applicant_employment_start", "pets_text")
 
 
-def _key(row, raw_hash, normalized=None):
-    identity = {"kind": row["kind"], "model_id": model_identity(row["model_id"]),
+def _key(row, raw_hash, normalized=None, *, neutral_model=None):
+    identity = {"kind": row["kind"], "model_id": neutral_model or model_identity(row["model_id"]),
                 "prompt_version": row["prompt_version"]}
     if row["reasoning_effort"] is not None:
         identity["reasoning_effort"] = row["reasoning_effort"]
@@ -59,17 +59,19 @@ def _rekey(*, reverse=False):
     occupied = {row["cache_key"] for row in rows}
     for row in rows:
         try:
-            model_identity(row["model_id"])
+            models = {model_identity(row["model_id"])}
         except ValueError:
-            # Retain outputs from unsupported routes as history, without claiming a hit.
-            continue
+            # A retired provider route can still have a valid neutral-model cache.
+            # The stored digest proves the identity; never guess it from route text.
+            models = set(MODEL_IDENTITIES.values())
         candidates = set()
         for raw_hash, normalized in snapshots[row["application_id"]]:
-            old = _key(row, raw_hash)
-            new = _key(row, raw_hash, normalized)
-            source, target = (new, old) if reverse else (old, new)
-            if source == row["cache_key"]:
-                candidates.add(target)
+            for neutral_model in models:
+                old = _key(row, raw_hash, neutral_model=neutral_model)
+                new = _key(row, raw_hash, normalized, neutral_model=neutral_model)
+                source, target = (new, old) if reverse else (old, new)
+                if source == row["cache_key"]:
+                    candidates.add(target)
         # Multiple age projections for identical answers cannot prove what an
         # in-flight historical call consumed. Keep its output and cost as history.
         if len(candidates) != 1:

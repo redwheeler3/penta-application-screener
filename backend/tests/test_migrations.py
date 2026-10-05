@@ -635,7 +635,8 @@ def test_fresh_schema_keeps_timestamp_defaults_on_opening_scoped_tables(
 
 
 @pytest.mark.parametrize("ambiguous", [False, True])
-def test_cache_evidence_migration_preserves_proven_hits_and_uncertain_history(monkeypatch, ambiguous):
+@pytest.mark.parametrize("retired_route", [False, True])
+def test_cache_evidence_migration_preserves_proven_hits_and_uncertain_history(monkeypatch, ambiguous, retired_route):
     from datetime import UTC, datetime
 
     from app.ai.analysis import cache_key
@@ -654,6 +655,8 @@ def test_cache_evidence_migration_preserves_proven_hits_and_uncertain_history(mo
             selected_opening_ids=[], submitted_at=datetime.now(UTC)))
     row = {"kind": "screening", "model_id": AppSettings().ai.screening_model, "reasoning_effort": None, "prompt_version": "v"}
     old_key = migration["_key"](row, "unchanged")
+    if retired_route:
+        row["model_id"] = "retired-provider-route"
     result = ApplicationAIResult(application_id=application.id, cache_key=old_key, output={"flags": []},
                                  cost_usd=0.123, input_tokens=100, output_tokens=50, **row)
     db.add(result)
