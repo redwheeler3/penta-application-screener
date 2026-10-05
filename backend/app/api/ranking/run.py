@@ -35,7 +35,7 @@ from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings
 
-router = APIRouter(prefix="/ranking")
+router = APIRouter()
 
 @router.get("/run/estimate", response_model=RankEstimateResponse)
 def rank_estimate(

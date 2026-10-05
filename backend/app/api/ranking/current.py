@@ -36,7 +36,7 @@ from app.services.ranking.member_state import (
     get_or_create_member_ranking,
 )
 
-router = APIRouter(prefix="/ranking")
+router = APIRouter()
 
 
 

@@ -11,7 +11,7 @@ export type PoolDimension = {
   fromCommitteeRequest: boolean;
 };
 
-// --- Ranking: the deterministic ranked shortlist from GET /ranking,
+// --- Ranking: the deterministic ranked shortlist within GET /ranking/board,
 // pure math over the cached scores. Mirrors the backend ranking dataclasses.
 
 // How one dimension fed a candidate's fit. `impact` = weight × (score − pool mean):

@@ -29,7 +29,6 @@ from app.schemas.ranking import (
     SeedsUpdate,
     TierLayoutUpdate,
     TierOut,
-    TiersResponse,
 )
 from app.services.applications.scope import resolve_visible_opening_id
 from app.services.ranking.analysis import get_current_analysis
@@ -43,7 +42,7 @@ from app.services.ranking.member_state import (
 )
 from app.services.run_lock import lock_run_state, rank_run_in_progress
 
-router = APIRouter(prefix="/ranking")
+router = APIRouter()
 
 
 def _current_member_view(
@@ -107,42 +106,10 @@ def ranking_board(
     )
 
 
-@router.get("", response_model=RankingResponse)
-def ranking(
-    opening_id: int | None = None,
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> RankingResponse:
-    """The deterministic ranked shortlist for the signed-in member's view of the current
-    analysis.
-
-    Ranks every scored eligible candidate by the weight-normalized average of its
-    dimension scores, labeled by relative pool position (no fixed cut line). Pure
-    math over cached scores.
-    """
-    resolved = resolve_visible_opening_id(db, opening_id)
-    return ranking_payload(db, _current_member_view(db, user, resolved, "ranking"), user)
-
-
 # --- Tier-list weighting -----------------------------------------------------
 #
 # The member drags dimensions into importance tiers; weights derive from the
 # layout (see ``weights_from_tiers``) and the ranking re-sorts. Pure persistence.
-
-
-@router.get("/tiers", response_model=TiersResponse)
-def get_tiers(
-    opening_id: int | None = None,
-    user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> TiersResponse:
-    """The signed-in member's tier layout for the current analysis (or the default layout if
-    they have not tiered yet). 409 before an analysis exists.
-    """
-    member_ranking = _current_member_view(
-        db, user, resolve_visible_opening_id(db, opening_id), "tiering"
-    )
-    return TiersResponse(tiers=[TierOut(**t) for t in display_tiers(member_ranking)])
 
 
 @router.put("/tiers", response_model=RankingResponse)

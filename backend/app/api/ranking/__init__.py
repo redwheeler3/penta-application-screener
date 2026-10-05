@@ -6,11 +6,11 @@ Flow the UI drives:
      phase/progress/summary as NDJSON. The cap is enforced once over the COMBINED cost
      before any model call.
   3. GET  /ranking/current — the current run's criteria + summary.
-  4. GET  /ranking — the ranked shortlist (math over cached scores).
-  5. GET/PUT /ranking/tiers — the committee's importance-tier weighting.
+  4. GET  /ranking/board — coherent criteria, ranked applicants, and tier layout.
+  5. PUT  /ranking/tiers — the committee's importance-tier weighting.
   6. PUT  /ranking/seeds — pending free-text proposals for the next run.
 
-The committee never runs the three sub-passes individually, so they're exposed as
+The committee never runs the individual AI passes separately, so they're exposed as
 one Rank step; the passes stay separate underneath (distinct schemas, cache kinds,
 status behavior).
 
@@ -31,9 +31,7 @@ from fastapi import APIRouter
 
 from app.api.ranking import current, run, score_current, shortlist
 
-# The tag is set here; each sub-router carries the full ``/ranking`` prefix itself
-# (FastAPI won't let a prefix-less child hold the empty-path root route ``GET /ranking``).
-router = APIRouter(tags=["ranking"])
+router = APIRouter(prefix="/ranking", tags=["ranking"])
 router.include_router(run.router)
 router.include_router(score_current.router)
 router.include_router(current.router)

@@ -69,7 +69,7 @@ def run_payload(db: Session, member_ranking: MemberRanking) -> CurrentRunRespons
 
 def ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> RankingResponse:
     """The ranked-shortlist response for a member's view of an analysis. Shared by
-    ``/ranking`` and the tier-edit endpoint, so a tier change returns the re-sorted list in one
+    the board read and the tier-edit endpoint, so a tier change returns the re-sorted list in one
     round-trip. Ranking weights + tiers are this member's; the dimension scores and star state
     are shared, resolved off the analysis / this user.
     """

@@ -84,7 +84,7 @@ async def test_tiers_reweight_and_resort_the_ranking() -> None:
         # with every dimension starting in Ignore — the committee drags them out to
         # weigh in. Displayed layout: Critical / Important / Minor working tiers (empty)
         # + a synthesized Ignore zone holding every dimension, since nothing is placed yet.
-        default = (await client.get("/ranking/tiers")).json()["tiers"]
+        default = (await client.get("/ranking/board")).json()["tiers"]
         working = [t for t in default if not t.get("ignore")]
         assert [t["label"] for t in working] == ["Critical", "Important", "Minor"]
         assert all(t["dimensionKeys"] == [] for t in working)
@@ -261,7 +261,7 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         assert criteria_done["carriedForward"] == 1
         assert criteria_done["newDimensions"] == 1
 
-        layout = (await client.get("/ranking/tiers")).json()["tiers"]
+        layout = (await client.get("/ranking/board")).json()["tiers"]
         by_label = {t["label"]: t for t in layout}
         # The matched dimension ADOPTED the prior key and kept the prior Critical
         # placement — so the placement carries forward by key, no separate identity.
@@ -298,7 +298,7 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         # Acknowledge the new dimension in place (badge ✕ / "mark all reviewed"): send the
         # key in acknowledgedKeys, keeping its (now working-tier) placement. Only this
         # explicit action drops it out of new_dimension_keys.
-        placed_layout = (await client.get("/ranking/tiers")).json()["tiers"]
+        placed_layout = (await client.get("/ranking/board")).json()["tiers"]
         ack = await client.put(
             "/ranking/tiers",
             json={
@@ -312,7 +312,7 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         # And it stuck: still placed in Important (the ✕ keeps placement), just no longer flagged.
         current = (await client.get("/ranking/current")).json()
         assert current["newDimensionKeys"] == []
-        layout2 = (await client.get("/ranking/tiers")).json()["tiers"]
+        layout2 = (await client.get("/ranking/board")).json()["tiers"]
         by_label2 = {t["label"]: t for t in layout2}
         assert "financial_stability" in by_label2["Important"]["dimensionKeys"]
 
@@ -475,7 +475,7 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
         # It restored its LAST placement across the gap (durable committee intent): it was
         # in Ignore before the gap, so it returns to Ignore — while participation_commitment
         # keeps its Critical placement.
-        layout = (await client.get("/ranking/tiers")).json()["tiers"]
+        layout = (await client.get("/ranking/board")).json()["tiers"]
         by_label = {t["label"]: t for t in layout}
         assert by_label["Critical"]["dimensionKeys"] == ["participation_commitment"]
         ignore = next(t for t in layout if t.get("ignore"))
@@ -483,7 +483,7 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
 
         # The ranking payload (what the tier-list UI reads) agrees, so the blue badge
         # renders: revived on a working-tier chip, not gated to Ignore.
-        ranking = (await client.get("/ranking")).json()
+        ranking = (await client.get("/ranking/board")).json()["ranking"]
         assert ranking["revivedDimensionKeys"] == ["skills_offered"]
 
 
@@ -509,7 +509,7 @@ async def test_tiers_without_ignore_zone_means_everything_ignored() -> None:
         # commitment is placed (weight 1); skills is unplaced -> ignored (weight 0).
         assert ranking["weights"] == {"participation_commitment": 1.0, "skills_offered": 0.0}
         # The displayed layout synthesizes the Ignore zone with the unplaced dim.
-        layout = (await client.get("/ranking/tiers")).json()["tiers"]
+        layout = (await client.get("/ranking/board")).json()["tiers"]
         ignore = next(t for t in layout if t.get("ignore"))
         assert ignore["dimensionKeys"] == ["skills_offered"]
 
@@ -520,7 +520,7 @@ async def test_tiers_before_run_is_409() -> None:
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.get("/ranking/tiers")).status_code == 409
+        assert (await client.get("/ranking/board")).status_code == 409
         # analysisId is required by the schema; supply a placeholder so validation
         # passes and the router's own 409 (no analysis discovered yet) is what's asserted.
         assert (

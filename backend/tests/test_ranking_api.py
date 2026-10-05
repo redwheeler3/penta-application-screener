@@ -166,7 +166,7 @@ async def test_score_current_fills_only_missing_scores_without_replacing_run() -
         after = (await client.get("/ranking/current")).json()
         assert after["analysisId"] == before["analysisId"]
         assert after["dimensions"] == before["dimensions"]
-        tiers = (await client.get("/ranking/tiers")).json()["tiers"]
+        tiers = (await client.get("/ranking/board")).json()["tiers"]
         assert tiers[0]["dimensionKeys"] == ["skills_offered"]
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
 
@@ -331,7 +331,7 @@ async def test_ranking_before_discovery_is_409() -> None:
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.get("/ranking")).status_code == 409
+        assert (await client.get("/ranking/board")).status_code == 409
 
 
 @pytest.mark.anyio
@@ -350,7 +350,7 @@ async def test_ranking_requires_and_can_clear_member_priorities() -> None:
         await stream_events(client, "/ranking/run")
         await client.put(f"/applications/{strong.id}/shortlist")
 
-        ranking = (await client.get("/ranking")).json()
+        ranking = (await client.get("/ranking/board")).json()["ranking"]
 
         assert ranking["weights"] == {
             "participation_commitment": 0.0,
@@ -417,7 +417,7 @@ async def test_rank_chain_runs_criteria_scores() -> None:
         assert summary["failed"] == 0
 
         # Scores are available, but ranking awaits member priorities.
-        ranking = (await client.get("/ranking")).json()
+        ranking = (await client.get("/ranking/board")).json()["ranking"]
         assert {c["applicationId"] for c in ranking["candidates"]} == {strong.id, weak.id}
         assert all(c["rank"] is None for c in ranking["candidates"])
 

@@ -229,7 +229,7 @@ class RankedCandidateOut(ResponseModel):
 
 
 class RankingResponse(ResponseModel):
-    """GET /ranking and PUT /ranking/tiers — the ranked shortlist for the analysis."""
+    """Ranking board and tier mutation response for one member's analysis view."""
 
     # The shared analysis this ranking is for. The client echoes it back on a tier/seed
     # save so the server can reject a save against a superseded analysis (409 stale_analysis).
@@ -251,12 +251,6 @@ class TierOut(ResponseModel):
     label: str
     dimension_keys: list[str] = []
     ignore: bool = False
-
-
-class TiersResponse(ResponseModel):
-    """GET /ranking/tiers — the committee's importance-tier layout."""
-
-    tiers: list[TierOut]
 
 
 class RankingBoardResponse(ResponseModel):
