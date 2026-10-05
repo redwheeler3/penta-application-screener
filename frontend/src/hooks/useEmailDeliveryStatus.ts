@@ -5,11 +5,10 @@ import {
   refreshEmailDeliveryStatus,
 } from "../api/emailDelivery";
 
-export function useEmailDeliveryStatus(enabled = true): boolean {
+export function useEmailDeliveryStatus(): boolean {
   const [delayed, setDelayed] = useState(false);
 
   useEffect(() => {
-    if (!enabled) return;
     const controller = new AbortController();
     async function loadStatus() {
       try {
@@ -30,7 +29,7 @@ export function useEmailDeliveryStatus(enabled = true): boolean {
     }
     void loadStatus();
     return () => controller.abort();
-  }, [enabled]);
+  }, []);
 
   return delayed;
 }

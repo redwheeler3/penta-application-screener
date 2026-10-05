@@ -526,8 +526,8 @@ export function CommitteeWorkspace({ user, logout }: {
         activeTab={selectedApp ? "applicant-detail" : activeTab}
         analysisId={rankingRun?.analysisId ?? null}
         applicantId={selectedApp?.id ?? null}
-          onToast={showToast}
-          onError={showError}
+        onToast={showToast}
+        onError={showError}
       />
       <Toasts toasts={toasts} onDismiss={dismissToast} />
     </main>

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApplicationEntry } from "../../applicant/ApplicantAccessScreens";
 import { CommitteeSignIn } from "./CommitteeSignIn";
+import { EmailDelayNotice } from "./EmailDelayNotice";
 
 const notice = "Email delivery is temporarily delayed and may take up to 48 hours. Google sign-in is immediate.";
 
@@ -33,7 +34,7 @@ describe("email delay guidance", () => {
 
     render(
       <CommitteeSignIn
-        emailDelayed
+        emailDeliveryNotice={<EmailDelayNotice />}
         emailSignInEnabled
         isLoadingUser={false}
         userLoadRecovery={null}

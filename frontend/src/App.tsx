@@ -4,15 +4,12 @@ import { CommitteeSignIn } from "./components/auth/CommitteeSignIn";
 import { BrandLockup } from "./components/shared/BrandLockup";
 import { HeaderAccount } from "./components/shared/HeaderAccount";
 import { Toasts } from "./components/shared/Toasts";
-import { useEmailDeliveryStatus } from "./hooks/useEmailDeliveryStatus";
+import { EmailDeliveryAdvisory } from "./components/auth/EmailDelayNotice";
 import { useSession } from "./hooks/useSession";
 import { useToasts } from "./hooks/useToasts";
 
 export function App(props: { authRedirect: AuthRedirect }) {
   const session = useSession(props.authRedirect);
-  const emailDelayed = useEmailDeliveryStatus(
-    !session.isLoadingUser && (!session.user || session.linkConflict !== null),
-  );
   const { toasts, showError, dismissToast } = useToasts();
 
   if (session.user && !session.linkConflict) {
@@ -36,7 +33,7 @@ export function App(props: { authRedirect: AuthRedirect }) {
       </header>
       <div className="page-heading"><h1>Penta Application Screener</h1></div>
       <CommitteeSignIn
-        emailDelayed={emailDelayed}
+        emailDeliveryNotice={<EmailDeliveryAdvisory />}
         emailSignInEnabled={session.emailSignInEnabled}
         isLoadingUser={session.isLoadingUser}
         userLoadRecovery={session.userLoadRecovery}

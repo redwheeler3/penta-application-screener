@@ -6,7 +6,6 @@ import type { CommitteeLinkConflict, SignInState } from "../../hooks/useSession"
 import type { ServiceRecoveryStage } from "../../serviceRecovery";
 import { TECH_SUPPORT_EMAIL } from "../../support";
 import { GoogleSignInButton } from "./GoogleSignInButton";
-import { EmailDelayNotice } from "./EmailDelayNotice";
 
 type CommitteeSignInProps = {
   emailSignInEnabled: boolean;
@@ -22,7 +21,7 @@ type CommitteeSignInProps = {
   onRetryLink: () => Promise<void>;
   onReset: () => void;
   initialEmail?: string;
-  emailDelayed?: boolean;
+  emailDeliveryNotice?: ReactNode;
 };
 
 export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
@@ -190,7 +189,7 @@ export function CommitteeSignIn(props: CommitteeSignInProps): ReactNode {
               <div className="login-divider" aria-hidden="true">
                 <span>or use email</span>
               </div>
-              {props.emailDelayed ? <EmailDelayNotice /> : null}
+              {props.emailDeliveryNotice}
               <form className="login-form committee-login-form" onSubmit={submit}>
                 <label>
                   <span>Email address</span>

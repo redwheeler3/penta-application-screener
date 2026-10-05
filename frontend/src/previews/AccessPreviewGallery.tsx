@@ -22,6 +22,7 @@ import { emptyApplicantDraft, workingAnswers } from "../applicant/applicationDra
 import type { ApplicantOpening } from "../applicant/types";
 import { BrandLockup } from "../components/shared/BrandLockup";
 import { CommitteeSignIn } from "../components/auth/CommitteeSignIn";
+import { EmailDelayNotice } from "../components/auth/EmailDelayNotice";
 import type { CommitteeLinkConflict, SignInState } from "../hooks/useSession";
 import type { ServiceRecoveryStage } from "../serviceRecovery";
 import "../styles/access-preview.css";
@@ -342,7 +343,7 @@ function CommitteePreview(props: {
         linkConflict={props.linkConflict ?? null}
         linkedEmail={props.linkedEmail ?? null}
         initialEmail={props.initialEmail}
-        emailDelayed={props.emailDelayed}
+        emailDeliveryNotice={props.emailDelayed ? <EmailDelayNotice /> : null}
         onRequestLink={noAsyncAction}
         onKeepCurrent={noAction}
         onOpenLinked={noAsyncAction}

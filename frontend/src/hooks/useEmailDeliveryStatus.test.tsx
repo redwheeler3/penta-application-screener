@@ -22,25 +22,6 @@ function deferred<T>() {
 describe("useEmailDeliveryStatus", () => {
   beforeEach(() => vi.resetAllMocks());
 
-  it("makes no advisory requests until its consuming surface is visible", async () => {
-    const cached = deferred<{ available: boolean; delayed: boolean }>();
-    vi.mocked(api.fetchCachedEmailDeliveryStatus).mockReturnValue(cached.promise);
-    const { result, rerender } = renderHook(({ enabled }) => useEmailDeliveryStatus(enabled), {
-      initialProps: { enabled: false },
-    });
-    expect(api.fetchCachedEmailDeliveryStatus).not.toHaveBeenCalled();
-    expect(api.refreshEmailDeliveryStatus).not.toHaveBeenCalled();
-
-    rerender({ enabled: true });
-    expect(api.fetchCachedEmailDeliveryStatus).toHaveBeenCalledOnce();
-    const signal = vi.mocked(api.fetchCachedEmailDeliveryStatus).mock.calls[0][0];
-    rerender({ enabled: false });
-    expect(signal?.aborted).toBe(true);
-    await act(async () => cached.resolve({ available: true, delayed: true }));
-    expect(result.current).toBe(false);
-    expect(api.refreshEmailDeliveryStatus).not.toHaveBeenCalled();
-  });
-
   it("renders cached status before applying the refreshed value", async () => {
     const refresh = deferred<{ available: boolean; delayed: boolean }>();
     vi.mocked(api.fetchCachedEmailDeliveryStatus).mockResolvedValue({ available: true, delayed: true });
