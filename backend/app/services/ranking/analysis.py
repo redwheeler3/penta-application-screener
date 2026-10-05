@@ -41,6 +41,7 @@ def create_analysis(
     match_audit: dict | None = None,
     fan_out_audit: dict | None = None,
     decompose_audit: dict | None = None,
+    configuration: dict | None = None,
 ) -> Analysis:
     """Persist a freshly discovered pattern report as a new shared ``Analysis`` and seed the
     triggering member's ``MemberRanking`` view of it.
@@ -78,7 +79,8 @@ def create_analysis(
         audit=AnalysisAudit(
             discovery_narrative=narrative,
             match=match_audit,
-            fan_out=fan_out_audit,
+            fan_out=({**(fan_out_audit or {}), "configuration": configuration}
+                     if configuration is not None else fan_out_audit),
             decompose=decompose_audit,
         ),
     )
@@ -351,8 +353,8 @@ def ranking_is_current(
     applications: list[Application] | None = None,
 ) -> bool:
     """True when ``analysis``'s stored rank-inputs fingerprint matches the inputs now —
-    i.e. the pool, every rank-chain prompt, and both models are unchanged, so a
-    re-rank would be a no-op. Drives the "Rank out of date" badge.
+    i.e. the submitted evidence, rank-chain prompts/models/reasoning and semantic
+    strategy controls match. This describes inputs, not reproducibility of model output. Drives the "Rank out of date" badge.
 
     False if there is no analysis or no rank-input fingerprint is stored.
     """

@@ -97,3 +97,25 @@ async def test_score_current_keeps_its_starting_fingerprint_after_an_edit(monkey
     assert seen_hashes == ["ready-for-scoring"]
     assert analysis.rank_inputs_fingerprint == scoring_fingerprint
     assert ranking_is_current(db, analysis, settings) is False
+
+
+@pytest.mark.parametrize(("field", "value"), [("discovery_fan_out", 6),
+                                        ("consolidate_correlation_threshold", 0.4)])
+def test_semantic_strategy_controls_make_rank_out_of_date(field, value):
+    _, db, _ = setup_app(UserRole.MEMBER)
+    add_eligible(db, email="strategy@example.test", raw_hash="same")
+    user = db.scalar(select(User))
+    opening_id = current_opening_id(db)
+    settings = AppSettings()
+    from app.services.ranking.freshness import rank_configuration
+    captured = rank_configuration(settings)
+    analysis = create_analysis(db, user=user, opening_id=opening_id, report=a_pattern_report(),
+                               inputs_fingerprint=rank_inputs_fingerprint(db, opening_id, settings),
+                               narrative=None, fan_out_audit={"k": 5, "passes": []}, configuration=captured)
+    assert ranking_is_current(db, analysis, settings)
+    settings.ai.max_workers += 1
+    assert ranking_is_current(db, analysis, settings)  # scheduling is not evidence
+    setattr(settings.ai, field, value)
+    assert not ranking_is_current(db, analysis, settings)
+    assert analysis.audit.fan_out["configuration"] == captured
+    assert captured["strategy"][field] != value

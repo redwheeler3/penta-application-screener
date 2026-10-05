@@ -18,6 +18,7 @@ from app.ai.analysis import (
     estimate_cost,
     screen_applications,
 )
+from app.ai.applicant_facts import screening_fields
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
@@ -90,15 +91,7 @@ def build_prompt(application: Application) -> str:
     normalized = application.normalized or {}
     essays = extract_essays(application.raw_row or {})
 
-    fields = {
-        "applicant_name": normalized.get("applicant_name"),
-        "co_applicant_name": normalized.get("co_applicant_name"),
-        "child_details": normalized.get("child_details"),
-        "pets_text": normalized.get("pets_text"),
-        "applicant_email": normalized.get("applicant_email"),
-        "co_applicant_email": normalized.get("co_applicant_email"),
-        "co_applicant_phone": normalized.get("co_applicant_phone"),
-    }
+    fields = screening_fields(normalized)
 
     # The field/essay JSON is appended separately from the static instructions (its braces
     # would collide with any .format()); no per-settings interpolation remains.

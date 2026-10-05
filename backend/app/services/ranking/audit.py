@@ -203,4 +203,5 @@ def fan_out_audit_view(analysis: Analysis) -> dict | None:
                 "narrative": p.get("narrative"),
             }
         )
-    return {"k": audit.get("k", len(passes)), "passes": passes}
+    return {"k": audit.get("k", len(passes)), "passes": passes,
+            "configuration": audit.get("configuration")}

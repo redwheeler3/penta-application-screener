@@ -6,6 +6,8 @@ share one wire shape. ``PoolDimensionOut`` is a camelCase view of the stored
 ``PoolDimension`` (which stays snake_case as the prompt/storage contract).
 """
 
+from typing import Any
+
 from app.schemas.applications import DimensionContributionOut
 from app.schemas.base import RequestModel, ResponseModel
 
@@ -177,6 +179,7 @@ class FanOutAuditResponse(ResponseModel):
     analysis_id: int
     k: int
     passes: list[FanOutPassOut]
+    configuration: dict[str, Any] | None = None
 
 
 class RankEstimateBreakdown(ResponseModel):

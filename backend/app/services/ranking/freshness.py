@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.input_evidence import input_fingerprint
 from app.ai.model_catalog import model_identity
 from app.db.models import Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
@@ -19,11 +21,12 @@ def pool_fingerprint(
     """Hash the source rows in the union-eligible applicant pool."""
     if applications is None:
         eligible_ids = union_eligible_application_ids(db, opening_id)
-        hashes = db.scalars(
-            select(Application.raw_row_hash).where(Application.id.in_(eligible_ids))
-        ).all()
+        hashes = [input_fingerprint(raw_hash, normalized or {}, "dimension_scoring")
+                  for raw_hash, normalized in db.execute(select(Application.raw_row_hash,
+                      Application.normalized).where(Application.id.in_(eligible_ids)))]
     else:
-        hashes = [application.raw_row_hash for application in applications]
+        hashes = [input_fingerprint(application.raw_row_hash, application.normalized or {}, "dimension_scoring")
+                  for application in applications]
     return hashlib.sha256("\n".join(sorted(hashes)).encode("utf-8")).hexdigest()[:16]
 
 
@@ -35,6 +38,14 @@ def rank_inputs_fingerprint(
     applications: list[Application] | None = None,
 ) -> str:
     """Hash the pool, prompts, models, and active reasoning levels used by Rank."""
+    captured = rank_configuration(settings)
+    basis = {"pool": pool_fingerprint(db, opening_id, applications=applications),
+             "passes": captured["passes"], "strategy": captured["strategy"]}
+    return hashlib.sha256(json.dumps(basis, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def rank_configuration(settings: AppSettings) -> dict:
+    """Capture semantic controls and route/prompt provenance before Rank starts."""
     from app.ai.dimension_consolidation import PROMPT_VERSION as CONSOLIDATE_VERSION
     from app.ai.dimension_decomposition import PROMPT_VERSION as DECOMPOSE_VERSION
     from app.ai.dimension_discovery import PROMPT_VERSION as DISCOVERY_VERSION
@@ -58,10 +69,11 @@ def rank_inputs_fingerprint(
             settings.ai.consolidate_reasoning_effort,
         ),
     )
-    parts = [pool_fingerprint(db, opening_id, applications=applications)]
-    for pass_name, prompt_version, model_id, configured_effort in passes:
-        parts.extend((f"{pass_name}:{prompt_version}", f"{pass_name}_model:{model_identity(model_id)}"))
-        effort = effective_reasoning_effort(model_id, configured_effort)
-        if effort is not None:
-            parts.append(f"{pass_name}_reasoning:{effort}")
-    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
+    return {
+        "ai": settings.ai.model_dump(mode="json"),
+        "strategy": {"discovery_fan_out": settings.ai.discovery_fan_out,
+                     "consolidate_correlation_threshold": settings.ai.consolidate_correlation_threshold},
+        "passes": {name: {"prompt_version": version, "model": model_identity(model),
+                          "reasoning_effort": effective_reasoning_effort(model, effort)}
+                   for name, version, model, effort in passes},
+    }

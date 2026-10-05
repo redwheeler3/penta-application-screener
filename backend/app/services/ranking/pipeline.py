@@ -49,7 +49,7 @@ from app.services.ranking.criteria import (
     run_criteria_passes,
 )
 from app.services.ranking.dimensions import current_dimension_report
-from app.services.ranking.freshness import rank_inputs_fingerprint
+from app.services.ranking.freshness import rank_configuration, rank_inputs_fingerprint
 from app.services.ranking.identity import adopt_matched_keys
 from app.services.ranking.member_state import (
     carry_forward_layout,
@@ -192,6 +192,7 @@ def _stream_criteria(
     yield emit(CriteriaPhaseEvent(discovery_workers=settings.ai.discovery_fan_out))
     pool = eligible_applications(db, opening_id)
     inputs_fingerprint = rank_inputs_fingerprint(db, opening_id, settings, applications=pool)
+    configuration = rank_configuration(settings)
     worker: StreamWorker[str | CriteriaStageChange, CriteriaPassResult] = StreamWorker()
     worker.start(lambda put: run_criteria_passes(
         provider, applications=pool, settings=settings, seeds=seeds,
@@ -279,6 +280,7 @@ def _stream_criteria(
             match_audit=work.match_audit,
             fan_out_audit=work.fan_out_audit,
             decompose_audit=work.decompose_audit,
+            configuration=configuration,
         )
         member_ranking = get_or_reconcile_member_ranking(db, analysis, user)
     except (WorkCancelled, RunLeaseLost):

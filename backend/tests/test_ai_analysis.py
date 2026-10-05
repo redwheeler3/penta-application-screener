@@ -535,3 +535,59 @@ def test_derive_prompt_version_changes_when_prompt_text_changes() -> None:
     assert base != derive_prompt_version("system changed", "instructions")
     # Fits the ApplicationAIResult.prompt_version column (String(20)).
     assert len(base) <= 20
+
+
+def test_cache_identity_uses_only_frozen_submission_facts_consumed_by_the_pass() -> None:
+    from app.services.ranking.freshness import pool_fingerprint
+    from tests.application_support import activate_application, current_opening_id
+
+    db = make_session()
+    application = activate_application(db, make_application(db))
+    application.normalized = {"applicant_age": 30, "child_details": [{"age": 10}]}
+    db.commit()
+    def key(kind):
+        return cache_key(application=application, kind=kind, model_id=MODEL, prompt_version=VERSION)
+    screen, score = key("screening"), key("dimension_scoring:example")
+    pool = pool_fingerprint(db, current_opening_id(db), applications=[application])
+    # Calendar passage has no input: the stored submitted projection stays frozen.
+    assert key("screening") == screen
+    assert key("dimension_scoring:example") == score
+    application.normalized = {**application.normalized, "applicant_age": 31}
+    db.commit()
+    assert key("screening") == screen  # screening does not consume adult ages
+    assert key("dimension_scoring:example") != score
+    assert pool_fingerprint(db, current_opening_id(db), applications=[application]) != pool
+    application.normalized = {**application.normalized, "child_details": [{"age": 11}]}
+    assert key("screening") != screen
+
+
+def test_unchanged_answers_refresh_age_only_when_published_again() -> None:
+    from datetime import UTC, datetime
+
+    from app.schemas.applicant.answers import CanonicalApplicationAnswers
+    from app.services.applications.intake import (
+        create_application,
+        publish_working_copy,
+    )
+    from tests.applicant.support import app_and_db, sample_answers
+
+    _, db, _ = app_and_db()
+    answers = CanonicalApplicationAnswers.model_validate(sample_answers())
+    before = datetime(2026, 4, 11, 18, tzinfo=UTC)
+    after = datetime(2026, 4, 12, 18, tzinfo=UTC)
+    application = create_application(db, str(answers.applicant.email), answers, saved_at=before)
+    publish_working_copy(db, application, answers, [], submitted_at=before)
+    db.commit()
+    def key(kind):
+        return cache_key(application=application, kind=kind, model_id=MODEL, prompt_version=VERSION)
+    raw_hash = application.raw_row_hash
+    screen = key("screening")
+    score = key("dimension_scoring:example")
+    assert application.normalized["applicant_age"] == 35
+    assert key("dimension_scoring:example") == score
+    publish_working_copy(db, application, answers, [], submitted_at=after)
+    db.commit()
+    assert application.raw_row_hash == raw_hash
+    assert application.normalized["applicant_age"] == 36
+    assert key("screening") == screen
+    assert key("dimension_scoring:example") != score

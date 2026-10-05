@@ -688,6 +688,12 @@ one-year period begins after the last decision. Move-in dates do not change rete
 The public privacy policy explains these retention periods and the restricted legal-hold behavior;
 the ordinary applicant interface does not restate that policy in the **Delete my profile** confirmation.
 
+The Pacific purge date is the first unavailable day. Reads, authentication, writes, direct
+selection and email preparation enforce that boundary even before daily maintenance runs.
+Maintenance purges expired data before processing email. A new submission for an expired
+identity removes the expired record under the writer lock and starts a distinct application;
+it never reactivates old answers or credentials.
+
 There is no advance retention-expiry warning or separate purge confirmation. When retention ends,
 the application is purged without preserving personal information solely to deliver another message.
 
@@ -1976,3 +1982,15 @@ A systematic tab-by-tab, panel-by-panel walkthrough of the whole UI to find and 
 ### Eval golden ergonomics — pipe-input sugar for any-of `fires` (✅ done 2026-07-24)
 
 A screening golden's `fires` any-of group is stored as a nested list — `[["spam_essay", "minimal_essay"]]` = "at least one of these must fire" — but the eval *displays* it pipe-joined ("spam_essay | minimal_essay", see `fire_label`). That display↔input mismatch was a real footgun: hand-editing a golden, it's natural to type the pipe form back into the data, which is a bare string the grader can't iterate — and it killed the Evals page render once. Closed: `_normalize_fires` in `load_cases` (`app/evals/screening.py`) accepts a pipe-delimited string as sugar for an any-of group (`"a|b|c"` → `["a","b","c"]`, whitespace trimmed), and also tolerates the whole `fires` value being a bare string (the exact mistake) by wrapping it. Plain must-fire strings and existing nested lists pass through unchanged. Documented in `docs/eval-case-schema.md`; tested (`test_normalize_fires_accepts_pipe_input_sugar`).
+
+
+AI cache identity includes canonical answer content and the frozen submitted facts consumed
+by each pass. Birthdays between submissions cause no miss. A resubmission that refreshes an
+age invalidates only passes that consume that changed evidence. The evidence-key migration
+retains outputs, selected-result references and cost history, rekeying provably unchanged
+inputs; ambiguous historical age projections remain history and are not claimed as cache hits.
+Rank fingerprints include discovery fan-out and consolidation correlation threshold; worker
+count and spending limits do not invalidate semantic freshness. New Rank analyses capture the
+AI settings and all five prompt/model/reasoning identities in their discovery audit, available
+through the existing fan-out audit endpoint. Analyses without the expanded fingerprint remain
+reviewable but out of date until an explicitly requested Rank; no work runs automatically.

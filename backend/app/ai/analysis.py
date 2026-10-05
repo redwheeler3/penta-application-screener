@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.input_evidence import input_fingerprint
 from app.ai.model_catalog import ReasoningEffort, model_identity
 from app.ai.pricing import PassCost, cost_usd
 from app.ai.provider import AIProvider, AIResult, Usage
@@ -114,7 +115,7 @@ def cache_key(
     *, application: Application, kind: str, model_id: str, prompt_version: str,
     reasoning_effort: ReasoningEffort | None = None,
 ) -> str:
-    """Stable key over application content, kind, model identity, and prompt version.
+    """Stable key over submitted content and consumed facts, kind, model and prompt.
 
     Equivalent provider routes share one model identity, so moving a pinned model
     between Bedrock and its direct API reuses valid work. A different model, reasoning
@@ -126,7 +127,7 @@ def cache_key(
     when only its own prompt changed.
     """
     identity = {
-        "raw_hash": application.raw_row_hash,
+        "input_hash": input_fingerprint(application.raw_row_hash, application.normalized or {}, kind),
         "kind": kind,
         "model_id": model_identity(model_id),
         "prompt_version": prompt_version,

@@ -632,3 +632,38 @@ def test_fresh_schema_keeps_timestamp_defaults_on_opening_scoped_tables(
                 assert columns["updated_at"] is not None
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_cache_evidence_migration_preserves_proven_hits_and_uncertain_history(monkeypatch, ambiguous):
+    from datetime import UTC, datetime
+
+    from app.ai.analysis import cache_key
+    from app.db.models import Application, ApplicationAIResult, ApplicationVersion
+    from tests.db_support import memory_session
+
+    migration = runpy.run_path(str(Path(__file__).parents[1] / "alembic/versions/a47e5c19b203_capture_consumed_cache_evidence.py"))
+    db = memory_session()
+    application = Application(primary_email="evidence@example.test", raw_row={"applicant": {}},
+                              raw_row_hash="unchanged", normalized={"child_details": [{"age": 11}]})
+    db.add(application)
+    db.flush()
+    for age in ([10, 11] if ambiguous else [11, 11]):
+        db.add(ApplicationVersion(application_id=application.id, answers=application.raw_row,
+            normalized={"child_details": [{"age": age}]}, content_hash="unchanged",
+            selected_opening_ids=[], submitted_at=datetime.now(UTC)))
+    row = {"kind": "screening", "model_id": AppSettings().ai.screening_model, "reasoning_effort": None, "prompt_version": "v"}
+    old_key = migration["_key"](row, "unchanged")
+    result = ApplicationAIResult(application_id=application.id, cache_key=old_key, output={"flags": []},
+                                 cost_usd=0.123, input_tokens=100, output_tokens=50, **row)
+    db.add(result)
+    db.commit()
+    with db.bind.begin() as connection:
+        monkeypatch.setattr(migration["op"], "get_bind", lambda: connection)
+        migration["upgrade"]()
+    db.expire_all()
+    assert result.cache_key == (old_key if ambiguous else cache_key(application=application,
+        kind="screening", model_id=AppSettings().ai.screening_model, prompt_version="v"))
+    assert result.output == {"flags": []}
+    assert result.cost_usd == 0.123
+    assert result.input_tokens == 100
