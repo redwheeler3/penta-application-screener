@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
-import * as api from "../../api/openings";
+import * as openingsApi from "../../api/openings";
 import { problemMessage, readProblemBody } from "../../api/problems";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import { useFetchResource } from "../../hooks/useFetchResource";
@@ -45,6 +46,8 @@ export function OpeningEditor(props: {
   setBusy: (busy: boolean) => void;
   onError: (message: string) => void;
 }): ReactNode {
+  const api = useCommitteeApi(openingsApi);
+
   const [draft, setDraft] = useState<OpeningDraft>(() => props.opening ? editableDraft(openingValues(props.opening)) : { ...EMPTY_DRAFT });
   const [launchPreview, setLaunchPreview] = useState<OpeningPreview | null>(null);
   const { busy, setBusy } = props;
@@ -274,6 +277,8 @@ function OpeningForm(props: {
 }
 
 function OpeningLaunchPreview({ preview }: { preview: OpeningPreview }): ReactNode {
+  const api = useCommitteeApi(openingsApi);
+
   const usageResource = useFetchResource(() => api.fetchOpeningEmailUsage(preview.audienceCount), {
     reloadKey: preview.audienceCount,
   });

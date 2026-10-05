@@ -1,5 +1,6 @@
+import { useCommitteeApi } from "../api/identity";
 import { useEffect, useRef, useState } from "react";
-import * as api from "../api/ranking";
+import * as rankingApi from "../api/ranking";
 import { problemMessage, readProblemBody } from "../api/problems";
 import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
 import { type RequestIsCurrent, useRequestScope } from "./useRequestScope";
@@ -63,6 +64,8 @@ export function useRanking(
   openingId: number | null,
   onError: (message: string) => void,
 ): RankingState {
+  const api = useCommitteeApi(rankingApi);
+
   const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
   const [ranking, setRanking] = useState<RankingResponse | null>(null);
   const [tiers, setTiers] = useState<Tier[] | null>(null);

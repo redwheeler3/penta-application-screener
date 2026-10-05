@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import { fetchMatchAudit } from "../../api/ranking";
+import * as rankingApi from "../../api/ranking";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import type { MatchAuditResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
@@ -8,6 +9,8 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 // Show how settled dimensions map onto prior dimensions. A high reuse rate is expected;
 // individual incorrect mappings are the actionable signal.
 export function MatchAuditPanel(props: { openingId: number }): ReactNode {
+  const { fetchMatchAudit } = useCommitteeApi(rankingApi);
+
   const { data: audit, state, reload } = useFetchResource(
     () => fetchMatchAudit(props.openingId),
   );

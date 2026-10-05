@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../api/identity";
 import { useState } from "react";
 
-import * as api from "../api/settings";
+import * as settingsApi from "../api/settings";
 import { readProblem } from "../api/problems";
 import type { EligibilityRules } from "../types";
 import { useFetchResource } from "./useFetchResource";
@@ -20,6 +21,8 @@ export function useEligibilityRules(options: {
   onError: (message: string) => void;
   onUpdated: () => void;
 }) {
+  const api = useCommitteeApi(settingsApi);
+
   const { openingId, kind } = options;
   const scope = `${kind}:${openingId}`;
   const requests = useRequestScope(scope);

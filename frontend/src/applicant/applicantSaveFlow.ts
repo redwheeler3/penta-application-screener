@@ -13,15 +13,8 @@ import type {
   ApplicantPersistenceState,
   UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
-import {
-  checkGuestSubmission,
-  type DraftIntent,
-  requestReturnAccessLink,
-  saveApplication,
-  savePendingDraft,
-  submitApplication,
-  submitGuestApplication,
-} from "./api";
+import * as publicApi from "./api";
+import { type DraftIntent } from "./api";
 import { BROWSER_STORAGE_CLEAR_MESSAGE, clearApplicationDraft } from "./draftStorage";
 import {
   canonicalAnswers,
@@ -31,6 +24,7 @@ import {
 import type { ApplicantDraft } from "./types";
 
 type SaveFlowDependencies = {
+  api?: ReturnType<typeof publicApi.createApi>;
   stateRef: RefObject<ApplicantPersistenceState>;
   draftRef: RefObject<ApplicantDraft>;
   invalidateReads: () => void;
@@ -41,8 +35,10 @@ type SaveFlowDependencies = {
 
 /** Saving, review preparation, and submission share one snapshot acknowledgement rule. */
 export function createApplicantSaveFlow({
+  api = publicApi,
   stateRef, draftRef, updatePersistence: dispatch, invalidateReads, captureSession, fail,
 }: SaveFlowDependencies) {
+  const { checkGuestSubmission, requestReturnAccessLink, saveApplication, savePendingDraft, submitApplication, submitGuestApplication } = api;
   const inSession = captureSession();
   const updatePersistence: UpdateApplicantPersistence = (patch) => {
     if (inSession()) dispatch(patch);
@@ -223,7 +219,7 @@ export function createApplicantSaveFlow({
     const { openingIds } = stateRef.current;
     const working = workingAnswers(draftRef.current);
     const answers = { ...working, applicant: { ...working.applicant, email: email.trim().toLowerCase() } };
-    const response = await requestReturnAccessLink(answers, openingIds, null);
+    const response = await publicApi.requestReturnAccessLink(answers, openingIds, null);
     if (!inSession()) return false;
     if (!response.ok) {
       await fail(response);
@@ -241,12 +237,7 @@ export function createApplicantSaveFlow({
 
   async function emailSessionAccessLink(): Promise<void> {
     updatePersistence({ phase: "working" });
-    if (await emailReturnLink()) {
-      updatePersistence({ message: APPLICATION_ACCESS_EMAIL_MESSAGE, phase: "access_link_sent" });
-      return;
-    }
-    if (!inSession()) return;
-    updatePersistence({ message: TECH_SUPPORT_ERROR_MESSAGE, phase: "error" });
+    await requestEntryLink(stateRef.current.primaryEmail || draftRef.current.applicant.email);
   }
 
   async function resendCurrentIntent(): Promise<void> {

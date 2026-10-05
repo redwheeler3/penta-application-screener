@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../api/identity";
 import { useRef } from "react";
 
-import * as api from "../api/applications";
+import * as applicationsApi from "../api/applications";
 import type { ApplicationDetail, ApplicationUpdate, AppStatus } from "../types";
 import { useRequestScope } from "./useRequestScope";
 
@@ -17,6 +18,8 @@ type CandidateActionsOptions = {
 
 /** Candidate writes and the derived views that must refresh after each kind of change. */
 export function useCandidateActions(options: CandidateActionsOptions) {
+  const api = useCommitteeApi(applicationsApi);
+
   const { openingId } = options;
   const requests = useRequestScope(openingId);
   const current = useRef(options);

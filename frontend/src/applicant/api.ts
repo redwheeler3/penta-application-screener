@@ -1,13 +1,6 @@
-import { request, url } from "../api/client";
+import { url } from "../api/client";
+
 import type { CanonicalApplicationAnswers, WorkingApplicationAnswers } from "./types";
-
-export function fetchApplicantOpenings(signal?: AbortSignal) {
-  return request("/applicant/openings", { signal });
-}
-
-export function applicantGoogleSignInUrl(rememberDevice = false): string {
-  return url(`/applicant/auth/google/login?remember_device=${rememberDevice}`);
-}
 
 const APPLICANT_GOOGLE_ACCESS_RESULTS = [
   "denied",
@@ -19,156 +12,186 @@ const APPLICANT_GOOGLE_ACCESS_RESULTS = [
 
 export type ApplicantGoogleAccessResult = typeof APPLICANT_GOOGLE_ACCESS_RESULTS[number];
 
-function isApplicantGoogleAccessResult(value: string): value is ApplicantGoogleAccessResult {
-  return APPLICANT_GOOGLE_ACCESS_RESULTS.some((result) => result === value);
-}
-
-export function takeApplicantGoogleAccessResult(): ApplicantGoogleAccessResult | null {
-  const query = new URLSearchParams(window.location.search);
-  const value = query.get("google_access");
-  if (value === null) return null;
-  query.delete("google_access");
-  const remaining = query.toString();
-  window.history.replaceState(
-    window.history.state,
-    "",
-    `${window.location.pathname}${remaining ? `?${remaining}` : ""}${window.location.hash}`,
-  );
-  return isApplicantGoogleAccessResult(value) ? value : null;
-}
-
-export function checkGuestSubmission(
-  answers: WorkingApplicationAnswers,
-  openingIds: number[],
-) {
-  return request(
-    "/applicant/submissions/check",
-    jsonRequest("POST", { answers, openingIds }),
-  );
-}
-
 export type DraftIntent = "save" | "submit";
+import { type ApiClient, credentialRequest, publicClient, signalSessionChange } from "../api/client";
 
-export function savePendingDraft(
-  answers: WorkingApplicationAnswers,
-  intent: DraftIntent,
-  draftToken: string | null,
-  openingIds: number[],
-) {
-  return request("/applicant/drafts", jsonRequest("POST", {
-    answers,
-    intent,
-    draftToken,
-    openingIds,
-  }));
-}
+export function createApi(client: ApiClient) {
+  const { request } = client;
+  function fetchApplicantOpenings(signal?: AbortSignal) {
+    return request("/applicant/openings", { signal });
+  }
 
-export function deletePendingDraft(draftToken: string) {
-  return request("/applicant/drafts", jsonRequest("DELETE", { token: draftToken }));
-}
+  function applicantGoogleSignInUrl(rememberDevice = false): string {
+    return url(`/applicant/auth/google/login?remember_device=${rememberDevice}`);
+  }
 
-export function inspectAccessLink(token: string) {
-  return request("/applicant/access-links/inspect", jsonRequest("POST", { token }));
-}
+  function isApplicantGoogleAccessResult(value: string): value is ApplicantGoogleAccessResult {
+    return APPLICANT_GOOGLE_ACCESS_RESULTS.some((result) => result === value);
+  }
 
-export function openAccessLink(token: string, switchCurrent: boolean, rememberDevice: boolean) {
-  return request(
-    "/applicant/access-links/open",
-    jsonRequest("POST", { token, switchCurrent, rememberDevice }),
-  );
-}
+  function takeApplicantGoogleAccessResult(): ApplicantGoogleAccessResult | null {
+    const query = new URLSearchParams(window.location.search);
+    const value = query.get("google_access");
+    if (value === null) return null;
+    query.delete("google_access");
+    const remaining = query.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${remaining ? `?${remaining}` : ""}${window.location.hash}`,
+    );
+    return isApplicantGoogleAccessResult(value) ? value : null;
+  }
 
-export function regenerateAccessLink(token: string) {
-  return request(
-    "/applicant/access-links/regenerate",
-    jsonRequest("POST", { token }),
-  );
-}
+  function checkGuestSubmission(
+    answers: WorkingApplicationAnswers,
+    openingIds: number[],
+  ) {
+    return request(
+      "/applicant/submissions/check",
+      jsonRequest("POST", { answers, openingIds }),
+    );
+  }
 
-export function requestReturnAccessLink(
-  answers: WorkingApplicationAnswers,
-  openingIds: number[],
-  baseRevision: number | null,
-) {
-  return request(
-    "/applicant/access-links/request",
-    jsonRequest("POST", { answers, openingIds, baseRevision }),
-  );
-}
+  function savePendingDraft(
+    answers: WorkingApplicationAnswers,
+    intent: DraftIntent,
+    draftToken: string | null,
+    openingIds: number[],
+  ) {
+    return request("/applicant/drafts", jsonRequest("POST", {
+      answers,
+      intent,
+      draftToken,
+      openingIds,
+    }));
+  }
 
-export function fetchApplication(signal?: AbortSignal) {
-  return request("/applicant/application", { signal });
-}
+  function deletePendingDraft(draftToken: string) {
+    return request("/applicant/drafts", jsonRequest("DELETE", { token: draftToken }));
+  }
 
-export function fetchPendingCopy() {
-  return request("/applicant/application/pending-copy");
-}
+  function inspectAccessLink(token: string) {
+    return request("/applicant/access-links/inspect", jsonRequest("POST", { token }));
+  }
 
-export function reconcilePendingCopy(choice: "saved" | "guest", baseRevision: number, guestSavedAt: string) {
-  return request(
-    "/applicant/application/pending-copy",
-    jsonRequest("POST", { choice, baseRevision, guestSavedAt }),
-  );
-}
+  function openAccessLink(token: string, switchCurrent: boolean, rememberDevice: boolean) {
+    return credentialRequest("applicant",
+      "/applicant/access-links/open",
+      jsonRequest("POST", { token, switchCurrent, rememberDevice }), client,
+    );
+  }
 
-export function requestEmailChange(newEmail: string) {
-  return request(
-    "/applicant/application/email-change",
-    jsonRequest("POST", { newEmail }),
-  );
-}
+  function regenerateAccessLink(token: string) {
+    return request(
+      "/applicant/access-links/regenerate",
+      jsonRequest("POST", { token }),
+    );
+  }
 
-export function cancelEmailChange() {
-  return request("/applicant/application/email-change", { method: "DELETE" });
-}
+  function requestReturnAccessLink(
+    answers: WorkingApplicationAnswers,
+    openingIds: number[],
+    baseRevision: number | null,
+  ) {
+    return request(
+      "/applicant/access-links/request",
+      jsonRequest("POST", { answers, openingIds, baseRevision }),
+    );
+  }
 
-export function logoutApplicant() {
-  return request("/applicant/auth/logout", { method: "POST" });
-}
+  function fetchApplication(signal?: AbortSignal) {
+    return request("/applicant/application", { signal });
+  }
 
-export function saveApplication(
-  answers: WorkingApplicationAnswers,
-  openingIds: number[],
-  baseRevision: number,
-) {
-  return request(
-    "/applicant/application",
-    jsonRequest("PUT", { answers, openingIds, baseRevision }),
-  );
-}
+  function fetchPendingCopy() {
+    return request("/applicant/application/pending-copy");
+  }
 
-export function withdrawApplication() {
-  return request("/applicant/application/withdraw", { method: "POST" });
-}
+  function reconcilePendingCopy(choice: "saved" | "guest", baseRevision: number, guestSavedAt: string) {
+    return request(
+      "/applicant/application/pending-copy",
+      jsonRequest("POST", { choice, baseRevision, guestSavedAt }),
+    );
+  }
 
-export function submitApplication(
-  answers: CanonicalApplicationAnswers,
-  declarationAccepted: boolean,
-  openingIds: number[],
-  baseRevision: number,
-) {
-  return request(
-    "/applicant/application/submit",
-    jsonRequest("POST", { answers, declarationAccepted, openingIds, baseRevision }),
-  );
-}
+  function requestEmailChange(newEmail: string) {
+    return request(
+      "/applicant/application/email-change",
+      jsonRequest("POST", { newEmail }),
+    );
+  }
 
-export function submitGuestApplication(
-  answers: CanonicalApplicationAnswers,
-  declarationAccepted: boolean,
-  openingIds: number[],
-  draftToken: string | null,
-) {
-  return request(
-    "/applicant/submissions",
-    jsonRequest("POST", { answers, declarationAccepted, openingIds, draftToken }),
-  );
-}
+  function cancelEmailChange() {
+    return request("/applicant/application/email-change", { method: "DELETE" });
+  }
 
-function jsonRequest(method: string, body: object): RequestInit {
+  async function logoutApplicant() {
+    const response = await request("/applicant/auth/logout", { method: "POST" });
+    if (response.ok) signalSessionChange("applicant");
+    return response;
+  }
+
+  function saveApplication(
+    answers: WorkingApplicationAnswers,
+    openingIds: number[],
+    baseRevision: number,
+  ) {
+    return request(
+      "/applicant/application",
+      jsonRequest("PUT", { answers, openingIds, baseRevision }),
+    );
+  }
+
+  function withdrawApplication() {
+    return request("/applicant/application/withdraw", { method: "POST" });
+  }
+
+  function submitApplication(
+    answers: CanonicalApplicationAnswers,
+    declarationAccepted: boolean,
+    openingIds: number[],
+    baseRevision: number,
+  ) {
+    return request(
+      "/applicant/application/submit",
+      jsonRequest("POST", { answers, declarationAccepted, openingIds, baseRevision }),
+    );
+  }
+
+  function submitGuestApplication(
+    answers: CanonicalApplicationAnswers,
+    declarationAccepted: boolean,
+    openingIds: number[],
+    draftToken: string | null,
+  ) {
+    return request(
+      "/applicant/submissions",
+      jsonRequest("POST", { answers, declarationAccepted, openingIds, draftToken }),
+    );
+  }
+
+  function jsonRequest(method: string, body: object): RequestInit {
+    return {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    };
+  }
   return {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    fetchApplicantOpenings, applicantGoogleSignInUrl, takeApplicantGoogleAccessResult,
+    checkGuestSubmission, savePendingDraft, deletePendingDraft, inspectAccessLink, openAccessLink,
+    regenerateAccessLink, requestReturnAccessLink, fetchApplication, fetchPendingCopy,
+    reconcilePendingCopy, requestEmailChange, cancelEmailChange, logoutApplicant, saveApplication,
+    withdrawApplication, submitApplication, submitGuestApplication,
   };
 }
+
+// Public/bootstrap callers and manual harnesses use the unbound client.
+export const {
+  fetchApplicantOpenings, applicantGoogleSignInUrl, takeApplicantGoogleAccessResult,
+  checkGuestSubmission, savePendingDraft, deletePendingDraft, inspectAccessLink, openAccessLink,
+  regenerateAccessLink, requestReturnAccessLink, fetchApplication, fetchPendingCopy,
+  reconcilePendingCopy, requestEmailChange, cancelEmailChange, logoutApplicant, saveApplication,
+  withdrawApplication, submitApplication, submitGuestApplication,
+} = createApi(publicClient);

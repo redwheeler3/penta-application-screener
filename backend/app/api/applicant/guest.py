@@ -288,7 +288,7 @@ def request_applicant_access_link(
     email = normalize_email(str(body.answers.applicant.email))
 
     acknowledged_revision = None
-    if current is not None:
+    if current is not None and body.base_revision is not None:
         lock_application_revision(db, current, body.base_revision)
         require_application_editable(db, current)
         require_matching_email(current, body.answers)

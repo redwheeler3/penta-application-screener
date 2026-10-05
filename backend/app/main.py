@@ -9,7 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTasks
-from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.allowlist import router as allowlist_router
 from app.api.applicant import router as applicant_router
@@ -26,6 +25,7 @@ from app.api.openings import router as openings_router
 from app.api.passwordless_auth import router as passwordless_auth_router
 from app.api.ranking import router as ranking_router
 from app.api.screening import router as screening_router
+from app.api.session_cookie import OAuthStateMiddleware
 from app.api.settings import router as settings_router
 from app.api.settings import rules_router as eligibility_rules_router
 from app.api.vacancy_subscriptions import router as vacancy_subscriptions_router
@@ -88,7 +88,7 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
     # Authlib uses this signed cookie only while a browser completes Google OIDC. Successful
     # Google and email sign-ins both issue the same revocable BrowserSession cookie.
     app.add_middleware(
-        SessionMiddleware,
+        OAuthStateMiddleware,
         secret_key=settings.session_secret,
         same_site="lax",
         https_only=settings.oauth_state_cookie_secure,

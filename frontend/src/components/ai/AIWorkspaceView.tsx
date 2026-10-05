@@ -1,5 +1,6 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode, useEffect, useState } from "react";
-import { fetchEvalCatalog } from "../../api/evals";
+import * as evalsApi from "../../api/evals";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
 import type { CurrentRunResponse, EvalDescriptor, EvalFixtureKey, EvalRunMode } from "../../types";
 import { InvariantsEval } from "../evals/InvariantsEval";
@@ -54,6 +55,8 @@ export function AIWorkspaceView(props: {
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
+  const { fetchEvalCatalog } = useCommitteeApi(evalsApi);
+
   const { family, onToast, onError } = props;
   const toast = { onToast, onError };
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
@@ -64,7 +67,7 @@ export function AIWorkspaceView(props: {
       .then((data) => { if (active) setCatalog(data.evals); })
       .catch(() => { if (active) setCatalog([]); });
     return () => { active = false; };
-  }, [family]);
+  }, [family, fetchEvalCatalog]);
 
   // Observability subtabs in pipeline order; the per-run trace tabs exist only once a run
   // does, then the cross-run aggregates (Cost, Trends) trail.

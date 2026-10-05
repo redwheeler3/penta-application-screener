@@ -1,7 +1,8 @@
+import { useCommitteeApi } from "../../api/identity";
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { MessageSquarePlus } from "lucide-react";
-import * as api from "../../api/feedback";
+import * as feedbackApi from "../../api/feedback";
 import { readProblem } from "../../api/problems";
 import { useRequestScope, type RequestIsCurrent } from "../../hooks/useRequestScope";
 
@@ -20,6 +21,8 @@ export function FeedbackButton(props: {
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
+  const api = useCommitteeApi(feedbackApi);
+
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);

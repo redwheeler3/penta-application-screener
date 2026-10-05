@@ -1,5 +1,5 @@
 import type { CurrentUser } from "../types";
-import { getJson, request, url } from "./client";
+import { credentialRequest, getJson, identityClient, request, signalSessionChange, url } from "./client";
 
 export type AuthState = {
   user: CurrentUser | null;
@@ -29,12 +29,12 @@ export function inspectCommitteeMagicLink(token: string): Promise<Response> {
   });
 }
 
-export function consumeCommitteeMagicLink(token: string, switchCurrent = false): Promise<Response> {
-  return request("/auth/magic-link/consume", {
+export function consumeCommitteeMagicLink(token: string, switchCurrent = false, expectedUserId: number | null = null): Promise<Response> {
+  return credentialRequest("committee", "/auth/magic-link/consume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, switchCurrent }),
-  });
+  }, identityClient({ kind: "committee", id: expectedUserId }));
 }
 
 export function regenerateCommitteeMagicLink(token: string): Promise<Response> {
@@ -45,6 +45,8 @@ export function regenerateCommitteeMagicLink(token: string): Promise<Response> {
   });
 }
 
-export function logout(): Promise<Response> {
-  return request("/auth/logout", { method: "POST" });
+export async function logout(expectedUserId: number | null): Promise<Response> {
+  const response = await identityClient({ kind: "committee", id: expectedUserId }).request("/auth/logout", { method: "POST" });
+  if (response.ok) signalSessionChange("committee");
+  return response;
 }

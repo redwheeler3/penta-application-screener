@@ -43,11 +43,14 @@ const aiQualityLoading = (
 );
 
 /** Own all committee data and pending work for one authenticated account. */
-export function CommitteeWorkspace({ user, logout }: {
+export function CommitteeWorkspace({ user, logout, sessionChanged = false, onContinueSession }: {
   user: CurrentUser;
   logout: () => Promise<string | null>;
+  sessionChanged?: boolean;
+  onContinueSession?: () => Promise<void>;
 }) {
   const isAdmin = user.role === "admin";
+  const [noteCopyMessage, setNoteCopyMessage] = useState("");
   const { toasts, showToast, showError, showWarning, dismissToast } = useToasts();
 
   async function signOut(): Promise<void> {
@@ -190,6 +193,19 @@ export function CommitteeWorkspace({ user, logout }: {
     onSaved: (id, privateNote) => updateSelectedApplication({ id, privateNote }),
     onError: showError,
   });
+  const suspendPrivateWrites = privateNotes.suspendWrites;
+  useEffect(() => { if (sessionChanged) suspendPrivateWrites(); }, [sessionChanged, suspendPrivateWrites]);
+  async function continueSession() {
+    if (privateNotes.hasUnconfirmed() && !window.confirm("Continue with the current session and discard unsaved private notes from this account?")) return;
+    await onContinueSession?.();
+  }
+  async function copyUnsavedNotes() {
+    try {
+      await navigator.clipboard.writeText(privateNotes.unsavedText());
+      setNoteCopyMessage("Copied. Paste your notes somewhere safe before continuing.");
+    } catch { setNoteCopyMessage("Could not copy notes. Your drafts are still available in this session."); }
+  }
+
 
   useEffect(() => {
     void loadSettings();
@@ -318,7 +334,17 @@ export function CommitteeWorkspace({ user, logout }: {
   );
 
   return (
-    <main className="app-shell">
+    <>
+    {sessionChanged ? <section className="app-shell" role="alert">
+      <div className="email-delay-notice"><div>
+        <strong>Your session changed.</strong>
+        <p>This page belongs to {user.email}. Actions are paused. Copy any unsaved private notes before continuing.</p>
+        {privateNotes.hasUnconfirmed() ? <button type="button" onClick={() => void copyUnsavedNotes()}>Copy unsaved private notes</button> : null}
+        <button type="button" onClick={() => void continueSession()}>Continue with current session</button>
+        {noteCopyMessage ? <p role="status">{noteCopyMessage}</p> : null}
+      </div></div>
+    </section> : null}
+    <main className="app-shell" inert={sessionChanged}>
       <header className="topnav">
         <div className="topnav-inner penta-header-inner">
           <BrandLockup />
@@ -507,5 +533,6 @@ export function CommitteeWorkspace({ user, logout }: {
       />
       <Toasts toasts={toasts} onDismiss={dismissToast} />
     </main>
+    </>
   );
 }

@@ -7,13 +7,17 @@ import { Toasts } from "./components/shared/Toasts";
 import { EmailDeliveryAdvisory } from "./components/auth/EmailDelayNotice";
 import { useSession } from "./hooks/useSession";
 import { useToasts } from "./hooks/useToasts";
+import { RequestIdentityProvider } from "./api/identity";
 
 export function App(props: { authRedirect: AuthRedirect }) {
   const session = useSession(props.authRedirect);
   const { toasts, showError, dismissToast } = useToasts();
 
   if (session.user && !session.linkConflict) {
-    return <CommitteeWorkspace key={session.user.id} user={session.user} logout={session.logout} />;
+    return <RequestIdentityProvider identity={{ kind: "committee", id: session.user.id }}>
+      <CommitteeWorkspace key={session.user.id} user={session.user} logout={session.logout}
+        sessionChanged={session.sessionChanged} onContinueSession={session.acceptSessionChange} />
+    </RequestIdentityProvider>;
   }
 
   async function signOut(): Promise<void> {

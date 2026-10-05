@@ -1,7 +1,8 @@
+import { useCommitteeApi } from "../../api/identity";
 import { CalendarDays, Eye, Pencil, Plus, UserCheck } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import * as api from "../../api/openings";
+import * as openingsApi from "../../api/openings";
 import { formatDateOnly, formatHousingCharge } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import { useRequestScope } from "../../hooks/useRequestScope";
@@ -23,6 +24,8 @@ export function OpeningsPanel(props: {
   onOpenApplicant: (id: number, openingId: number) => void;
   onOpenRetainedApplicant: (id: number) => void;
 }): ReactNode {
+  const api = useCommitteeApi(openingsApi);
+
   const openingsResource = useFetchResource<Opening[]>(api.fetchOpenings, {
     onError: () => props.onError("Could not load openings."),
   });

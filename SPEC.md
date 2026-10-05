@@ -346,8 +346,10 @@ on every request. Conditional touches preserve a newer deadline or concurrent re
 
 Closing a window is not treated as a guaranteed security boundary because browsers may restore
 session cookies and tabs. People using a shared device should leave the opt-in unchecked and
-explicitly sign out when finished. Sign-out clears the relevant cookie and browser-held applicant
-data in addition to revoking the server session.
+explicitly sign out when finished. Sign-out revokes the captured server session and clears browser-held applicant data.
+Failed reads, logout and withdrawal do not delete credential cookies: a late response must not
+erase a newer sign-in. A revoked HTTP-only token cannot authenticate and is replaced by the
+next explicit sign-in.
 Remembered draft writes and clearing share a browser Web Lock. Each tab binds writes to the
 consent lifetime stored in the preference value; clearing or replacing that value invalidates
 older queued saves. A tab receiving a storage reset stops browser persistence while keeping
@@ -1994,3 +1996,19 @@ count and spending limits do not invalidate semantic freshness. New Rank analyse
 AI settings and all five prompt/model/reasoning identities in their discovery audit, available
 through the existing fan-out audit endpoint. Analyses without the expanded fingerprint remain
 reviewable but out of date until an explicitly requested Rank; no work runs automatically.
+
+
+Browser API work carries `X-Penta-Identity` for its captured committee user or applicant
+application ID, including explicit signed-out state for applicable guest operations. The
+server compares it with the credential before protected reads, writes, paid work or logout.
+Committee auth state and the initial applicant application GET are deliberate bootstrap reads;
+manual non-browser test clients may omit the header. API factories bind a captured request
+client so queued work never inherits a later account's cookie authority. Session changes are
+rechecked on focus and cross-tab signals. Committee actions pause while the old account's
+unsaved private drafts remain copyable; continuing discards them only with explicit confirmation.
+Applicant lifecycle refresh checks identity as well as revision and preserves browser answers.
+Email-only return-link requests have no base revision and cannot save into a current cookie's
+application. Credential exchanges use browser locks when available; ordinary requests remain
+parallel. Only Google OAuth transitions read/write the short-lived Authlib state cookie.
+Removed members retain personal history for readmission but cannot contribute rules, overrides,
+kept dimensions or proposals to shared AI inputs.

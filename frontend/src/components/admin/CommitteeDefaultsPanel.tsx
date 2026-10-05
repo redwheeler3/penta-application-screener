@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode, type SyntheticEvent } from "react";
 
-import * as api from "../../api/settings";
+import * as settingsApi from "../../api/settings";
 import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS } from "../../constants";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import { useEligibilityRules } from "../../hooks/useEligibilityRules";
@@ -16,6 +17,8 @@ export function CommitteeDefaultsPanel(props: {
   onError: (message: string) => void;
   onEligibilityChanged: () => void;
 }): ReactNode {
+  const api = useCommitteeApi(settingsApi);
+
   const checks = useFetchResource(api.fetchEligibilityCheckCatalog);
   const rules = useEligibilityRules({
     openingId: props.openingId,

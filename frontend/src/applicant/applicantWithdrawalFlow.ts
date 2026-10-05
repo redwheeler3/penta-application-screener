@@ -3,11 +3,12 @@ import {
   resetApplicantSession,
   type UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
-import { logoutApplicant, withdrawApplication } from "./api";
+import * as publicApi from "./api";
 import { BROWSER_STORAGE_CLEAR_MESSAGE, captureApplicantStorage, clearApplicantStorage } from "./draftStorage";
 import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 type WithdrawalFlowDependencies = {
+  api?: ReturnType<typeof publicApi.createApi>;
   updatePersistence: UpdateApplicantPersistence;
   endSessionWork: () => void;
   captureSession: () => RequestIsCurrent;
@@ -16,12 +17,14 @@ type WithdrawalFlowDependencies = {
 };
 
 export function createApplicantWithdrawalFlow({
+  api = publicApi,
   updatePersistence,
   endSessionWork,
   captureSession,
   fail,
   restorePublicOpenings,
 }: WithdrawalFlowDependencies) {
+  const { logoutApplicant, withdrawApplication } = api;
   async function withdraw(): Promise<boolean> {
     const browserSnapshot = captureApplicantStorage();
     endSessionWork();

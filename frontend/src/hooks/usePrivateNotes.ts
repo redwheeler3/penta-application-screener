@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../api/identity";
 import { useCallback, useEffect, useRef } from "react";
 
-import { savePrivateNote } from "../api/applications";
+import * as applicationsApi from "../api/applications";
 import { useRequestScope } from "./useRequestScope";
 
 type PrivateNoteSnapshot = {
@@ -35,6 +36,8 @@ export function usePrivateNotes(options: {
   onSaved: (applicationId: number, body: string) => void;
   onError: (message: string) => void;
 }) {
+  const { savePrivateNote } = useCommitteeApi(applicationsApi);
+
   const drafts = useRef(new Map<number, Draft>());
   const current = useRef(options);
   current.current = options;
@@ -87,7 +90,7 @@ export function usePrivateNotes(options: {
         releaseConfirmed(applicationId, draft);
       }
     });
-  }, [requests, releaseConfirmed]);
+  }, [requests, releaseConfirmed, savePrivateNote]);
 
   useEffect(() => {
     const accountDrafts = drafts.current;
@@ -168,7 +171,7 @@ export function usePrivateNotes(options: {
     };
   }
 
-  function suspendWrites() {
+  const suspendWrites = useCallback(() => {
     suspended.current = true;
     // Logout may change the cookie before the workspace unmounts. Fence queued work
     // now so it cannot start with another account's credentials.
@@ -177,7 +180,7 @@ export function usePrivateNotes(options: {
       if (draft.timer !== null) clearTimeout(draft.timer);
       draft.timer = null;
     }
-  }
+  }, [requests]);
 
   function resumeWrites() {
     suspended.current = false;
@@ -188,6 +191,9 @@ export function usePrivateNotes(options: {
 
   return {
     editor,
+    unsavedText: () => [...drafts.current.entries()]
+      .filter(([, draft]) => draft.snapshot.status !== "saved")
+      .map(([id, draft]) => `Applicant ${id}\n${draft.snapshot.body}`).join("\n\n"),
     hasUnconfirmed: () => [...drafts.current.values()].some((draft) => draft.snapshot.status !== "saved"),
     suspendWrites,
     resumeWrites,

@@ -1,5 +1,6 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode, useEffect, useState } from "react";
-import { fetchEvalInvariants, rebaselineEval } from "../../api/evals";
+import * as evalsApi from "../../api/evals";
 import { readProblem } from "../../api/problems";
 import type { InvariantsResult } from "../../types";
 import { InlineConfirm } from "./InlineConfirm";
@@ -10,6 +11,8 @@ import { InlineConfirm } from "./InlineConfirm";
 // so it's confirmed inline (the styled card, not window.confirm). No "Refresh": the fixture
 // only changes on a re-baseline, which already returns the fresh result.
 export function InvariantsEval(): ReactNode {
+  const { fetchEvalInvariants, rebaselineEval } = useCommitteeApi(evalsApi);
+
   const [result, setResult] = useState<InvariantsResult | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [rebasing, setRebasing] = useState(false);
@@ -19,7 +22,7 @@ export function InvariantsEval(): ReactNode {
     fetchEvalInvariants()
       .then(setResult)
       .catch(() => setError("Could not load invariants."));
-  }, []);
+  }, [fetchEvalInvariants]);
 
   async function rebaseline() {
     setConfirming(false);

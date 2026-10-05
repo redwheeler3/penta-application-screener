@@ -1,16 +1,9 @@
+import { useCommitteeApi } from "../api/identity";
 import { useEffect, useRef, useState } from "react";
 
 import { streamNdjson } from "../api/client";
-import {
-  fetchRankEstimate,
-  fetchScoreCurrentEstimate,
-  runRank as startRankRequest,
-  scoreCurrent as startScoreCurrentRequest,
-} from "../api/ranking";
-import {
-  fetchScreeningEstimate,
-  runScreening as startScreeningRequest,
-} from "../api/screening";
+import * as rankingApi from "../api/ranking";
+import * as screeningApi from "../api/screening";
 import { readProblem } from "../api/problems";
 import { money } from "../format";
 import { useRequestScope } from "./useRequestScope";
@@ -44,6 +37,9 @@ export function useAiRuns(options: {
   reloadApplications: () => void;
   clearSelectedApplication: () => void;
 }) {
+  const { fetchRankEstimate, fetchScoreCurrentEstimate, runRank: startRankRequest, scoreCurrent: startScoreCurrentRequest } = useCommitteeApi(rankingApi);
+  const { fetchScreeningEstimate, runScreening: startScreeningRequest } = useCommitteeApi(screeningApi);
+
   const [screeningEstimate, setScreeningEstimate] =
     useState<ScreeningEstimateResponse | null>(null);
   const [screeningEstimateLoading, setScreeningEstimateLoading] = useState(false);

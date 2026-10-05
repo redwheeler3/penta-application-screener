@@ -52,9 +52,63 @@ export function useSession(authRedirect: AuthRedirect) {
   const exchangeStarted = useRef(false);
   const userLoadInFlight = useRef(false);
 
+  const [sessionChanged, setSessionChanged] = useState(false);
+  const identityReads = useRequestScope();
+  const userRef = useRef(user);
+  userRef.current = user;
+  const revalidationPending = useRef(false);
+  async function revalidateSession() {
+    if (revalidationPending.current || userRef.current === null) return;
+    revalidationPending.current = true;
+    const isCurrent = identityReads.begin();
+    try {
+      const state = await api.fetchAuthState();
+      if (isCurrent() && (state.user?.id !== userRef.current?.id || state.user?.role !== userRef.current?.role)) {
+        setSessionChanged(true);
+      }
+    } catch { /* Identity headers still protect every action while offline. */ }
+    finally { revalidationPending.current = false; }
+  }
+  const revalidateRef = useRef(revalidateSession);
+  revalidateRef.current = revalidateSession;
+  useEffect(() => {
+    if (!user) return;
+    const visible = () => { if (document.visibilityState === "visible") void revalidateRef.current(); };
+    const storage = (event: StorageEvent) => { if (event.key === "penta-session-change:committee") void revalidateRef.current(); };
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.kind === "committee") {
+        if (detail.reason === "mismatch") setSessionChanged(true);
+        else void revalidateRef.current();
+      }
+    };
+    window.addEventListener("focus", visible);
+    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("storage", storage);
+    window.addEventListener("penta-session-changed", changed);
+    return () => {
+      window.removeEventListener("focus", visible);
+      document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("storage", storage);
+      window.removeEventListener("penta-session-changed", changed);
+    };
+  }, [user]);
+
+  async function acceptSessionChange() {
+    const isCurrent = identityReads.begin();
+    try {
+      const state = await api.fetchAuthState();
+      if (!isCurrent()) return;
+      signInRequests.reset();
+      setUser(state.user);
+      setSessionChanged(false);
+    } catch { /* Keep the frozen page and drafts available for another attempt. */ }
+  }
+
   async function loadCurrentUser(): Promise<void> {
     if (userLoadInFlight.current) return;
     userLoadInFlight.current = true;
+    const isCurrent = identityReads.begin();
     setIsLoadingUser(true);
     setUserLoadRecovery(null);
     try {
@@ -62,6 +116,7 @@ export function useSession(authRedirect: AuthRedirect) {
         api.fetchAuthState,
         setUserLoadRecovery,
       );
+      if (!isCurrent()) return;
       setUser(authState.user);
       setEmailSignInEnabled(authState.emailSignInEnabled);
       setUserLoadRecovery(null);
@@ -103,6 +158,7 @@ export function useSession(authRedirect: AuthRedirect) {
       }
       const body = (await response.json()) as CommitteeLinkInspection;
       if (!isCurrent()) return;
+      userRef.current = body.currentUser;
       setUser(body.currentUser);
       setLinkedEmail(body.linkEmail);
       if (body.switchRequired && body.currentUser && body.linkEmail) {
@@ -134,7 +190,8 @@ export function useSession(authRedirect: AuthRedirect) {
     const isCurrent = signInRequests.begin();
     try {
       setSignInState("exchanging");
-      const response = await api.consumeCommitteeMagicLink(token, switchCurrent);
+      identityReads.invalidate();
+      const response = await api.consumeCommitteeMagicLink(token, switchCurrent, userRef.current?.id ?? null);
       if (!isCurrent()) return;
       if (!response.ok) {
         setSignInState("invalidLink");
@@ -142,6 +199,8 @@ export function useSession(authRedirect: AuthRedirect) {
       }
       const body: { user: CurrentUser } = await response.json();
       if (!isCurrent()) return;
+      identityReads.invalidate();
+      setSessionChanged(false);
       setUser(body.user);
       setLinkConflict(null);
       setLinkedEmail(null);
@@ -206,9 +265,12 @@ export function useSession(authRedirect: AuthRedirect) {
 
   async function logout() {
     try {
-      const response = await api.logout();
+      identityReads.invalidate();
+      const response = await api.logout(userRef.current?.id ?? null);
       if (!response.ok) return "Could not sign out. Please try again.";
+      identityReads.invalidate();
       signInRequests.reset();
+      setSessionChanged(false);
       setUser(null);
       return null;
     } catch {
@@ -218,6 +280,8 @@ export function useSession(authRedirect: AuthRedirect) {
 
   return {
     user,
+    sessionChanged,
+    acceptSessionChange,
     emailSignInEnabled,
     linkConflict,
     linkedEmail,

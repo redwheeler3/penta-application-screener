@@ -1,5 +1,6 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
-import { fetchCostReport, fetchLastRuns } from "../../api/observability";
+import * as observabilityApi from "../../api/observability";
 import { money } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import type { CostReport, InsightRunKind, LastRunCost, LastRunsReport } from "../../types";
@@ -64,6 +65,8 @@ const PASS_LABELS: Record<InsightRunKind, Array<{ label: string; cacheable: bool
 };
 
 export function CostPanel(): ReactNode {
+  const { fetchCostReport, fetchLastRuns } = useCommitteeApi(observabilityApi);
+
   const { data, state, reload } = useFetchResource<[CostReport, LastRunsReport]>(
     () => Promise.all([fetchCostReport(), fetchLastRuns()]),
   );

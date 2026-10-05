@@ -1,5 +1,6 @@
+import { useCommitteeApi } from "../api/identity";
 import { useCallback, useMemo, useRef, useState } from "react";
-import * as api from "../api/applications";
+import * as applicationsApi from "../api/applications";
 import { retryWithBackoff } from "../retry";
 import type {
   AppFacets,
@@ -44,6 +45,8 @@ export interface ApplicationsState {
  * candidate detail is NOT here: it's cross-cutting (tab switches, overrides, settings
  * save all clear it), so it stays in the account-owned workspace. */
 export function useApplications(): ApplicationsState {
+  const api = useCommitteeApi(applicationsApi);
+
   const [allApplications, setAllApplications] = useState<ApplicationSummary[]>([]);
   const [openings, setOpenings] = useState<CommitteeOpening[]>([]);
   const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(null);
@@ -67,7 +70,7 @@ export function useApplications(): ApplicationsState {
       }
     } catch { /* The optional browser preference must not fail a loaded workspace. */ }
     setApplicationsLoadState("ready");
-  }, []);
+  }, [api]);
 
   const reloadApplications = useCallback(() => {
     if (selectingOpening.current) return Promise.resolve();
@@ -80,7 +83,7 @@ export function useApplications(): ApplicationsState {
       // Keep the last successful list visible when a background refresh fails. Initial loading
       // uses loadInitialApplications so it can recover deliberately instead of spinning forever.
       .catch(() => {});
-  }, [acceptApplications, requests]);
+  }, [acceptApplications, requests, api]);
 
   const loadInitialApplications = useCallback(async (): Promise<void> => {
     setApplicationsLoadState("loading");
@@ -101,7 +104,7 @@ export function useApplications(): ApplicationsState {
     } finally {
       if (isCurrent()) selectingOpening.current = false;
     }
-  }, [acceptApplications, requests]);
+  }, [acceptApplications, requests, api]);
 
   // Everything below is derived from the full pool — no fetch on filter/sort/search.
   const appFacets = useMemo<AppFacets>(

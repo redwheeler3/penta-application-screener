@@ -1,5 +1,6 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
-import { fetchMetrics } from "../../api/observability";
+import * as observabilityApi from "../../api/observability";
 import { formatPacificDateTime, money } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import type { TrendPoint } from "../../types";
@@ -25,6 +26,8 @@ function Bar(props: { value: number; max: number }): ReactNode {
 }
 
 export function MetricsPanel(): ReactNode {
+  const { fetchMetrics } = useCommitteeApi(observabilityApi);
+
   const { data: report, state, reload } = useFetchResource(fetchMetrics);
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;

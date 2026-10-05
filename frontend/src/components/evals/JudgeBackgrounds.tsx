@@ -1,7 +1,8 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useRequestScope } from "../../hooks/useRequestScope";
 
-import { fetchJudgeBackgrounds, saveJudgeBackground } from "../../api/evals";
+import * as evalsApi from "../../api/evals";
 import { readProblem } from "../../api/problems";
 import type { JudgeBackground } from "../../types";
 
@@ -15,6 +16,8 @@ export function JudgeBackgrounds(props: {
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
+  const { fetchJudgeBackgrounds, saveJudgeBackground } = useCommitteeApi(evalsApi);
+
   const [items, setItems] = useState<JudgeBackground[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -30,7 +33,7 @@ export function JudgeBackgrounds(props: {
     return () => {
       live = false;
     };
-  }, []);
+  }, [fetchJudgeBackgrounds]);
 
   async function save(passName: string) {
     const text = drafts[passName];

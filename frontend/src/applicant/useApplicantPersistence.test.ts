@@ -8,7 +8,8 @@ import type { ApplicationResponse } from "./applicantPersistence";
 import { emptyApplicantDraft, workingAnswers } from "./applicationDraft";
 import { useApplicantPersistence } from "./useApplicantPersistence";
 
-vi.mock("./api", async (original) => ({
+vi.mock("./api", async (original) => {
+  const mocked = {
   ...await original<typeof import("./api")>(),
   fetchApplication: vi.fn(), fetchPendingCopy: vi.fn(), fetchApplicantOpenings: vi.fn(),
   saveApplication: vi.fn(), savePendingDraft: vi.fn(), submitGuestApplication: vi.fn(),
@@ -16,7 +17,9 @@ vi.mock("./api", async (original) => ({
   withdrawApplication: vi.fn(), requestEmailChange: vi.fn(), deletePendingDraft: vi.fn(),
   reconcilePendingCopy: vi.fn(),
   checkGuestSubmission: vi.fn(), submitApplication: vi.fn(), cancelEmailChange: vi.fn(),
-}));
+  };
+  return { ...mocked, createApi: () => mocked };
+});
 
 function initialDraft() {
   const draft = emptyApplicantDraft();
@@ -501,4 +504,15 @@ it("releases a rejected save when the follow-up lifecycle read also fails", asyn
   expect(result.current.persistence.busy).toBe(false);
   expect(result.current.persistence.phase).toBe("error");
   expect(result.current.persistence.message).toBe("Applications are closed.");
+});
+
+it("rejects another application's lifecycle even when its revision matches", async () => {
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.applicationId).toBe(1));
+  const originalDraft = result.current.draft;
+  vi.mocked(api.fetchApplication).mockResolvedValue(Response.json({ ...application(1), applicationId: 2 }));
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(result.current.persistence.phase).toBe("session_expired");
+  expect(result.current.persistence.applicationId).toBe(1);
+  expect(result.current.draft).toEqual(originalDraft);
 });

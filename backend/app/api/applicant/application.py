@@ -12,9 +12,6 @@ from app.api.applicant.presentation import (
     applicant_opening,
     pending_copy,
 )
-from app.api.session_cookie import (
-    clear_session_cookie,
-)
 from app.core.config import get_settings
 from app.core.problems import Problem
 from app.core.text import normalize_email
@@ -270,7 +267,6 @@ def withdraw_applicant_application(
     if application.submitted_at is None:
         purge_never_submitted_application(db, application)
         db.commit()
-        clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
         return WithdrawApplicationResponse()
 
     for state in applicant_opening_states(db, application):
@@ -303,5 +299,4 @@ def withdraw_applicant_application(
         application_id=application.id,
     )
     db.commit()
-    clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
     return WithdrawApplicationResponse()

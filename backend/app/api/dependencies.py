@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.provider import AIProvider
 from app.ai.strands_provider import StrandsProvider
-from app.api.session_cookie import clear_session_cookie, session_token
+from app.api.session_cookie import check_request_identity, session_token
 from app.core.config import get_settings
 from app.core.problems import Problem
 from app.db.models import PasswordlessIdentityKind, User, UserRole
@@ -22,15 +22,17 @@ def optional_current_user(
         authentication = authenticate_committee_user(db, committee_token)
         if authentication is not None:
             request.state.browser_session = authentication.browser_session
+            check_request_identity(request, PasswordlessIdentityKind.COMMITTEE, authentication.user.id)
             return authentication.user
-        clear_session_cookie(response, PasswordlessIdentityKind.COMMITTEE)
 
+    check_request_identity(request, PasswordlessIdentityKind.COMMITTEE, None)
     return None
 
 
-def require_current_user(user: User | None = Depends(optional_current_user)) -> User:
+def require_current_user(request: Request, user: User | None = Depends(optional_current_user)) -> User:
     if user is None:
         raise Problem("unauthorized", detail="Authentication required.")
+    check_request_identity(request, PasswordlessIdentityKind.COMMITTEE, user.id, required=True)
     return user
 
 

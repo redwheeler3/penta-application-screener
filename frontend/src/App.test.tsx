@@ -20,7 +20,7 @@ const user = (id: number): CurrentUser => ({ id, email: `synthetic${id}@example.
   avatarUrl: null, role: "member" });
 
 function session(current: CurrentUser | null) {
-  return { user: current, emailSignInEnabled: false, linkConflict: null, linkedEmail: null, isAdmin: false,
+  return { user: current, sessionChanged: false, acceptSessionChange: vi.fn(), emailSignInEnabled: false, linkConflict: null, linkedEmail: null, isAdmin: false,
     isLoadingUser: false, userLoadRecovery: null, signInState: "idle" as const, requestMagicLink: vi.fn(),
     keepCurrentSession: vi.fn(), openLinkedSession: vi.fn(), emailNewLinkedSession: vi.fn(), retryLinkedSession: vi.fn(),
     resetSignIn: vi.fn(), logout: vi.fn() };

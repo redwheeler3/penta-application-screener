@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import { fetchDecomposeAudit } from "../../api/ranking";
+import * as rankingApi from "../../api/ranking";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import type { DecomposeAuditResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
@@ -8,6 +9,8 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 // Show how parallel discovery reports were settled into non-overlapping dimensions,
 // including merge reasoning and any committee request folded into another axis.
 export function DecomposeAuditPanel(props: { openingId: number }): ReactNode {
+  const { fetchDecomposeAudit } = useCommitteeApi(rankingApi);
+
   const { data: audit, state, reload } = useFetchResource(
     () => fetchDecomposeAudit(props.openingId),
   );

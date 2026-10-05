@@ -1,5 +1,7 @@
-import { type Dispatch, type SetStateAction, useEffect, useReducer, useRef } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useReducer, useRef } from "react";
 
+import { identityClient } from "../api/client";
+import * as publicApi from "./api";
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { retryForServiceRecovery } from "../serviceRecovery";
 import { useRequestScope, type RequestIsCurrent } from "../hooks/useRequestScope";
@@ -26,12 +28,8 @@ import {
 import {
   deletePendingDraft,
   fetchApplicantOpenings,
-  fetchApplication,
-  fetchPendingCopy,
   inspectAccessLink,
-  openAccessLink,
   regenerateAccessLink,
-  reconcilePendingCopy as reconcilePendingCopyRequest,
 } from "./api";
 import {
   clearApplicationDraft,
@@ -52,6 +50,7 @@ export function useApplicantPersistence(
   const pendingCopyReads = useRequestScope();
   const sessionWork = useRequestScope();
   const linkStarted = useRef(false);
+  const inspectedApplicationId = useRef<number | null>(null);
   const [persistence, updatePersistence] = useReducer(
     applicantPersistenceReducer,
     INITIAL_APPLICANT_PERSISTENCE_STATE,
@@ -87,6 +86,9 @@ export function useApplicantPersistence(
     withdrawalStatus,
     withdrawalMessage,
   } = persistence;
+
+  const api = useMemo(() => publicApi.createApi(identityClient({ kind: "applicant", id: applicationId })), [applicationId]);
+  const { fetchPendingCopy, reconcilePendingCopy: reconcilePendingCopyRequest } = api;
 
   const stateRef = useRef(persistence);
   stateRef.current = persistence;
@@ -134,8 +136,25 @@ export function useApplicantPersistence(
       if (applicationId != null) void refreshLifecycleState();
       else if (openingsLoaded) void restorePublicOpenings(true);
     };
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.kind === "applicant" && detail.reason === "mismatch") {
+        markSessionChanged();
+      }
+    };
+    const stored = (event: StorageEvent) => {
+      if (event.key === "penta-session-change:applicant") refreshWhenVisible();
+    };
     document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("storage", stored);
+    window.addEventListener("penta-session-changed", changed);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("storage", stored);
+      window.removeEventListener("penta-session-changed", changed);
+    };
     // The primitive lifecycle keys above own this subscription. The workflow
     // functions are render-local and would resubscribe on every state transition.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,6 +169,7 @@ export function useApplicantPersistence(
       if (!response.ok) return fail(response);
       const body = await linkBody(response);
       if (!inSession()) return;
+      inspectedApplicationId.current = body.applicationId;
       updatePersistence({
         accessPurpose: body.purpose ?? "applicant_access",
         accessApplicationEmail: body.applicationEmail,
@@ -198,7 +218,8 @@ export function useApplicantPersistence(
     const inSession = sessionWork.capture();
     try {
       updatePersistence({ phase: "working" });
-      const response = await openAccessLink(token, switchCurrent, rememberDevice);
+      const exchange = publicApi.createApi(identityClient({ kind: "applicant", id: inspectedApplicationId.current }));
+      const response = await exchange.openAccessLink(token, switchCurrent, rememberDevice);
       if (!inSession()) return;
       if (!response.ok) return fail(response);
       const body = await linkBody(response);
@@ -249,7 +270,10 @@ export function useApplicantPersistence(
 
   async function restoreApplication(knownId?: number): Promise<void> {
     const isCurrent = applicationReads.begin();
-    const response = await recoverInitialLoad(fetchApplication, isCurrent);
+    const expectedId = knownId ?? stateRef.current.applicationId;
+    const read = expectedId == null ? publicApi.fetchApplication
+      : publicApi.createApi(identityClient({ kind: "applicant", id: expectedId })).fetchApplication;
+    const response = await recoverInitialLoad(read, isCurrent);
     if (response === null || !isCurrent()) return;
     if (response.status === 401) {
       if (knownId == null) {
@@ -262,6 +286,10 @@ export function useApplicantPersistence(
     }
     if (!response.ok) return fail(response);
     const body = (await response.json()) as ApplicationResponse;
+    if (expectedId != null && body.applicationId !== expectedId) {
+      updatePersistence({ message: "Your session changed. Your answers have not been replaced.", phase: "session_expired" });
+      return;
+    }
     if (!isCurrent()) return;
     const serverOpeningIds = defaultOpeningIds(body.openings);
     let restoredOpeningIds = serverOpeningIds;
@@ -377,6 +405,7 @@ export function useApplicantPersistence(
       if (!inSession()) return;
       if (!response.ok) {
         const problem = await responseProblem(response);
+        if (problem.code === "session_changed") { markSessionChanged(); return; }
         if (!inSession()) return;
         if (problem.code === "stale_application" || problem.code === "pending_copy_changed") {
           await restorePendingCopy();
@@ -484,10 +513,16 @@ export function useApplicantPersistence(
     return true;
   }
 
+  function markSessionChanged() {
+    endSessionWork();
+    updatePersistence({ message: "Your session changed. Your answers are still here; sign in to the original application to continue.", phase: "session_expired" });
+  }
+
   async function fail(response: Response): Promise<void> {
     const inSession = sessionWork.capture();
     const problem = await responseProblem(response);
     if (!inSession()) return;
+    if (problem.code === "session_changed") { markSessionChanged(); return; }
     const { applicationId } = stateRef.current;
     if (["applications_closed", "opening_archived", "opening_selection_required"].includes(
       problem.code ?? "",
@@ -509,17 +544,26 @@ export function useApplicantPersistence(
 
   async function refreshLifecycleState(): Promise<boolean> {
     const isCurrent = applicationReads.begin();
-    const response = await fetchApplication().catch(() => null);
+    const expectedId = stateRef.current.applicationId;
+    if (expectedId == null) return false;
+    const response = await publicApi.createApi(identityClient({ kind: "applicant", id: expectedId })).fetchApplication().catch(() => null);
     if (!isCurrent()) return false;
     if (response === null) return false;
     if (response.status === 401) {
       updatePersistence({ message: "Your application session has ended.", phase: "session_expired" });
       return false;
     }
-    if (!response.ok) return false;
+    if (!response.ok) {
+      if (response.status === 409) await fail(response);
+      return false;
+    }
     const body = (await response.json().catch(() => null)) as ApplicationResponse | null;
     if (!isCurrent()) return false;
     if (body === null) return false;
+    if (body.applicationId !== expectedId) {
+      updatePersistence({ message: "Your session changed. Your answers have not been replaced.", phase: "session_expired" });
+      return false;
+    }
     const currentRevision = stateRef.current.workingRevision;
     updatePersistence((state) => {
       const stale = state.workingRevision !== null && state.workingRevision !== body.workingRevision;
@@ -546,6 +590,7 @@ export function useApplicantPersistence(
   }
 
   const saveFlow = createApplicantSaveFlow({
+    api,
     stateRef,
     draftRef,
     invalidateReads: invalidateApplicationReads,
@@ -554,12 +599,14 @@ export function useApplicantPersistence(
     fail,
   });
   const emailFlow = createApplicantEmailFlow({
+    api,
     beginApplicationRead: applicationReads.begin,
     captureSession: sessionWork.capture,
     updatePersistence,
     setDraft,
   });
   const withdrawalFlow = createApplicantWithdrawalFlow({
+    api,
     endSessionWork,
     captureSession: sessionWork.capture,
     updatePersistence,

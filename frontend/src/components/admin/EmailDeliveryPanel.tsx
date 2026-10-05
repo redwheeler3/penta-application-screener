@@ -1,16 +1,16 @@
+import { useCommitteeApi } from "../../api/identity";
 import { RefreshCw } from "lucide-react";
 import { type ReactNode } from "react";
 
-import {
-  fetchEmailDeliveryIssues,
-  refreshSocketLabsDeliveryStatus,
-} from "../../api/dashboard";
+import * as dashboardApi from "../../api/dashboard";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import type { EmailDeliveryIssue, SocketLabsQueueStatus } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 export function EmailDeliveryPanel(props: { onError: (message: string) => void }): ReactNode {
+  const { fetchEmailDeliveryIssues, refreshSocketLabsDeliveryStatus } = useCommitteeApi(dashboardApi);
+
   const delivery = useFetchResource<{
     items: EmailDeliveryIssue[];
     socketlabs: SocketLabsQueueStatus;

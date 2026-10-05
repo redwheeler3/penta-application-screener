@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../api/identity";
 import { useCallback, useState } from "react";
 
-import * as api from "../api/dashboard";
+import * as dashboardApi from "../api/dashboard";
 import { retryWithBackoff } from "../retry";
 import type { AdminActions, Coverage, WorkflowState } from "../types";
 import { useRequestScope } from "./useRequestScope";
@@ -14,6 +15,8 @@ const EMPTY_WORKFLOW: WorkflowState = {
 };
 
 export function useDashboard(openingId: number | null) {
+  const api = useCommitteeApi(dashboardApi);
+
   const [workflow, setWorkflow] = useState<WorkflowState>(EMPTY_WORKFLOW);
   const [coverage, setCoverage] = useState<Coverage>({});
   const [adminActions, setAdminActions] = useState<AdminActions | null>(null);
@@ -37,7 +40,7 @@ export function useDashboard(openingId: number | null) {
     return api.fetchDashboard(openingId).then((payload) => {
       if (isCurrent()) apply(payload);
     }).catch(() => {});
-  }, [apply, openingId, requests]);
+  }, [apply, openingId, requests, api]);
 
   const loadInitial = useCallback(async (): Promise<void> => {
     if (!requests.isFor(openingId)) return;
@@ -50,7 +53,7 @@ export function useDashboard(openingId: number | null) {
     } catch {
       if (isCurrent()) setLoadState("error");
     }
-  }, [apply, openingId, requests]);
+  }, [apply, openingId, requests, api]);
 
   return { workflow, coverage, adminActions, loadState, refresh, loadInitial };
 }

@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { Trash2, UserPlus } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
-import * as api from "../../api/access";
+import * as accessApi from "../../api/access";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
@@ -17,6 +18,8 @@ type AccessUpdate = {
 // The mutation endpoints return the full updated list, so this holds the list in local
 // state and replaces it from each response (no separate refetch).
 export function AccessPanel(props: { currentUser: CurrentUser; onError: (message: string) => void }): ReactNode {
+  const api = useCommitteeApi(accessApi);
+
   const allowlist = useFetchResource<AllowlistEntry[]>(api.fetchAllowlist, {
     onError: () => props.onError("Could not load the access allowlist."),
   });

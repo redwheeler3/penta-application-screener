@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
 import { ELIGIBILITY_GENERAL_NUMERIC_FIELDS, ELIGIBILITY_NUMERIC_FIELDS } from "../../constants";
-import * as api from "../../api/settings";
+import * as settingsApi from "../../api/settings";
 import { CheckGroup } from "./CheckToggles";
 import { EmploymentRequirementField } from "./EmploymentRequirementField";
 import { NumberInput } from "../shared/NumberInput";
@@ -21,6 +22,8 @@ export function EligibilitySettingsPanel(props: {
   onError: (message: string) => void;
   onRulesUpdated: () => void;
 }): ReactNode {
+  const api = useCommitteeApi(settingsApi);
+
   const rules = useEligibilityRules({
     openingId: props.openingId,
     kind: "member",

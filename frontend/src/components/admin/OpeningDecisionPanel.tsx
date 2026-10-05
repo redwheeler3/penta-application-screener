@@ -1,7 +1,8 @@
+import { useCommitteeApi } from "../../api/identity";
 import { UserCheck, UserX } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import * as api from "../../api/openings";
+import * as openingsApi from "../../api/openings";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import { readProblem } from "../../api/problems";
 import type { Opening, OpeningCommit, OpeningSelection, OpeningSelectionCandidate } from "../../types";
@@ -21,6 +22,8 @@ export function OpeningDecisionPanel(props: {
   onReview: (applicationId: number) => void;
   onClose: () => void;
 }): ReactNode {
+  const api = useCommitteeApi(openingsApi);
+
   const [choice, setChoice] = useState<DecisionChoice>({ kind: "candidates" });
   const { busy, setBusy } = props;
   const requests = useRequestScope(props.selection.openingId);

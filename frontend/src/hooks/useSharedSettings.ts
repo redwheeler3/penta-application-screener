@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../api/identity";
 import { useEffect, useRef, useState } from "react";
 
-import * as api from "../api/settings";
+import * as settingsApi from "../api/settings";
 import { retryWithBackoff } from "../retry";
 import type { AppSettings, SettingsResponse } from "../types";
 import { useRequestScope } from "./useRequestScope";
@@ -8,6 +9,8 @@ import { useRequestScope } from "./useRequestScope";
 export function useSharedSettings(options: {
   dashboardReady: boolean;
 }) {
+  const api = useCommitteeApi(settingsApi);
+
   const [draft, setDraft] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState<SettingsResponse | null>(null);
   const [isSaving, setIsSaving] = useState(false);

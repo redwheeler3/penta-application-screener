@@ -9,7 +9,7 @@ from app.api.applicant.dependencies import optional_current_application
 from app.api.auth import serialize_user
 from app.api.dependencies import optional_current_user
 from app.api.session_cookie import (
-    clear_session_cookie,
+    check_request_identity,
     session_token,
     set_session_cookie,
 )
@@ -214,13 +214,15 @@ def get_current_applicant(
 def logout_applicant(
     request: Request,
     response: Response,
+    application: Application | None = Depends(optional_current_application),
     db: Session = Depends(get_db),
 ) -> LogoutResponse:
+    check_request_identity(request, PasswordlessIdentityKind.APPLICANT,
+                           application.id if application is not None else None, required=True)
     token = session_token(request, PasswordlessIdentityKind.APPLICANT)
     if token is not None:
         revoke_browser_session(db, token)
         db.commit()
-    clear_session_cookie(response, PasswordlessIdentityKind.APPLICANT)
     return LogoutResponse(ok=True)
 
 

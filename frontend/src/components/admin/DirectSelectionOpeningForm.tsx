@@ -1,7 +1,8 @@
+import { useCommitteeApi } from "../../api/identity";
 import { Search, UserCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
-import * as api from "../../api/openings";
+import * as openingsApi from "../../api/openings";
 import { readProblem } from "../../api/problems";
 import type { Opening, OpeningSelectionCandidate } from "../../types";
 import { useRequestScope } from "../../hooks/useRequestScope";
@@ -26,6 +27,8 @@ export function DirectSelectionOpeningForm(props: {
   onReviewRetained: (applicationId: number) => void;
   onSavingChange?: (saving: boolean) => void;
 }): ReactNode {
+  const api = useCommitteeApi(openingsApi);
+
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<OpeningSelectionCandidate[] | null>(null);

@@ -147,6 +147,13 @@ Captured writes also belong to an applicant session generation. Sign-out, withdr
 switch, and draft discard end that generation before awaiting network replies, so a late save,
 email change, or reconciliation cannot repopulate the exited application. Committee sign-out
 clears its user only after the server confirms success; failures retain the session and report an error.
+API factories below `RequestIdentityProvider` capture the displayed user ID in their request
+client; applicant workflows receive a client bound to their displayed application ID. The server
+checks `X-Penta-Identity` before protected work. Bootstrap reads are explicit exceptions, and
+manual non-browser harnesses can omit the header. Focus/storage signals revalidate the session;
+committee account changes freeze actions while private drafts remain copyable until the member
+continues. Invalid reads and revocations never delete a browser-session cookie, so late responses
+cannot erase newer credentials. Authlib state-cookie middleware is limited to Google transitions.
 Committee link inspection and exchange have a retryable connection state; retry checks the link
 again before deciding whether to exchange it or offer an account choice. Sign-in requests are
 ordered, and resetting the form invalidates older responses. Access-allowlist writes hold their

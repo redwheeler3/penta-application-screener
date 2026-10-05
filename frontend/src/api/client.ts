@@ -8,6 +8,61 @@ import type {
 const GET_TIMEOUT_MS = 15_000;
 const ACTION_REQUEST_TIMEOUT_MS = 30_000;
 
+export type RequestIdentity = { kind: "committee" | "applicant"; id: number | null };
+export type ApiClient = {
+  request: typeof request;
+  getJson: typeof getJson;
+  streamRequest: typeof streamRequest;
+};
+
+export function signalSessionChange(kind: RequestIdentity["kind"], reason: "credentials" | "mismatch" = "credentials") {
+  window.dispatchEvent(new CustomEvent("penta-session-changed", { detail: { kind, reason } }));
+  if (reason === "credentials") {
+    try { localStorage.setItem(`penta-session-change:${kind}`, String(Date.now())); } catch { /* Focus rechecks too. */ }
+  }
+}
+
+/** Capture the displayed identity once; queued callbacks retain this client. */
+export function identityClient(identity: RequestIdentity): ApiClient {
+  const expected = `${identity.kind}:${identity.id ?? "none"}`;
+  let mismatchReported = false;
+  async function boundRequest(path: string, init: RequestInit = {}, timeoutMs = ACTION_REQUEST_TIMEOUT_MS, streaming = false) {
+    const headers = new Headers(init.headers);
+    headers.set("X-Penta-Identity", expected);
+    const response = await fetchResponse(path, { ...init, headers }, timeoutMs, streaming);
+    if (response.status === 409) {
+      const body = await response.clone().json().catch(() => null);
+      if (body?.code === "session_changed" && !mismatchReported) {
+        mismatchReported = true;
+        signalSessionChange(identity.kind, "mismatch");
+      }
+    }
+    return response;
+  }
+  return {
+    request: boundRequest,
+    async getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+      const response = await boundRequest(path, { signal }, GET_TIMEOUT_MS);
+      if (!response.ok) throw new Error(`GET ${path} failed (HTTP ${response.status})`);
+      return response.json() as Promise<T>;
+    },
+    streamRequest: (path, signal) => boundRequest(path, { method: "POST", signal }, ACTION_REQUEST_TIMEOUT_MS, true),
+  };
+}
+
+/** Serialize credential exchanges across tabs; ordinary reads/writes remain parallel. */
+export async function credentialRequest(kind: RequestIdentity["kind"], path: string, init: RequestInit, client: ApiClient = publicClient) {
+  const exchange = async () => {
+    const response = await client.request(path, init);
+    if (response.ok) signalSessionChange(kind);
+    return response;
+  };
+  return navigator.locks ? navigator.locks.request(`penta-sign-in:${kind}`, exchange) : exchange();
+}
+
+/** Unbound calls are for public/bootstrap endpoints and manual API harnesses. */
+export const publicClient: ApiClient = { request, getJson, streamRequest };
+
 export function url(path: string): string {
   return `${apiBaseUrl}${path}`;
 }

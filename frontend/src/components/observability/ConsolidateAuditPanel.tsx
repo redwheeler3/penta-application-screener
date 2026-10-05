@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import { fetchConsolidateAudit } from "../../api/ranking";
+import * as rankingApi from "../../api/ranking";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import type { ConsolidateAuditResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
@@ -15,6 +16,8 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 // This surfaces every nominated pair, correlation, verdict, and reason. Missing audit
 // data and a run with no nominations have distinct empty states.
 export function ConsolidateAuditPanel(props: { openingId: number }): ReactNode {
+  const { fetchConsolidateAudit } = useCommitteeApi(rankingApi);
+
   const { data: audit, state, reload } = useFetchResource(
     () => fetchConsolidateAudit(props.openingId),
   );

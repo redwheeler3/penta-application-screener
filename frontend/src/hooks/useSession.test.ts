@@ -60,7 +60,7 @@ it.each(["inspection", "exchange"])("allows a failed link %s to be checked again
   await act(() => result.current.retryLinkedSession());
   expect(result.current.user?.id).toBe(2);
   expect(result.current.signInState).toBe("idle");
-  expect(api.consumeCommitteeMagicLink).toHaveBeenLastCalledWith("synthetic-token", false);
+  expect(api.consumeCommitteeMagicLink).toHaveBeenLastCalledWith("synthetic-token", false, null);
 });
 
 it("releases a failed replacement-link request", async () => {
@@ -85,4 +85,18 @@ it("does not restore an email request that was reset while pending", async () =>
   await act(async () => { request.resolve(new Response(null, { status: 204 })); await pending; });
   expect(result.current.signInState).toBe("idle");
   expect(result.current.linkedEmail).toBeNull();
+});
+
+it("freezes a changed session without replacing the old account until acknowledged", async () => {
+  const { result } = renderHook(() => useSession({ magicLinkToken: null, googleAccessDenied: false }));
+  await waitFor(() => expect(result.current.user?.id).toBe(1));
+  vi.mocked(api.fetchAuthState).mockResolvedValue({ user: {
+    id: 2, email: "other@example.test", displayName: "Other", role: "member", avatarUrl: null,
+  }, emailSignInEnabled: true });
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(result.current.sessionChanged).toBe(true));
+  expect(result.current.user?.id).toBe(1);
+  await act(() => result.current.acceptSessionChange());
+  expect(result.current.user?.id).toBe(2);
+  expect(result.current.sessionChanged).toBe(false);
 });

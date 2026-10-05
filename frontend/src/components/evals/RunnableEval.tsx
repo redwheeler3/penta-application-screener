@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { saveEvalCase } from "../../api/evals";
+import * as evalsApi from "../../api/evals";
 import { readProblem } from "../../api/problems";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import type {
@@ -52,6 +53,8 @@ export function RunnableEval(props: {
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
+  const { saveEvalCase } = useCommitteeApi(evalsApi);
+
   const { caseEvalKey, modes } = props;
   const editable = props.editable ?? true;
   const addable = props.addable ?? editable;

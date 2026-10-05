@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../api/identity";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import * as api from "../api/applications";
+import * as applicationsApi from "../api/applications";
 import type { ApplicationDetail, ApplicationUpdate, ViewTab } from "../types";
 import { useRequestScope, type RequestIsCurrent } from "./useRequestScope";
 
@@ -44,6 +45,8 @@ export function useNavigation(options: {
   loadRanking: () => Promise<boolean>;
   onError: (message: string) => void;
 }) {
+  const api = useCommitteeApi(applicationsApi);
+
   const [activeTab, setActiveTab] = useState<ViewTab>("applications");
   const [selectedApplication, setSelectedApplication] = useState<ApplicationDetail | null>(null);
   const [selectedApplicationReadOnly, setSelectedApplicationReadOnly] = useState(false);
@@ -118,7 +121,7 @@ export function useNavigation(options: {
       current.current.onError("Couldn't load that view. Please try again.");
       return false;
     }
-  }, [requests]);
+  }, [requests, api]);
 
   useEffect(() => {
     replaceLocation({ screenerLocation: true, tab: "applications", openingId: current.current.openingId });

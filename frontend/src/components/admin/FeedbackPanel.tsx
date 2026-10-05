@@ -1,6 +1,7 @@
+import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode, useRef, useState } from "react";
 
-import * as api from "../../api/feedback";
+import * as feedbackApi from "../../api/feedback";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
@@ -31,6 +32,8 @@ export function FeedbackPanel(props: {
   onOpenApplicant: (id: number) => void;
   onOpenView: (tab: ViewTab) => void;
 }): ReactNode {
+  const api = useCommitteeApi(feedbackApi);
+
   const [showResolved, setShowResolved] = useState(false);
   const [busyIds, setBusyIds] = useState<Set<number>>(new Set());
   const pending = useRef(new Set<number>());
