@@ -150,10 +150,12 @@ export function RankingView(props: {
             Drag criteria into importance tiers to re-rank; tap a criterion to read what it measures.
           </p>
         </div>
-        <button type="button" className="secondary-button no-print" title={printTitle} onClick={() => window.print()}>
-          <Printer size={16} />
-          Print
-        </button>
+        {hasWeightedCriteria ? (
+          <button type="button" className="secondary-button no-print" title={printTitle} onClick={() => window.print()}>
+            <Printer size={16} />
+            Print
+          </button>
+        ) : null}
       </div>
 
       {/* Tier-list: drag criteria into importance tiers; the ranking re-sorts on each
@@ -163,7 +165,7 @@ export function RankingView(props: {
       {tiers && rankingRun ? (
         <>
           <p className="criteria-head-title no-print">
-            This ranking weighs {rankingRun.dimensions.length} criteria
+            {rankingRun.dimensions.length} available criteria
           </p>
           {/* Tier list + the always-visible description side by side: the description
               sits to the RIGHT of the tiers (not below, where it scrolled out of
@@ -207,18 +209,20 @@ export function RankingView(props: {
         </>
       ) : null}
 
-      {candidates.length === 0 ? (
+      {!hasWeightedCriteria ? (
+        <div className="ranking-priorities-notice" role="status">
+          <strong>Choose criteria to rank applicants</strong>
+          <p>
+            Move at least one criterion from Ignore into an importance tier to choose
+            what matters.
+          </p>
+        </div>
+      ) : candidates.length === 0 ? (
         <div className="empty-state">
           <p>No scored candidates to rank yet. Run scoring first.</p>
         </div>
       ) : (
         <>
-        {!hasWeightedCriteria ? (
-          <p className="panel-hint">
-            Applicants are unranked. Move at least one criterion into an importance tier
-            to choose what matters. Until then, applicants are listed by name.
-          </p>
-        ) : null}
         <div className="ranking-list-toolbar no-print">
           <CandidateListSelect
             value={candidateView}

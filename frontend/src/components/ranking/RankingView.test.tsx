@@ -25,8 +25,10 @@ const unranked: RankingResponse = {
 describe("RankingView priorities", () => {
   it("shows ranks only while a member has weighted criteria", () => {
     const { rerender, container } = render(<RankingView {...props} ranking={unranked} />);
-    expect(screen.getByText("Synthetic applicant")).toBeInTheDocument();
-    expect(screen.getByText(/Applicants are unranked/)).toBeInTheDocument();
+    expect(screen.queryByText("Synthetic applicant")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Choose criteria to rank applicants");
+    expect(screen.queryAllByRole("button", { name: /Print/ })).toHaveLength(0);
+    expect(container.querySelector(".ranking-list-toolbar")).toBeNull();
     expect(container.querySelector(".ranking-rank")).toBeNull();
     expect(container.querySelector(".fit-band")).toBeNull();
 
@@ -36,11 +38,16 @@ describe("RankingView priorities", () => {
     };
     rerender(<RankingView {...props} ranking={weighted} />);
     expect(screen.getByText("#1")).toBeInTheDocument();
+    expect(screen.getByText("Synthetic applicant")).toBeInTheDocument();
     expect(screen.getByText("Strong fit")).toBeInTheDocument();
-    expect(screen.queryByText(/Applicants are unranked/)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Print/ })).toHaveLength(2);
+    expect(container.querySelector(".ranking-list-toolbar")).not.toBeNull();
 
     rerender(<RankingView {...props} ranking={unranked} />);
     expect(container.querySelector(".ranking-rank")).toBeNull();
     expect(container.querySelector(".fit-band")).toBeNull();
+    expect(screen.queryByText("Synthetic applicant")).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /Print/ })).toHaveLength(0);
   });
 });

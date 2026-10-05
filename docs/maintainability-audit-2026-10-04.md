@@ -399,8 +399,9 @@ references so dormant entrypoint paths receive coverage.
 
 D01 is approved. Remove the all-Ignore uniform-weight fallback. Criteria remain at zero
 until placed in a working tier. With no positive criterion, return absent rank, aggregate fit,
-and fit band, and list applicants alphabetically rather than presenting a merit order. The
-browser and print output hide ranking numbers/bands and explain how to choose priorities.
+and fit band. The Ranking tab keeps criteria controls and a persistent notification box,
+but hides applicants, the View selector, and both Print buttons. Applications remains the
+general review surface; the notice focuses only on choosing priorities.
 Selecting a criterion starts ranking; clearing all working tiers restores the unranked state.
 
 Preserve cached scores, their evidence and provenance, favourites, shortlist membership,
@@ -427,7 +428,7 @@ because tied fits share the first candidate's band, every candidate receives “
 All criterion impacts are zero, although the underlying score explanations remain stored.
 The `1.0` fallback supplies an initial equal-weight ranking before members choose priorities.
 
-Resolved: the user approved zero weights and an explicit unranked state, hiding rank numbers
+Resolved: the user approved zero weights and an explicit unranked state, hiding the ranking list, View/Print controls, rank numbers,
 and fit bands until at least one criterion has positive weight. All-Ignore means that no
 criterion influences ranking. Implement this under M15; stored AI scores remain available.
 
@@ -554,7 +555,7 @@ approval request; pushes and production changes retain their separate authorizat
 ## Implementation results
 
 - M15: implemented zero-weight defaults and nullable rank/fit/band fields; unranked applicants
-  appear alphabetically with explicit guidance. Choosing and clearing priorities is covered
+  are hidden in Ranking with a persistent priorities notice and no View/Print controls. Choosing and clearing priorities is covered
   in domain, HTTP, and UI regressions. Stored scores and weighted math remain intact.
   Checks: 878 backend tests, 227 frontend tests, Ruff, ESLint, and production build passed.
 - M01–M14: pending implementation. Validation results and commit IDs will be recorded as each
