@@ -88,7 +88,7 @@ export function useApplicantPersistence(
   } = persistence;
 
   const api = useMemo(() => publicApi.createApi(identityClient({ kind: "applicant", id: applicationId })), [applicationId]);
-  const { fetchPendingCopy, reconcilePendingCopy: reconcilePendingCopyRequest } = api;
+  const { reconcilePendingCopy: reconcilePendingCopyRequest } = api;
 
   const stateRef = useRef(persistence);
   stateRef.current = persistence;
@@ -320,12 +320,14 @@ export function useApplicantPersistence(
       savedAnswers: snapshot,
       phase: "idle",
     });
-    await restorePendingCopy();
+    await restorePendingCopy(body.applicationId);
   }
 
-  async function restorePendingCopy(): Promise<void> {
+  async function restorePendingCopy(acceptedApplicationId = applicationId): Promise<void> {
+    if (acceptedApplicationId === null) return;
     const isCurrent = pendingCopyReads.begin();
-    const response = await fetchPendingCopy().catch(() => null);
+    const restoredApi = publicApi.createApi(identityClient({ kind: "applicant", id: acceptedApplicationId }));
+    const response = await restoredApi.fetchPendingCopy().catch(() => null);
     if (!isCurrent()) return;
     if (response === null) {
       updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
@@ -514,6 +516,7 @@ export function useApplicantPersistence(
   }
 
   function markSessionChanged() {
+    if (stateRef.current.phase === "session_expired") return;
     endSessionWork();
     updatePersistence({ message: "Your session changed. Your answers are still here; sign in to the original application to continue.", phase: "session_expired" });
   }

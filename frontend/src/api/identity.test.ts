@@ -23,7 +23,7 @@ it("captures identity in delayed callbacks and lets independent requests run in 
   await saving;
 });
 
-it("binds bodyless withdrawal to the captured application and reports mismatch once", async () => {
+it("binds withdrawal to its captured identity and reports every mismatched action", async () => {
   const changed = vi.fn();
   window.addEventListener("penta-session-changed", changed);
   const fetch = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ code: "session_changed" }, { status: 409 })));
@@ -36,7 +36,7 @@ it("binds bodyless withdrawal to the captured application and reports mismatch o
     expect((await api.withdrawApplication()).status).toBe(409);
     await api.withdrawApplication();
     expect(new Headers(fetch.mock.calls[0][1].headers).get("X-Penta-Identity")).toBe("applicant:7");
-    expect(changed).toHaveBeenCalledOnce();
+    expect(changed).toHaveBeenCalledTimes(2);
     expect((changed.mock.calls[0][0] as CustomEvent).detail).toEqual({ kind: "applicant", reason: "mismatch" });
   } finally { window.removeEventListener("penta-session-changed", changed); }
 });

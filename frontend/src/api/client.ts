@@ -26,15 +26,13 @@ export function signalSessionChange(kind: RequestIdentity["kind"], reason: "cred
 export function identityClient(identity: RequestIdentity): ApiClient {
   const { kind, id } = identity;
   const expected = `${kind}:${id ?? "none"}`;
-  let mismatchReported = false;
   async function boundRequest(path: string, init: RequestInit = {}, timeoutMs = ACTION_REQUEST_TIMEOUT_MS, streaming = false) {
     const headers = new Headers(init.headers);
     headers.set("X-Penta-Identity", expected);
     const response = await fetchResponse(path, { ...init, headers }, timeoutMs, streaming);
     if (response.status === 409) {
       const body = await response.clone().json().catch(() => null);
-      if (body?.code === "session_changed" && !mismatchReported) {
-        mismatchReported = true;
+      if (body?.code === "session_changed") {
         signalSessionChange(kind, "mismatch");
       }
     }

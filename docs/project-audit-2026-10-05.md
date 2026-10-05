@@ -252,26 +252,20 @@ no-household decision, ordinary active candidates, and bounded query counts acro
   “configuration used” detail could help operators. This is optional presentation, not a missing
   persisted record or a reason to remove the capture.
 
-## Product discussion: older consumed findings after resubmission
+## Approved policy: older consumed findings after resubmission
 
-A characterization probe confirmed that changing submitted content leaves the previously selected
-screening flags active until screening consumes a new result. The cache correctly misses for
-changed evidence, but selection readers do not independently label that result as belonging to
-older input. Override staleness compares finding categories, not submission/input freshness.
-
-This is separate from F03/F04 and is not counted as an additional unqualified defect: retaining
-last-consumed output can be an intentional eventual-consistency policy. My recommendation is to
-label earlier-submission output immediately, preserve history, and keep model work explicit.
-Before implementing a stronger change, decide whether old flags should continue gating the active
-pool until Screen, or become unknown pending fresh screening. Do not automatically rerun AI,
-recalculate ages on birthdays, or clear human overrides as an incidental fix.
+Keep the last consumed findings active until the committee explicitly runs Screen again.
+The amber workflow indicator is the freshness signal; do not add applicant-level labels,
+identify which applicant triggered staleness, or introduce additional input metadata for display.
+Preserve history and human overrides, keep ages frozen at submission time, and do not automatically
+rerun AI. This is intentional eventual consistency, separate from F03/F04.
 
 ## Implementation packages
 
 1. **Applicant identity/recovery:** F01/F02, real-factory boundary tests, paused-page read suppression,
    and proportional API ownership cleanup.
 2. **Cached-result applicability and lifetime:** F03/F04, migration/provenance verification and
-   zero-cost screening adoption. Resolve the stale-output presentation policy before expanding it.
+   zero-cost screening adoption, preserving the approved amber-only freshness policy.
 3. **Administrative commit authority:** F05 across shared/admin mutations, using the existing guard.
 4. **Proposal intent and acknowledgement:** F06 frontend recovery plus narrow server operations.
 5. **Opening summaries:** F07 expiry semantics and the measured query cleanup in one owner.
@@ -331,3 +325,10 @@ I would leave these alone:
   outbound email was needed. Findings use synthetic data, source evidence and real local plumbing.
 - This is not an assertion of exhaustive bug absence or production latency. Query counts and
   control-flow reproductions are evidence; implementation still needs regressions that prove fixes.
+
+## Implementation progress
+
+- F01/F02: restored-app follow-ups use the accepted identity immediately; mismatch events remain
+  repeatable and the lifecycle owner deduplicates an already-paused session. Committee intake
+  polling pauses with the workspace. Real request-boundary regressions cover startup, a linked
+  account switch, and two mismatch/recovery cycles. Frontend build, lint and all 275 tests passed.

@@ -235,6 +235,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
   // Refresh the lightweight list/dashboard reads while this page is visible and whenever
   // the member returns to it, so new or edited applications appear without a reload.
   useEffect(() => {
+    if (sessionChanged) return;
     let refreshInFlight = false;
     const refreshIntake = () => {
       if (document.visibilityState !== "visible" || refreshInFlight) return;
@@ -251,7 +252,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
       window.removeEventListener("focus", refreshIntake);
       document.removeEventListener("visibilitychange", refreshIntake);
     };
-  }, [refreshDashboard, reloadApplications]);
+  }, [sessionChanged, refreshDashboard, reloadApplications]);
 
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the
