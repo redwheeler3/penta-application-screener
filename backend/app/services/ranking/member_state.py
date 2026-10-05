@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager
 
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Analysis, MemberRanking, User
-from app.services.ranking.dimensions import current_dimension_report
+from app.services.ranking.dimensions import alias_map, current_dimension_report
+from app.services.ranking.identity import transfer_merged_tiers
 
 
-def get_or_create_member_ranking(
+def get_or_reconcile_member_ranking(
     db: Session, analysis: Analysis, user: User, *, commit: bool = True
 ) -> MemberRanking:
     """This member's view of ``analysis``. Named ``get_or_create`` because it WRITES when
@@ -26,6 +27,20 @@ def get_or_create_member_ranking(
     )
     existing = db.scalar(lookup)
     if existing is not None:
+        aliases = alias_map(db)
+        if transfer_merged_tiers(stored_tiers(existing), aliases) != stored_tiers(existing):
+            lock_member_state(db, existing)
+            state = dict(existing.run_state or {})
+            state["tiers"] = transfer_merged_tiers(stored_tiers(existing), aliases)
+            state["new_dimension_keys"] = [
+                key for key in state.get("new_dimension_keys", []) if key not in aliases
+            ]
+            state["acknowledged_requested_keys"] = sorted({
+                aliases.get(key, key) for key in state.get("acknowledged_requested_keys", [])
+            })
+            existing.run_state = state
+            if commit:
+                db.commit()
         return existing
 
     report = current_dimension_report(analysis)
@@ -68,12 +83,12 @@ def get_or_create_member_ranking(
         existing = db.scalar(lookup)
         if existing is None:
             raise
-        return existing
+        return get_or_reconcile_member_ranking(db, analysis, user)
     db.refresh(member_ranking)
     return member_ranking
 
 
-def _lock_member_state(db: Session, member_ranking: MemberRanking) -> None:
+def lock_member_state(db: Session, member_ranking: MemberRanking) -> None:
     """Reload JSON under the writer lock before merging independently editable fields."""
     db.execute(update(MemberRanking).where(MemberRanking.id == member_ranking.id)
         .values(run_state=MemberRanking.run_state, updated_at=MemberRanking.updated_at)
@@ -132,7 +147,7 @@ def set_proposals(
     """
     if proposed_dimensions is None:
         return member_ranking
-    _lock_member_state(db, member_ranking)
+    lock_member_state(db, member_ranking)
     # Trim blanks/whitespace and dedupe while preserving order.
     seen: set[str] = set()
     cleaned: list[str] = []
@@ -219,14 +234,16 @@ def tier_history(
         select(MemberRanking)
         .where(MemberRanking.user_id == user.id, Analysis.opening_id == opening_id)
         .join(Analysis)
+        .options(contains_eager(MemberRanking.analysis))
         .order_by(Analysis.id.desc())
     ).all()
+    aliases = alias_map(db)
     scaffold: list[dict] = []
     most_recent_tier_by_key: dict[str, str] = {}
     # Newest analysis first: the first tier we see for a key is its most-recent one.
     # Scaffold from the member's newest ranking that has working tiers.
     for ranking in rankings:
-        tiers = stored_tiers(ranking)
+        tiers = transfer_merged_tiers(stored_tiers(ranking), aliases)
         if not scaffold and tiers:
             scaffold = [
                 {"id": t["id"], "label": t["label"], "dimension_keys": []} for t in tiers
@@ -242,8 +259,9 @@ def tier_history(
         report = current_dimension_report(ranking.analysis)
         if report is not None:
             for dim in report.dimensions:
-                if dim.key not in placed:
-                    most_recent_tier_by_key.setdefault(dim.key, IGNORE_TIER_ID)
+                key = aliases.get(dim.key, dim.key)
+                if key not in placed:
+                    most_recent_tier_by_key.setdefault(key, IGNORE_TIER_ID)
     return scaffold, most_recent_tier_by_key
 
 
@@ -262,13 +280,15 @@ def _immediately_prior_keys(
             Analysis.opening_id == opening_id,
         )
         .join(Analysis)
+        .options(contains_eager(MemberRanking.analysis))
         .order_by(Analysis.id.desc())
         .limit(1)
     )
     if prior is None:
         return set()
     report = current_dimension_report(prior.analysis)
-    return {d.key for d in report.dimensions} if report is not None else set()
+    aliases = alias_map(db)
+    return {aliases.get(d.key, d.key) for d in report.dimensions} if report is not None else set()
 
 
 def revived_flag_keys(db: Session, member_ranking: MemberRanking) -> list[str]:
@@ -436,7 +456,7 @@ def set_tiers(
     newly-arrived); the member dismisses it with the ✕ when they have taken it in. Only
     re-discovery / carry-forward re-flags.
     """
-    _lock_member_state(db, member_ranking)
+    lock_member_state(db, member_ranking)
     report = current_dimension_report(member_ranking.analysis)
     valid_keys = {d.key for d in report.dimensions} if report is not None else set()
     for tier in tier_layout:

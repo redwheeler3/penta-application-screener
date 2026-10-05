@@ -259,7 +259,7 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
         create_analysis,
     )
     from app.services.ranking.member_state import (
-        get_or_create_member_ranking,
+        get_or_reconcile_member_ranking,
         kept_keys,
         set_tiers,
     )
@@ -273,7 +273,7 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
                       definition="bookkeeping", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
     analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None)
-    mr = get_or_create_member_ranking(db, analysis, user)
+    mr = get_or_reconcile_member_ranking(db, analysis, user)
     # The committee places ONLY the key that will be merged away into a working tier —
     # the survivor sits in Ignore (unplaced).
     set_tiers(db, mr, [{"id": "tier-s", "label": "Critical",
@@ -305,7 +305,7 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
         create_analysis,
     )
     from app.services.ranking.member_state import (
-        get_or_create_member_ranking,
+        get_or_reconcile_member_ranking,
     )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
@@ -318,7 +318,7 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
         ])
         analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()),
                                    narrative=None)
-        mr = get_or_create_member_ranking(db, analysis, user)
+        mr = get_or_reconcile_member_ranking(db, analysis, user)
         apply_consolidation(
             db, analysis, mr,
             merges={"financial_stewardship": "financial_literacy"},
@@ -351,7 +351,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
         create_analysis,
     )
     from app.services.ranking.member_state import (
-        get_or_create_member_ranking,
+        get_or_reconcile_member_ranking,
         kept_keys,
         set_tiers,
     )
@@ -364,7 +364,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
         PoolDimension(key="c_newest", name="C", definition="d", high_end="high", low_end="low", why_it_differentiates="v"),
     ])
     analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report, inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None)
-    mr = get_or_create_member_ranking(db, analysis, user)
+    mr = get_or_reconcile_member_ranking(db, analysis, user)
     # Place ONLY the innermost link C in a working tier; A and B sit in Ignore.
     set_tiers(db, mr, [{"id": "tier-s", "label": "Critical", "dimension_keys": ["c_newest"]}])
 
@@ -404,7 +404,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
     )
     from app.services.ranking.member_state import (
         dimension_weights,
-        get_or_create_member_ranking,
+        get_or_reconcile_member_ranking,
     )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
@@ -442,7 +442,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
         ]),
         inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None,
     )
-    mr2 = get_or_create_member_ranking(db, analysis2, user)
+    mr2 = get_or_reconcile_member_ranking(db, analysis2, user)
 
     apply_consolidation(
         db, analysis2, mr2,
@@ -562,7 +562,7 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
         key_history,
     )
     from app.services.ranking.member_state import (
-        get_or_create_member_ranking,
+        get_or_reconcile_member_ranking,
     )
 
     _app, db, _ = setup_app(role=UserRole.MEMBER)
@@ -582,7 +582,7 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
     analysis2 = create_analysis(db, user=user, opening_id=current_opening_id(db), report=PoolDimensionReport(dimensions=[
         _dim("licensed_trade", narrow), _dim("hands_on_trade", broad),
     ]), inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), AppSettings()), narrative=None)
-    mr2 = get_or_create_member_ranking(db, analysis2, user)
+    mr2 = get_or_reconcile_member_ranking(db, analysis2, user)
     apply_consolidation(
         db, analysis2, mr2,
         merges={"hands_on_trade": "licensed_trade"},

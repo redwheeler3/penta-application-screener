@@ -21,7 +21,7 @@ from app.db.models import (
 from app.schemas.settings import EligibilityRules
 from app.services.eligibility.rules import save_member_rules
 from app.services.ranking.member_state import (
-    get_or_create_member_ranking,
+    get_or_reconcile_member_ranking,
     set_proposals,
     set_tiers,
 )
@@ -53,7 +53,7 @@ def seed(engine):
 def test_stale_member_snapshots_preserve_independent_writes(proposals_first):
     factory, (user_id, _opening_id, analysis_id) = seed(memory_engine())
     with factory() as db:
-        member_id = get_or_create_member_ranking(db, db.get(Analysis, analysis_id), db.get(User, user_id)).id
+        member_id = get_or_reconcile_member_ranking(db, db.get(Analysis, analysis_id), db.get(User, user_id)).id
     with factory() as proposals, factory() as tiers:
         p = proposals.get(MemberRanking, member_id)
         t = tiers.get(MemberRanking, member_id)
@@ -78,7 +78,7 @@ def test_rank_cannot_start_between_policy_check_and_member_save(tmp_path, existi
     try:
         if existing_view:
             with factory() as db:
-                get_or_create_member_ranking(db, db.get(Analysis, analysis_id), db.get(User, user_id))
+                get_or_reconcile_member_ranking(db, db.get(Analysis, analysis_id), db.get(User, user_id))
         with factory() as editor:
             view = _require_viewed_analysis(editor, opening_id, analysis_id, editor.get(User, user_id))
             with factory() as rank:

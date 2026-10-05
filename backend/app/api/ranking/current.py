@@ -33,7 +33,7 @@ from app.services.ranking.audit import (
 )
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
-    get_or_create_member_ranking,
+    get_or_reconcile_member_ranking,
 )
 
 router = APIRouter()
@@ -51,7 +51,7 @@ def current(
     analysis = get_current_analysis(db, resolve_visible_opening_id(db, opening_id))
     if analysis is None or current_dimension_report(analysis) is None:
         return None
-    return run_payload(db, get_or_create_member_ranking(db, analysis, user))
+    return run_payload(db, get_or_reconcile_member_ranking(db, analysis, user))
 
 
 @router.get("/current/match-audit", response_model=MatchAuditResponse | None)

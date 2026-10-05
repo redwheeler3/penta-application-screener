@@ -53,7 +53,7 @@ from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.identity import adopt_matched_keys
 from app.services.ranking.member_state import (
     carry_forward_layout,
-    get_or_create_member_ranking,
+    get_or_reconcile_member_ranking,
     tier_history,
 )
 from app.services.run_lock import RunLeaseLost
@@ -280,7 +280,7 @@ def _stream_criteria(
             fan_out_audit=work.fan_out_audit,
             decompose_audit=work.decompose_audit,
         )
-        member_ranking = get_or_create_member_ranking(db, analysis, user)
+        member_ranking = get_or_reconcile_member_ranking(db, analysis, user)
     except (WorkCancelled, RunLeaseLost):
         raise
     except Exception as error:

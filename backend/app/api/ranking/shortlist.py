@@ -7,7 +7,7 @@ scores for the current analysis, weight by the member's tier placement, hand fla
 re-sorted list in the same round-trip; seeds take effect on the next ``/ranking/run``.
 
 Every endpoint here resolves the current shared ``Analysis`` plus the signed-in member's view
-of it (``get_or_create_member_ranking``), so a member sees and edits their own tiering over the
+of it (``get_or_reconcile_member_ranking``), so a member sees and edits their own tiering over the
 shared dimensions. Tier/seed saves carry the viewed ``analysisId`` and are rejected with
 ``409 stale_analysis`` if it isn't current, protecting concurrent members from writing to a
 superseded analysis.
@@ -35,7 +35,7 @@ from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
     display_tiers,
-    get_or_create_member_ranking,
+    get_or_reconcile_member_ranking,
     proposed_dimensions,
     set_proposals,
     set_tiers,
@@ -53,7 +53,7 @@ def _current_member_view(
     analysis = get_current_analysis(db, opening_id)
     if analysis is None or current_dimension_report(analysis) is None:
         raise Problem("run_required", detail=f"Discover patterns before {action}.")
-    return get_or_create_member_ranking(db, analysis, user)
+    return get_or_reconcile_member_ranking(db, analysis, user)
 
 
 def _require_viewed_analysis(
@@ -83,7 +83,7 @@ def _require_viewed_analysis(
             "stale_analysis",
             detail="This ranking was refreshed by another member. Reload to see the new criteria.",
         )
-    return get_or_create_member_ranking(db, current, user, commit=False)
+    return get_or_reconcile_member_ranking(db, current, user, commit=False)
 
 
 

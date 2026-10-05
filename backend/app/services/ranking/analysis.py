@@ -16,12 +16,13 @@ from app.db.models import (
 )
 from app.schemas.settings import AppSettings
 from app.services.applications.scope import opening_ai_applications
-from app.services.ranking.dimensions import current_dimension_report
+from app.services.ranking.dimensions import alias_map, current_dimension_report
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.identity import flatten_merges, transfer_merged_tiers
 from app.services.ranking.member_state import (
     IGNORE_TIER_ID,
     default_tier_layout,
+    lock_member_state,
     proposed_dimensions,
     tier_history,
 )
@@ -119,13 +120,10 @@ def apply_consolidation(
       - **Shared** (on ``analysis``): persist a ``DimensionAlias`` row per merge (so future
         matches adopt the canonical key), drop the loser from ``dimension_report``, and record
         the ``consolidate`` audit. These are true for everyone.
-      - **Per-member tier transfer** (on ``member_ranking``, the member who ran this Rank): the
-        loser's tier placement moves to the survivor so the member's "Critical" placement on a
-        dropped twin doesn't vanish. Only the triggering member is reconciled inline — every
-        OTHER member heals through the one carry-forward path when they next open the analysis
-        (``get_or_create_member_ranking``), which keys on dimension keys, so a merged-away
-        loser simply resolves to the survivor's placement. (No AI in either path; the model
-        call already happened.)
+      - **Per-member tier transfer**: move the triggering member's placement inline.
+        Other existing views reconcile aliases under their member-state lock on read;
+        future views inherit canonicalized personal history. Each survivor takes that
+        member's own highest-priority placement, never another member's judgment.
 
     A merge can also heal a CROSS-RUN fork, where the surviving ``keep`` is a PRIOR-analysis
     key that never appeared in THIS one (only the newer ``drop`` twin surfaced; the
@@ -137,6 +135,8 @@ def apply_consolidation(
     tiers (never stored). Always records the ``consolidate`` audit (even with zero merges — the
     pass ran), for Observability. The pass's cost lands in the run cost ledger, not here.
     """
+    lock_member_state(db, member_ranking)
+    db.refresh(analysis)
     report_json = dict(analysis.dimension_report or {})
     state = dict(member_ranking.run_state or {})
 
@@ -263,18 +263,6 @@ def get_latest_analysis(db: Session) -> Analysis | None:
     return db.scalar(select(Analysis).order_by(Analysis.id.desc()).limit(1))
 
 
-
-def alias_map(db: Session) -> dict[str, str]:
-    """Every consolidation alias, resolved to its TERMINAL canonical key.
-
-    Follows chains (A→B, B→C ⇒ A→C, B→C) so a later merge of a canonical key forwards
-    the aliases already pointing at it. The post-score consolidation pass writes these;
-    the match input resolves through them so a re-minted duplicate re-adopts the
-    canonical key. Cycles (shouldn't occur — merges always point newer→older) are broken
-    defensively by capping the walk.
-    """
-    direct = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
-    return flatten_merges(direct)
 
 
 def key_history(db: Session) -> tuple[dict[str, int], dict[str, str], dict[str, str]]:

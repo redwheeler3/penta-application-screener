@@ -9,7 +9,7 @@ from app.ai.pricing import MeasuredProvider
 from app.ai.score_vectors import load_score_vectors
 from app.db.models import Analysis, ApplicationAIResult, User, UserRole
 from app.schemas.settings import AppSettings
-from app.services.ranking.member_state import get_or_create_member_ranking
+from app.services.ranking.member_state import get_or_reconcile_member_ranking
 from app.services.ranking.pipeline import _stream_consolidate
 from tests.application_support import current_opening_id
 from tests.db_support import add_selected_result, memory_session
@@ -72,7 +72,7 @@ def test_consolidation_reads_scores_on_the_request_thread():
     analysis = Analysis(dimension_report=a_pattern_report().model_dump(mode="json"), opening_id=current_opening_id(db))
     db.add(analysis)
     db.commit()
-    member = get_or_create_member_ranking(db, analysis, user)
+    member = get_or_reconcile_member_ranking(db, analysis, user)
     request_thread = get_ident()
     score_read_threads = []
 

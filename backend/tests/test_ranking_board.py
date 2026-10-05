@@ -10,7 +10,7 @@ from app.db.models import Analysis, ApplicationAIResult, User, UserRole
 from app.schemas.settings import AppSettings
 from app.services.ranking.analysis import create_analysis
 from app.services.ranking.freshness import rank_inputs_fingerprint
-from app.services.ranking.member_state import get_or_create_member_ranking
+from app.services.ranking.member_state import get_or_reconcile_member_ranking
 from tests.application_support import current_opening_id
 from tests.db_support import add_selected_result
 from tests.ranking_support import (
@@ -72,12 +72,12 @@ def test_competing_first_reads_return_the_same_member_ranking() -> None:
 
         @event.listens_for(first, "before_flush", once=True)
         def competing_read(_session, _context, _instances):
-            winner = get_or_create_member_ranking(
+            winner = get_or_reconcile_member_ranking(
                 second, second.get(Analysis, analysis_id), second.get(User, other_id),
             )
             winner_ids.append(winner.id)
 
-        result = get_or_create_member_ranking(
+        result = get_or_reconcile_member_ranking(
             first, first.get(Analysis, analysis_id), first.get(User, other_id),
         )
         assert result.id == winner_ids[0]

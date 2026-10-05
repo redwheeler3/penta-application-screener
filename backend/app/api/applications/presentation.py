@@ -59,7 +59,7 @@ from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
     dimension_weights,
-    get_or_create_member_ranking,
+    get_or_reconcile_member_ranking,
 )
 from app.services.ranking.view import (
     candidate_scores,
@@ -359,7 +359,7 @@ def _dimension_scores(
     """
     if report is None:
         return None
-    member_ranking = get_or_create_member_ranking(db, analysis, user)
+    member_ranking = get_or_reconcile_member_ranking(db, analysis, user)
 
     weights = dimension_weights(member_ranking, report=report)
     if not any(weight > 0 for weight in weights.values()):
