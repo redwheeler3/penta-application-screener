@@ -326,7 +326,7 @@ def stage_result(
     """
     call_cost = cost_usd(result.model_id, result.usage)
     record = ApplicationAIResult(
-        application_id=application.id,
+        producer_application_id=application.id,
         kind=kind,
         cache_key=result_cache_key,
         model_id=result.model_id,

@@ -48,7 +48,7 @@ def _due_application(db) -> Application:
     db.add_all(
         [
             ApplicationAIResult(
-                application_id=application.id,
+                producer_application_id=application.id,
                 kind="screening",
                 cache_key="synthetic-cache-key",
                 model_id="synthetic-model",

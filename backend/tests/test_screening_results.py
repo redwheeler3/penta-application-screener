@@ -22,23 +22,23 @@ def test_selected_results_are_scoped_by_consumer_and_kind() -> None:
         db.flush()
         now = datetime.now(UTC)
         old = ApplicationAIResult(
-            application_id=applications[0].id, kind="screening", cache_key="old",
+            producer_application_id=applications[0].id, kind="screening", cache_key="old",
             model_id="mock", prompt_version="test", created_at=now - timedelta(seconds=1), output={},
         )
         first = ApplicationAIResult(
-            application_id=applications[0].id, kind="screening", cache_key="first",
+            producer_application_id=applications[0].id, kind="screening", cache_key="first",
             model_id="mock", prompt_version="test", created_at=now, output={},
         )
         latest = ApplicationAIResult(
-            application_id=applications[0].id, kind="screening", cache_key="latest",
+            producer_application_id=applications[0].id, kind="screening", cache_key="latest",
             model_id="mock", prompt_version="test", created_at=now, output={},
         )
         unrelated = ApplicationAIResult(
-            application_id=applications[1].id, kind="screening", cache_key="unrelated",
+            producer_application_id=applications[1].id, kind="screening", cache_key="unrelated",
             model_id="mock", prompt_version="test", created_at=now, output={},
         )
         other_pass = ApplicationAIResult(
-            application_id=applications[0].id, kind="dimension_scoring:x", cache_key="other",
+            producer_application_id=applications[0].id, kind="dimension_scoring:x", cache_key="other",
             model_id="mock", prompt_version="test", created_at=now + timedelta(seconds=1), output={},
         )
         db.add_all([old, first, latest, unrelated, other_pass])
@@ -58,12 +58,12 @@ def test_flags_and_pets_share_one_query_and_never_reuse_older_pet_facts() -> Non
         now = datetime.now(UTC)
         rows = [
             ApplicationAIResult(
-                application_id=application.id, kind="screening", cache_key="pets",
+                producer_application_id=application.id, kind="screening", cache_key="pets",
                 model_id="mock", prompt_version="test", created_at=now - timedelta(seconds=1),
                 output={"flags": [], "pets": {"dogs": 2, "cats": 0, "other_pets": []}},
             ),
             ApplicationAIResult(
-                application_id=application.id, kind="screening", cache_key="flags",
+                producer_application_id=application.id, kind="screening", cache_key="flags",
                 model_id="mock", prompt_version="test", created_at=now,
                 output={"flags": [{"category": "fake_contact"}]},
             ),
@@ -90,7 +90,7 @@ def test_clean_screening_preserves_zero_pet_counts_and_empty_flags() -> None:
         db.add(application)
         db.flush()
         add_selected_result(db, ApplicationAIResult(
-            application_id=application.id, kind="screening", cache_key="clean",
+            producer_application_id=application.id, kind="screening", cache_key="clean",
             model_id="mock", prompt_version="test",
             output={"flags": [], "pets": {"dogs": 0, "cats": 0, "other_pets": []}},
         ))

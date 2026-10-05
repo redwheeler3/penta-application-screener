@@ -431,3 +431,26 @@ async def test_estimate_reports_cap_and_within_cap() -> None:
     assert body["toAnalyze"] == 1
     assert body["capUsd"] == 2.0
     assert body["withinCap"] is True
+
+
+@pytest.mark.anyio
+async def test_cached_new_consumer_can_explicitly_screen_without_provider_work():
+    from app.db.models import ApplicationAISelection
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    producer = add_eligible(db, email="producer@example.test", raw_hash="shared")
+    provider.queue(ScreeningReport(flags=[]))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await run_and_summarize(client)
+        consumer = add_eligible(db, email="consumer@example.test", raw_hash="shared")
+        estimate = (await client.get("/screening/run/estimate")).json()
+        assert estimate["toAnalyze"] == 0
+        assert estimate["cachedToRefresh"] == 1
+        assert estimate["estimatedUsd"] == 0
+        summary = await run_and_summarize(client)
+        assert summary["analyzed"] == 0
+        assert summary["totalCostUsd"] == 0
+        assert len(provider.calls) == 1
+        selected = db.get(ApplicationAISelection, (consumer.id, "screening"))
+        assert selected.result_id == db.get(ApplicationAISelection, (producer.id, "screening")).result_id
+        assert (await client.post("/screening/run")).status_code == 409

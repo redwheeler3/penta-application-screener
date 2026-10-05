@@ -31,7 +31,7 @@ def test_score_read_uses_one_query_and_ignores_newer_unselected_history(dimensio
                 (now - timedelta(days=1), -0.9), (now, 0.2), (now, 0.8),
             ]):
                 row = ApplicationAIResult(
-                    application_id=application.id, kind=f"dimension_scoring:{dimension.key}",
+                    producer_application_id=application.id, kind=f"dimension_scoring:{dimension.key}",
                     cache_key=f"{application.id}-{dimension.key}-{version}", model_id="synthetic",
                     prompt_version="test", created_at=created_at,
                     output={"score": score, "confidence": "high", "rationale": "Synthetic", "evidence": "Example"},

@@ -63,7 +63,7 @@ def load_score_vectors(db: Session) -> dict[str, dict[int, float]]:
         select(
             ApplicationAIResult.id,
             ApplicationAIResult.kind,
-            ApplicationAIResult.application_id,
+            ApplicationAIResult.producer_application_id,
             ApplicationAIResult.output,
             func.first_value(ApplicationAIResult.created_at).over(**first_seen_order).label("first_seen_at"),
             func.first_value(ApplicationAIResult.id).over(**first_seen_order).label("first_seen_id"),

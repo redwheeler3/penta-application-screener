@@ -23,14 +23,14 @@ def test_current_vectors_preserve_history_values_and_nomination_order():
     for key in ("z_first", "a_second", "m_third"):
         for applicant_id in range(1, 5):
             for version in range(10):
-                add_selected_result(db, ApplicationAIResult(application_id=applicant_id, kind=f"dimension_scoring:{key}",
+                add_selected_result(db, ApplicationAIResult(producer_application_id=applicant_id, kind=f"dimension_scoring:{key}",
                     cache_key=f"synthetic-{key}-{applicant_id}-{version}", model_id="synthetic", prompt_version="test",
                     created_at=now + timedelta(seconds=version), output={"score": applicant_id * (version + 1) / 100},
                     narrative="Synthetic history that is not needed for vectors"))
     db.commit()
     previous = {}
     for row in db.scalars(select(ApplicationAIResult).order_by(ApplicationAIResult.created_at, ApplicationAIResult.id)):
-        previous.setdefault(row.kind.split(":", 1)[1], {})[row.application_id] = float(row.output["score"])
+        previous.setdefault(row.kind.split(":", 1)[1], {})[row.producer_application_id] = float(row.output["score"])
     queries = []
 
     def record_sql(_con, _cur, statement, _params, _ctx, _many):
@@ -59,7 +59,7 @@ def test_selected_vectors_ignore_other_passes():
     for index, (kind, score) in enumerate([
         ("dimension_scoring:criterion", -0.8), ("dimension_scoring:criterion", 0.6), ("screening", 0.9),
     ]):
-        add_selected_result(db, ApplicationAIResult(application_id=1, kind=kind, cache_key=f"synthetic-{index}",
+        add_selected_result(db, ApplicationAIResult(producer_application_id=1, kind=kind, cache_key=f"synthetic-{index}",
             model_id="synthetic", prompt_version="test", created_at=now, output={"score": score}))
     db.commit()
     assert load_score_vectors(db) == {"criterion": {1: 0.6}}

@@ -99,6 +99,7 @@ def estimate(
         total=int(result["total"]),
         to_analyze=int(result["to_analyze"]),
         cached=int(result["cached"]),
+        cached_to_refresh=int(result["cached_to_refresh"]),
         estimated_usd=estimated_usd,
         cap_usd=settings.ai.spending_cap_usd,
         within_cap=estimated_usd <= settings.ai.spending_cap_usd,
@@ -134,9 +135,8 @@ def run(
         applications = applications_for_screening(db, opening_id)
         estimate_result = estimate_screening(db, opening_id, settings, applications=applications)
 
-        # Block a no-op re-run: nothing uncached means every result is a cache hit
-        # reproducing identical output. Mirrors the Rank chain's pool-fingerprint gate.
-        if int(estimate_result["to_analyze"]) == 0:
+        # Cache presence alone does not mean the current applicants consumed it.
+        if estimate_result["to_analyze"] == 0 and estimate_result["cached_to_refresh"] == 0:
             raise Problem(
                 "unchanged_pool",
                 detail="Screening is already up to date for these applicants. "

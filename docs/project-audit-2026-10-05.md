@@ -332,3 +332,9 @@ I would leave these alone:
   repeatable and the lifecycle owner deduplicates an already-paused session. Committee intake
   polling pauses with the workspace. Real request-boundary regressions cover startup, a linked
   account switch, and two mismatch/recovery cycles. Frontend build, lint and all 275 tests passed.
+
+- F03/F04: producer provenance is independent of lifetime; retained selected consumers protect
+  shared output. Purge/replacement prune affected unowned results, and restore migrates before
+  deletion replay. Screen estimates distinguish cached work needing adoption and allow explicit
+  zero-cost application. Regression coverage includes deletion order, multiple consumers,
+  replaced references, historical-snapshot restore, and an actual HTTP zero-provider run.

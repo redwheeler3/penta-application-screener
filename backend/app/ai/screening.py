@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
     CostEstimate,
     PassResult,
+    cache_key,
     derive_prompt_version,
     estimate_cost,
     screen_applications,
@@ -22,7 +24,7 @@ from app.ai.applicant_facts import screening_fields
 from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 from app.ai.provider import AIProvider
 from app.ai.schemas import ScreeningReport
-from app.db.models import Application
+from app.db.models import Application, ApplicationAIResult, ApplicationAISelection
 from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.applications.content import extract_essays
 from app.services.applications.scope import opening_ai_applications
@@ -124,12 +126,20 @@ def applications_for_screening(db: Session, opening_id: int) -> list[Application
     ]
 
 
+class ScreeningCostEstimate(CostEstimate):
+    cached_to_refresh: int
+
+
 def estimate_screening(
     db: Session, opening_id: int, settings: AppSettings, *, applications: list[Application] | None = None,
-) -> CostEstimate:
-    return estimate_cost(
+) -> ScreeningCostEstimate:
+    applications = applications if applications is not None else applications_for_screening(db, opening_id)
+    model_id = settings.ai.screening_model
+    prompt_version = screening_prompt_version()
+    reasoning = effective_reasoning_effort(model_id, settings.ai.screening_reasoning_effort)
+    estimate = estimate_cost(
         db,
-        applications=applications if applications is not None else applications_for_screening(db, opening_id),
+        applications=applications,
         kind=KIND,
         model_id=settings.ai.screening_model,
         prompt_version=screening_prompt_version(),
@@ -141,6 +151,12 @@ def estimate_screening(
             settings.ai.screening_model, settings.ai.screening_reasoning_effort
         ),
     )
+    selected_keys = dict(db.execute(select(ApplicationAISelection.application_id, ApplicationAIResult.cache_key)
+        .join(ApplicationAIResult, ApplicationAIResult.id == ApplicationAISelection.result_id)
+        .where(ApplicationAISelection.kind == KIND, ApplicationAISelection.application_id.in_([app.id for app in applications]))).all())
+    consumed_current = sum(selected_keys.get(app.id) == cache_key(application=app, kind=KIND,
+        model_id=model_id, prompt_version=prompt_version, reasoning_effort=reasoning) for app in applications)
+    return {**estimate, "cached_to_refresh": estimate["cached"] - consumed_current}
 
 
 def run_screening(

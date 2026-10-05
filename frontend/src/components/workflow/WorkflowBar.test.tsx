@@ -101,3 +101,13 @@ describe("WorkflowBar archived state", () => {
     }
   });
 });
+
+
+it("offers explicit zero-cost screening adoption when only consumed references are missing", () => {
+  render(<WorkflowBar {...baseProps} aiActionsDisabled={false} screeningEstimate={{
+    total: 1, toAnalyze: 0, cached: 1, cachedToRefresh: 1, estimatedUsd: 0, capUsd: 1, withinCap: true,
+  }} />);
+  expect(screen.getByText(/Apply cached screening/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Confirm & run" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+});

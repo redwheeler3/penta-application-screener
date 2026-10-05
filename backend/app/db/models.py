@@ -853,16 +853,15 @@ class ApplicationAIResult(TimestampMixin, Base):
     reasoning + prompt version, so an unchanged application reuses the stored result
     across equivalent routes. ``model_id`` retains the route that produced it.
     ``output`` holds the validated structured-output JSON; usage/cost are kept for
-    auditability.
+    auditability. Producer identity is immutable provenance, not a lifetime FK.
+    Output survives while its producer or a selected consumer is legally retained.
     """
 
     __tablename__ = "application_ai_results"
     __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    application_id: Mapped[int] = mapped_column(
-        ForeignKey("applications.id", ondelete="CASCADE"), index=True, nullable=False
-    )
+    producer_application_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     kind: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     cache_key: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, nullable=False
@@ -882,7 +881,6 @@ class ApplicationAIResult(TimestampMixin, Base):
     output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
-    application: Mapped[Application] = relationship()
 
 
 class ApplicationAISelection(Base):

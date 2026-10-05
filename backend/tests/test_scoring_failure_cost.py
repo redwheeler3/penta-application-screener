@@ -55,7 +55,7 @@ async def test_incomplete_retries_keep_usage_and_only_successes_count_as_scored(
         assert charged["freshCalls"] == known_calls
         assert ledger["freshUsd"] == pytest.approx(expected_cost)
     assert len(provider.calls) == known_calls
-    assert db.scalar(select(ApplicationAIResult).where(ApplicationAIResult.application_id == failed_applicant.id)) is None
+    assert db.scalar(select(ApplicationAIResult).where(ApplicationAIResult.producer_application_id == failed_applicant.id)) is None
 
 
 @pytest.mark.parametrize("completed_reply", [False, True])

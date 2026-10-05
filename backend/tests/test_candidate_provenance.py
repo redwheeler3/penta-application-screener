@@ -20,7 +20,7 @@ from tests.ranking_support import (
 
 def score(application_id, key, version, *, created_at, value=0.5):
     return ApplicationAIResult(
-        application_id=application_id, kind=f"dimension_scoring:{key}", cache_key=f"{key}-{version}",
+        producer_application_id=application_id, kind=f"dimension_scoring:{key}", cache_key=f"{key}-{version}",
         model_id="synthetic-model", prompt_version=str(version), created_at=created_at,
         narrative="Synthetic unused narrative", input_tokens=10, output_tokens=20, cost_usd=0.01,
         output={"score": value, "confidence": "high", "rationale": "Synthetic", "evidence": "Example"},

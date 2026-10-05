@@ -13,6 +13,7 @@ export type Toast = {
 };
 
 export type ScreeningEstimateResponse = {
+  cachedToRefresh: number;
   total: number;
   toAnalyze: number;
   cached: number;

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from alembic import command
@@ -21,7 +21,6 @@ def test_monotonic_identity_migration_preserves_every_row_and_detaches_compariso
         ApplicantDraft,
         ApplicantDraftIntent,
         Application,
-        ApplicationAIResult,
         ApplicationAISelection,
         ApplicationCommitteeNote,
         BrowserSession,
@@ -54,10 +53,9 @@ def test_monotonic_identity_migration_preserves_every_row_and_detaches_compariso
                     reconciliation_draft_id=3, token_hash="synthetic-session", created_at=now, last_activity_at=now,
                     idle_expires_at=now + timedelta(days=1), absolute_expires_at=now + timedelta(days=2)),
                 ApplicationCommitteeNote(id=5, application_id=2, author_user_id=1, body="Synthetic note"),
-                ApplicationAIResult(id=6, application_id=2, kind="screening", cache_key="synthetic-result", model_id="synthetic",
-                    prompt_version="synthetic", output={"flags": []}, input_tokens=100, output_tokens=50, cost_usd=0.1),
             ])
             db.flush()
+            db.execute(text("INSERT INTO application_ai_results (id, application_id, kind, cache_key, model_id, prompt_version, output, input_tokens, output_tokens, cost_usd) VALUES (6, 2, 'screening', 'synthetic-result', 'synthetic', 'synthetic', '{\"flags\": []}', 100, 50, 0.1)"))
             db.add(ApplicationAISelection(application_id=2, kind="screening", result_id=6))
             db.commit()
         with engine.connect() as connection:
@@ -657,13 +655,15 @@ def test_cache_evidence_migration_preserves_proven_hits_and_uncertain_history(mo
     old_key = migration["_key"](row, "unchanged")
     if retired_route:
         row["model_id"] = "retired-provider-route"
-    result = ApplicationAIResult(application_id=application.id, cache_key=old_key, output={"flags": []},
+    result = ApplicationAIResult(producer_application_id=application.id, cache_key=old_key, output={"flags": []},
                                  cost_usd=0.123, input_tokens=100, output_tokens=50, **row)
     db.add(result)
     db.commit()
     with db.bind.begin() as connection:
+        connection.exec_driver_sql("ALTER TABLE application_ai_results RENAME COLUMN producer_application_id TO application_id")
         monkeypatch.setattr(migration["op"], "get_bind", lambda: connection)
         migration["upgrade"]()
+        connection.exec_driver_sql("ALTER TABLE application_ai_results RENAME COLUMN application_id TO producer_application_id")
     db.expire_all()
     assert result.cache_key == (old_key if ambiguous else cache_key(application=application,
         kind="screening", model_id=AppSettings().ai.screening_model, prompt_version="v"))

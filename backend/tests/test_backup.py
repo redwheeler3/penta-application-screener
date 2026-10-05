@@ -266,3 +266,43 @@ def test_sqlite_path_rejects_in_memory(tmp_path):
 
     with pytest.raises(RuntimeError, match="file-backed"):
         backup._sqlite_path(create_engine("sqlite:///:memory:"))
+
+
+def test_restore_upgrades_producer_fk_before_replaying_deletions(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from alembic.config import Config
+
+    from alembic import command
+    from app.core.config import get_settings
+    from app.db.models import RECORD_ID_FLOOR
+
+    path = tmp_path / "retained-cache.db"
+    url = f"sqlite:///{path.as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
+    engine = create_engine(url)
+    producer, consumer, result = RECORD_ID_FLOOR + 1, RECORD_ID_FLOOR + 2, RECORD_ID_FLOOR + 3
+    try:
+        command.upgrade(config, "a47e5c19b203")
+        with engine.begin() as conn:
+            for identity in (producer, consumer):
+                conn.execute(text("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized) VALUES (:id, :email, '{}', 'same', '{}')"),
+                             {"id": identity, "email": f"synthetic{identity}@example.test"})
+            conn.execute(text("INSERT INTO application_ai_results (id, application_id, kind, cache_key, model_id, prompt_version, output, input_tokens, output_tokens, cost_usd) VALUES (:id, :producer, 'screening', 'same', 'synthetic', 'v', '{\"flags\": []}', 100, 50, 0.123)"),
+                         {"id": result, "producer": producer})
+            conn.execute(text("INSERT INTO application_ai_selections (application_id, kind, result_id) VALUES (:consumer, 'screening', :result)"), {"consumer": consumer, "result": result})
+        saved = backup.create_backup(engine=engine)
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO retention_deletions (record_kind, record_id, retention_rule, due_on, deleted_at) VALUES ('application', :producer, 'one_year', '2026-10-05', '2026-10-06 12:00:00')"), {"producer": producer})
+        backup.restore_backup(saved, engine=engine)
+        with engine.connect() as conn:
+            assert conn.exec_driver_sql("SELECT producer_application_id, cost_usd FROM application_ai_results").one() == (producer, 0.123)
+            assert conn.exec_driver_sql("SELECT application_id, result_id FROM application_ai_selections").one() == (consumer, result)
+            assert conn.exec_driver_sql("SELECT id FROM applications").scalars().all() == [consumer]
+            assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()

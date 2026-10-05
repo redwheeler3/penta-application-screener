@@ -12,7 +12,7 @@ def add_selected_result(db: Session, result: ApplicationAIResult) -> Application
     """Seed an AI result that was consumed by its producer, as a real pass would do."""
     db.add(result)
     db.flush()
-    select_results(db, [(result.application_id, result.kind, result.id)])
+    select_results(db, [(result.producer_application_id, result.kind, result.id)])
     return result
 
 

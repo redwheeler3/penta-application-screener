@@ -397,7 +397,7 @@ def test_estimate_falls_back_to_earlier_prompt_version_usage() -> None:
     # A stored result from a non-current prompt version.
     db.add(
         ApplicationAIResult(
-            application_id=app.id,
+            producer_application_id=app.id,
             kind=KIND,
             cache_key="old-version-key",
             model_id=MODEL,
@@ -453,7 +453,7 @@ def test_screening_persists_the_input_cache_key_after_an_applicant_changes(monke
         max_workers=2,
     ))
     stored = db.scalar(select(ApplicationAIResult).where(
-        ApplicationAIResult.application_id == applications[1].id,
+        ApplicationAIResult.producer_application_id == applications[1].id,
     ))
     assert stored.cache_key == old_key
     assert cached_outcome(

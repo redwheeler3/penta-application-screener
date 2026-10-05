@@ -90,7 +90,7 @@ async def test_board_does_not_rank_cached_ignored_scores_as_missing_selected_sco
     user = db.scalar(select(User))
     analysis = seed_analysis(db, user, a_pattern_report())
     analysis_id = analysis.id
-    add_selected_result(db, ApplicationAIResult(application_id=application.id,
+    add_selected_result(db, ApplicationAIResult(producer_application_id=application.id,
         kind="dimension_scoring:skills_offered", cache_key="synthetic-ignored",
         model_id="synthetic", prompt_version="synthetic", output={"score": 0.8}))
     db.commit()

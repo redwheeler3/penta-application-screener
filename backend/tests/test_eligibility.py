@@ -76,7 +76,7 @@ def screen_flagged(db: Session, application_id: int) -> None:
     """Cache a screening result with a flag, so the machine verdict reads ineligible/ai."""
     add_selected_result(db,
         ApplicationAIResult(
-            application_id=application_id,
+            producer_application_id=application_id,
             kind="screening",
             cache_key=f"k-{application_id}",
             model_id="m",
@@ -93,7 +93,7 @@ def screen_pets(db: Session, application_id: int, *, dogs: int = 0, cats: int = 
     filter has facts to judge on read."""
     add_selected_result(db,
         ApplicationAIResult(
-            application_id=application_id,
+            producer_application_id=application_id,
             kind="screening",
             cache_key=f"pets-{application_id}",
             model_id="m",

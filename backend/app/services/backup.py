@@ -24,11 +24,13 @@ from tempfile import NamedTemporaryFile
 
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.orm import Session
 
 from alembic import command
 from app.core.time import as_utc
 from app.db.models import RECORD_ID_FLOOR
 from app.db.session import engine as default_engine
+from app.services.applications.result_retention import prune_unowned_results
 
 # Keep this many most-recent backups; older ones are pruned. A snapshot is a few MB and
 # 20 explicit recovery points are ample without the directory creeping toward a GB.
@@ -48,7 +50,6 @@ _APPLICATION_CHILD_TABLES = (
     "application_committee_notes",
     "application_stars",
     "application_shortlist",
-    "application_ai_results",
     "application_ai_selections",
 )
 
@@ -151,8 +152,8 @@ def restore_backup(source: Path, *, engine: Engine | None = None) -> Path:
                 candidate = Path(temporary.name)
             with closing(sqlite3.connect(str(candidate))) as prepared:
                 saved.backup(prepared)
-        _reapply_deletion_ledger(candidate, deletion_ledger)
         _upgrade_restored_schema(candidate)
+        _reapply_deletion_ledger(candidate, deletion_ledger)
         _preserve_sequences(candidate, sequences)
         with closing(sqlite3.connect(str(candidate))) as prepared:
             _check_integrity(prepared, candidate)
@@ -267,6 +268,19 @@ def _reapply_deletion_ledger(
                 "retention_rule = excluded.retention_rule, due_on = excluded.due_on, deleted_at = excluded.deleted_at",
                 (kind, record_id, retention_rule, due_on, deleted_at),
             )
+
+    # Schema migration precedes deletion replay so a producer's old FK cannot remove
+    # a retained consumer's output. Recovery can prune the complete isolated snapshot.
+    with closing(sqlite3.connect(str(db_path))) as conn:
+        has_results = _table_exists(conn, "application_ai_results")
+    if has_results:
+        prepared_engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+        try:
+            with Session(prepared_engine) as db:
+                prune_unowned_results(db)
+                db.commit()
+        finally:
+            prepared_engine.dispose()
 
 
 def _utc_timestamp(value: str) -> datetime:

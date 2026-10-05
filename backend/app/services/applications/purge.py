@@ -22,6 +22,10 @@ from app.db.models import (
     RetentionDeletion,
 )
 from app.services.applications.locking import lock_application
+from app.services.applications.result_retention import (
+    application_result_ids,
+    prune_unowned_results,
+)
 
 
 @dataclass(frozen=True)
@@ -95,8 +99,10 @@ def purge_expired_application(db: Session, application: Application, *, now: dat
                      retention_rule=_application_retention_rule(db, application.id),
                      due_on=application.retention_due_on, now=now)
     db.execute(update(Feedback).where(Feedback.applicant_id == application.id).values(applicant_id=None))
+    affected_results = application_result_ids(db, application.id)
     db.delete(application)
     db.flush()
+    prune_unowned_results(db, affected_results, now=now)
     return True
 
 
@@ -163,4 +169,7 @@ def purge_never_submitted_application(db: Session, application: Application) -> 
             BrowserSession.application_id == application.id,
         )
     )
+    affected_results = application_result_ids(db, application.id)
     db.delete(application)
+    db.flush()
+    prune_unowned_results(db, affected_results)

@@ -316,7 +316,7 @@ async def test_workflow_flags_track_progress() -> None:
 
         # A quality-flag result exists -> that step is done; essays still not.
         add_selected_result(db, ApplicationAIResult(
-            application_id=application.id, kind="screening", cache_key="k1",
+            producer_application_id=application.id, kind="screening", cache_key="k1",
             model_id="m", prompt_version="v1", output={"flags": []},
         ))
         db.commit()
@@ -337,7 +337,7 @@ async def test_workflow_flags_track_progress() -> None:
 
         # A dimension-scoring result (per-run prefixed kind) -> scoring done.
         add_selected_result(db, ApplicationAIResult(
-            application_id=application.id, kind="dimension_scoring:abc123", cache_key="k3",
+            producer_application_id=application.id, kind="dimension_scoring:abc123", cache_key="k3",
             model_id="m", prompt_version="v1", output={"scores": []},
         ))
         db.commit()
@@ -497,13 +497,13 @@ async def test_coverage_distinguishes_current_from_stale() -> None:
 
     # a: current result (cache key computed from its present content + model).
     add_selected_result(db, ApplicationAIResult(
-        application_id=a.id, kind=SCREENING_KIND,
+        producer_application_id=a.id, kind=SCREENING_KIND,
         cache_key=cache_key(application=a, kind=SCREENING_KIND, model_id=model, prompt_version=SCREENING_VERSION),
         model_id=model, prompt_version=SCREENING_VERSION, output={"flags": []},
     ))
     # b: a result keyed to prior content -> does not match its current hash -> stale.
     add_selected_result(db, ApplicationAIResult(
-        application_id=b.id, kind=SCREENING_KIND, cache_key="stale-key",
+        producer_application_id=b.id, kind=SCREENING_KIND, cache_key="stale-key",
         model_id=model, prompt_version=SCREENING_VERSION, output={"flags": []},
     ))
     db.commit()
@@ -554,7 +554,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
 
     # Score only ONE of the two dimensions -> incomplete.
     add_selected_result(db, ApplicationAIResult(
-        application_id=a.id, kind=kind_for_dimension("community"),
+        producer_application_id=a.id, kind=kind_for_dimension("community"),
         cache_key=cache_key(application=a, kind=kind_for_dimension("community"), model_id=model, prompt_version=SCORING_VERSION),
         model_id=model, prompt_version=SCORING_VERSION, output={"score": 0.7, "confidence": "high", "rationale": "", "evidence": "", "dimension_key": "community"},
     ))
@@ -569,7 +569,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
 
     # Score the second dimension too -> complete.
     add_selected_result(db, ApplicationAIResult(
-        application_id=a.id, kind=kind_for_dimension("skills"),
+        producer_application_id=a.id, kind=kind_for_dimension("skills"),
         cache_key=cache_key(application=a, kind=kind_for_dimension("skills"), model_id=model, prompt_version=SCORING_VERSION),
         model_id=model, prompt_version=SCORING_VERSION, output={"score": 0.5, "confidence": "low", "rationale": "", "evidence": "", "dimension_key": "skills"},
     ))

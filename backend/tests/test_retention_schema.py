@@ -17,7 +17,6 @@ APPLICATION_OWNED_FOREIGN_KEYS = {
     ("application_committee_notes", "application_id", "applications"),
     ("application_stars", "application_id", "applications"),
     ("application_shortlist", "application_id", "applications"),
-    ("application_ai_results", "application_id", "applications"),
     ("application_ai_selections", "application_id", "applications"),
 }
 
@@ -43,3 +42,9 @@ def test_comparison_copy_does_not_own_the_authenticated_session() -> None:
     column = Base.metadata.tables["browser_sessions"].columns["reconciliation_draft_id"]
     assert column.nullable is True
     assert next(iter(column.foreign_keys)).ondelete == "SET NULL"
+
+
+def test_result_producer_is_provenance_not_a_cascading_lifetime_owner():
+    column = Base.metadata.tables["application_ai_results"].columns["producer_application_id"]
+    assert not column.foreign_keys
+    assert not column.nullable

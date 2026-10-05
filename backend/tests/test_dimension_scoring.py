@@ -223,7 +223,7 @@ def test_scores_keep_the_original_cache_keys_when_an_applicant_changes(monkeypat
     monkeypatch.setattr("app.ai.dimension_scoring.run_in_pool", controlled_pool)
     run_scores(db, provider, applications, report_with(keys), settings)
     stored_keys = set(db.scalars(select(ApplicationAIResult.cache_key).where(
-        ApplicationAIResult.application_id == applications[1].id,
+        ApplicationAIResult.producer_application_id == applications[1].id,
     )))
     assert stored_keys == original_keys
 
