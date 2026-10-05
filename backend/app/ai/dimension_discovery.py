@@ -252,7 +252,7 @@ def discover_patterns_fanout(
     there nothing to decompose, and *that* raises (the caller treats it as a fatal
     criteria-phase failure, same as before). Losing worker 0 (the proposal-seeded/
     streaming one) is tolerated too: proposals are a soft grounding hint, and a surviving
-    blind worker still produces a usable report — the D9 committee-request guard
+    blind worker still produces a usable report — the committee-request guard
     downstream is the hard backstop that a proposal isn't lost.
     """
     # Render the pool digest ONCE here on the calling thread, then compose two prompt

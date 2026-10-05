@@ -3,7 +3,7 @@
 The Judge tab re-produces each pass's OWN output from a plain-language, editable brief (the
 golden file's ``judge_background``) plus the case's ``given`` — blind to the human label — then
 grades that output with the SAME grader the live eval uses. Each pass owns a ``judge_reproduce``
-adapter co-located in its ``live_*.py`` module (so the pass's output schema and label
+adapter co-located in its pass module (so the pass's output schema and label
 derivation live in one place); ``judge.py`` dispatches to them by ``pass``. They all return the
 neutral ``Reproduced`` shape below so judge.py stays pass-agnostic.
 

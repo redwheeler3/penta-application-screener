@@ -1,159 +1,227 @@
 # API Reference
 
-The backend is a FastAPI app, so the **authoritative, always-current API reference is auto-generated from the code**:
+The authoritative contracts are generated from the running FastAPI application:
 
-- **Interactive docs (Swagger UI):** `http://localhost:8000/docs`
-- **Raw OpenAPI spec:** `http://localhost:8000/openapi.json`
+- [Interactive docs](http://localhost:8000/docs)
+- [OpenAPI](http://localhost:8000/openapi.json)
 
-Both reflect the live routes and Pydantic request/response schemas, so they never drift from the code. Use them as the source of truth for exact field shapes, query parameters, and status codes.
+This map covers the browser API and our own manual tests. Exact field shapes, query parameters,
+and validation errors belong to OpenAPI; product policy belongs to [SPEC.md](../SPEC.md).
+The Access column describes server dependencies. Public entrypoints still validate the Google,
+magic-link, draft, consent, or publication facts required by their workflow.
 
-This page is just a **map** — a one-line index of every endpoint so you can see the whole surface at a glance. If it ever disagrees with `/docs`, `/docs` is right.
+Committee and applicant sessions use opaque server-side credentials in host-specific cookies.
+Applicant responses are not cached. Opening-scoped reads and writes use `opening_id`; mutation
+acknowledgements describe the submitted snapshot, not a later draft in another tab.
 
-## Endpoint Index
+Screen, full Rank, score-current, and Evals stream NDJSON progress and a terminal summary/error.
+Full Rank discovers criteria, scores, and consolidates them under one run lease. Score-current
+fills missing scores against captured criteria without discovery. Board reads return criteria,
+this member's applicants, and tiers together; without chosen priorities rank/fit/band are null.
+Tier changes use cached scores without model calls. Spending reports describe known returned
+usage from completed or failed attempts rather than promising an exact provider bill.
 
-Unless noted, endpoints require a logged-in committee user through the opaque server-side session
-cookie. Core review surfaces are available to every committee member; access management, shared
-configuration, committee defaults, Observability, and Evals require an admin.
+Application errors use RFC 9457 `application/problem+json`, with a stable `code`, HTTP `status`,
+`title`, `detail`, and optional context fields. Request/response properties use camelCase;
+query parameters and stored domain fields use their declared code/OpenAPI names.
 
-### Auth — `app/api/auth.py`
+## Allowlist
 
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/auth/google/login` | Start the Google OAuth flow (redirects to Google). | Public |
-| GET | `/auth/google/callback` | Verify Google identity and issue a committee browser session. | Public |
-| GET | `/applicant/auth/google/login` | Start applicant Google sign-in. | Public |
-| GET | `/applicant/auth/google/callback` | Bind or resolve the verified Google identity and issue an applicant browser session. | Public |
-| POST | `/auth/magic-link` | Request an allowlist-gated committee sign-in email. | Public |
-| POST | `/auth/magic-link/consume` | Consume a committee link and issue the same browser session used by Google. | Public |
-| POST | `/auth/magic-link/inspect` | Inspect a committee link and identify a conflicting active committee session without consuming the credential. | Public |
-| POST | `/auth/magic-link/regenerate` | Request a replacement for a recognizable stale committee link without asking for the address again. | Public |
-| POST | `/applicant/access-links/inspect` | Inspect an applicant link without consuming it, including cross-session conflicts. | Public |
-| POST | `/applicant/access-links/open` | Consume a valid applicant link with its switch and remembered-device choices. | Public |
-| POST | `/applicant/access-links/regenerate` | Email a replacement for a recognizable stale applicant link. | Public |
-| GET | `/applicant/auth/me` | Return the current application identity, if any. | Public |
-| POST | `/applicant/auth/logout` | Revoke the current applicant session. | Public |
-| GET | `/auth/me` | Return the current user, if any, and whether email sign-in is enabled. | Public |
-| POST | `/auth/logout` | Revoke the current committee session. | Public |
+| GET | `/allowlist` | Read Allowlist | Admin |
+| PUT | `/allowlist` | Add an allowed email or change its role. Adding an `admin` entry grants admin — the allowlist is the role-management surface. | Admin |
+| GET | `/allowlist/denied-attempts` | Read Denied Sign In Attempts | Admin |
+| DELETE | `/allowlist/{email}` | Remove committee access and revoke the account's sessions and unused links. | Admin |
 
-### Applicant intake — `app/api/applicant/` (package)
+## Applicant Intake
 
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/applicant/openings` | Return published openings and whether a guest may begin an application. | Public |
-| POST | `/applicant/submissions/check` | Before guest review, require email access when a current application already owns the address. | Public |
-| POST | `/applicant/submissions` | Publish a completed guest application and email confirmation with future access. | Public |
-| POST | `/applicant/drafts` | Save an incomplete private pending draft and request its access link. | Public |
-| DELETE | `/applicant/drafts` | Discard an unclaimed pending draft using a body-held credential. | Draft token |
-| POST | `/applicant/access-links/request` | Safely start or return to an application and email its access link without revealing which path occurred. | Public or applicant |
-| GET | `/applicant/application` | Read the authenticated working application. | Applicant |
-| PUT | `/applicant/application` | Save the authenticated private working copy. | Applicant |
-| POST | `/applicant/application/revert` | Replace private edits and pending opening choices with the last submitted application. | Applicant |
-| POST | `/applicant/application/withdraw` | Withdraw from every opening, remove ordinary applicant access, and revoke applicant sessions and links. | Applicant |
-| POST | `/applicant/application/email-change` | Email a confirmation link for a new primary address. | Applicant |
-| DELETE | `/applicant/application/email-change` | Cancel an unconfirmed primary-address change. | Applicant |
-| POST | `/applicant/application/submit` | Publish the validated working copy and update explicit participation in the selected openings. | Applicant |
+| POST | `/applicant/access-links/inspect` | Inspect Applicant Access Link | Entry/link |
+| POST | `/applicant/access-links/open` | Open Applicant Access Link | Entry/link |
+| POST | `/applicant/access-links/regenerate` | Regenerate Applicant Access Link | Public |
+| POST | `/applicant/access-links/request` | Save a new or authenticated draft, or return to an existing private record. | Entry/link |
+| GET | `/applicant/application` | Get Applicant Application | Applicant session |
+| PUT | `/applicant/application` | Save Applicant Application | Applicant session |
+| DELETE | `/applicant/application/email-change` | Cancel Applicant Email Change | Applicant session |
+| POST | `/applicant/application/email-change` | Request Applicant Email Change | Applicant session |
+| GET | `/applicant/application/pending-copy` | Get Pending Copy | Applicant session |
+| POST | `/applicant/application/pending-copy` | Reconcile Pending Copy | Applicant session |
+| POST | `/applicant/application/submit` | Submit Applicant Application | Applicant session |
+| POST | `/applicant/application/withdraw` | Withdraw one application and every opening participation from ordinary access. | Applicant session |
+| GET | `/applicant/auth/google/callback` | Applicant Google Callback | Public |
+| GET | `/applicant/auth/google/login` | Applicant Google Login | Public |
+| DELETE | `/applicant/drafts` | Delete Applicant Draft | Public |
+| POST | `/applicant/drafts` | Save Applicant Draft | Public |
+| GET | `/applicant/openings` | Read Applicant Openings | Public |
+| POST | `/applicant/submissions` | Publish a first application without making email access a submission gate. | Public |
+| POST | `/applicant/submissions/check` | Stop an existing application at the pre-review boundary and email its owner. | Public |
 
-### Openings — `app/api/openings.py`
+## Applications
 
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/openings` | List configured openings, derived phases, and active submission counts. | Admin |
-| POST | `/openings/preview` | Count the current notification audience and show message variants plus current/projected SocketLabs usage. | Admin |
-| POST | `/openings` | Open applications immediately and atomically queue the confirmed notification audience. | Admin |
-| POST | `/openings/previous-applicants/search` | Search retained, available previous applicants by name or email without exposing them to ordinary workflows. | Admin |
-| POST | `/openings/direct-selection` | Atomically create a filled opening and select one previous applicant without queueing email. | Admin |
-| PUT | `/openings/{id}` | Update an application-intake opening, including an archived historical record. | Admin |
+| GET | `/applications` | Every application, unpaginated. A co-op pool is a few hundred rows at most, so the client holds the whole list and owns filtering, sorting, facet counts, and the favourites view — no server-side paging to keep consistent. | Committee session |
+| GET | `/applications/{application_id}` | Get Application | Committee session |
+| POST | `/applications/{application_id}/committee-notes` | Add one attributed application-wide note visible to the committee. | Committee session |
+| DELETE | `/applications/{application_id}/committee-notes/{note_id}` | Delete Committee Note | Committee session |
+| PATCH | `/applications/{application_id}/committee-notes/{note_id}` | Update Committee Note | Committee session |
+| PUT | `/applications/{application_id}/note` | Create or replace the current member's private application note. | Committee session |
+| GET | `/applications/{application_id}/retained` | Read a selected or direct-fill-eligible application outside ordinary scope. | Admin |
+| DELETE | `/applications/{application_id}/shortlist` | Remove an applicant from the committee's shared shortlist, idempotently. | Committee session |
+| PUT | `/applications/{application_id}/shortlist` | Add an applicant to the committee's shared shortlist, idempotently. | Committee session |
+| DELETE | `/applications/{application_id}/star` | Unstar this applicant for the current member. No-op if not starred. | Committee session |
+| PUT | `/applications/{application_id}/star` | Star (favourite) this applicant for the current member. Idempotent: the row's existence is the state, so re-starring is a no-op guarded by the unique constraint. A personal working aid — no effect on ranking, eligibility, or reports. | Committee session |
+| DELETE | `/applications/{application_id}/status` | Remove this member's override, reverting their view to the machine verdict. | Committee session |
+| PATCH | `/applications/{application_id}/status` | This member's human override of an application's eligibility. | Committee session |
 
-### Vacancy notifications — `app/api/vacancy_subscriptions.py`
+## Auth
 
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| POST | `/vacancy-subscriptions` | Add or replace one address's complete unit-size selection without revealing prior state. | Public |
-| GET | `/vacancy-subscriptions/report` | Return active total, overlapping bedroom counts, and monthly consent distribution. | Admin |
-| POST | `/vacancy-subscriptions/admin/lookup` | Look up one exact normalized address with first-subscription time, current-update time, and source. | Admin |
-| PUT | `/vacancy-subscriptions/admin` | Add or replace one exact address with an audited request source. | Admin |
-| POST | `/vacancy-subscriptions/admin/delete` | Delete one exact address and record a PII-minimized audit event. | Admin |
+| GET | `/auth/google/callback` | Google Callback | Public |
+| GET | `/auth/google/login` | Google Login | Public |
+| POST | `/auth/logout` | Logout | Public |
+| GET | `/auth/me` | Get Current User | Public |
 
-### Health — `app/api/health.py`
+## Dashboard
 
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/health` | Liveness check. | Public |
+| GET | `/dashboard` | Read Dashboard | Committee session |
+| GET | `/dashboard/email-deliveries` | Read Email Delivery Issues | Admin |
+| POST | `/dashboard/email-deliveries/socketlabs/refresh` | Refresh Socketlabs Delivery Status | Admin |
 
-### Settings — `app/api/settings.py`
+## Development Previews
 
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/settings` | Read the shared AI settings and supported model catalog. | Login |
-| PUT | `/settings` | Save the admin settings. | Login |
+| GET | `/dev/previews/emails` | Render every application email without queueing or delivering it. | Public |
 
-### Dashboard — `app/api/dashboard.py`
+## Eligibility Rules
 
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/dashboard` | Read Screen/Rank availability, currentness, and cache coverage. | Login |
-| GET | `/dashboard/email-deliveries` | List queued and unexpectedly failed email attempts. | Admin |
+| DELETE | `/eligibility-rules` | Reset this member to the committee default. Idempotent if they never diverged. Returns the now-effective rules, which are the committee default (`is_default` True). | Committee session |
+| GET | `/eligibility-rules` | This member's effective eligibility rules and whether they are the shared committee default (no personal divergence yet) or the member's own. | Committee session |
+| PUT | `/eligibility-rules` | Upsert this member's own rules (copy-on-write divergence from the committee default). After saving, the member reads their own rules, so `is_default` is False. | Committee session |
+| GET | `/eligibility-rules/catalog` | Read Eligibility Check Catalog | Committee session |
+| GET | `/eligibility-rules/committee-default` | The shared committee-default rules. Any member may read it — it's the baseline they follow until they diverge, and the Eligibility Settings page shows it as the "compared to committee default" reference. | Committee session |
+| PUT | `/eligibility-rules/committee-default` | Update Committee Default Rules | Admin |
 
-### Applications — `app/api/applications/` (package)
+## Email Delivery
 
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/applications` | Unpaginated committee pool with opening participation and the opening filter catalog. | Login |
-| GET | `/applications/{id}` | One application's detail, including its openings, raw source row, and AI narrative. | Login |
-| GET | `/applications/{id}/retained` | Read a selected or direct-fill-eligible application outside ordinary committee scope. | Admin |
-| PATCH | `/applications/{id}/status` | Human status override (sets `status_source = human`, which is sticky). | Login |
-| DELETE | `/applications/{id}/status` | Remove a human override; recomputes status from the current findings (rules then AI) and clears human ownership. Idempotent if no override is set. | Login |
+| GET | `/email-delivery/status` | Read Public Email Delivery Status | Public |
+| POST | `/email-delivery/status/refresh` | Refresh Public Email Delivery Status | Public |
 
-### Screening — `app/api/screening.py`
+## Evals
 
-The Screen step: one AI pass that flags quality issues on eligible applicants. See
-[ai-screening.md](ai-screening.md) for the full pipeline. Every runnable job follows `POST <job>` + `GET <job>/estimate` (the estimate is a sub-path of the run it prices).
-
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/screening/run/estimate` | Projected cost + how many applicants would be analyzed vs. cached. | Login |
-| POST | `/screening/run` | Run the screening pass; streams NDJSON `progress` then a `summary`. Cap enforced (402 if over). | Login |
+| POST | `/evals/baseline` | Rebaseline | Committee session |
+| GET | `/evals/cases/{eval_key}` | An eval's cases, straight from its committed fixture (free). 404 for an eval with no editable case set (invariants; stability reads the judge set). | Committee session |
+| PUT | `/evals/cases/{eval_key}` | Upsert one case (by key) into the eval's fixture FILE (the operator commits it to git deliberately). Validated server-side; a bad payload is refused (422). | Committee session |
+| GET | `/evals/catalog` | List the runnable evals + how many model calls each run costs (for the UI's spend-confirm). Free — computed from the committed fixtures, no model calls. | Committee session |
+| POST | `/evals/consolidation` | Run Consolidation | Committee session |
+| POST | `/evals/decomposition` | Run Decomposition | Committee session |
+| GET | `/evals/invariants` | Run the deterministic invariants over the committed fixture. Free (no model calls). (Judgement signals — overlap, carry-forward rate — live on the Observability tab over the live run, which shows them better; they aren't duplicated here.) | Committee session |
+| POST | `/evals/judge` | Run Judge | Committee session |
+| GET | `/evals/judge-backgrounds` | The per-pass `judge_background` briefs the Judge tab lists + edits, with how many golden cases each pass contributes to the blind audit. Free (reads the committed files). | Committee session |
+| PUT | `/evals/judge-backgrounds/{pass_name}` | Put Judge Background | Committee session |
+| GET | `/evals/last-run` | Last Run | Committee session |
+| POST | `/evals/matching` | Run Matching | Committee session |
+| POST | `/evals/scoring` | Run Scoring | Committee session |
+| POST | `/evals/screening` | Run Screening | Committee session |
 
-### Ranking — `app/api/ranking/` (package)
+## Feedback
 
-The **Rank chain** and the deterministic ranked shortlist. Rank is one button that runs pattern discovery → decomposition → identity-match → score → consolidate, back-to-back; the cap is enforced once over the combined cost. The sub-passes are not exposed individually (the committee never runs them alone). Ranking itself is pure math over the cached scores — no model call. See [ai-screening.md](ai-screening.md).
-
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/ranking/run/estimate` | Combined projected cost of the Rank chain, with a per-pass breakdown. Approximate — scoring scales with the dimensions discovery settles on. 409 if no eligible applicants. | Login |
-| POST | `/ranking/run` | Run the full chain. Streams NDJSON: a `phase` line per pass, `progress` lines for the per-candidate passes, then a `summary`. Cap enforced once over the combined cost (402 if over). 409 if no eligible applicants. | Login |
-| GET | `/ranking/score-current/estimate` | Cost to fill missing scores against the current criteria (no re-discovery). | Login |
-| POST | `/ranking/score-current` | Score only applicants missing scores for the current criteria; streams like `/ranking/run`. | Login |
-| GET | `/ranking/board` | Criteria, this member's ranked applicants, and tiers from one captured analysis. Without chosen priorities, ranking fields are null. | Login |
-| GET | `/ranking/current` | The current run's criteria + summary, or null if the chain has never run. | Login |
-| GET | `/ranking/current/{match,decompose,consolidate,fan-out}-audit` | Per-run AI-legibility audits (null on runs predating each capture). | Login |
-| PUT | `/ranking/tiers` | Persist a new tier layout, derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys → 422; no run → 409. No model call. | Login |
-| PUT | `/ranking/seeds` | Persist pending free-text dimension proposals for the next Rank's discovery. 409 before a run exists. | Login |
+| GET | `/feedback` | List feedback newest-first. Open items only by default; `includeResolved=true` widens to the full history. | Admin |
+| POST | `/feedback` | Record a member's feedback. Identity + app version are stamped here (not trusted from the body); route/tab/analysis are the context the client reported. | Committee session |
+| POST | `/feedback/{feedback_id}/reopen` | Move a resolved item back to the open list (idempotent). | Admin |
+| POST | `/feedback/{feedback_id}/resolve` | Mark an item handled (idempotent). It leaves the open list but is retained. | Admin |
 
-### Observability — `app/api/observability.py`
+## Health
 
-Cross-run observability covers spend and operational trends over every run kind (Screen, Rank,
-score-current). It is top-level rather than under `/ranking` because it spans all runs. No model
-calls.
-
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/observability/cost` | Cumulative AI spend, grouped by run. | Login |
-| GET | `/observability/last-runs` | The most recent Screen and Rank runs, each with fresh spend + cache savings. | Login |
-| GET | `/observability/metrics` | Operational trends across all runs: cost/tokens/latency/cache-hit/failures per run and pass. | Login |
+| GET | `/health` | Health Check | Public |
 
-### Evals — `app/api/evals/` (package)
+## Observability
 
-The in-UI eval cockpit. Catalog + invariants + case reads are free (no model calls); the run endpoints stream NDJSON (`thinking` then a terminal `summary`) and persist an `EvalRun` row. Each pass is **one** run route — `?mode=stability` selects the K-repeat stability run (`k` clamped 2–10), `?case=<key>` runs a single case. See [ai-evals.md](ai-evals.md).
-
-| Method | Path | Purpose | Auth |
+| Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/evals/catalog` | The runnable evals + spend flags/estimates (free). | Login |
-| GET | `/evals/invariants` | Deterministic invariants over the baseline fixture (free). | Login |
-| POST | `/evals/baseline` | Re-record the invariant baseline from the current Rank (409 if no run). | Login |
-| GET / PUT | `/evals/cases/{eval_key}` | Read / upsert a pass's golden cases (validated; committed to git by hand). | Login |
-| GET | `/evals/judge-backgrounds` | The per-pass judge briefs + golden case counts. | Login |
-| PUT | `/evals/judge-backgrounds/{pass_name}` | Write one pass's judge brief to its golden file. | Login |
-| GET | `/evals/last-run?keys=…` | The newest persisted run per key (to restore a tab); carries a `stale` flag. | Login |
-| POST | `/evals/{scoring,screening,consolidation,matching,decomposition}` | Run one live pass. `?mode=stability` for the K-repeat run. Streams; spends $. | Login |
-| POST | `/evals/judge` | Blind label-audit over every pass's golden cases + agreement/κ. `?mode=stability` blind-audits each case K times (persisted under `stability`). Streams; spends $. | Login |
+| GET | `/observability/cost` | Cumulative AI spend for the Observability tab, grouped by run. | Committee session |
+| GET | `/observability/last-runs` | The most recent Screen and Rank runs, each with fresh spend + cache savings. | Committee session |
+| GET | `/observability/metrics` | Operational trends across all completed runs — cost/tokens/latency/cache-hit/ failures per run and per pass, plus dimension count over time. | Committee session |
+
+## Openings
+
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| GET | `/openings` | Read Openings | Admin |
+| POST | `/openings` | Add Opening | Admin |
+| POST | `/openings/direct-selection` | Add Direct Selection Opening | Admin |
+| GET | `/openings/email-usage` | Read Opening Email Usage | Admin |
+| POST | `/openings/preview` | Preview Opening | Admin |
+| POST | `/openings/previous-applicants/search` | Find Previous Applicants | Admin |
+| PUT | `/openings/{opening_id}` | Edit Opening | Admin |
+| GET | `/openings/{opening_id}/selection` | Read Opening Selection | Admin |
+| POST | `/openings/{opening_id}/selection` | Select Successful Applicant | Admin |
+| POST | `/openings/{opening_id}/selection/no-household` | Select No Household | Admin |
+
+## Passwordless Auth
+
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| POST | `/applicant/auth/logout` | Logout Applicant | Public |
+| GET | `/applicant/auth/me` | Get Current Applicant | Entry/link |
+| POST | `/auth/magic-link` | Request Committee Magic Link | Public |
+| POST | `/auth/magic-link/consume` | Consume Committee Magic Link | Public |
+| POST | `/auth/magic-link/inspect` | Inspect Committee Magic Link | Public |
+| POST | `/auth/magic-link/regenerate` | Regenerate Committee Magic Link | Public |
+
+## Ranking
+
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| GET | `/ranking/board` | Criteria, scores, and tiers from the same captured member view. | Committee session |
+| GET | `/ranking/current` | The current analysis's dimensions + this member's view, or null if none discovered yet. | Committee session |
+| GET | `/ranking/current/consolidate-audit` | The current analysis's consolidation audit — the post-score duplicate-merge pass: which correlated pairs were nominated and, per pair, whether the confirm call merged them (with its reasoning). Null when no audit exists. | Committee session |
+| GET | `/ranking/current/decompose-audit` | Current Decompose Audit | Committee session |
+| GET | `/ranking/current/fan-out-audit` | The current analysis's fan-out audit — each of the K parallel discoverers' dimensions + reasoning, so the discovery panel can show every discoverer, not just the one that streamed live. Null when no audit exists. | Committee session |
+| GET | `/ranking/current/match-audit` | The current analysis's carry-forward audit — what discovery emitted, how the match pass mapped it onto prior dimensions, and the derived carry-forward rate. Null when no analysis or audit exists. | Committee session |
+| POST | `/ranking/run` | Run the full ranking chain — find criteria → score → consolidate — streaming NDJSON. The combined cost is checked against the cap once before any model call, so an over-cap run fails fast with a 402 and spends nothing. | Committee session |
+| GET | `/ranking/run/estimate` | Rank Estimate | Committee session |
+| POST | `/ranking/score-current` | Fill missing scores without changing the current dimensions or tier layout. | Committee session |
+| GET | `/ranking/score-current/estimate` | Score Current Estimate | Committee session |
+| PUT | `/ranking/seeds` | Persist the member's pending free-text proposals for the current analysis. Returns the current seed state. 409 before an analysis exists (nowhere to store yet) or if the viewed analysis was superseded (stale_analysis). | Committee session |
+| PUT | `/ranking/tiers` | Persist the member's new tier layout, derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys are rejected (422); a save against a superseded analysis is rejected (409 stale_analysis). | Committee session |
+
+## Screening
+
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| POST | `/screening/run` | Run the screening pass over the candidate applications, streaming progress. | Committee session |
+| GET | `/screening/run/estimate` | Estimate | Committee session |
+
+## Settings
+
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| GET | `/settings` | Read Settings | Committee session |
+| PUT | `/settings` | Update Settings | Admin |
+
+## Vacancy Subscriptions
+
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| POST | `/vacancy-subscriptions` | Subscribe | Public |
+| PUT | `/vacancy-subscriptions/admin` | Save For Support | Admin |
+| POST | `/vacancy-subscriptions/admin/delete` | Delete For Support | Admin |
+| POST | `/vacancy-subscriptions/admin/lookup` | Lookup | Admin |
+| GET | `/vacancy-subscriptions/report` | Report | Admin |

@@ -6,7 +6,7 @@ export type CostPass = {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
-  // cacheable false → this pass always calls fresh (pattern discovery, dimension
+  // cacheable false → this pass does not reuse results (pattern discovery, dimension
   // matching); the UI shows "—" for its savings, never $0. cachedCount/cachedSavedUsd
   // are summed from the run-cost ledger.
   cacheable: boolean;
@@ -24,14 +24,13 @@ export type CostGroup = {
 
 export type CostReport = {
   // Cumulative AI spend across all runs, grouped by the run that triggers each pass
-  // (Screen vs Rank). Spend is exact; savings come from the ledger (runs since it
-  // began). Unrelated to the spending cap (which bounds each single run).
+  // (Screen vs Rank). Spend is known returned usage; savings come from the ledger. Unrelated to the spending cap (which bounds each single run).
   groups: CostGroup[];
   totalCostUsd: number;
   totalSavedUsd: number;
 };
 
-// One pass within a single completed run (GET /observability/last-runs).
+// One pass within a recorded completed or failed attempt (GET /observability/last-runs).
 // cachedSavedUsd = reused results' original cost — an estimate of what caching saved.
 export type LastRunPass = {
   label: string;

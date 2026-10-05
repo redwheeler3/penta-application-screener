@@ -29,7 +29,7 @@ export function DecomposeAuditPanel(props: { openingId: number }): ReactNode {
 
 function DecomposeAuditBody(props: { audit: DecomposeAuditResponse }): ReactNode {
   const { audit } = props;
-  // Map each settled axis's key → the request it folded in (for the D9 badge).
+  // Map each settled axis's key → the request it folded in (for the requested-criterion badge).
   const foldedInto = new Map(audit.foldedRequests.map((f) => [f.intoKey, f.requestKey]));
 
   // Kept-as-is axes (one source) first, merges after — the merges are the interesting,

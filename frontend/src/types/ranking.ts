@@ -141,7 +141,7 @@ export type DecomposeAuditResponse = {
     fromCommitteeRequest: boolean;
     decision: string;
   }[];
-  // D9: committee-requested axes decomposition folded INTO another axis
+  // Committee-requested axes decomposition folded INTO another axis
   // (requestKey → intoKey), surfaced so a fold is visible, never silent.
   foldedRequests: { requestKey: string; intoKey: string }[];
   // The decomposition pass's free-text reasoning (markdown). Null if none surfaced.

@@ -1,4 +1,4 @@
-/* D9 committee-request folds: a left accent bar so "your proposal was folded in"
+/* committee-request folds: a left accent bar so "your proposal was folded in"
    reads as a callout, not just another hint line. */
 .decompose-folded-note {
   border-left: 3px solid var(--accent, #6366f1);

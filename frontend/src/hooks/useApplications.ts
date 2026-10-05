@@ -42,7 +42,7 @@ export interface ApplicationsState {
  * round-trips — so a filter/sort/saved-view change is instant. Only a data-changing
  * action (screen, status override, star, shortlist) triggers a refetch. The selected
  * candidate detail is NOT here: it's cross-cutting (tab switches, overrides, settings
- * save all clear it), so it stays in App. */
+ * save all clear it), so it stays in the account-owned workspace. */
 export function useApplications(): ApplicationsState {
   const [allApplications, setAllApplications] = useState<ApplicationSummary[]>([]);
   const [openings, setOpenings] = useState<CommitteeOpening[]>([]);

@@ -77,7 +77,7 @@ def ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> R
     # The scored pool is the shared UNION (every applicant eligible for at least one member),
     # so restrict this member's shortlist to the applicants eligible in THEIR own view —
     # another member's eligible-only applicant is scored but must not appear on this board.
-    # Pool means/impact still come from the full scored set (shared math), so a candidate's
+    # Pool means/impact still come from the full rankable union (shared math), so a candidate's
     # numbers don't shift with who is filtering; we only drop rows the member excluded.
     if member_ranking.analysis.opening_id is None:
         raise ValueError("A current analysis must belong to an opening.")

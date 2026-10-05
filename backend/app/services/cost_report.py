@@ -46,7 +46,7 @@ FULL_RANK_KIND = "rank"
 SCORE_CURRENT_KIND = "rank_scores"
 
 # Passes that can reuse cached results. The others (discovery, decomposition, matching,
-# consolidation) always call Bedrock fresh, so a "saved by cache" figure is N/A — the UI
+# consolidation) do not reuse results, so a "saved by cache" figure is N/A — the UI
 # shows "—", never $0, so structural absence of caching doesn't read as failure.
 CACHEABLE_PASSES = {"Screening", "Dimension scoring"}
 RUN_COST_RECORDER_KEY = "run_cost_recorder"

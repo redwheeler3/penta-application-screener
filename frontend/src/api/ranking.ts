@@ -21,7 +21,7 @@ export const fetchMatchAudit = (openingId: number) =>
   getJson<MatchAuditResponse | null>(`/ranking/current/match-audit${openingQuery(openingId)}`);
 
 // The current run's decomposition audit — how the K fan-out discovery reports were
-// settled into one set (settled axes + merge reasoning + D9 folded-request trail).
+// settled into one set (settled axes + merge reasoning + folded-request trail).
 // Null when no decomposition audit is stored.
 export const fetchDecomposeAudit = (openingId: number) =>
   getJson<DecomposeAuditResponse | null>(`/ranking/current/decompose-audit${openingQuery(openingId)}`);
@@ -33,8 +33,6 @@ export const fetchConsolidateAudit = (openingId: number) =>
 // reasoning. Null when no fan-out audit is stored.
 export const fetchFanOutAudit = (openingId: number) =>
   getJson<FanOutAuditResponse | null>(`/ranking/current/fan-out-audit${openingQuery(openingId)}`);
-
-// Aggregated AI spend, grouped by run.
 
 export const fetchRankEstimate = (openingId: number, signal?: AbortSignal) =>
   getJson<RankEstimateResponse>(`/ranking/run/estimate${openingQuery(openingId)}`, signal);

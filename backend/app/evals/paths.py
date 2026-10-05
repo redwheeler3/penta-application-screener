@@ -20,7 +20,7 @@ EVAL_DATA_DIR = _BACKEND_ROOT / "eval-data"
 FIXTURE_PATH = EVAL_DATA_DIR / "rank_baseline.json"
 
 # Live per-pass golden inputs: each `<pass>_golden.json` holds cases run through that pass's
-# REAL production prompt (see app/evals/live_*.py and docs/eval-case-schema.md).
+# REAL production prompt (see the pass modules in app/evals/ and docs/eval-case-schema.md).
 GOLDEN_PATH = EVAL_DATA_DIR / "scoring_golden.json"  # scoring (the first live eval)
 CONSOLIDATION_GOLDEN_PATH = EVAL_DATA_DIR / "consolidation_golden.json"
 MATCHING_GOLDEN_PATH = EVAL_DATA_DIR / "matching_golden.json"

@@ -29,7 +29,7 @@ type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
 export function RunnableEval(props: {
   // The fixture whose cases we read/edit (a pass's stability mode shares its golden set).
   caseEvalKey: EvalFixtureKey;
-  // The eval keys whose last run restores this tab on remount (Scoring: ["scoring"];
+  // The eval keys whose last run restores this tab on remount (Scoring: ["scoring", "scoring_stability"];
   // Judge: ["judge", "stability"] — the two share the tab, so the newer of the two shows).
   runKeys: EvalRunMode[];
   description: string;

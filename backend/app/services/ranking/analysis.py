@@ -72,7 +72,7 @@ def create_analysis(
         #   - fan_out: the K raw discovery reports before decomposition settled them. None on
         #     analyses written before fan-out landed.
         #   - decompose: per settled axis, the source_keys it absorbed + merge/keep reasoning
-        #     (Observability surface + the D9 committee-request trail). None before decomposition.
+        #     (Observability surface + the committee-request trail). None before decomposition.
         #   - consolidate: filled later by apply_consolidation (post-score); None until then.
         audit=AnalysisAudit(
             discovery_narrative=narrative,
@@ -84,7 +84,7 @@ def create_analysis(
     db.add(analysis)
     db.flush()  # assign analysis.id for the MemberRanking FK
     # The triggering member's view. Tiers are the source of truth for weights (derived, never
-    # stored). A fresh all-Ignore board derives uniform weights. Proposals are consumed by this
+    # stored). A fresh all-Ignore board stays unranked. Proposals are consumed by this
     # run, so empty here.
     db.add(
         MemberRanking(

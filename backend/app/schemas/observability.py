@@ -10,7 +10,7 @@ class CostPass(ResponseModel):
     run-cost ledger's per-pass rows.
 
     ``cacheable`` distinguishes passes that can reuse results (screening, dimension
-    scoring) from those that always call fresh (pattern discovery, dimension matching).
+    scoring) from those that do not reuse results (pattern discovery, dimension matching).
     ``cached_saved_usd`` is meaningful only when ``cacheable`` —
     the UI shows "—" for non-cacheable passes, never $0, so a structural absence of
     caching doesn't read as "caching failed here"."""
@@ -67,7 +67,7 @@ class LastRunPass(ResponseModel):
     cached_count: int  # cached result units, in the same units as fresh_calls
     cached_saved_usd: float
     # Whether this pass can cache at all. Pattern discovery and dimension matching
-    # always call fresh, so the UI shows "—" for their savings, not $0.
+    # do not reuse results, so the UI shows "—" for their savings, not $0.
     cacheable: bool = False
 
 

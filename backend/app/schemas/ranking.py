@@ -100,7 +100,7 @@ class SettledDimensionOut(ResponseModel):
 
 
 class FoldedRequestOut(ResponseModel):
-    """A committee-requested axis that decomposition merged INTO another (D9): the
+    """A committee-requested axis that decomposition merged INTO another : the
     request key and the settled axis it was folded into. Surfaced so a fold is visible
     to the committee, never a silent disappearance."""
 
@@ -114,7 +114,7 @@ class DecomposeAuditResponse(ResponseModel):
     decomposition (single-discovery runs).
 
     ``mergeCount`` / the settle-down from ``inputDimensionCount`` to ``settledCount`` show
-    how much the decomposition collapsed; ``foldedRequests`` is the D9 committee-request
+    how much the decomposition collapsed; ``foldedRequests`` is the committee-request
     trail (empty when no request was merged away)."""
 
     analysis_id: int

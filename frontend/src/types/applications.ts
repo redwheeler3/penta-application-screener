@@ -154,9 +154,9 @@ export type ApplicationDetail = ApplicationSummary & {
   // The AI-extracted pet inventory and its interpretation. Null means no extraction is stored.
   petFacts?: { dogs: number; cats: number; otherPets: string[]; reasoning: string } | null;
   rawRow?: Record<string, unknown>;
-  // The model's free-text reasoning from the latest screening pass.
+  // The model's free-text reasoning from the consumed screening result.
   aiNarrative?: string | null;
-  // Provenance for the latest screening result and current dimension score results.
+  // Provenance for the consumed screening result and current dimension score results.
   // Costs describe original generation allocations; results may be reused from cache.
   screeningTrace?: AIResultTrace | null;
   // This candidate's scores against the current run's dimensions, by |impact|

@@ -30,7 +30,7 @@ const CHILD_DETAIL_RAW_KEYS = [
 const HIDDEN_RAW_KEYS = new Set(["Declaration"]);
 
 // Applications retained from the external form keep their original question headings.
-// This map remains only for those records until their one-year retention period ends.
+// Their stored answers remain readable for their applicable retention period.
 const RETAINED_APPLICATION_SECTIONS: Array<{
   title: string;
   fields: RetainedApplicationField[];

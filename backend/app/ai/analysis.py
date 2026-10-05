@@ -388,8 +388,8 @@ def run_in_pool(
     ``(item, result, error)`` as each completes — ``error`` set (``result`` None)
     when that item's call raised.
 
-    The concurrency core shared by every AI pass: bounded workers, ``as_completed``
-    ordering (a slow call never blocks faster ones), per-item error isolation. Does
+    The concurrency core shared by every AI pass: bounded workers, completion-order
+    delivery (a slow call never blocks faster ones), per-item error isolation. Does
     NO DB/ORM work — ``call`` must be session-free, and the caller does all DB work
     on its own thread around this generator.
 

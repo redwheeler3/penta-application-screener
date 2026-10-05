@@ -48,7 +48,7 @@ approved production aggregate inspection is documented below.
 
 ## Recommended backlog
 
-Priorities describe implementation order and benefit, not security severity. All fifteen
+Priorities describe implementation order and benefit, not security severity. All sixteen
 packages are worthwhile. Small signature/comment edits should accompany their owning package
 rather than becoming a succession of trivial standalone commits.
 
@@ -69,6 +69,7 @@ rather than becoming a succession of trivial standalone commits.
 | M13 | Next | Remove unused standalone ranking reads | One coherent board contract for browser and manual tests |
 | M14 | First | Repair stale manual-analysis entrypoints | Diagnostic tools read the current analysis model |
 | M15 | First | Keep applicants unranked until a member chooses priorities | Committee judgment determines ranking |
+| M16 | Follow-up | Require complete selected-criterion scores before ranking | Missing results do not become neutral scores or partial averages |
 
 ### M01 — Give each scoring estimate one purpose
 
@@ -413,6 +414,20 @@ Verification: domain ordering/null fields with zero weights, unchanged positive-
 HTTP transitions from unranked to weighted to unranked, and UI disappearance/reappearance
 of rank numbers and bands. Update old baseline tests instead of retaining a compatibility path.
 
+### M16 — Do not rank missing selected scores
+
+Final review reproduced a related edge case: a candidate with a returned score only for an
+ignored criterion received rank 1, fit 0.0, and “Strong fit” when the selected criterion had
+no result. Candidates with some selected scores could also be compared using different
+averaging denominators. Missing provider work is unknown, distinct from a model's actual
+neutral score of zero.
+
+Require a returned score for every positively weighted criterion before assigning merit
+ranking. Ignore missing unweighted criteria, preserve stored partial results for recovery,
+and compute pool means/bands over the rankable shared pool. This adds no database query,
+provider call, synchronization, or latency dependency. Cover missing versus real zero scores,
+partial averages, contribution math, and the actual board response.
+
 ## Decisions and changes not recommended by default
 
 ### D01 — All-Ignore ranking policy
@@ -554,9 +569,56 @@ approval request; pushes and production changes retain their separate authorizat
 
 ## Implementation results
 
-- M15: implemented zero-weight defaults and nullable rank/fit/band fields; unranked applicants
-  are hidden in Ranking with a persistent priorities notice and no View/Print controls. Choosing and clearing priorities is covered
-  in domain, HTTP, and UI regressions. Stored scores and weighted math remain intact.
-  Checks: 878 backend tests, 227 frontend tests, Ruff, ESLint, and production build passed.
-- M01–M14: pending implementation. Validation results and commit IDs will be recorded as each
-  owning batch completes.
+All sixteen work packages are complete, including the confirmed follow-up found during the
+final review. The original reliability protections remain in place. Commits are local on main;
+no push or deployment was performed during this cleanup.
+
+| Package | Outcome | Commit evidence |
+| --- | --- | --- |
+| M01 | Full-Rank projection returns only its price, reuses supplied candidates, and keeps exact captured-plan pricing separate | `c6a950a` |
+| M02 | Removed unused score/dashboard/error/type declarations, internal inputs, and admin prop wiring | `c6a950a`, `33210f0`, `374bb23` |
+| M03 | Eligibility assertions exercise the live response path; unused parallel orchestration is gone | `33210f0` |
+| M04 | Removed unused judge text reports while retaining semantic marker/agreement coverage | `33210f0` |
+| M05 | Authenticated workspace has no unreachable auth branches or redundant fragment | `374bb23` |
+| M06 | Five eval families share typed configuration; Judge/Invariants retain their distinct behavior and lifecycle keys | `374bb23` |
+| M07 | Catalog loads only in Evals; applicant and committee advisories mount with their consuming form, including link/loading/confirmation transitions | `374bb23`, `9c4cd94` |
+| M08 | Read invalidation is explicit and preserves displayed drafts against pending reloads | `374bb23` |
+| M09 | Removed eight unused style families and moved shared tabs/hints without changing existing declarations | `374bb23` |
+| M10 | One recovery CLI handles arguments/selection/confirmation; wrappers propagate failures and Bash cleanup owns its service groups | `39b48ba` |
+| M11 | Retry metadata matches optional fields; categorical cases expose their immutable shared interface | `33210f0` |
+| M12 | Current docs/comments describe consumed results, known spending, configurable models, current routes, and actual ownership | Final documentation commit |
+| M13 | Removed unused standalone ranking reads; browser and manual tests use the coherent board contract | `f01609e` |
+| M14 | Manual diagnostics use current analysis/audit models, explicit opening scope, and tested entrypoints | `efd0646` |
+| M15 | Zero-weight defaults leave applicants unranked; Ranking keeps criteria and a notice while hiding applicants and View/Print controls | `bf8149a`, `caa8448` |
+| M16 | Missing selected scores never become neutral fits or partial averages; ranking and contribution means use the same rankable shared pool | `7bcdba9` |
+
+### Verification and responsiveness
+
+- Final backend checks: **890 passed, one skipped**, plus Ruff. The skipped test exercises
+  POSIX process groups; this host is Windows. PowerShell fake-command failure tests and Bash
+  syntax checks passed. Synthetic backup/restore tests cover quoted labels/paths, cancellation,
+  bare filenames, data preservation, and existing recovery safeguards.
+- Final frontend checks: **229 passed**, ESLint, TypeScript, and production build. Actual
+  form-slot lifecycle coverage proves hidden advice performs no requests and form exit cancels
+  its pending read. Ranking transitions cover the notice, absent applicants/View/Print, and
+  returning ranks/bands after chosen priorities have scores.
+- The API map matches all **111** current method/path pairs. All runtime/script model imports
+  resolve. Static ownership/import review found no remaining material finding within this scope.
+- All six production prompt hashes stayed unchanged: screening `a36996118cdb`, scoring
+  `d05026e73450`, discovery `87415213bc2b`, decomposition `196def77f77b`, matching
+  `2a463a1f6443`, consolidation `d73b755d3075`. No real model call was needed or made.
+- A supplied-pool estimate performs no additional applicant/member-rule reads. Authenticated
+  committee entry and hidden forms avoid the two advisory requests; Observability avoids the
+  eval-catalog request. Accepted writes still retain their acknowledgement/order guarantees.
+- An isolated CPU comparison used 150 synthetic applicants and 15 criteria, 50 alternating
+  samples, with identical fully scored weighted outcomes. Median pure ranking math changed
+  from **2.818 ms to 2.888 ms**: about **0.070 ms** for the completeness check. This excludes
+  database/auth/network/rendering and is not a production latency benchmark. No added query,
+  provider call, UI wait, or synchronization dependency was introduced.
+
+Compared with the approved pre-implementation baseline `b0cdd16`, production code and local
+tooling have **217 fewer lines**; regression tests have **343 additional lines**. Documentation
+records the scope and evidence separately. The retained imported-data readers,
+ORM registry, migrations, independent evals, request scopes, and stream/accounting guards remain
+intentional requirements. No application data was reset, restored, migrated, or deleted. The
+production aggregate inspection recorded above remains the only production work in this audit.

@@ -88,7 +88,7 @@ def rank_run(
 
     Stream shape: a ``phase`` line per pass, ``progress`` lines for the
     per-candidate passes, then a final ``summary`` with the combined cost.
-    Discovery is one call, so it emits a phase line and its result, no progress.
+    Discovery fans out over session-free workers; the stream announces its phase and reasoning.
     """
     opening_id = resolve_visible_opening_id(db, opening_id)
     lease = acquire_run_lock(db, user_id=user.id, kind="rank")

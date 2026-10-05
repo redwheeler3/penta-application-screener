@@ -493,7 +493,7 @@ different concepts (trade skills vs. financial governance), clearly flagged as c
 A wrong match is the pass's high-stakes error (it corrupts a carried-forward score), so
 having the mismatch direction covered matters even absent a live failure.
 
-**Decomposition drift** (`scripts/decompose_drift.py`) is a *manual hunting aid*, not a
+**Decomposition drift** (`scripts/decompose_drift.py --opening-id OPENING_ID`) is a *manual hunting aid*, not a
 seeded case or a gate: run it by hand to surface candidate narrative-vs-routing
 contradictions (prose claims a key folds in here, but it routed elsewhere — SPEC golden
 case #2). It's a tightened heuristic (suppresses the benign "distinct from X" and

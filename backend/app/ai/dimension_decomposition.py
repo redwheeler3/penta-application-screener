@@ -283,7 +283,7 @@ def enforce_committee_requests(
                     low_end=ask_dim.low_end,
                     source_keys=[ask_dim.key],
                     from_committee_request=ask_key in proposed,
-                    decision="Re-added by the D9 guard — decomposition dropped this committee-asked axis.",
+                    decision="Re-added by the committee-request guard — decomposition dropped this committee-asked axis.",
                 )
             )
         elif settled_key != ask_key:
@@ -323,7 +323,7 @@ def decompose_audit_payload(
             }
             for d in settled
         ],
-        # D9: committee-requested axes that decomposition folded INTO another axis
+        # Committee-requested axes that decomposition folded INTO another axis
         # (request_key → into_key). The UI surfaces "your proposal X was folded into Y"
         # so a fold is visible, never silent. Empty when no request was merged away.
         "folded_requests": folded_requests or [],

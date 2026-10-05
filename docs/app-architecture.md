@@ -321,18 +321,28 @@ Lightweight current-run reads do not replace the criteria of a displayed board i
 Concurrent first reads that create the same member view return the winning record rather than
 failing on the uniqueness constraint. Run leases return their user and acquisition timestamp;
 release matches both, so an expired run cannot release a same-user replacement.
-Ranking score assembly reads the newest result per applicant and criterion in one query, using
-row ID to break equal timestamps. It fetches only the fields used by ranking and preserves criterion
+Ranking score assembly reads the explicitly consumed result per applicant and criterion in one
+query through `ApplicationAISelection`. It fetches only the fields used by ranking and preserves criterion
 order for the deterministic calculation.
 Consolidation also loads only current score vectors. It preserves first-seen criterion order so
 equal-correlation nominations keep their model-input order. Database reads occur before the worker
 starts; the worker receives plain vectors instead of sharing the request's database session.
-Candidate details capture their analysis, parsed criteria, and latest score/provenance rows once.
+Candidate details capture their analysis, parsed criteria, and selected score/provenance rows once.
 The pure candidate score snapshot is reused in the pool calculation; that applicant's score rows
 are excluded from the second read. The trace loads current rows without old history or narratives.
 This prevents a newer analysis or score result from being attributed to previously displayed values.
 
 ## Responsiveness
+
+Full-Rank scoring estimates reuse their supplied eligible pool, including the sample prompt;
+score-current estimates price captured plans. Observability does not load the Evals catalog.
+Email-delay advisories load only for access/entry surfaces, with cached guidance and a background
+provider refresh. Hidden advisories make no requests. These save work without blocking actions.
+
+Ranking remains unranked while every criterion is in Ignore. Rank, aggregate fit, and fit bands
+are absent; the Ranking tab retains criteria controls and a priorities notice but hides applicants,
+View, and Print controls. Choosing a working criterion enables ranking; clearing all priorities
+restores the notice. Stored scores remain available and weighting makes no model call.
 
 Confirmed mutations release their UI controls before refreshing derived views. A completed Rank
 starts one coherent board read and a dashboard refresh in the background, without first awaiting
@@ -378,8 +388,8 @@ Structured-field reasons attribute to Rules. Pet limits attribute to AI because 
 pass first extracts pet facts from free text. A member's explicit override is sticky and is never
 overwritten by a later machine calculation.
 
-`backend/app/services/applications/screening_results.py` loads only the latest screening row for each requested
-application, using the row ID to break equal timestamps. Eligibility and list presentation derive
+`backend/app/services/applications/screening_results.py` loads the explicitly consumed screening result for each requested
+application through `ApplicationAISelection`, retaining its original provenance. Eligibility and list presentation derive
 flags and pet facts from those same rows in one query; candidate details use the same loader for
 their screening trace. An absent result means unscreened, an empty flag list means screened clean,
 and missing pet facts remain unknown.
@@ -586,3 +596,16 @@ npm run build
 
 Browser verification is reserved for interaction-heavy or visual changes. Vite HMR applies
 frontend edits without reloading the page.
+
+## Manual recovery and diagnostic tools
+
+The root backup/restore scripts delegate to `python -m app.services.backup`. The shared CLI
+handles labels, backup selection, and restore confirmation; arguments are passed as data,
+including quoted paths. Restore still requires stopping the backend, snapshots the current
+state, stages and validates the replacement, and preserves deletion bounds and record identity.
+Windows wrappers stop on failed native commands instead of reporting success.
+
+`analyze_convergence`, `decompose_drift`, and `harvest_golden_cases` read current `Analysis`
+and `AnalysisAudit` owners. Each requires `--opening-id OPENING_ID`; they do not combine
+unrelated openings or reinstate the removed ranking model. They remain manual diagnostics,
+with synthetic-data restrictions where applicant content could be exported.
