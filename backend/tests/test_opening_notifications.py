@@ -169,3 +169,41 @@ def test_queued_notices_are_scoped_to_the_finalized_opening_participants() -> No
     assert [message.to for message in sender.messages] == [("target@example.com",)]
     assert target_participation.unsuccessful_notified_at is not None
     assert unrelated_participation.unsuccessful_notified_at is None
+
+
+def test_no_work_closeout_sweep_performs_no_application_writes() -> None:
+    from sqlalchemy import event
+
+    db = _db()
+    opening = _opening(db, archived=False)
+    for index in range(100):
+        application = _application(db, f"synthetic-{index}@example.test")
+        _participate(db, application, opening, None)
+    statements = []
+    commits = []
+    def count(_connection, _cursor, statement, *_args):
+        statements.append(statement.lstrip().split()[0].upper())
+    def committed(_session):
+        commits.append(True)
+    event.listen(db.bind, "before_cursor_execute", count)
+    event.listen(db, "after_commit", committed)
+    try:
+        assert queue_due_unsuccessful_notices(db) == 0
+    finally:
+        event.remove(db.bind, "before_cursor_execute", count)
+        event.remove(db, "after_commit", committed)
+    assert statements == ["SELECT"]
+    assert commits == []
+
+
+def test_expired_unsuccessful_application_never_queues_a_notice() -> None:
+    db = _db()
+    application = _application(db, "expired@example.test")
+    opening = _opening(db, archived=True)
+    _participate(db, application, opening, OpeningOutcome.UNSUCCESSFUL)
+    application.retention_due_on = pacific_today()
+    db.commit()
+    assert queue_due_unsuccessful_notices(db) == 0
+    sender = CapturedEmailSender()
+    retry_queued_emails(db, sender)
+    assert sender.messages == []

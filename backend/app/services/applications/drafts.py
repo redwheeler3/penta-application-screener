@@ -14,14 +14,20 @@ from app.db.models import (
     ApplicantDraft,
     ApplicantDraftIntent,
     Application,
+    ApplicationParticipation,
     EmailDelivery,
     EmailDeliveryState,
     MagicLinkPurpose,
     MagicLinkToken,
+    OpeningOutcome,
 )
 from app.schemas.applicant.answers import WorkingApplicationAnswers
 from app.services.applications.locking import lock_application
-from app.services.applications.retention import draft_expiry_for_opening_ids
+from app.services.applications.retention import (
+    current_retention_clause,
+    draft_expiry_for_opening_ids,
+    retention_is_current,
+)
 from app.services.auth.tokens import new_token, token_hash
 
 
@@ -59,6 +65,7 @@ def save_pending_draft(
             select(Application).where(
                 Application.primary_email == email,
                 Application.withdrawn_at.is_(None),
+                current_retention_clause(),
             )
         )
         record = ApplicantDraft(
@@ -89,12 +96,19 @@ def save_collision_copy(
     answers: WorkingApplicationAnswers,
     opening_ids: list[int],
     now: datetime | None = None,
-) -> ApplicantDraft:
-    """Preserve the latest guest copy without invalidating an email already in flight."""
+) -> ApplicantDraft | None:
+    """Preserve a guest copy only while the locked household remains editable. """
     now = now or datetime.now(UTC)
     application = lock_application(db, application.id)
     if application is None or application.withdrawn_at is not None or application.primary_email != normalize_email(str(answers.applicant.email)):
         raise Problem("stale_application", detail="Application access changed while saving. Try again.")
+    if not retention_is_current(application, now=now):
+        raise Problem("stale_application", detail="This application has expired. Start a new application.")
+    if db.scalar(select(ApplicationParticipation.id).where(
+        ApplicationParticipation.application_id == application.id,
+        ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
+    )) is not None:
+        return None
     record = latest_pending_draft_for_email(db, application.primary_email, now=now)
     expires_on = draft_expiry_for_opening_ids(db, opening_ids)
     if expires_on is None:

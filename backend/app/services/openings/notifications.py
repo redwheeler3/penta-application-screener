@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import exists, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -17,6 +17,10 @@ from app.db.models import (
     PasswordlessIdentityKind,
 )
 from app.services.applications.locking import lock_application
+from app.services.applications.retention import (
+    current_retention_clause,
+    retention_is_current,
+)
 from app.services.email.delivery import queue_email
 from app.services.email.retry_intents import UnsuccessfulApplicationRetryIntent
 from app.services.email.templates import unsuccessful_application_email
@@ -37,17 +41,26 @@ def queue_due_unsuccessful_notices(
     """Stage due closeout intents; decision callers include them in their own transaction."""
     now = now or datetime.now(UTC)
     db.flush()
-    query = select(Application.id).where(Application.submitted_at.is_not(None), Application.withdrawn_at.is_(None))
+    active = (ApplicationParticipation.application_id == Application.id,
+              ApplicationParticipation.withdrawn_at.is_(None))
+    unnotified = exists(select(ApplicationParticipation.id).where(
+        *active, ApplicationParticipation.unsuccessful_notified_at.is_(None)))
+    unfinished = exists(select(ApplicationParticipation.id).join(Opening).where(
+        *active, or_(ApplicationParticipation.outcome.is_(None),
+                     ApplicationParticipation.outcome != OpeningOutcome.UNSUCCESSFUL,
+                     Opening.decided_at.is_(None))))
+    query = select(Application.id).where(Application.submitted_at.is_not(None),
+        Application.withdrawn_at.is_(None), current_retention_clause(now=now), unnotified, ~unfinished)
     if application_ids is not None:
         query = query.where(Application.id.in_(application_ids))
     ids = list(db.scalars(query))
     queued = 0
-    captured = {notice.application.id: notice for notice in _due_unsuccessful_notices(db, application_ids=set(ids))} if not commit else None
+    captured = {notice.application.id: notice for notice in _due_unsuccessful_notices(db, application_ids=set(ids), now=now)} if not commit else None
     for application_id in ids:
         if commit and lock_application(db, application_id) is None:
             db.commit()
             continue
-        notices = ([captured[application_id]] if application_id in captured else []) if captured is not None else _due_unsuccessful_notices(db, application_ids={application_id})
+        notices = ([captured[application_id]] if application_id in captured else []) if captured is not None else _due_unsuccessful_notices(db, application_ids={application_id}, now=now)
         for notice in notices:
             intent = UnsuccessfulApplicationRetryIntent(type="application_unsuccessful", opening_labels=list(notice.labels))
             delivery = queue_email(
@@ -88,25 +101,28 @@ def record_unsuccessful_delivery(db: Session, delivery: EmailDelivery) -> None:
     ).values(unsuccessful_notified_at=delivery.last_attempt_at))
 
 
-def unsuccessful_notice_is_available(db: Session, application: Application) -> bool:
-    return application.withdrawn_at is None and _is_unsuccessful_and_final(_active_participations(db, application.id))
+def unsuccessful_notice_is_available(db: Session, application: Application, *, now: datetime | None = None) -> bool:
+    return retention_is_current(application, now=now) and application.withdrawn_at is None and _is_unsuccessful_and_final(_active_participations(db, application.id))
 
 
 def _due_unsuccessful_notices(
-    db: Session, *, application_ids: set[int] | None = None
+    db: Session, *, application_ids: set[int] | None = None, now: datetime | None = None
 ) -> list[_OutcomeNotice]:
     notices: list[_OutcomeNotice] = []
     statement = select(Application).where(
         Application.submitted_at.is_not(None),
         Application.withdrawn_at.is_(None),
-    )
+        current_retention_clause(now=now),
+    ).execution_options(populate_existing=True)
     if application_ids is not None:
         statement = statement.where(Application.id.in_(application_ids))
     applications = db.scalars(statement).all()
+    if not applications:
+        return []
     by_application = {application.id: [] for application in applications}
     rows = db.execute(select(ApplicationParticipation, Opening).join(Opening, Opening.id == ApplicationParticipation.opening_id)
         .where(ApplicationParticipation.application_id.in_(by_application), ApplicationParticipation.withdrawn_at.is_(None))
-        .order_by(Opening.move_in_date, Opening.id))
+        .order_by(Opening.move_in_date, Opening.id).execution_options(populate_existing=True))
     for participation, opening in rows:
         by_application[participation.application_id].append((participation, opening))
     for application in applications:

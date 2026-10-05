@@ -21,6 +21,7 @@ from app.db.models import (
     VacancySubscription,
 )
 from app.services.applications.drafts import draft_is_available
+from app.services.applications.retention import retention_is_current
 from app.services.applications.selected import application_is_selected
 from app.services.auth.passwordless import issue_magic_link
 from app.services.email.delivery import (
@@ -339,6 +340,10 @@ def _build_retry(
     application = delivery.application
     if application is None:
         return None
+    if not retention_is_current(application, now=now):
+        delivery.last_error_code = ("ApplicationNoLongerNotifiable"
+                                    if intent["type"] == "application_opening" else "ApplicationExpired")
+        return None
     if intent["type"] == "application_confirmation":
         submitted = bool(intent.get("submitted"))
         timelines = application_confirmation_timelines(db, application.id) if submitted else []
@@ -393,7 +398,7 @@ def _build_retry(
             None,
         )
     if intent["type"] == "application_unsuccessful":
-        if not unsuccessful_notice_is_available(db, application):
+        if not unsuccessful_notice_is_available(db, application, now=now):
             delivery.last_error_code = "OutcomeNoLongerDue"
             return None
         return PreparedRetry(

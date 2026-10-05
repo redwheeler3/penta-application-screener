@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.db.models import Application, BrowserSession, PasswordlessIdentityKind
+from app.services.applications.retention import retention_is_current
 from app.services.applications.selected import application_is_selected
 from app.services.auth.passwordless import authenticate_browser_session
 
@@ -36,6 +37,7 @@ def authenticate_applicant(
     if (
         application is None
         or application.withdrawn_at is not None
+        or not retention_is_current(application, now=now)
         or application_is_selected(db, application.id)
     ):
         browser_session.revoked_at = now

@@ -46,28 +46,10 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
         .order_by(Application.id)
     ).all()
     for application_id in application_ids:
-        application = lock_application(db, application_id)
-        if application is None or application.retention_due_on is None or application.retention_due_on > today:
-            db.commit()
-            continue
-        due_on = application.retention_due_on
-        retention_rule = _application_retention_rule(db, application.id)
-        _record_deletion(
-            db,
-            record_kind="application",
-            record_id=application.id,
-            retention_rule=retention_rule,
-            due_on=due_on,
-            now=now,
-        )
-        db.execute(
-            update(Feedback)
-            .where(Feedback.applicant_id == application.id)
-            .values(applicant_id=None)
-        )
-        db.delete(application)
+        application = db.get(Application, application_id)
+        if application is not None and purge_expired_application(db, application, now=now):
+            applications_purged += 1
         db.commit()
-        applications_purged += 1
 
     draft_due = or_(
         ApplicantDraft.resolved_at.is_not(None),
@@ -102,6 +84,20 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
         applications_purged=applications_purged,
         drafts_purged=drafts_purged,
     )
+
+
+def purge_expired_application(db: Session, application: Application, *, now: datetime) -> bool:
+    """Remove one expired identity under its writer lock in the caller's transaction."""
+    application = lock_application(db, application.id)
+    if application is None or application.retention_due_on is None or application.retention_due_on > pacific_today(now=now):
+        return False
+    _record_deletion(db, record_kind="application", record_id=application.id,
+                     retention_rule=_application_retention_rule(db, application.id),
+                     due_on=application.retention_due_on, now=now)
+    db.execute(update(Feedback).where(Feedback.applicant_id == application.id).values(applicant_id=None))
+    db.delete(application)
+    db.flush()
+    return True
 
 
 def _application_retention_rule(db: Session, application_id: int) -> str:

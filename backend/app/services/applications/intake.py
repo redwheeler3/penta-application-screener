@@ -1,4 +1,4 @@
-"""Pure intake-copy operations shared by the applicant API and retention jobs."""
+"""Intake-copy operations shared by the applicant API and retention jobs."""
 
 import hashlib
 import json
@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -21,6 +22,7 @@ from app.schemas.applicant.answers import (
     CanonicalApplicationAnswers,
     WorkingApplicationAnswers,
 )
+from app.services.applications.purge import purge_expired_application
 from app.services.applications.retention import draft_expiry_for_opening_ids
 from app.services.openings.participation import apply_opening_selection
 
@@ -62,6 +64,10 @@ def create_application(
     saved_at: datetime,
     opening_ids: list[int] | None = None,
 ) -> Application:
+    expired = db.scalar(select(Application).where(Application.primary_email == primary_email,
+                                                 Application.withdrawn_at.is_(None)))
+    if expired is not None:
+        purge_expired_application(db, expired, now=saved_at)
     application = Application(
         primary_email=primary_email,
         applicant_name=_full_name(answers.applicant.first_name, answers.applicant.last_name),

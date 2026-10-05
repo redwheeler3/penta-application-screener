@@ -1,10 +1,9 @@
 """Opening-scoped submitted application pools."""
 
-from sqlalchemy import Select, exists, or_, select
+from sqlalchemy import Select, exists, select
 from sqlalchemy.orm import Session, aliased
 
 from app.core.problems import Problem
-from app.core.time import pacific_today
 from app.db.models import (
     Application,
     ApplicationParticipation,
@@ -12,16 +11,14 @@ from app.db.models import (
     OpeningIntakeMode,
     OpeningOutcome,
 )
+from app.services.applications.retention import current_retention_clause
 
 
 def _retained_application() -> tuple:
     return (
         Application.submitted_at.is_not(None),
         Application.withdrawn_at.is_(None),
-        or_(
-            Application.retention_due_on.is_(None),
-            Application.retention_due_on >= pacific_today(),
-        ),
+        current_retention_clause(),
     )
 
 

@@ -32,6 +32,11 @@ from app.services.applications.intake import (
     save_working_copy,
 )
 from app.services.applications.locking import lock_application
+from app.services.applications.purge import purge_expired_application
+from app.services.applications.retention import (
+    current_retention_clause,
+    retention_is_current,
+)
 from app.services.applications.selected import application_is_selected
 from app.services.auth.passwordless import (
     magic_link_for_token,
@@ -89,6 +94,7 @@ def claim_link_target(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink
             select(Application).where(
                 Application.primary_email == draft.email,
                 Application.withdrawn_at.is_(None),
+                current_retention_clause(),
             )
         )
     if application is not None:
@@ -126,15 +132,21 @@ def _claim_email_change(db: Session, link: MagicLinkToken) -> ClaimedApplicantLi
     # Link inspection can have loaded an older answer snapshot before token consumption.
     # Reload under the application write lock before merging only the email change.
     application = lock_application(db, link.application_id)
-    if application is None or application.withdrawn_at is not None:
+    if application is None or application.withdrawn_at is not None or not retention_is_current(application):
         return ClaimedApplicantLink(None)
     if application_is_selected(db, application.id):
         return ClaimedApplicantLink(None, state="unavailable")
+    expired_conflict = db.scalar(select(Application).where(
+        Application.primary_email == link.email, Application.withdrawn_at.is_(None),
+        Application.id != application.id))
+    if expired_conflict is not None:
+        purge_expired_application(db, expired_conflict, now=datetime.now(UTC))
     conflicting = db.scalar(
         select(Application).where(
             Application.primary_email == link.email,
             Application.id != application.id,
             Application.withdrawn_at.is_(None),
+                current_retention_clause(),
         )
     )
     if conflicting is not None:
@@ -230,6 +242,7 @@ def application_for_access_target(
         select(Application).where(
             Application.primary_email == target.email,
             Application.withdrawn_at.is_(None),
+                current_retention_clause(),
         )
     )
 
@@ -245,7 +258,7 @@ def access_target_is_editable(
 
 def _active_application(db: Session, application_id: int | None) -> Application | None:
     application = db.get(Application, application_id, populate_existing=True) if application_id is not None else None
-    return application if application is not None and application.withdrawn_at is None else None
+    return application if application is not None and application.withdrawn_at is None and retention_is_current(application) else None
 
 
 def draft_answers(draft: ApplicantDraft | None) -> WorkingApplicationAnswers | None:

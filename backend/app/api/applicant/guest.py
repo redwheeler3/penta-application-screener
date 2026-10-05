@@ -60,6 +60,7 @@ from app.services.applications.intake import (
 )
 from app.services.applications.locking import lock_application_identity
 from app.services.applications.purge import purge_draft
+from app.services.applications.retention import current_retention_clause
 from app.services.applications.selected import application_is_selected
 from app.services.auth.tokens import token_hash
 from app.services.email.sender import EmailSender, get_email_sender
@@ -103,6 +104,7 @@ def check_guest_submission(
         select(Application).where(
             Application.primary_email == email,
             Application.withdrawn_at.is_(None),
+                current_retention_clause(),
         )
     )
     if application is None:
@@ -122,6 +124,10 @@ def check_guest_submission(
         opening_ids=body.opening_ids,
         now=now,
     )
+    if draft is None:
+        sent = send_selected_application_locked(db, sender, application, now=now)
+        return GuestSubmissionCheckResponse(can_submit=False, email_sent=sent,
+                                            email_status="sent" if sent else "failed")
     revoke_other_pending_drafts(db, draft, now=now)
     outcome = send_magic_link(
         db,
@@ -204,6 +210,7 @@ def submit_guest_application(
         select(Application).where(
             Application.primary_email == email,
             Application.withdrawn_at.is_(None),
+                current_retention_clause(),
         )
     )
     if existing is not None:
@@ -300,6 +307,7 @@ def request_applicant_access_link(
             select(Application).where(
                 Application.primary_email == email,
                 Application.withdrawn_at.is_(None),
+                current_retention_clause(),
             )
         )
         if application is not None and application_is_selected(db, application.id):

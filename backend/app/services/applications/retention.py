@@ -1,8 +1,8 @@
 """Application retention dates derived from opening decisions."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.time import as_utc, pacific_today
@@ -13,6 +13,15 @@ from app.db.models import (
     Opening,
     OpeningOutcome,
 )
+
+
+def retention_is_current(application: Application, *, now: datetime | None = None) -> bool:
+    """The Pacific purge date is the first day retained data is unavailable."""
+    return application.retention_due_on is None or application.retention_due_on > pacific_today(now=now)
+
+
+def current_retention_clause(*, now: datetime | None = None):
+    return or_(Application.retention_due_on.is_(None), Application.retention_due_on > pacific_today(now=now))
 
 
 def one_year_after(value: date) -> date:

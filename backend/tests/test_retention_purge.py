@@ -116,7 +116,7 @@ def test_selection_after_sweep_read_preserves_new_retention(monkeypatch) -> None
     now = datetime.now(UTC)
     today = pacific_today(now=now)
     with factory() as db:
-        db.get(Application, ids[0]).retention_due_on = today
+        db.get(Application, ids[0]).retention_due_on = today + timedelta(days=1)
         db.commit()
 
     def select_before_lock(db, application_id):
@@ -129,7 +129,7 @@ def test_selection_after_sweep_read_preserves_new_retention(monkeypatch) -> None
 
     monkeypatch.setattr(purge, "lock_application", select_before_lock)
     with factory() as db:
-        result = purge_due_applicant_data(db, now=now)
+        result = purge_due_applicant_data(db, now=now + timedelta(days=1))
     with factory() as db:
         assert result.applications_purged == 0
         assert db.get(Application, ids[0]).retention_due_on.year == today.year + 7
@@ -165,3 +165,23 @@ def test_draft_renewed_after_sweep_read_is_not_deleted() -> None:
         assert db.scalar(select(RetentionDeletion)) is None
     finally:
         event.remove(db.get_bind(), "before_cursor_execute", renew_before_delete)
+
+
+def test_retention_expiry_blocks_sessions_scope_and_direct_selection() -> None:
+    from app.db.models import PasswordlessIdentityKind
+    from app.services.applications.scope import opening_applications
+    from app.services.auth.applicant import authenticate_applicant
+    from app.services.auth.passwordless import create_browser_session
+    from app.services.openings.direct_selection import available_previous_applicant
+
+    factory, opening_id, _, ids = request_sessions(closed=True)
+    now = datetime.now(UTC)
+    with factory() as db:
+        application = db.get(Application, ids[0])
+        token = create_browser_session(db, identity_kind=PasswordlessIdentityKind.APPLICANT,
+                                       application_id=application.id, now=now - timedelta(days=1))
+        application.retention_due_on = pacific_today(now=now)
+        db.commit()
+        assert application.id not in {app.id for app in opening_applications(db, opening_id)}
+        assert available_previous_applicant(db, application.id) is None
+        assert authenticate_applicant(db, token.token, now=now) is None

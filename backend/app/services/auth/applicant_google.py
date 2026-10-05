@@ -22,7 +22,11 @@ from app.services.applications.drafts import (
 )
 from app.services.applications.intake import create_application
 from app.services.applications.locking import lock_application_identity
-from app.services.applications.retention import draft_expiry_for_opening_ids
+from app.services.applications.purge import purge_expired_application
+from app.services.applications.retention import (
+    current_retention_clause,
+    draft_expiry_for_opening_ids,
+)
 from app.services.applications.selected import application_is_selected
 from app.services.openings.participation import (
     applicant_opening_states,
@@ -56,10 +60,13 @@ def claim_or_create_google_application(
     subject_application = db.scalar(
         select(Application).where(Application.google_subject == google_subject).execution_options(populate_existing=True)
     )
+    if subject_application is not None and purge_expired_application(db, subject_application, now=now):
+        subject_application = None
     email_application = db.scalar(
         select(Application).where(
             Application.primary_email == normalized_email,
             Application.withdrawn_at.is_(None),
+                current_retention_clause(),
         ).execution_options(populate_existing=True)
     )
 

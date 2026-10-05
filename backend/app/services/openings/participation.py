@@ -15,7 +15,10 @@ from app.db.models import (
     OpeningIntakeMode,
     OpeningPhase,
 )
-from app.services.applications.retention import refresh_application_retention
+from app.services.applications.retention import (
+    refresh_application_retention,
+    retention_is_current,
+)
 from app.services.applications.selected import application_is_selected
 from app.services.openings.catalog import opening_phase
 
@@ -136,7 +139,9 @@ def application_is_editable(
     application: Application | None,
     states: list[ApplicantOpeningState] | None = None,
 ) -> bool:
-    if application is not None and application_is_selected(db, application.id):
+    if application is not None and (not retention_is_current(application)
+                                    or application.withdrawn_at is not None
+                                    or application_is_selected(db, application.id)):
         return False
     states = states if states is not None else applicant_opening_states(db, application)
     return any(

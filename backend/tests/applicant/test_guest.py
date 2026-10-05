@@ -459,3 +459,52 @@ async def test_unknown_address_without_an_actionable_opening_receives_public_upd
     assert sender.messages[0].to == ("unknown@example.com",)
     assert db.scalar(select(ApplicantDraft)) is None
     assert db.scalar(select(MagicLinkToken)) is None
+
+
+@pytest.mark.anyio
+async def test_reapplication_after_expiry_never_restores_the_expired_record() -> None:
+    from app.db.models import RetentionDeletion
+
+    app, db, _ = app_and_db()
+    old = Application(primary_email="expired@example.com", raw_row={}, raw_row_hash="old",
+                      normalized={}, submitted_at=datetime.now(UTC), retention_due_on=pacific_today())
+    db.add(old)
+    db.commit()
+    old_id = old.id
+    opening_id = db.scalar(select(Opening.id))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post("/applicant/submissions", json={
+            "answers": sample_answers("expired@example.com"), "openingIds": [opening_id],
+            "declarationAccepted": True})
+    assert response.status_code == 201
+    current = db.scalar(select(Application).where(Application.primary_email == "expired@example.com"))
+    assert current.id != old_id
+    assert db.get(Application, old_id) is None
+    assert db.scalar(select(RetentionDeletion).where(RetentionDeletion.record_id == old_id)) is not None
+
+
+@pytest.mark.anyio
+async def test_selection_during_guest_collision_creates_no_private_copy_or_link(monkeypatch) -> None:
+    from app.api.applicant import guest
+
+    app, db, sender = app_and_db()
+    opening_id = db.scalar(select(Opening.id))
+    application = Application(primary_email="selected-race@example.com", raw_row={}, raw_row_hash="old",
+                              normalized={}, submitted_at=datetime.now(UTC))
+    db.add(application)
+    db.commit()
+    save = guest.save_collision_copy
+    def select_before_copy(*args, **kwargs):
+        db.add(ApplicationParticipation(application_id=application.id, opening_id=opening_id,
+                                        applied_at=datetime.now(UTC), outcome=OpeningOutcome.SELECTED))
+        db.commit()
+        return save(*args, **kwargs)
+    monkeypatch.setattr(guest, "save_collision_copy", select_before_copy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post("/applicant/submissions/check", json={
+            "answers": sample_answers(application.primary_email), "openingIds": [opening_id]})
+    assert response.status_code == 200
+    assert response.json()["canSubmit"] is False
+    assert db.scalar(select(ApplicantDraft)) is None
+    assert db.scalar(select(MagicLinkToken)) is None
+    assert sender.messages[-1].kind == "application_selected_locked"

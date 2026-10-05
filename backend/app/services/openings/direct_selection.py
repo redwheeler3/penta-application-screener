@@ -37,7 +37,7 @@ def available_previous_applicants_query() -> Select[tuple[Application]]:
     return select(Application).where(
         Application.submitted_at.is_not(None),
         Application.withdrawn_at.is_(None),
-        Application.retention_due_on >= pacific_today(),
+        Application.retention_due_on > pacific_today(),
         participated,
         not_(selected),
     )

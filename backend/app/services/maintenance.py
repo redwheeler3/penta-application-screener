@@ -61,9 +61,9 @@ def run_due_maintenance_with(
     if lease is None:
         return False
     try:
+        purge_due_applicant_data(db, now=now)
         queue_due_unsuccessful_notices(db, now=now)
         retry_queued_emails(db, sender, now=retry_time)
-        purge_due_applicant_data(db, now=now)
         purge_expired_vacancy_delivery_failures(db, now=now)
     except Exception as error:
         db.rollback()
