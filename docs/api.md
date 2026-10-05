@@ -212,7 +212,7 @@ consolidation audits expose captured configuration where it was recorded.
 | GET | `/ranking/run/estimate` | Rank Estimate | Committee session |
 | POST | `/ranking/score-current` | Fill missing scores without changing the current dimensions or tier layout. | Committee session |
 | GET | `/ranking/score-current/estimate` | Score Current Estimate | Committee session |
-| PUT | `/ranking/seeds` | Persist the member's pending free-text proposals for the current analysis. Returns the current seed state. 409 before an analysis exists (nowhere to store yet) or if the viewed analysis was superseded (stale_analysis). | Committee session |
+| PATCH | `/ranking/proposals` | Apply one Add/Remove intent to current pending proposals. Returns the current seed state. 409 before an analysis exists (nowhere to store yet) or if the viewed analysis was superseded (stale_analysis). | Committee session |
 | PUT | `/ranking/tiers` | Persist the member's new tier layout, derive weights from it, and return the freshly re-sorted ranking. Unknown dimension keys are rejected (422); a save against a superseded analysis is rejected (409 stale_analysis). | Committee session |
 
 ## Screening

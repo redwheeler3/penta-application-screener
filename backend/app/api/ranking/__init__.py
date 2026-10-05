@@ -8,7 +8,7 @@ Flow the UI drives:
   3. GET  /ranking/current — the current run's criteria + summary.
   4. GET  /ranking/board — coherent criteria, ranked applicants, and tier layout.
   5. PUT  /ranking/tiers — the committee's importance-tier weighting.
-  6. PUT  /ranking/seeds — pending free-text proposals for the next run.
+  6. PATCH /ranking/proposals — individual Add/Remove intent for pending proposals.
 
 The committee never runs the individual AI passes separately, so they're exposed as
 one Rank step; the passes stay separate underneath (distinct schemas, cache kinds,

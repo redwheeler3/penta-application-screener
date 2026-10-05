@@ -140,28 +140,18 @@ def proposed_dimensions(member_ranking: MemberRanking) -> list[str]:
 
 
 
-def set_proposals(
-    db: Session,
-    member_ranking: MemberRanking,
-    *,
-    proposed_dimensions: list[str] | None = None,
-) -> MemberRanking:
-    """Persist this member's pending free-text proposals between runs — the axes they
-    want the next Rank to ground in the pool. A no-op when ``None`` is passed. (Keeping an
-    existing axis across re-runs is tier placement, not a stored seed; see ``kept_keys``.)
-    """
-    if proposed_dimensions is None:
-        return member_ranking
+def change_proposal(db: Session, member_ranking: MemberRanking, *, text: str, operation: str) -> MemberRanking:
+    """Apply one Add/Remove intent to current proposals under the member writer lock."""
+    if operation not in {"add", "remove"}:
+        raise ValueError("Unknown proposal operation.")
     lock_member_state(db, member_ranking)
-    # Trim blanks/whitespace and dedupe while preserving order.
-    seen: set[str] = set()
-    cleaned: list[str] = []
-    for text in proposed_dimensions:
-        t = text.strip()
-        if t and t not in seen:
-            seen.add(t)
-            cleaned.append(t)
-    member_ranking.run_state = {**(member_ranking.run_state or {}), "proposed_dimensions": cleaned}
+    text = text.strip()
+    proposals = proposed_dimensions(member_ranking)
+    if operation == "add" and text and text not in proposals:
+        proposals.append(text)
+    elif operation == "remove":
+        proposals = [proposal for proposal in proposals if proposal != text]
+    member_ranking.run_state = {**(member_ranking.run_state or {}), "proposed_dimensions": proposals}
     db.commit()
     db.refresh(member_ranking)
     return member_ranking

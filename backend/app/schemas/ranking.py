@@ -6,7 +6,7 @@ share one wire shape. ``PoolDimensionOut`` is a camelCase view of the stored
 ``PoolDimension`` (which stays snake_case as the prompt/storage contract).
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from app.schemas.applications import DimensionContributionOut
 from app.schemas.base import RequestModel, ResponseModel
@@ -267,7 +267,7 @@ class RankingBoardResponse(ResponseModel):
 
 
 class SeedsResponse(ResponseModel):
-    """PUT /ranking/seeds — the current pending-proposal state."""
+    """PATCH /ranking/proposals — the current pending-proposal state."""
 
     proposed_dimensions: list[str] = []
 
@@ -297,8 +297,8 @@ class TierLayoutUpdate(RequestModel):
     acknowledged_requested_keys: list[str] = []
 
 
-class SeedsUpdate(RequestModel):
+class ProposalUpdate(RequestModel):
     # The analysis the client is viewing — same stale-guard as TierLayoutUpdate.
     analysis_id: int
-    # Optional so a no-op PUT leaves proposals untouched.
-    proposed_dimensions: list[str] | None = None
+    operation: Literal["add", "remove"]
+    text: str

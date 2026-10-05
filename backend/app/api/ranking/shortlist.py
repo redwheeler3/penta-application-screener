@@ -23,10 +23,10 @@ from app.core.problems import Problem
 from app.db.models import MemberRanking, User
 from app.db.session import get_db
 from app.schemas.ranking import (
+    ProposalUpdate,
     RankingBoardResponse,
     RankingResponse,
     SeedsResponse,
-    SeedsUpdate,
     TierLayoutUpdate,
     TierOut,
 )
@@ -34,10 +34,10 @@ from app.services.applications.scope import resolve_visible_opening_id
 from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
+    change_proposal,
     display_tiers,
     get_or_reconcile_member_ranking,
     proposed_dimensions,
-    set_proposals,
     set_tiers,
 )
 from app.services.run_lock import lock_run_state, rank_run_in_progress
@@ -146,19 +146,19 @@ def update_tiers(
 # No model call here — just persistence; the proposals take effect on the next /ranking/run.
 
 
-@router.put("/seeds", response_model=SeedsResponse)
-def update_seeds(
-    body: SeedsUpdate,
+@router.patch("/proposals", response_model=SeedsResponse)
+def update_proposal(
+    body: ProposalUpdate,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> SeedsResponse:
-    """Persist the member's pending free-text proposals for the current analysis. Returns the
+    """Apply one Add/Remove intent to current pending proposals. Returns the
     current seed state. 409 before an analysis exists (nowhere to store yet) or if the viewed
     analysis was superseded (stale_analysis).
     """
     member_ranking = _require_viewed_analysis(
         db, resolve_visible_opening_id(db, opening_id), body.analysis_id, user
     )
-    set_proposals(db, member_ranking, proposed_dimensions=body.proposed_dimensions)
+    change_proposal(db, member_ranking, operation=body.operation, text=body.text)
     return SeedsResponse(proposed_dimensions=proposed_dimensions(member_ranking))

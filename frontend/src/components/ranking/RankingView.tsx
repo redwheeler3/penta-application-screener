@@ -48,15 +48,21 @@ function CriteriaDetail(props: { dim: PoolDimension | null }): ReactNode {
 // "strongly consider"; the AI may refine, split, or skip it.
 function CriteriaComposer(props: {
   proposedDimensions: string[];
-  onAddProposal: (text: string) => void;
+  onAddProposal: (text: string) => Promise<boolean>;
   onRemoveProposal: (text: string) => void;
 }): ReactNode {
   const [draft, setDraft] = useState("");
-  function submitDraft() {
-    const text = draft.trim();
-    if (!text) return;
-    props.onAddProposal(text);
-    setDraft("");
+  const [saving, setSaving] = useState(false);
+  async function submitDraft() {
+    const submitted = draft;
+    const text = submitted.trim();
+    if (!text || saving) return;
+    setSaving(true);
+    try {
+      if (await props.onAddProposal(text)) setDraft((current) => current === submitted ? "" : current);
+    } finally {
+      setSaving(false);
+    }
   }
   return (
     <div className="criteria-composer no-print">
@@ -78,7 +84,7 @@ function CriteriaComposer(props: {
             }
           }}
         />
-        <button type="button" className="secondary-button" onClick={submitDraft} disabled={!draft.trim()}>
+        <button type="button" className="secondary-button" onClick={submitDraft} disabled={!draft.trim() || saving}>
           <Plus size={14} /> Add
         </button>
       </div>
@@ -114,7 +120,7 @@ export function RankingView(props: {
   onSaveTiers: (next: Tier[]) => void;
   onAcknowledgeNew: (keys: string[]) => void;
   onDismissRequested: (keys: string[]) => void;
-  onAddProposal: (text: string) => void;
+  onAddProposal: (text: string) => Promise<boolean>;
   onRemoveProposal: (text: string) => void;
   onSelectApplication: (id: number) => void;
   onToggleStar: (id: number, starred: boolean) => void;

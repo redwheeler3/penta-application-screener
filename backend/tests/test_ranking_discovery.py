@@ -172,11 +172,11 @@ async def test_proposed_dimension_seeds_discovery_then_clears() -> None:
         await stream_events(client, "/ranking/run")
 
         # Propose an axis between runs.
-        seeds = (await client.put(
-            "/ranking/seeds",
+        seeds = (await client.patch(
+            "/ranking/proposals",
             json={
                 "analysisId": await current_analysis_id(client),
-                "proposedDimensions": ["school-age kids who'd use the playground"],
+                "operation": "add", "text": "school-age kids who'd use the playground",
             },
         )).json()
         assert seeds["proposedDimensions"] == ["school-age kids who'd use the playground"]
@@ -267,15 +267,15 @@ async def test_tiered_dimension_is_kept_and_injected_at_decomposition_not_discov
 
 
 @pytest.mark.anyio
-async def test_put_seeds_before_run_is_409() -> None:
+async def test_add_proposal_before_run_is_409() -> None:
     app, db, _ = setup_app(role=UserRole.MEMBER)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # analysisId is required by the schema; supply a placeholder so validation passes
         # and the router's own 409 (no analysis discovered yet) is what's asserted.
-        resp = await client.put(
-            "/ranking/seeds", json={"analysisId": 1, "proposedDimensions": ["x"]}
+        resp = await client.patch(
+            "/ranking/proposals", json={"analysisId": 1, "operation": "add", "text": "x"}
         )
         assert resp.status_code == 409
 

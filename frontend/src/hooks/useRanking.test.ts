@@ -8,7 +8,7 @@ import { type RankingRunRead, useRanking } from "./useRanking";
 
 vi.mock("../api/ranking", () => ({
   fetchRankingCurrent: vi.fn(), fetchRankingBoard: vi.fn(),
-  saveTiers: vi.fn(), saveSeeds: vi.fn(),
+  saveTiers: vi.fn(), changeProposal: vi.fn(),
 }));
 
 const current = (analysisId: number): CurrentRunResponse => ({
@@ -31,36 +31,36 @@ it("keeps reads and later writes behind a pending acknowledgement body", async (
   vi.spyOn(response, "json").mockReturnValue(body.promise);
   vi.mocked(api.fetchRankingBoard).mockResolvedValue(board(1, tier("Original")));
   vi.mocked(api.saveTiers).mockResolvedValue(response);
-  vi.mocked(api.saveSeeds).mockResolvedValue(Response.json({ proposedDimensions: ["Queued"] }));
+  vi.mocked(api.changeProposal).mockResolvedValue(Response.json({ proposedDimensions: ["Queued"] }));
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.loadRanking());
   let saving!: Promise<void>;
   await act(async () => { saving = result.current.saveTiers(tier("Edited")); });
-  await act(async () => result.current.addProposal("Queued"));
+  await act(async () => { void result.current.addProposal("Queued"); });
   await act(async () => expect(await result.current.loadRanking()).toBe(false));
   expect(api.fetchRankingBoard).toHaveBeenCalledOnce();
-  expect(api.saveSeeds).not.toHaveBeenCalled();
+  expect(api.changeProposal).not.toHaveBeenCalled();
   expect(result.current.tiers).toEqual(tier("Edited"));
   await act(async () => { body.resolve(ranking(1)); await saving; });
-  await waitFor(() => expect(api.saveSeeds).toHaveBeenCalledOnce());
+  await waitFor(() => expect(api.changeProposal).toHaveBeenCalledOnce());
 });
 
 it("keeps saved proposals when an earlier board refresh finishes late", async () => {
   const earlier = deferred<RankingBoardResponse>();
   vi.mocked(api.fetchRankingBoard).mockResolvedValueOnce(board(1)).mockReturnValueOnce(earlier.promise);
-  vi.mocked(api.saveSeeds).mockResolvedValueOnce(Response.json({ proposedDimensions: ["Saved"] }))
+  vi.mocked(api.changeProposal).mockResolvedValueOnce(Response.json({ proposedDimensions: ["Saved"] }))
     .mockResolvedValueOnce(Response.json({ proposedDimensions: ["Saved", "Second"] }));
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.loadRanking());
   let refreshing!: Promise<boolean>;
   act(() => { refreshing = result.current.loadRanking(); });
-  await act(async () => result.current.addProposal("Saved"));
+  await act(async () => { await result.current.addProposal("Saved"); });
   expect(result.current.rankingRun?.proposedDimensions).toEqual(["Saved"]);
   expect(result.current.rankingLoadState).toBe("ready");
   await act(async () => { earlier.resolve(board(1)); expect(await refreshing).toBe(false); });
   expect(result.current.rankingRun?.proposedDimensions).toEqual(["Saved"]);
-  await act(async () => result.current.addProposal("Second"));
-  expect(vi.mocked(api.saveSeeds).mock.calls[1][2].proposedDimensions).toEqual(["Saved", "Second"]);
+  await act(async () => { await result.current.addProposal("Second"); });
+  expect(vi.mocked(api.changeProposal).mock.calls[1][2]).toEqual({ operation: "add", text: "Second" });
 });
 
 it.each(["http", "network"])("reconciles a failed proposal with the displayed board after a %s failure", async (failure) => {
@@ -68,12 +68,12 @@ it.each(["http", "network"])("reconciles a failed proposal with the displayed bo
   saved.run.proposedDimensions = ["Existing"];
   saved.ranking.proposedDimensions = ["Existing"];
   vi.mocked(api.fetchRankingBoard).mockResolvedValue(saved);
-  if (failure === "http") vi.mocked(api.saveSeeds).mockResolvedValue(new Response(null, { status: 503 }));
-  else vi.mocked(api.saveSeeds).mockRejectedValue(new Error("Synthetic network failure"));
+  if (failure === "http") vi.mocked(api.changeProposal).mockResolvedValue(new Response(null, { status: 503 }));
+  else vi.mocked(api.changeProposal).mockRejectedValue(new Error("Synthetic network failure"));
   const error = vi.fn();
   const { result } = renderHook(() => useRanking(1, error));
   await act(() => result.current.loadRanking());
-  await act(async () => result.current.addProposal("Rejected"));
+  await act(async () => { await result.current.addProposal("Rejected"); });
   await waitFor(() => expect(api.fetchRankingBoard).toHaveBeenCalledTimes(2));
   expect(error).toHaveBeenCalledOnce();
   expect(api.fetchRankingCurrent).not.toHaveBeenCalled();
@@ -86,11 +86,11 @@ it("waits for queued tier saves before reconciling a failed proposal", async () 
   const tiers = deferred<Response>();
   vi.mocked(api.fetchRankingBoard).mockResolvedValueOnce(board(1))
     .mockResolvedValueOnce(board(1, tier("Accepted")));
-  vi.mocked(api.saveSeeds).mockReturnValue(proposal.promise);
+  vi.mocked(api.changeProposal).mockReturnValue(proposal.promise);
   vi.mocked(api.saveTiers).mockReturnValue(tiers.promise);
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.loadRanking());
-  await act(async () => result.current.addProposal("Rejected"));
+  await act(async () => { void result.current.addProposal("Rejected"); });
   let saving!: Promise<void>;
   act(() => { saving = result.current.saveTiers(tier("Accepted")); });
   await act(async () => proposal.resolve(new Response(null, { status: 503 })));
@@ -152,7 +152,7 @@ it("retains rapid proposal edits and serializes them with tier edits", async () 
   const first = deferred<Response>();
   const second = deferred<Response>();
   vi.mocked(api.fetchRankingCurrent).mockResolvedValue(current(1));
-  vi.mocked(api.saveSeeds).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  vi.mocked(api.changeProposal).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
   vi.mocked(api.saveTiers).mockResolvedValue(Response.json(ranking(1)));
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.refreshRankingRun());
@@ -161,10 +161,10 @@ it("retains rapid proposal edits and serializes them with tier edits", async () 
     result.current.addProposal("First"); result.current.addProposal("Second");
     save = result.current.saveTiers(tier("Important"));
   });
-  expect(api.saveSeeds).toHaveBeenCalledTimes(1);
+  expect(api.changeProposal).toHaveBeenCalledTimes(1);
   expect(api.saveTiers).not.toHaveBeenCalled();
   await act(async () => { first.resolve(Response.json({ proposedDimensions: ["First"] })); });
-  expect(vi.mocked(api.saveSeeds).mock.calls[1][2].proposedDimensions).toEqual(["First", "Second"]);
+  expect(vi.mocked(api.changeProposal).mock.calls[1][2]).toEqual({ operation: "add", text: "Second" });
   expect(result.current.rankingRun?.proposedDimensions).toEqual(["First", "Second"]);
   await act(async () => {
     second.resolve(Response.json({ proposedDimensions: ["First", "Second"] })); await save;

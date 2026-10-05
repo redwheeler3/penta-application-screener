@@ -70,21 +70,21 @@ export function createApi(client: ApiClient) {
   // Persist pending free-text proposals for the current analysis. The next Rank reads these,
   // so they take effect on its discovery pass. (Keeping an existing axis across re-runs is
   // tier placement — see saveTiers — not a seed.) analysisId guards against a stale save.
-  function saveSeeds(
+  function changeProposal(
     openingId: number,
     analysisId: number,
-    seeds: { proposedDimensions?: string[] },
+    proposal: { operation: "add" | "remove"; text: string },
   ): Promise<Response> {
-    return request(`/ranking/seeds${openingQuery(openingId)}`, {
-      method: "PUT",
+    return request(`/ranking/proposals${openingQuery(openingId)}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisId, ...seeds }),
+      body: JSON.stringify({ analysisId, ...proposal }),
     });
   }
   return {
     fetchRankingCurrent, fetchMatchAudit, fetchDecomposeAudit, fetchConsolidateAudit,
     fetchFanOutAudit, fetchRankEstimate, runRank, fetchScoreCurrentEstimate, scoreCurrent,
-    fetchRankingBoard, saveTiers, saveSeeds,
+    fetchRankingBoard, saveTiers, changeProposal,
   };
 }
 
@@ -92,5 +92,5 @@ export function createApi(client: ApiClient) {
 export const {
   fetchRankingCurrent, fetchMatchAudit, fetchDecomposeAudit, fetchConsolidateAudit,
   fetchFanOutAudit, fetchRankEstimate, runRank, fetchScoreCurrentEstimate, scoreCurrent,
-  fetchRankingBoard, saveTiers, saveSeeds,
+  fetchRankingBoard, saveTiers, changeProposal,
 } = createApi(publicClient);

@@ -35,7 +35,7 @@ export interface RankingState {
   /** Dismiss the "Requested" provenance pill on the given keys (its ✕), via the same
    * tiers PUT — provenance, so it clears only on this explicit action, not on a move. */
   dismissRequested: (keys: string[]) => Promise<void>;
-  addProposal: (text: string) => void;
+  addProposal: (text: string) => Promise<boolean>;
   removeProposal: (text: string) => void;
   /** Set the displayed pending proposals directly (no persist) — a discover run consumes
    * them, so the run controls clear them optimistically and restore on failure.
@@ -262,9 +262,12 @@ export function useRanking(
     await saveTiers(tiersRef.current, [], keys);
   }
 
-  async function saveProposals(proposedDimensions: string[]): Promise<void> {
+  async function changeProposal(operation: "add" | "remove", text: string): Promise<boolean> {
     const run = runRef.current;
-    if (!run || openingId === null || !mutations.isFor(mutationKey)) return;
+    if (!run || openingId === null || !mutations.isFor(mutationKey)) return false;
+    const proposedDimensions = operation === "add"
+      ? [...new Set([...run.proposedDimensions, text])]
+      : run.proposedDimensions.filter((proposal) => proposal !== text);
     const inScope = mutations.capture();
     const version = ++proposalSaveVersion.current;
     const isLatest = () => inScope() && version === proposalSaveVersion.current;
@@ -272,13 +275,13 @@ export function useRanking(
     runRef.current = optimistic;
     setRankingRun(optimistic);
     try {
-      const response = await enqueueMutation(inScope, () => api.saveSeeds(
-        openingId, run.analysisId, { proposedDimensions },
+      const response = await enqueueMutation(inScope, () => api.changeProposal(
+        openingId, run.analysisId, { operation, text },
       ));
-      if (!response || !isLatest()) return;
+      if (!response || !inScope()) return false;
       if (response.ok) {
         const echoed = response.payload as { proposedDimensions: string[] };
-        if (!isLatest()) return;
+        if (!isLatest()) return true;
         currentReads.invalidate();
         setRankingRun((current) => {
           if (!current) return current;
@@ -286,6 +289,7 @@ export function useRanking(
           runRef.current = updated;
           return updated;
         });
+        return true;
       } else {
         const { handled, message } = handleSaveFailure(response.problem, isLatest);
         if (!handled && isLatest()) {
@@ -294,21 +298,19 @@ export function useRanking(
         }
       }
     } catch {
-      if (!isLatest()) return;
+      if (!isLatest()) return false;
       onError("Could not save the suggested criteria.");
       await reloadAfterSaveFailure(isLatest);
     }
+    return false;
   }
 
-  function addProposal(text: string) {
-    const run = runRef.current;
-    if (!run || run.proposedDimensions.includes(text)) return;
-    void saveProposals([...run.proposedDimensions, text]);
+  function addProposal(text: string): Promise<boolean> {
+    return changeProposal("add", text.trim());
   }
 
-  function removeProposal(text: string) {
-    const run = runRef.current;
-    if (run) void saveProposals(run.proposedDimensions.filter((item) => item !== text));
+  function removeProposal(text: string): void {
+    void changeProposal("remove", text);
   }
 
   function setDisplayedProposals(proposedDimensions: string[]) {

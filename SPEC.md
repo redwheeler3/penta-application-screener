@@ -2018,3 +2018,8 @@ producer identity without a cascading FK. Output remains while the producer or a
 consumer has current legal retention. Purge and selected-reference replacement prune affected
 unowned output; restore upgrades the schema before replaying deletions. Result IDs, cache keys,
 provider provenance and cost history are preserved.
+
+Proposal edits persist individual Add/Remove intent against the current member state under
+the shared run/member guards. The composer retains text until a successful acknowledgement,
+clears only the exact submitted draft, and permits typing the next draft while a save is pending.
+Live full Rank continues to reject edits whose inputs it has already captured.

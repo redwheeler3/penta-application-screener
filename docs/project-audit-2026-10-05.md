@@ -345,3 +345,9 @@ I would leave these alone:
   writes use it. Two-session tests demote or deactivate admitted actors before mutation and
   verify no partial decision or queued notice. All 954 backend tests passed (one existing skip);
   Ruff passed. Ordinary reads and provider I/O remain outside this boundary.
+
+- F06: proposal writes apply narrow Add/Remove intent to the locked current state; the full-list
+  replacement endpoint is removed. The composer waits for acknowledgement and retains rejected
+  or newer draft text. Cross-tab Add/Add and Add/Remove, duplicate intent, failed acknowledgement
+  and typing during a save are covered. All 956 backend and 279 frontend tests passed, with Ruff,
+  ESLint and build passing. Existing run guards and optimistic chip feedback are preserved.

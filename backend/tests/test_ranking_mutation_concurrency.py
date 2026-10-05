@@ -21,8 +21,8 @@ from app.db.models import (
 from app.schemas.settings import EligibilityRules
 from app.services.eligibility.rules import save_member_rules
 from app.services.ranking.member_state import (
+    change_proposal,
     get_or_reconcile_member_ranking,
-    set_proposals,
     set_tiers,
 )
 from app.services.run_lock import acquire_run_lock, ensure_lock_row
@@ -59,11 +59,11 @@ def test_stale_member_snapshots_preserve_independent_writes(proposals_first):
         t = tiers.get(MemberRanking, member_id)
         layout = [{"id": "important", "label": "Important", "dimension_keys": ["skills_offered"]}]
         if proposals_first:
-            set_proposals(proposals, p, proposed_dimensions=["Saved suggestion"])
+            change_proposal(proposals, p, operation="add", text="Saved suggestion")
             set_tiers(tiers, t, layout)
         else:
             set_tiers(tiers, t, layout)
-            set_proposals(proposals, p, proposed_dimensions=["Saved suggestion"])
+            change_proposal(proposals, p, operation="add", text="Saved suggestion")
     with factory() as db:
         state = db.get(MemberRanking, member_id).run_state
         assert state["proposed_dimensions"] == ["Saved suggestion"]
@@ -84,7 +84,7 @@ def test_rank_cannot_start_between_policy_check_and_member_save(tmp_path, existi
             with factory() as rank:
                 with pytest.raises(OperationalError, match="locked"):
                     acquire_run_lock(rank, user_id=user_id, kind="rank")
-            set_proposals(editor, view, proposed_dimensions=["Included before Rank"])
+            change_proposal(editor, view, operation="add", text="Included before Rank")
         with factory() as rank:
             assert acquire_run_lock(rank, user_id=user_id, kind="rank") is not None
             assert rank.scalar(select(MemberRanking)).run_state["proposed_dimensions"] == ["Included before Rank"]
@@ -128,3 +128,24 @@ def test_competing_first_rule_saves_share_one_row(tmp_path):
             assert db.scalar(select(MemberRules)).rules["income_min"] in results
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("second_operation", ["add", "remove"])
+def test_stale_tabs_preserve_individual_proposal_intent(second_operation):
+    factory, (user_id, opening_id, analysis_id) = seed(memory_engine())
+    with factory() as db:
+        view = get_or_reconcile_member_ranking(db, db.get(Analysis, analysis_id), db.get(User, user_id))
+        change_proposal(db, view, operation="add", text="Existing")
+        member_id = view.id
+    with factory() as first, factory() as second:
+        a = first.get(MemberRanking, member_id)
+        b = second.get(MemberRanking, member_id)
+        assert a.run_state == b.run_state
+        change_proposal(first, a, operation="add", text="First")
+        change_proposal(second, b, operation=second_operation, text="Second" if second_operation == "add" else "Existing")
+    with factory() as check:
+        proposals = check.get(MemberRanking, member_id).run_state["proposed_dimensions"]
+        assert proposals == (["Existing", "First", "Second"] if second_operation == "add" else ["First"])
+        view = _require_viewed_analysis(check, opening_id, analysis_id, check.get(User, user_id))
+        change_proposal(check, view, operation="add", text=" First ")
+        assert check.get(MemberRanking, member_id).run_state["proposed_dimensions"] == proposals

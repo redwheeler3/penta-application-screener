@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import { deferred } from "../../testSupport";
 import type { RankingResponse } from "../../types";
 import { RankingView } from "./RankingView";
 
@@ -50,4 +51,37 @@ describe("RankingView priorities", () => {
     expect(screen.queryByText("Synthetic applicant")).toBeNull();
     expect(screen.queryAllByRole("button", { name: /Print/ })).toHaveLength(0);
   });
+});
+
+
+it.each([false, true])("retains draft edits while proposal acknowledgement is pending (accepted=%s)", async (accepted) => {
+  const acknowledgement = deferred<boolean>();
+  const add = vi.fn().mockReturnValue(acknowledgement.promise);
+  render(<RankingView {...props} ranking={unranked} tiers={[]} rankingRun={{
+    analysisId: 1, dimensions: [], discoveryNarrative: null, newDimensionKeys: [],
+    revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [],
+  }} onAddProposal={add} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add criterion" }));
+  const input = screen.getByPlaceholderText(/^e.g. Families/);
+  fireEvent.change(input, { target: { value: "Submitted criterion" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Add$/ }));
+  expect(input).toHaveValue("Submitted criterion");
+  expect(screen.getByRole("button", { name: /^Add$/ })).toBeDisabled();
+  await act(async () => acknowledgement.resolve(accepted));
+  expect(input).toHaveValue(accepted ? "" : "Submitted criterion");
+});
+
+it("keeps a newer draft after an earlier proposal is acknowledged", async () => {
+  const acknowledgement = deferred<boolean>();
+  render(<RankingView {...props} ranking={unranked} tiers={[]} rankingRun={{
+    analysisId: 1, dimensions: [], discoveryNarrative: null, newDimensionKeys: [],
+    revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [],
+  }} onAddProposal={() => acknowledgement.promise} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add criterion" }));
+  const input = screen.getByPlaceholderText(/^e.g. Families/);
+  fireEvent.change(input, { target: { value: "Submitted criterion" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Add$/ }));
+  fireEvent.change(input, { target: { value: "Newer draft" } });
+  await act(async () => acknowledgement.resolve(true));
+  expect(input).toHaveValue("Newer draft");
 });
