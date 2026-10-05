@@ -51,7 +51,7 @@ export function useEligibilityRules(options: {
     const submitted = data.draft;
     const isCurrent = requests.capture();
     // Invalidate any read begun before this write without replacing the editable draft.
-    resource.setData((current) => current);
+    resource.invalidateReads();
     setAction({ scope, kind: operation });
     setConfirmation(null);
     const failure = operation === "reset" ? "Could not reset to the committee default."

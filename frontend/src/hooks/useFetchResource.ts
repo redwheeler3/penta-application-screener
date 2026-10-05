@@ -23,6 +23,7 @@ export function useFetchResource<T>(
   state: FetchState;
   reload: () => Promise<void>;
   setData: Dispatch<SetStateAction<T | null>>;
+  invalidateReads: () => void;
 } {
   const [data, setStoredData] = useState<T | null>(null);
   const [state, setState] = useState<FetchState>("loading");
@@ -53,11 +54,17 @@ export function useFetchResource<T>(
   }, [reload, options.reloadKey]);
 
   const setData = useCallback<Dispatch<SetStateAction<T | null>>>((next) => {
-    // A mutation response is newer server truth than any GET already in flight.
+    // A local draft or accepted mutation supersedes reads already in flight.
     requests.invalidate();
     setStoredData(next);
     setState("ready");
   }, [requests]);
 
-  return { data, state, reload, setData };
+  const invalidateReads = useCallback(() => {
+    requests.invalidate();
+    // Keep the displayed data settled when abandoning a pending reload.
+    setState("ready");
+  }, [requests]);
+
+  return { data, state, reload, setData, invalidateReads };
 }

@@ -180,14 +180,14 @@ export function CommitteeWorkspace({ user, logout }: {
   });
 
   useEffect(() => {
-    if (!user) return;
     void loadSettings();
     void loadInitialApplications();
+    // The account-keyed workspace owns these initial reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, []);
 
   useEffect(() => {
-    if (!user || selectedOpeningId === null) return;
+    if (selectedOpeningId === null) return;
     let active = true;
     setSelectedApp(null);
     resetEstimates();
@@ -201,7 +201,7 @@ export function CommitteeWorkspace({ user, logout }: {
     return () => { active = false; };
     // Opening changes intentionally reset every opening-scoped member surface.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, selectedOpeningId]);
+  }, [selectedOpeningId]);
 
   async function changeOpening(openingId: number) {
     try {
@@ -222,7 +222,6 @@ export function CommitteeWorkspace({ user, logout }: {
   // Refresh the lightweight list/dashboard reads while this page is visible and whenever
   // the member returns to it, so new or edited applications appear without a reload.
   useEffect(() => {
-    if (!user) return;
     let refreshInFlight = false;
     const refreshIntake = () => {
       if (document.visibilityState !== "visible" || refreshInFlight) return;
@@ -239,7 +238,7 @@ export function CommitteeWorkspace({ user, logout }: {
       window.removeEventListener("focus", refreshIntake);
       document.removeEventListener("visibilitychange", refreshIntake);
     };
-  }, [user, refreshDashboard, reloadApplications]);
+  }, [refreshDashboard, reloadApplications]);
 
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the
@@ -271,7 +270,6 @@ export function CommitteeWorkspace({ user, logout }: {
   const rankRunningRef = useRef(false);
   rankRunningRef.current = rankRunning || rankRefreshing;
   useEffect(() => {
-    if (!user) return;
     const onFocus = () => {
       if (document.visibilityState === "visible" && !rankRunningRef.current) {
         void checkForStaleRanking();
@@ -283,7 +281,7 @@ export function CommitteeWorkspace({ user, logout }: {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [user, checkForStaleRanking]);
+  }, [checkForStaleRanking]);
 
   async function saveSettings(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -329,9 +327,7 @@ export function CommitteeWorkspace({ user, logout }: {
       <header className="topnav">
         <div className="topnav-inner penta-header-inner">
           <BrandLockup />
-          {user ? (
-            <HeaderAccount email={user.email} role={user.role} onSignOut={() => void signOut()} />
-          ) : null}
+          <HeaderAccount email={user.email} role={user.role} onSignOut={() => void signOut()} />
         </div>
       </header>
 
@@ -339,207 +335,200 @@ export function CommitteeWorkspace({ user, logout }: {
         <h1>Penta Application Screener</h1>
       </div>
 
-      <>
-          {isAdmin ? (
-            <AdminActionBanner
-              actions={adminActions}
-                onReviewOpenings={() => {
-                  setAdminSubtab("openings");
-                  navigateToView("adminSettings");
-                }}
-                onReviewEmailDelivery={() => {
-                  setAdminSubtab("emailDelivery");
-                  navigateToView("adminSettings");
-                }}
-            />
-          ) : null}
-          {/* Global actions first (workflow acts on the whole dataset regardless of
-              tab), then the tab row, then the active tab's content. */}
-          <WorkflowBar
-            workflow={workflow}
-            coverage={coverage}
-            loadState={dashboardLoadState}
-            onRetryLoad={() => void loadInitialDashboard()}
-            screeningRunning={screeningRunning}
-            screeningEstimate={screeningEstimate}
-            screeningEstimateLoading={screeningEstimateLoading}
-            screeningProgress={screeningProgress}
-            onRequestScreening={requestScreeningEstimate}
-            onRunScreening={runScreening}
-            onCancelScreening={cancelScreeningEstimate}
-            rankRunning={rankRunning}
-            rankEstimate={rankEstimate}
-            rankEstimateLoading={rankEstimateLoading}
-            scoreCurrentEstimate={scoreCurrentEstimate}
-            hasCurrentCriteria={rankingRun !== null}
-            rankProgress={rankProgress}
-            rankThinking={rankThinking}
-            pendingProposals={rankingRun?.proposedDimensions ?? []}
-            onRequestRank={requestRankEstimate}
-            onRunRank={runRank}
-            onCancelRank={cancelRankEstimate}
-            openings={openings}
-            selectedOpeningId={selectedOpeningId}
-            onOpeningChange={(openingId) => void changeOpening(openingId)}
-            aiActionsDisabled={aiActionsDisabled}
-          />
-
-          {/* Tab row: the data views on the left, the config tabs (Eligibility Settings
-              and, for admins, Admin Settings) set apart on the right. */}
-          <div className="view-tabs no-print" role="tablist" aria-label="Views">
-            {tabButton("applications", "Applications")}
-            {/* The Ranking tab only appears once a run exists. Clicking it loads/
-                reconciles the ranking + tiers from the server (pure math, no cost). */}
-            {rankingRun ? tabButton("ranking", "Ranking") : null}
-            {/* The AI developer/operator surface, split by purpose: Observability (what the
-                AI did + cost, per-run traces once a run exists) and Evals (invariants / live
-                per-pass / judge — need no run, work before any Rank). Admin-only: a member
-                sees only Applications, Ranking, and Eligibility Settings. */}
-            {isAdmin ? tabButton("observability", "Observability") : null}
-            {isAdmin ? tabButton("evals", "Evals") : null}
-            {/* Config tabs, set apart on the right: Eligibility Settings (every member
-                tunes their own screening rules) and Admin Settings (admin-only: data
-                source, pets, AI knobs, and the access allowlist). */}
-            {tabButton("eligibilitySettings", "Eligibility Settings", <Filter size={14} />, "tab-button-settings")}
-            {isAdmin ? tabButton("adminSettings", "Admin Settings", <Settings size={14} />) : null}
-          </div>
-
-          <section className="panel">
-            {selectedApp ? (
-              <CandidateDetail
-                app={selectedApp}
-                openings={openings}
-                onBack={backToList}
-                onOverrideStatus={overrideStatus}
-                onClearOverride={clearStatusOverride}
-                onSavePrivateNote={savePrivateNote}
-                onAddCommitteeNote={addCommitteeNote}
-                onUpdateCommitteeNote={updateCommitteeNote}
-                onDeleteCommitteeNote={deleteCommitteeNote}
-                onToggleStar={toggleStar}
-                onToggleShortlist={toggleShortlist}
-                readOnly={selectedApplicationReadOnly}
-              />
-            ) : activeTab === "eligibilitySettings" ? (
-              selectedOpeningId === null ? (
-                <p className="panel-hint">No retained opening is available.</p>
-              ) : (
-                <EligibilitySettingsView
-                  openingId={selectedOpeningId}
-                  isAdmin={isAdmin}
-                  onError={showError}
-                  onRulesUpdated={refreshEligibilityViews}
-                />
-              )
-            ) : activeTab === "adminSettings" && isAdmin ? (
-              // Keep the selected admin tab visible while settings load or fail.
-              draft ? (
-                <AdminSettingsPanel
-                  draft={draft}
-                  setDraft={setDraft}
-                  saved={saved}
-                  isSaving={isSavingSettings}
-                  onSubmit={saveSettings}
-                  onError={showError}
-                  onEligibilityChanged={refreshEligibilityViews}
-                  onOpenApplicant={viewApplication}
-                  onOpenOpeningApplicant={(applicationId, openingId) =>
-                    void viewOpeningApplication(applicationId, openingId)
-                  }
-                  onOpenView={navigateToView}
-                  currentUser={user}
-                  subtab={adminSubtab}
-                  onSubtabChange={setAdminSubtab}
-                  onPoolChanged={refreshEligibilityViews}
-                  onOpenRetainedApplicant={viewRetainedApplication}
-                />
-              ) : (
-                <div className="settings-load-state" role={settingsLoadFailed ? "alert" : "status"}>
-                  {settingsLoadFailed ? (
-                    <>
-                      <p>Couldn't load settings. The server may have been starting up.</p>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={retrySettings}
-                      >
-                        Retry
-                      </button>
-                    </>
-                  ) : (
-                    <p>Loading settings…</p>
-                  )}
-                </div>
-              )
-            ) : activeTab === "ranking" && ranking ? (
-              <RankingView
-                ranking={ranking}
-                rankingRun={rankingRun}
-                tiers={tiers}
-                proposedDimensions={rankingRun?.proposedDimensions ?? []}
-                onSaveTiers={(next) => saveTiers(next)}
-                onAcknowledgeNew={acknowledgeNewDimensions}
-                onDismissRequested={dismissRequested}
-                onAddProposal={addProposal}
-                onRemoveProposal={removeProposal}
-                onSelectApplication={viewApplication}
-                onToggleStar={toggleStar}
-                onToggleShortlist={toggleShortlist}
-              />
-            ) : activeTab === "ranking" ? (
-              <div className="list-load-state" role={rankingLoadState === "error" ? "alert" : "status"}>
-                {rankingLoadState === "error" ? (
-                  <>
-                    <p>Couldn&apos;t load the ranking.</p>
-                    <button type="button" className="secondary-button" onClick={() => void loadRanking()}>
-                      Retry
-                    </button>
-                  </>
-                ) : (
-                  <p>Loading ranking…</p>
-                )}
-              </div>
-            ) : activeTab === "observability" || activeTab === "evals" ? (
-              <Suspense fallback={aiQualityLoading}>
-                <AIWorkspaceView
-                  family={activeTab === "observability" ? "obs" : "eval"}
-                  run={rankingRun}
-                  openingId={selectedOpeningId}
-                  onToast={showToast}
-                  onError={showError}
-                />
-              </Suspense>
-            ) : (
-              <ApplicationsList
-                applications={applications}
-                applicationsLoadState={applicationsLoadState}
-                appFilter={appFilter}
-                appFacets={appFacets}
-                appSearch={appSearch}
-                appSort={appSort}
-                onApplyFilter={applyFilter}
-                onSearch={searchApplications}
-                onToggleSort={toggleSort}
-                onSelectApplication={viewApplication}
-                onToggleStar={toggleStar}
-                onToggleShortlist={toggleShortlist}
-                onRetryLoad={() => void loadInitialApplications()}
-              />
-            )}
-          </section>
-      </>
-      {/* The from-any-page feedback channel: only for a signed-in member, and never in
-          print. Context rides along invisibly — the accurate view (an open candidate
-          detail names itself, not the tab behind it) and, in that detail, which applicant. */}
-      {user ? (
-        <FeedbackButton
-          activeTab={selectedApp ? "applicant-detail" : activeTab}
-          analysisId={rankingRun?.analysisId ?? null}
-          applicantId={selectedApp?.id ?? null}
-          onToast={showToast}
-          onError={showError}
+      {isAdmin ? (
+        <AdminActionBanner
+          actions={adminActions}
+            onReviewOpenings={() => {
+              setAdminSubtab("openings");
+              navigateToView("adminSettings");
+            }}
+            onReviewEmailDelivery={() => {
+              setAdminSubtab("emailDelivery");
+              navigateToView("adminSettings");
+            }}
         />
       ) : null}
+      {/* Global actions first (workflow acts on the whole dataset regardless of
+          tab), then the tab row, then the active tab's content. */}
+      <WorkflowBar
+        workflow={workflow}
+        coverage={coverage}
+        loadState={dashboardLoadState}
+        onRetryLoad={() => void loadInitialDashboard()}
+        screeningRunning={screeningRunning}
+        screeningEstimate={screeningEstimate}
+        screeningEstimateLoading={screeningEstimateLoading}
+        screeningProgress={screeningProgress}
+        onRequestScreening={requestScreeningEstimate}
+        onRunScreening={runScreening}
+        onCancelScreening={cancelScreeningEstimate}
+        rankRunning={rankRunning}
+        rankEstimate={rankEstimate}
+        rankEstimateLoading={rankEstimateLoading}
+        scoreCurrentEstimate={scoreCurrentEstimate}
+        hasCurrentCriteria={rankingRun !== null}
+        rankProgress={rankProgress}
+        rankThinking={rankThinking}
+        pendingProposals={rankingRun?.proposedDimensions ?? []}
+        onRequestRank={requestRankEstimate}
+        onRunRank={runRank}
+        onCancelRank={cancelRankEstimate}
+        openings={openings}
+        selectedOpeningId={selectedOpeningId}
+        onOpeningChange={(openingId) => void changeOpening(openingId)}
+        aiActionsDisabled={aiActionsDisabled}
+      />
+
+      {/* Tab row: the data views on the left, the config tabs (Eligibility Settings
+          and, for admins, Admin Settings) set apart on the right. */}
+      <div className="view-tabs no-print" role="tablist" aria-label="Views">
+        {tabButton("applications", "Applications")}
+        {/* The Ranking tab only appears once a run exists. Clicking it loads/
+            reconciles the ranking + tiers from the server (pure math, no cost). */}
+        {rankingRun ? tabButton("ranking", "Ranking") : null}
+        {/* The AI developer/operator surface, split by purpose: Observability (what the
+            AI did + cost, per-run traces once a run exists) and Evals (invariants / live
+            per-pass / judge — need no run, work before any Rank). Admin-only: a member
+            sees only Applications, Ranking, and Eligibility Settings. */}
+        {isAdmin ? tabButton("observability", "Observability") : null}
+        {isAdmin ? tabButton("evals", "Evals") : null}
+        {/* Config tabs, set apart on the right: Eligibility Settings (every member
+            tunes their own screening rules) and Admin Settings (admin-only: data
+            source, pets, AI knobs, and the access allowlist). */}
+        {tabButton("eligibilitySettings", "Eligibility Settings", <Filter size={14} />, "tab-button-settings")}
+        {isAdmin ? tabButton("adminSettings", "Admin Settings", <Settings size={14} />) : null}
+      </div>
+
+      <section className="panel">
+        {selectedApp ? (
+          <CandidateDetail
+            app={selectedApp}
+            openings={openings}
+            onBack={backToList}
+            onOverrideStatus={overrideStatus}
+            onClearOverride={clearStatusOverride}
+            onSavePrivateNote={savePrivateNote}
+            onAddCommitteeNote={addCommitteeNote}
+            onUpdateCommitteeNote={updateCommitteeNote}
+            onDeleteCommitteeNote={deleteCommitteeNote}
+            onToggleStar={toggleStar}
+            onToggleShortlist={toggleShortlist}
+            readOnly={selectedApplicationReadOnly}
+          />
+        ) : activeTab === "eligibilitySettings" ? (
+          selectedOpeningId === null ? (
+            <p className="panel-hint">No retained opening is available.</p>
+          ) : (
+            <EligibilitySettingsView
+              openingId={selectedOpeningId}
+              isAdmin={isAdmin}
+              onError={showError}
+              onRulesUpdated={refreshEligibilityViews}
+            />
+          )
+        ) : activeTab === "adminSettings" && isAdmin ? (
+          // Keep the selected admin tab visible while settings load or fail.
+          draft ? (
+            <AdminSettingsPanel
+              draft={draft}
+              setDraft={setDraft}
+              saved={saved}
+              isSaving={isSavingSettings}
+              onSubmit={saveSettings}
+              onError={showError}
+              onOpenApplicant={viewApplication}
+              onOpenOpeningApplicant={(applicationId, openingId) =>
+                void viewOpeningApplication(applicationId, openingId)
+              }
+              onOpenView={navigateToView}
+              currentUser={user}
+              subtab={adminSubtab}
+              onSubtabChange={setAdminSubtab}
+              onPoolChanged={refreshEligibilityViews}
+              onOpenRetainedApplicant={viewRetainedApplication}
+            />
+          ) : (
+            <div className="settings-load-state" role={settingsLoadFailed ? "alert" : "status"}>
+              {settingsLoadFailed ? (
+                <>
+                  <p>Couldn't load settings. The server may have been starting up.</p>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={retrySettings}
+                  >
+                    Retry
+                  </button>
+                </>
+              ) : (
+                <p>Loading settings…</p>
+              )}
+            </div>
+          )
+        ) : activeTab === "ranking" && ranking ? (
+          <RankingView
+            ranking={ranking}
+            rankingRun={rankingRun}
+            tiers={tiers}
+            proposedDimensions={rankingRun?.proposedDimensions ?? []}
+            onSaveTiers={(next) => saveTiers(next)}
+            onAcknowledgeNew={acknowledgeNewDimensions}
+            onDismissRequested={dismissRequested}
+            onAddProposal={addProposal}
+            onRemoveProposal={removeProposal}
+            onSelectApplication={viewApplication}
+            onToggleStar={toggleStar}
+            onToggleShortlist={toggleShortlist}
+          />
+        ) : activeTab === "ranking" ? (
+          <div className="list-load-state" role={rankingLoadState === "error" ? "alert" : "status"}>
+            {rankingLoadState === "error" ? (
+              <>
+                <p>Couldn&apos;t load the ranking.</p>
+                <button type="button" className="secondary-button" onClick={() => void loadRanking()}>
+                  Retry
+                </button>
+              </>
+            ) : (
+              <p>Loading ranking…</p>
+            )}
+          </div>
+        ) : activeTab === "observability" || activeTab === "evals" ? (
+          <Suspense fallback={aiQualityLoading}>
+            <AIWorkspaceView
+              family={activeTab === "observability" ? "obs" : "eval"}
+              run={rankingRun}
+              openingId={selectedOpeningId}
+              onToast={showToast}
+              onError={showError}
+            />
+          </Suspense>
+        ) : (
+          <ApplicationsList
+            applications={applications}
+            applicationsLoadState={applicationsLoadState}
+            appFilter={appFilter}
+            appFacets={appFacets}
+            appSearch={appSearch}
+            appSort={appSort}
+            onApplyFilter={applyFilter}
+            onSearch={searchApplications}
+            onToggleSort={toggleSort}
+            onSelectApplication={viewApplication}
+            onToggleStar={toggleStar}
+            onToggleShortlist={toggleShortlist}
+            onRetryLoad={() => void loadInitialApplications()}
+          />
+        )}
+      </section>
+      {/* Feedback carries the visible view and applicant context and is hidden in print. */}
+      <FeedbackButton
+        activeTab={selectedApp ? "applicant-detail" : activeTab}
+        analysisId={rankingRun?.analysisId ?? null}
+        applicantId={selectedApp?.id ?? null}
+          onToast={showToast}
+          onError={showError}
+      />
       <Toasts toasts={toasts} onDismiss={dismissToast} />
     </main>
   );

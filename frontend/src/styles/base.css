@@ -548,3 +548,53 @@ h1 {
   .committee-login-form { grid-template-columns: 1fr; }
   .committee-login-form .secondary-button { width: 100%; }
 }
+
+/* Shared panel hints and secondary section tabs. */
+.panel-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0 0 0.75rem;
+}
+.subtabs {
+  display: flex;
+  gap: 1.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.25rem;
+}
+
+.subtab {
+  padding: 0 0 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px; /* overlap the container border so the active underline sits on it */
+}
+
+.subtab:hover {
+  color: var(--ink);
+}
+
+.subtab.active {
+  color: var(--penta-green-dark);
+  border-bottom-color: var(--penta-green);
+  font-weight: 600;
+}
+
+@media screen and (max-width: 760px) {
+
+  .subtabs {
+    gap: 0.9rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    white-space: nowrap;
+  }
+
+  .subtab {
+    flex: 0 0 auto;
+  }
+}

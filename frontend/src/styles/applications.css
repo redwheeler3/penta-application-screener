@@ -31,12 +31,6 @@
   justify-content: flex-end;
 }
 
-.app-tabs {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
 /* The view tab row sits between the workflow card and the content panel. The tabs
    are folder tabs: the active one is flush with the panel below (no gap, shared
    bottom edge) so it reads as connected to its content. */

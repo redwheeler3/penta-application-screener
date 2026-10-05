@@ -1,10 +1,10 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { fetchEvalCatalog } from "../../api/evals";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
-import type { CurrentRunResponse, EvalDescriptor } from "../../types";
+import type { CurrentRunResponse, EvalDescriptor, EvalFixtureKey, EvalRunMode } from "../../types";
 import { InvariantsEval } from "../evals/InvariantsEval";
 import { JudgeBackgrounds } from "../evals/JudgeBackgrounds";
-import { RunnableEval, type RunMode } from "../evals/RunnableEval";
+import { RunnableEval } from "../evals/RunnableEval";
 import { ConsolidateAuditPanel } from "../observability/ConsolidateAuditPanel";
 import { CostPanel } from "../observability/CostPanel";
 import { DecomposeAuditPanel } from "../observability/DecomposeAuditPanel";
@@ -13,10 +13,10 @@ import { MatchAuditPanel } from "../observability/MatchAuditPanel";
 import { MetricsPanel } from "../observability/MetricsPanel";
 
 // The developer/operator surface for inspecting + judging the AI (not committee-facing),
-// split into two top-level tabs by PURPOSE (App.tsx passes `family`):
+// split into two top-level tabs by PURPOSE (CommitteeWorkspace passes `family`):
 //   OBSERVABILITY — what the AI did + cost: the per-run pass traces (Pattern discovery,
 //     Decomposition, Matching, Consolidation) plus cross-run Cost + Trends.
-//   EVALS — is the AI any good: Invariants (whole-rank), the four per-pass evals, Judge.
+//   EVALS — is the AI any good: Invariants (whole-rank), the five per-pass evals, Judge.
 // Subtabs run in PIPELINE ORDER, start→end (discovery → decompose → match → score →
 // consolidate), so both tabs read left-to-right along the process. Eval subtabs drop the
 // "Live" prefix — the tab is already "Evals", so the pass name alone reads clean.
@@ -26,6 +26,24 @@ export type AIWorkspaceFamily = "obs" | "eval";
 type Tab =
   | "discovery" | "decompose" | "match" | "consolidate" | "cost" | "metrics"
   | "invariants" | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
+
+type PassTab = Exclude<EvalFixtureKey, "judge">;
+const PASS_EVALS = {
+  scoring: { stability: "scoring_stability",
+    description: "Run hand-authored synthetic applicants through the REAL scoring prompt + model, then grade each with deterministic assertions. Stability runs each case K times to see if its pass/fail wanders (the score crossing the assertion boundary). Tests the actual prompt, not a recorded artifact." },
+  consolidation: { stability: "consolidation_stability",
+    description: "Run golden dimension pairs through the REAL consolidation prompt + model, then grade merge/keep against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. Contested pairs are shown but not scored." },
+  matching: { stability: "matching_stability",
+    description: "Run golden prior/new dimension pairs through the REAL identity-match prompt + model, then grade matches/mismatches against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. A wrong match corrupts a carried-forward score, so the constructed mismatch pair guards that direction." },
+  decomposition: { stability: "decomposition_stability",
+    description: "Run golden discovery-report sets through the REAL decomposition prompt + model; the merge/keep verdict is derived from the settled set (all carvings folded into one axis = merge; kept across ≥2 = keep), graded against the label by exact match. Stability runs each set K times to see if the fold flips. Guards both over-fold (collapsing distinct axes) and under-fold (weighting one concept N times)." },
+  screening: { stability: "screening_stability",
+    description: "Run golden synthetic applicants through the REAL screening prompt + model, then grade the produced flags per-category: expected flags must fire, over-reach guards must stay absent (flagging a benign thing is the costly error since flags gate eligibility), and a clean applicant must raise none. Stability runs each applicant K times to see if the flag set holds." },
+} satisfies Record<PassTab, { stability: EvalRunMode; description: string }>;
+
+function isPassTab(tab: Tab): tab is PassTab {
+  return tab in PASS_EVALS;
+}
 
 export function AIWorkspaceView(props: {
   family: AIWorkspaceFamily;
@@ -40,10 +58,13 @@ export function AIWorkspaceView(props: {
   const toast = { onToast, onError };
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
   useEffect(() => {
+    if (family !== "eval") return;
+    let active = true;
     fetchEvalCatalog()
-      .then((data) => setCatalog(data.evals))
-      .catch(() => setCatalog([]));
-  }, []);
+      .then((data) => { if (active) setCatalog(data.evals); })
+      .catch(() => { if (active) setCatalog([]); });
+    return () => { active = false; };
+  }, [family]);
 
   // Observability subtabs in pipeline order; the per-run trace tabs exist only once a run
   // does, then the cross-run aggregates (Cost, Trends) trail.
@@ -82,7 +103,9 @@ export function AIWorkspaceView(props: {
   // per-run obs tab after the run cleared).
   const activeTab: Tab = tabs.some((t) => t.id === tab) ? (tab as Tab) : tabs[0].id;
 
-  const calls = (k: string) => catalog?.find((e) => e.key === k)?.estimatedCalls ?? 0;
+  const passTab = isPassTab(activeTab) ? activeTab : null;
+  const passConfig = passTab ? PASS_EVALS[passTab] : null;
+  const calls = (k: EvalRunMode) => catalog?.find((e) => e.key === k)?.estimatedCalls ?? 0;
 
   return (
     <div className="observability-view">
@@ -125,75 +148,17 @@ export function AIWorkspaceView(props: {
           <MetricsPanel />
         ) : activeTab === "invariants" ? (
           <InvariantsEval />
-        ) : activeTab === "scoring" ? (
+        ) : passTab && passConfig ? (
           <RunnableEval
-            key="scoring"
+            key={passTab}
             {...toast}
-            caseEvalKey="scoring"
-            runKeys={["scoring", "scoring_stability"]}
-            description="Run hand-authored synthetic applicants through the REAL scoring prompt + model, then grade each with deterministic assertions and the rubric judge. Stability runs each case K times to see if its pass/fail wanders (the score crossing the assertion boundary). Tests the actual prompt, not a recorded artifact."
-            modes={
-              [
-                { evalKey: "scoring", label: "Run scoring", rowLabel: "Run", calls: calls("scoring") },
-                { evalKey: "scoring_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("scoring_stability") },
-              ] as RunMode[]
-            }
-          />
-        ) : activeTab === "consolidation" ? (
-          <RunnableEval
-            key="consolidation"
-            {...toast}
-            caseEvalKey="consolidation"
-            runKeys={["consolidation", "consolidation_stability"]}
-            description="Run golden dimension pairs through the REAL consolidation prompt + model, then grade merge/keep against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. Contested pairs are shown but not scored."
-            modes={
-              [
-                { evalKey: "consolidation", label: "Run consolidation", rowLabel: "Run", calls: calls("consolidation") },
-                { evalKey: "consolidation_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("consolidation_stability") },
-              ] as RunMode[]
-            }
-          />
-        ) : activeTab === "matching" ? (
-          <RunnableEval
-            key="matching"
-            {...toast}
-            caseEvalKey="matching"
-            runKeys={["matching", "matching_stability"]}
-            description="Run golden prior/new dimension pairs through the REAL identity-match prompt + model, then grade matches/mismatches against the label by exact match. Stability runs each pair K times to see if the verdict flips. Tests the actual prompt, not a recorded artifact. A wrong match corrupts a carried-forward score, so the constructed mismatch pair guards that direction."
-            modes={
-              [
-                { evalKey: "matching", label: "Run matching", rowLabel: "Run", calls: calls("matching") },
-                { evalKey: "matching_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("matching_stability") },
-              ] as RunMode[]
-            }
-          />
-        ) : activeTab === "decomposition" ? (
-          <RunnableEval
-            key="decomposition"
-            {...toast}
-            caseEvalKey="decomposition"
-            runKeys={["decomposition", "decomposition_stability"]}
-            description="Run golden discovery-report sets through the REAL decomposition prompt + model; the merge/keep verdict is derived from the settled set (all carvings folded into one axis = merge; kept across ≥2 = keep), graded against the label by exact match. Stability runs each set K times to see if the fold flips. Guards both over-fold (collapsing distinct axes) and under-fold (weighting one concept N times)."
-            modes={
-              [
-                { evalKey: "decomposition", label: "Run decomposition", rowLabel: "Run", calls: calls("decomposition") },
-                { evalKey: "decomposition_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("decomposition_stability") },
-              ] as RunMode[]
-            }
-          />
-        ) : activeTab === "screening" ? (
-          <RunnableEval
-            key="screening"
-            {...toast}
-            caseEvalKey="screening"
-            runKeys={["screening", "screening_stability"]}
-            description="Run golden synthetic applicants through the REAL screening prompt + model, then grade the produced flags per-category: expected flags must fire, over-reach guards must stay absent (flagging a benign thing is the costly error since flags gate eligibility), and a clean applicant must raise none. Stability runs each applicant K times to see if the flag set holds."
-            modes={
-              [
-                { evalKey: "screening", label: "Run screening", rowLabel: "Run", calls: calls("screening") },
-                { evalKey: "screening_stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("screening_stability") },
-              ] as RunMode[]
-            }
+            caseEvalKey={passTab}
+            runKeys={[passTab, passConfig.stability]}
+            description={passConfig.description}
+            modes={[
+              { evalKey: passTab, label: `Run ${passTab}`, rowLabel: "Run", calls: calls(passTab) },
+              { evalKey: passConfig.stability, label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls(passConfig.stability) },
+            ]}
           />
         ) : activeTab === "judge" ? (
           <RunnableEval
@@ -209,7 +174,7 @@ export function AIWorkspaceView(props: {
               [
                 { evalKey: "judge", label: "Run judge + agreement", rowLabel: "Run judge", calls: calls("judge") },
                 { evalKey: "stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("stability") },
-              ] as RunMode[]
+              ]
             }
           />
         ) : (

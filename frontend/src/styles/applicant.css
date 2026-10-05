@@ -66,16 +66,6 @@
 
 .draft-status span { display: flex; flex-direction: column; }
 .draft-status small { margin-top: 1px; color: #4e7560; font-size: 0.68rem; font-weight: 500; }
-
-.applicant-device-status {
-  flex: 0 0 285px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.applicant-device-status > small { color: #5d6d79; font-size: 0.75rem; line-height: 1.35; }
 .remember-device-choice { display: flex; align-items: flex-start; gap: 8px; color: #344f63; font-size: 0.8rem; line-height: 1.35; }
 .remember-device-choice input { width: 16px; height: 16px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--applicant-green, #16a34a); }
 .access-identity-list { width: min(100%, 560px); margin: 6px 0 24px; }
@@ -84,8 +74,7 @@
 .access-identity-list dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 
 .application-intro,
-.review-notice,
-.review-next-step {
+.review-notice {
   display: flex;
   gap: 17px;
   padding: 24px 26px;
@@ -95,12 +84,9 @@
   background: linear-gradient(135deg, #effaf3, #f8fcfa);
 }
 
-.application-intro h2,
-.review-next-step h2 { margin: 0 0 7px; font-size: 1.12rem; }
-.application-intro p,
-.review-next-step p { margin: 0 0 8px; color: #38566a; line-height: 1.58; }
-.application-intro p:last-child,
-.review-next-step p:last-child { margin-bottom: 0; }
+.application-intro h2 { margin: 0 0 7px; font-size: 1.12rem; }
+.application-intro p { margin: 0 0 8px; color: #38566a; line-height: 1.58; }
+.application-intro p:last-child { margin-bottom: 0; }
 .intro-icon { color: var(--applicant-green-dark); padding-top: 2px; }
 
 .applicant-opening-section {
@@ -231,7 +217,6 @@
 .verified-email-control input[readonly] { color: #526774; background: #f5f7f6; }
 .verified-email-control .text-button { padding-left: 1px; color: var(--applicant-green-dark); }
 .field-error { color: #a03833 !important; font-weight: 650; }
-.field-success { color: #27613e !important; font-weight: 650; }
 
 .email-change-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .email-change-field > span { color: #315f45; font-size: 0.83rem; font-weight: 750; }
@@ -498,7 +483,6 @@
 
 @media (max-width: 760px) {
   .applicant-title-row { flex-direction: column; }
-  .applicant-device-status { flex-basis: auto; }
   .applicant-main { width: min(100% - 24px, 980px); padding-top: 35px; }
   .applicant-title-row { align-items: flex-start; flex-direction: column; gap: 16px; }
   .applicant-title-row h1 { font-size: 2.45rem; }

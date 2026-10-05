@@ -26,7 +26,6 @@ export function AdminSettingsPanel(props: {
   isSaving: boolean;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
   onError: (message: string) => void;
-  onEligibilityChanged: () => void;
   onOpenApplicant: (id: number) => void;
   onOpenOpeningApplicant: (id: number, openingId: number) => void;
   onOpenView: (tab: ViewTab) => void;

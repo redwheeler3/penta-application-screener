@@ -57,4 +57,18 @@ describe("useFetchResource", () => {
     await act(async () => pending.reject(new Error("offline")));
     expect(onError).not.toHaveBeenCalled();
   });
+
+  it("abandons a pending reload without changing the displayed draft", async () => {
+    const pending = deferred<string>();
+    const fetcher = vi.fn<() => Promise<string>>()
+      .mockResolvedValueOnce("displayed draft").mockReturnValueOnce(pending.promise);
+    const { result } = renderHook(() => useFetchResource(fetcher));
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+    let reload: Promise<void> | undefined;
+    act(() => { reload = result.current.reload(); });
+    act(() => result.current.invalidateReads());
+    await act(async () => { pending.resolve("stale read"); await reload; });
+    expect(result.current.data).toBe("displayed draft");
+    expect(result.current.state).toBe("ready");
+  });
 });

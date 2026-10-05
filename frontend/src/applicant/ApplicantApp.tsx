@@ -1,5 +1,5 @@
 import { FileCheck2, Save, Trash2 } from "lucide-react";
-import { type FormEvent, type InvalidEvent, useEffect, useRef, useState } from "react";
+import { type ComponentProps, type FormEvent, type InvalidEvent, useEffect, useRef, useState } from "react";
 
 import { BrandLockup } from "../components/shared/BrandLockup";
 import { HeaderAccount } from "../components/shared/HeaderAccount";
@@ -49,7 +49,6 @@ import { useApplicantPersistence } from "./useApplicantPersistence";
 import { useEmailDeliveryStatus } from "../hooks/useEmailDeliveryStatus";
 
 export function ApplicantApp() {
-  const emailDelayed = useEmailDeliveryStatus();
   const [draft, setDraft] = useState(emptyApplicantDraft);
   const [reviewing, setReviewing] = useState(false);
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
@@ -341,8 +340,7 @@ export function ApplicantApp() {
         ) : !persistence.authenticated && !hasActiveOpening ? (
           <ApplicationsUnavailable />
         ) : !persistence.authenticated && !guestStarted ? (
-          <ApplicationEntry
-            emailDelayed={emailDelayed}
+          <ApplicationEntryWithDeliveryStatus
             allowGuest={hasOpenOpening}
             busy={persistence.busy}
             googleError={googleAccessResult}
@@ -506,4 +504,11 @@ function DraftStatus(props: { savedAt: Date | null; hasContent: boolean }) {
 
 function formatSavedTime(savedAt: Date): string {
   return `Last saved ${savedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+}
+
+function ApplicationEntryWithDeliveryStatus(
+  props: Omit<ComponentProps<typeof ApplicationEntry>, "emailDelayed">,
+) {
+  const emailDelayed = useEmailDeliveryStatus();
+  return <ApplicationEntry {...props} emailDelayed={emailDelayed} />;
 }

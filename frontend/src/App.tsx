@@ -9,8 +9,10 @@ import { useSession } from "./hooks/useSession";
 import { useToasts } from "./hooks/useToasts";
 
 export function App(props: { authRedirect: AuthRedirect }) {
-  const emailDelayed = useEmailDeliveryStatus();
   const session = useSession(props.authRedirect);
+  const emailDelayed = useEmailDeliveryStatus(
+    !session.isLoadingUser && (!session.user || session.linkConflict !== null),
+  );
   const { toasts, showError, dismissToast } = useToasts();
 
   if (session.user && !session.linkConflict) {
