@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 
-import * as api from "../../api/vacancySubscriptions";
+import * as vacancySubscriptionsApi from "../../api/vacancySubscriptions";
+import { useCommitteeApi } from "../../api/identity";
 import { readProblem } from "../../api/problems";
 import { formatPacificDateTime } from "../../format";
 import { useFetchResource } from "../../hooks/useFetchResource";
@@ -11,6 +12,7 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 export function VacancyNotificationsPanel(props: {
   onError: (message: string) => void;
 }): ReactNode {
+  const api = useCommitteeApi(vacancySubscriptionsApi);
   const { onError } = props;
   const reportResource = useFetchResource<VacancySubscriptionReport>(
     api.fetchVacancySubscriptionReport,
@@ -42,7 +44,7 @@ export function VacancyNotificationsPanel(props: {
         if (isCurrent()) props.onError(problem ?? "Could not look up that address.");
         return;
       }
-      const result = (await response.json()) as api.VacancySubscriptionLookup;
+      const result = (await response.json()) as vacancySubscriptionsApi.VacancySubscriptionLookup;
       if (!isCurrent()) return;
       setSubscription(result.subscription);
       setUnitSizes(result.subscription?.unitSizes ?? []);
@@ -67,7 +69,7 @@ export function VacancyNotificationsPanel(props: {
         if (isCurrent()) props.onError(problem ?? "Could not save that subscription.");
         return;
       }
-      const result = (await response.json()) as api.VacancySubscriptionLookup;
+      const result = (await response.json()) as vacancySubscriptionsApi.VacancySubscriptionLookup;
       if (!isCurrent()) return;
       setSubscription(result.subscription);
       setMessage("Subscription saved.");

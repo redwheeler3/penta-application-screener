@@ -1,13 +1,15 @@
 # Follow-up project audit — 2026-10-05
 
-**Status: complete after four passes.** Baseline: clean `main` at `deb2ea1`, following the
-completed twelve-finding audit. This report recommends work; runtime implementation has not changed.
+**Status: implemented and verified.** Four audit passes established the findings below against
+clean `main` at `deb2ea1`, following the completed twelve-finding audit. All seven groups and
+the API ownership cleanup are implemented; implementation progress and final verification follow.
+Descriptions of reproduced faults below document the audit baseline.
 
-## Recommendation
+## Implemented scope
 
-I recommend addressing **seven finding groups in five implementation packages**, plus the small
-owner-specific cleanup below. Start with applicant restoration: a valid signed-in applicant can
-currently be shown a false session-expired page on startup. The other substantial findings concern
+The work addresses **seven finding groups in five implementation packages**, plus the small
+owner-specific cleanup below. Applicant restoration no longer produces a false session-expired
+page on startup. The other substantial findings concern
 cached-result lifetime, zero-cost cache adoption, authority at administrative commit, proposal
 acknowledgements, and expiry in opening summaries.
 
@@ -307,7 +309,7 @@ I would leave these alone:
   test setup/support. No proven unused application module or substantial exact duplicate Python
   function body emerged. These checks do not establish that every possible duplicate is absent.
 
-## Verification and limits
+## Baseline verification and limits
 
 - **13 distinct temporary synthetic probes passed:** five frontend and eight backend, including
   the stale-output characterization and opening query-count measurement. Two cache cases were
@@ -357,3 +359,50 @@ I would leave these alone:
   remain. The 100-opening regression measures two SELECTs and no applicant answer columns.
   Exact expiry-day, expired, future and indefinite retention cases pass. All 961 backend tests
   passed (one existing skip), with Ruff passing. No cache or extra refresh loop was introduced.
+
+- API ownership cleanup: protected committee modules expose only explicit client factories;
+  `useCommitteeApi` requires workspace context. Applicant flow dependencies require their bound
+  API. Public bootstrap and email-delivery advisory reads remain deliberate public calls. Pure
+  eval presentation helpers are independent of request clients. Isolated tests use typed factory
+  mocks and an explicit synthetic committee provider; real-factory regressions exercise context
+  absence, late captured callbacks, and vacancy support headers.
+- The factory sweep found vacancy support still sending unbound protected requests. Its owner
+  now captures the committee identity rather than relying on the server's fail-closed response.
+- Final restore review found the prepared snapshot's pruning connection needed foreign keys
+  enabled. An expired-consumer restore now removes unentitled output and cascades references
+  without publishing a snapshot with dangling foreign keys.
+
+## Final review, verification and complexity tradeoff
+
+Two closing passes followed consumption through deletion/restore and checked browser request
+ownership through public entrypoints, providers, queued work and test factories. Confirmed
+follow-ups were fixed within their existing owners. The last-consumed-findings regression
+confirms resubmission keeps flags and pet facts active until explicit Screen; no stale labels
+or new display identifiers were introduced.
+
+- **963 backend tests passed**, one existing POSIX-only skip; Ruff passed.
+- **282 frontend tests passed** in 45 files; ESLint, TypeScript and production build passed.
+- Python import graph: **192 application modules, no cycles**, including deferred imports.
+- The local in-place migration preserved every table row, 16,667 cached results, selected
+  references, IDs, output, costs and SQLite identity high-water marks; a recovery snapshot was
+  made first. No reset, production change, real provider call or outbound email occurred.
+- A 100-opening archive uses **two SELECTs**, selecting no applicant answer columns.
+- Routine consumed-reference updates add one bounded read of prior references; replacement
+  pruning is limited to affected IDs. Admin writes add a local authority recheck inside the
+  write transaction. Neither introduces model/network waiting or serializes ordinary reads.
+- Cache reuse preserves paid findings and explicit zero-cost adoption; paused committee intake
+  avoids futile reads. Proposal inputs remain editable while acknowledgement is pending. These
+  are control-flow/query-count conclusions, not a production latency benchmark.
+
+Across this implementation, production code and migrations grew by a net **74 lines**; most
+added code is regression coverage and explicit test factories. Line count alone does not establish
+maintainability, but the runtime change is bounded. The worthwhile complexity establishes two explicit boundaries: who owns request authority and
+who is entitled to retain cached output. It removes hidden unbound API fallbacks, optional bound
+flow dependencies and stale whole-list replacement. The new authority and result-retention modules
+own shared invariants; they do not add a global state machine, generic merge engine, extra result
+identity or duplicate paid output. The cohesive ORM registry remains intact after responsibility
+review. Existing age/cache, human override, lease, snapshot acknowledgement and run guards remain.
+
+No further confirmed in-scope defect emerged from the closing passes. Captured configuration
+presentation remains optional; stored audit provenance is preserved. This does not assert
+exhaustive bug absence or measured production responsiveness.

@@ -10,9 +10,9 @@ export function RequestIdentityProvider({ identity, children }: { identity: Requ
   return <RequestClient value={client}>{children}</RequestClient>;
 }
 
-/** APIs below the authenticated workspace retain its captured request client.
- * Public components and manual harnesses can use their unbound module exports. */
-export function useCommitteeApi<T>(module: T & { createApi: (client: ApiClient) => T }): T {
+/** Protected APIs require the authenticated workspace's captured request client. */
+export function useCommitteeApi<T>(module: { createApi: (client: ApiClient) => T }): T {
   const client = useContext(RequestClient);
-  return useMemo(() => client ? module.createApi(client) : module, [client, module]);
+  if (client === null) throw new Error("Protected API requires RequestIdentityProvider.");
+  return useMemo(() => module.createApi(client), [client, module]);
 }

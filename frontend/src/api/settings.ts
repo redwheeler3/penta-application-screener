@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type {
   AppSettings,
   EligibilityCheckCatalog,
@@ -60,10 +60,3 @@ export function createApi(client: ApiClient) {
     saveCommitteeDefaultRules,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchSettings, saveSettings, fetchEligibilityRules, fetchEligibilityCheckCatalog,
-  saveEligibilityRules, resetEligibilityRules, fetchCommitteeDefaultRules,
-  saveCommitteeDefaultRules,
-} = createApi(publicClient);

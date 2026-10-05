@@ -1,10 +1,8 @@
-import { useCommitteeApi } from "../api/identity";
 import { useEffect, useState } from "react";
 
-import * as emailDeliveryApi from "../api/emailDelivery";
+import { fetchCachedEmailDeliveryStatus, refreshEmailDeliveryStatus } from "../api/emailDelivery";
 
 export function useEmailDeliveryStatus(): boolean {
-  const { fetchCachedEmailDeliveryStatus, refreshEmailDeliveryStatus } = useCommitteeApi(emailDeliveryApi);
 
   const [delayed, setDelayed] = useState(false);
 
@@ -29,7 +27,7 @@ export function useEmailDeliveryStatus(): boolean {
     }
     void loadStatus();
     return () => controller.abort();
-  }, [fetchCachedEmailDeliveryStatus, refreshEmailDeliveryStatus]);
+  }, []);
 
   return delayed;
 }

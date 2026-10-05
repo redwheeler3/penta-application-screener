@@ -1,10 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderCommittee as render } from "../../testSupport";
 import { expect, it, vi } from "vitest";
-
-import { fetchMetrics } from "../../api/observability";
 import { MetricsPanel } from "./MetricsPanel";
 
-vi.mock("../../api/observability", () => ({ fetchMetrics: vi.fn() }));
+const observabilityMocks = vi.hoisted(() => ({
+  fetchMetrics: vi.fn<ReturnType<typeof import("../../api/observability").createApi>["fetchMetrics"]>(),
+}));
+const { fetchMetrics } = observabilityMocks;
+
+vi.mock("../../api/observability", () => ({
+  createApi: () => observabilityMocks,
+}));
 
 it("distinguishes a failed run from completed history and keeps unmeasured cache rates unknown", async () => {
   vi.mocked(fetchMetrics).mockResolvedValue({ passes: [], runs: [{

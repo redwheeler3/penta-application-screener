@@ -1,16 +1,21 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../../api/settings";
-import { deferred } from "../../testSupport";
 import type { EligibilityRules } from "../../types";
 import { CommitteeDefaultsPanel } from "./CommitteeDefaultsPanel";
 import { EligibilitySettingsPanel } from "./EligibilitySettingsPanel";
 
+const api = vi.hoisted(() => ({
+  fetchEligibilityCheckCatalog: vi.fn<ReturnType<typeof import("../../api/settings").createApi>["fetchEligibilityCheckCatalog"]>(),
+  fetchCommitteeDefaultRules: vi.fn<ReturnType<typeof import("../../api/settings").createApi>["fetchCommitteeDefaultRules"]>(),
+  fetchEligibilityRules: vi.fn<ReturnType<typeof import("../../api/settings").createApi>["fetchEligibilityRules"]>(),
+  saveCommitteeDefaultRules: vi.fn<ReturnType<typeof import("../../api/settings").createApi>["saveCommitteeDefaultRules"]>(),
+  saveEligibilityRules: vi.fn<ReturnType<typeof import("../../api/settings").createApi>["saveEligibilityRules"]>(),
+  resetEligibilityRules: vi.fn<ReturnType<typeof import("../../api/settings").createApi>["resetEligibilityRules"]>(),
+}));
+
 vi.mock("../../api/settings", () => ({
-  fetchEligibilityCheckCatalog: vi.fn(), fetchCommitteeDefaultRules: vi.fn(),
-  fetchEligibilityRules: vi.fn(), saveCommitteeDefaultRules: vi.fn(),
-  saveEligibilityRules: vi.fn(), resetEligibilityRules: vi.fn(),
+  createApi: () => api,
 }));
 
 const rules = (minAdultAge: number): EligibilityRules => ({

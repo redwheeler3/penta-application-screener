@@ -1,13 +1,17 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../../api/vacancySubscriptions";
-import { deferred } from "../../testSupport";
 import { VacancyNotificationsPanel } from "./VacancyNotificationsPanel";
 
+const api = vi.hoisted(() => ({
+  fetchVacancySubscriptionReport: vi.fn<ReturnType<typeof import("../../api/vacancySubscriptions").createApi>["fetchVacancySubscriptionReport"]>(),
+  lookupVacancySubscription: vi.fn<ReturnType<typeof import("../../api/vacancySubscriptions").createApi>["lookupVacancySubscription"]>(),
+  saveVacancySubscription: vi.fn<ReturnType<typeof import("../../api/vacancySubscriptions").createApi>["saveVacancySubscription"]>(),
+  deleteVacancySubscription: vi.fn<ReturnType<typeof import("../../api/vacancySubscriptions").createApi>["deleteVacancySubscription"]>(),
+}));
+
 vi.mock("../../api/vacancySubscriptions", () => ({
-  fetchVacancySubscriptionReport: vi.fn(), lookupVacancySubscription: vi.fn(),
-  saveVacancySubscription: vi.fn(), deleteVacancySubscription: vi.fn(),
+  createApi: () => api,
 }));
 
 function subscription(email: string) {

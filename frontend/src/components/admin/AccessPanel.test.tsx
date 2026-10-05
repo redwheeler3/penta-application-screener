@@ -1,13 +1,17 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../../api/access";
-import { deferred } from "../../testSupport";
 import { AccessPanel } from "./AccessPanel";
 
+const api = vi.hoisted(() => ({
+  fetchAllowlist: vi.fn<ReturnType<typeof import("../../api/access").createApi>["fetchAllowlist"]>(),
+  fetchDeniedSignInAttempts: vi.fn<ReturnType<typeof import("../../api/access").createApi>["fetchDeniedSignInAttempts"]>(),
+  upsertAllowlistEntry: vi.fn<ReturnType<typeof import("../../api/access").createApi>["upsertAllowlistEntry"]>(),
+  removeAllowlistEntry: vi.fn<ReturnType<typeof import("../../api/access").createApi>["removeAllowlistEntry"]>(),
+}));
+
 vi.mock("../../api/access", () => ({
-  fetchAllowlist: vi.fn(), fetchDeniedSignInAttempts: vi.fn(),
-  upsertAllowlistEntry: vi.fn(), removeAllowlistEntry: vi.fn(),
+  createApi: () => api,
 }));
 
 const entries = [{ email: "existing@example.com", role: "member" as const, isSeedAdmin: false,

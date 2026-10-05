@@ -1,13 +1,17 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../../api/evals";
-import { deferred } from "../../testSupport";
 import { RunnableEval } from "./RunnableEval";
+
+const api = vi.hoisted(() => ({
+  fetchEvalCases: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchEvalCases"]>(),
+  fetchLastEvalRun: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchLastEvalRun"]>(),
+  saveEvalCase: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["saveEvalCase"]>(),
+}));
 
 vi.mock("../../api/evals", async (original) => ({
   ...await original<typeof import("../../api/evals")>(),
-  fetchEvalCases: vi.fn(), fetchLastEvalRun: vi.fn(), saveEvalCase: vi.fn(),
+  createApi: () => api,
 }));
 
 const cases = [

@@ -1,14 +1,18 @@
-import { act, renderHook } from "@testing-library/react";
+import { act } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../api/applications";
-import { deferred } from "../testSupport";
 import type { ApplicationDetail, ApplicationUpdate } from "../types";
 import { useCandidateActions } from "./useCandidateActions";
 
+const api = vi.hoisted(() => ({
+  overrideStatus: vi.fn<ReturnType<typeof import("../api/applications").createApi>["overrideStatus"]>(),
+  addCommitteeNote: vi.fn<ReturnType<typeof import("../api/applications").createApi>["addCommitteeNote"]>(),
+  setStar: vi.fn<ReturnType<typeof import("../api/applications").createApi>["setStar"]>(),
+  setShortlist: vi.fn<ReturnType<typeof import("../api/applications").createApi>["setShortlist"]>(),
+}));
+
 vi.mock("../api/applications", () => ({
-  overrideStatus: vi.fn(),
-  addCommitteeNote: vi.fn(), setStar: vi.fn(), setShortlist: vi.fn(),
+  createApi: () => api,
 }));
 
 const detail = (id: number) => ({ id, status: "eligible" }) as ApplicationDetail;

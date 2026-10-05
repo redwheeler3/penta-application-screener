@@ -1,10 +1,15 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-import * as api from "../../api/feedback";
-import { deferred } from "../../testSupport";
 import { FeedbackButton } from "./FeedbackButton";
 
-vi.mock("../../api/feedback", () => ({ submitFeedback: vi.fn() }));
+const api = vi.hoisted(() => ({
+  submitFeedback: vi.fn<ReturnType<typeof import("../../api/feedback").createApi>["submitFeedback"]>(),
+}));
+
+vi.mock("../../api/feedback", () => ({
+  createApi: () => api,
+}));
 function setup() {
   const onToast = vi.fn();
   const onError = vi.fn();

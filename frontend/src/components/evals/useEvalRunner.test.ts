@@ -1,16 +1,18 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../../api/evals";
 import type { LastEvalRun, ScoringEvalCaseResult } from "../../types";
-import { deferred } from "../../testSupport";
 import { useEvalRunner } from "./useEvalRunner";
+
+const api = vi.hoisted(() => ({
+  fetchEvalCases: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchEvalCases"]>(),
+  fetchLastEvalRun: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchLastEvalRun"]>(),
+  runEval: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["runEval"]>(),
+}));
 
 vi.mock("../../api/evals", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../api/evals")>(),
-  fetchEvalCases: vi.fn(),
-  fetchLastEvalRun: vi.fn(),
-  runEval: vi.fn(),
+  createApi: () => api,
 }));
 
 const history = {

@@ -1,12 +1,21 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
-import * as api from "../../api/openings";
-import { deferred } from "../../testSupport";
 import type { Opening, OpeningPreview, SocketLabsUsage } from "../../types";
 import { OpeningEditor } from "./OpeningEditor";
 
-vi.mock("../../api/openings", () => ({ updateOpening: vi.fn(), fetchOpenings: vi.fn(), fetchOpeningEmailUsage: vi.fn(), previewOpening: vi.fn(), createOpening: vi.fn() }));
+const api = vi.hoisted(() => ({
+  updateOpening: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["updateOpening"]>(),
+  fetchOpenings: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["fetchOpenings"]>(),
+  fetchOpeningEmailUsage: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["fetchOpeningEmailUsage"]>(),
+  previewOpening: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["previewOpening"]>(),
+  createOpening: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["createOpening"]>(),
+}));
+
+vi.mock("../../api/openings", () => ({
+  createApi: () => api,
+}));
 const opening = { id: 1, intakeMode: "applications", unitSizeBedrooms: 2, housingChargeCents: 100_000,
   applicationOpenDate: "2026-10-01", applicationCloseDate: "2026-10-31", moveInDate: "2026-11-30" } as Opening;
 const values = { unitSizeBedrooms: 2, housingChargeCents: 100_000,

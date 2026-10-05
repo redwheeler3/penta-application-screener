@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type { FeedbackItem } from "../types";
 
 export function createApi(client: ApiClient) {
@@ -33,8 +33,3 @@ export function createApi(client: ApiClient) {
     submitFeedback, fetchFeedback, resolveFeedback, reopenFeedback,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  submitFeedback, fetchFeedback, resolveFeedback, reopenFeedback,
-} = createApi(publicClient);

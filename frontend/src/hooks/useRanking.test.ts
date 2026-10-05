@@ -1,14 +1,18 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../api/ranking";
-import { deferred } from "../testSupport";
 import type { CurrentRunResponse, RankingBoardResponse, RankingResponse, Tier } from "../types";
 import { type RankingRunRead, useRanking } from "./useRanking";
 
+const api = vi.hoisted(() => ({
+  fetchRankingCurrent: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["fetchRankingCurrent"]>(),
+  fetchRankingBoard: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["fetchRankingBoard"]>(),
+  saveTiers: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["saveTiers"]>(),
+  changeProposal: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["changeProposal"]>(),
+}));
+
 vi.mock("../api/ranking", () => ({
-  fetchRankingCurrent: vi.fn(), fetchRankingBoard: vi.fn(),
-  saveTiers: vi.fn(), changeProposal: vi.fn(),
+  createApi: () => api,
 }));
 
 const current = (analysisId: number): CurrentRunResponse => ({
@@ -273,7 +277,6 @@ it("distinguishes successful absence from failed and superseded criteria reads",
   });
   expect(result.current.ranking?.analysisId).toBe(1);
 });
-
 
 it("offers recovery when initial criteria fail instead of leaving ranking loading forever", async () => {
   vi.mocked(api.fetchRankingCurrent).mockRejectedValue(new Error("offline"));

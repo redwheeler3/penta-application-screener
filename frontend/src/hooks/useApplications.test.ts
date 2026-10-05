@@ -1,12 +1,17 @@
-import { act, renderHook } from "@testing-library/react";
+import type { ApplicationsResponse } from "../api/applications";
+import { act } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../api/applications";
-import { deferred } from "../testSupport";
 import { useApplications } from "./useApplications";
 
-vi.mock("../api/applications", () => ({ fetchApplications: vi.fn() }));
-const payload = (selectedOpeningId: number): api.ApplicationsResponse => ({
+const api = vi.hoisted(() => ({
+  fetchApplications: vi.fn<ReturnType<typeof import("../api/applications").createApi>["fetchApplications"]>(),
+}));
+
+vi.mock("../api/applications", () => ({
+  createApi: () => api,
+}));
+const payload = (selectedOpeningId: number): ApplicationsResponse => ({
   applications: [], openings: [], selectedOpeningId,
 });
 
@@ -23,7 +28,7 @@ it.each(["getItem", "setItem"] as const)("loads the workspace when optional brow
 });
 
 it("ignores an old background refresh after selecting another opening", async () => {
-  const old = deferred<api.ApplicationsResponse>();
+  const old = deferred<ApplicationsResponse>();
   vi.mocked(api.fetchApplications).mockResolvedValueOnce(payload(1))
     .mockReturnValueOnce(old.promise).mockResolvedValueOnce(payload(2));
   const { result } = renderHook(() => useApplications());
@@ -37,8 +42,8 @@ it("ignores an old background refresh after selecting another opening", async ()
 });
 
 it("keeps the latest requested selection and skips background reads while selecting", async () => {
-  const first = deferred<api.ApplicationsResponse>();
-  const second = deferred<api.ApplicationsResponse>();
+  const first = deferred<ApplicationsResponse>();
+  const second = deferred<ApplicationsResponse>();
   vi.mocked(api.fetchApplications).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
   const { result } = renderHook(() => useApplications());
   let selectionOne!: Promise<boolean>;

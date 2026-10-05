@@ -1,11 +1,18 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderCommittee as render } from "../../testSupport";
 import { expect, it, vi } from "vitest";
-
-import { fetchCostReport, fetchLastRuns } from "../../api/observability";
 import type { LastRunCost } from "../../types";
 import { CostPanel } from "./CostPanel";
 
-vi.mock("../../api/observability", () => ({ fetchCostReport: vi.fn(), fetchLastRuns: vi.fn() }));
+const observabilityMocks = vi.hoisted(() => ({
+  fetchCostReport: vi.fn<ReturnType<typeof import("../../api/observability").createApi>["fetchCostReport"]>(),
+  fetchLastRuns: vi.fn<ReturnType<typeof import("../../api/observability").createApi>["fetchLastRuns"]>(),
+}));
+const { fetchCostReport, fetchLastRuns } = observabilityMocks;
+
+vi.mock("../../api/observability", () => ({
+  createApi: () => observabilityMocks,
+}));
 
 it("labels failed attempts as known spending without comparing partial cost to a whole-run estimate", async () => {
   const failed: LastRunCost = {

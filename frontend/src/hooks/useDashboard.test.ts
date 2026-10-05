@@ -1,11 +1,15 @@
-import { act, renderHook } from "@testing-library/react";
+import { act } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../api/dashboard";
-import { deferred } from "../testSupport";
 import { useDashboard } from "./useDashboard";
 
-vi.mock("../api/dashboard", () => ({ fetchDashboard: vi.fn() }));
+const api = vi.hoisted(() => ({
+  fetchDashboard: vi.fn<ReturnType<typeof import("../api/dashboard").createApi>["fetchDashboard"]>(),
+}));
+
+vi.mock("../api/dashboard", () => ({
+  createApi: () => api,
+}));
 beforeEach(() => vi.resetAllMocks());
 
 it("does not replace a new opening's dashboard with an old initial response", async () => {

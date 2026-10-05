@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type { CostReport, LastRunsReport, MetricsReport } from "../types";
 
 export function createApi(client: ApiClient) {
@@ -14,8 +14,3 @@ export function createApi(client: ApiClient) {
     fetchCostReport, fetchLastRuns, fetchMetrics,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchCostReport, fetchLastRuns, fetchMetrics,
-} = createApi(publicClient);

@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type {
   AdminActions,
   Coverage,
@@ -30,8 +30,3 @@ export function createApi(client: ApiClient) {
     fetchDashboard, fetchEmailDeliveryIssues, refreshSocketLabsDeliveryStatus,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchDashboard, fetchEmailDeliveryIssues, refreshSocketLabsDeliveryStatus,
-} = createApi(publicClient);

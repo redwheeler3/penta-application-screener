@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type {
   EvalCaseOutcome,
   EvalDescriptor,
@@ -80,88 +80,59 @@ export function createApi(client: ApiClient) {
     return streamRequest(`/evals/${basePass}${q}`, opts?.signal);
   }
 
-  /** Narrow the whole run before attaching its mode to individual case results. */
-  function caseOutcomes(run: EvalRunSummary): EvalCaseOutcome[] {
-    switch (run.eval) {
-      case "scoring":
-        return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
-      case "scoring_stability":
-        return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
-      case "screening":
-        return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
-      case "judge":
-        return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
-      case "consolidation":
-      case "matching":
-      case "decomposition":
-        return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
-      default:
-        return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
-    }
-  }
-
-  /** Saved runs use evalKey; streamed summaries use eval. Keep the payload correlation
-   * while adapting those wire names, without asserting an independently paired payload. */
-  function savedRunSummary(run: LastEvalRun): EvalRunSummary {
-    switch (run.evalKey) {
-      case "scoring":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "scoring_stability":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "screening":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "screening_stability":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "judge":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "stability":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "consolidation":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "consolidation_stability":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "matching":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "matching_stability":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "decomposition":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-      case "decomposition_stability":
-        return {
-  eval: run.evalKey, result: run.result,
-};
-    }
-  }
   return {
     fetchEvalCatalog, fetchEvalInvariants, rebaselineEval, fetchEvalCases, fetchJudgeBackgrounds,
-    saveJudgeBackground, fetchLastEvalRun, saveEvalCase, runEval, caseOutcomes, savedRunSummary,
+    saveJudgeBackground, fetchLastEvalRun, saveEvalCase, runEval,
   };
 }
 
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchEvalCatalog, fetchEvalInvariants, rebaselineEval, fetchEvalCases, fetchJudgeBackgrounds,
-  saveJudgeBackground, fetchLastEvalRun, saveEvalCase, runEval, caseOutcomes, savedRunSummary,
-} = createApi(publicClient);
+/** Narrow the whole run before attaching its mode to individual case results. */
+export function caseOutcomes(run: EvalRunSummary): EvalCaseOutcome[] {
+  switch (run.eval) {
+    case "scoring":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    case "scoring_stability":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    case "screening":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    case "judge":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    case "consolidation":
+    case "matching":
+    case "decomposition":
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+    default:
+      return (run.result.cases ?? []).map((result) => ({ mode: run.eval, result }));
+  }
+}
+
+/** Saved runs use evalKey; streamed summaries use eval. Keep the payload correlation
+ * while adapting those wire names, without asserting an independently paired payload. */
+export function savedRunSummary(run: LastEvalRun): EvalRunSummary {
+  switch (run.evalKey) {
+    case "scoring":
+      return { eval: run.evalKey, result: run.result };
+    case "scoring_stability":
+      return { eval: run.evalKey, result: run.result };
+    case "screening":
+      return { eval: run.evalKey, result: run.result };
+    case "screening_stability":
+      return { eval: run.evalKey, result: run.result };
+    case "judge":
+      return { eval: run.evalKey, result: run.result };
+    case "stability":
+      return { eval: run.evalKey, result: run.result };
+    case "consolidation":
+      return { eval: run.evalKey, result: run.result };
+    case "consolidation_stability":
+      return { eval: run.evalKey, result: run.result };
+    case "matching":
+      return { eval: run.evalKey, result: run.result };
+    case "matching_stability":
+      return { eval: run.evalKey, result: run.result };
+    case "decomposition":
+      return { eval: run.evalKey, result: run.result };
+    case "decomposition_stability":
+      return { eval: run.evalKey, result: run.result };
+  }
+}

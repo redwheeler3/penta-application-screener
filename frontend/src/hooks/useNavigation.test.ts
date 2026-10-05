@@ -1,13 +1,20 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import type { ApplicationsResponse } from "../api/applications";
+import { act, waitFor } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../api/applications";
-import { deferred } from "../testSupport";
 import type { ApplicationDetail } from "../types";
 import { useNavigation } from "./useNavigation";
 import { useApplications } from "./useApplications";
 
-vi.mock("../api/applications", () => ({ fetchApplication: vi.fn(), fetchRetainedApplication: vi.fn(), fetchApplications: vi.fn() }));
+const api = vi.hoisted(() => ({
+  fetchApplication: vi.fn<ReturnType<typeof import("../api/applications").createApi>["fetchApplication"]>(),
+  fetchRetainedApplication: vi.fn<ReturnType<typeof import("../api/applications").createApi>["fetchRetainedApplication"]>(),
+  fetchApplications: vi.fn<ReturnType<typeof import("../api/applications").createApi>["fetchApplications"]>(),
+}));
+
+vi.mock("../api/applications", () => ({
+  createApi: () => api,
+}));
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -53,7 +60,7 @@ it("does not cancel navigation when an earlier applicant's note acknowledgement 
   expect(result.current.selectedApplication?.id).toBe(8);
 });
 
-const pool = (selectedOpeningId: number): api.ApplicationsResponse => ({ selectedOpeningId, applications: [], openings: [] });
+const pool = (selectedOpeningId: number): ApplicationsResponse => ({ selectedOpeningId, applications: [], openings: [] });
 const detail = (id: number) => ({ id, privateNote: "" }) as ApplicationDetail;
 
 async function workspace() {
@@ -140,7 +147,7 @@ it("changes history and read-only mode when the same applicant is opened through
 
 it("publishes detail only after opening restoration, with list and detail reads in parallel", async () => {
   const { result } = await workspace();
-  const opening = deferred<api.ApplicationsResponse>();
+  const opening = deferred<ApplicationsResponse>();
   vi.mocked(api.fetchApplications).mockReturnValueOnce(opening.promise);
   let request!: Promise<void>;
   await act(async () => { request = result.current.viewApplication(42, 2); });
@@ -157,7 +164,7 @@ it("cancels a pending history opening restoration when the member navigates else
   await act(() => result.current.viewApplication(42));
   const first = window.history.state;
   await act(() => result.current.changeOpening(2));
-  const opening = deferred<api.ApplicationsResponse>();
+  const opening = deferred<ApplicationsResponse>();
   vi.mocked(api.fetchApplications).mockReturnValueOnce(opening.promise);
   await act(async () => pop(first));
   act(() => result.current.navigateToView("adminSettings"));
@@ -183,8 +190,8 @@ it("does not restore stale detail after a newer history target", async () => {
 
 it("keeps the newest opening when overlapping cross-opening detail requests finish out of order", async () => {
   const { result } = await workspace();
-  const second = deferred<api.ApplicationsResponse>();
-  const third = deferred<api.ApplicationsResponse>();
+  const second = deferred<ApplicationsResponse>();
+  const third = deferred<ApplicationsResponse>();
   vi.mocked(api.fetchApplications).mockReturnValueOnce(second.promise).mockReturnValueOnce(third.promise);
   let old!: Promise<void>;
   let newest!: Promise<void>;
@@ -199,7 +206,7 @@ it("keeps the newest opening when overlapping cross-opening detail requests fini
 
 it("fences a pending list selection if the parallel applicant read fails", async () => {
   const { result, onError } = await workspace();
-  const opening = deferred<api.ApplicationsResponse>();
+  const opening = deferred<ApplicationsResponse>();
   vi.mocked(api.fetchApplications).mockReturnValueOnce(opening.promise);
   vi.mocked(api.fetchApplication).mockRejectedValueOnce(new Error("not linked"));
   await act(() => result.current.viewApplication(42, 2));

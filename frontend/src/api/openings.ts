@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type {
   DirectSelectionOpeningCreate,
   Opening,
@@ -92,10 +92,3 @@ export function createApi(client: ApiClient) {
     confirmOpeningSelection, confirmNoHouseholdSelected,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchOpenings, fetchOpeningEmailUsage, previewOpening, createOpening, updateOpening,
-  fetchOpeningSelection, searchPreviousApplicants, createDirectSelectionOpening,
-  confirmOpeningSelection, confirmNoHouseholdSelected,
-} = createApi(publicClient);

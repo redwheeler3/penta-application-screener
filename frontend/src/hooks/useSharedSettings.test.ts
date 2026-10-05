@@ -1,12 +1,17 @@
-import { act, renderHook } from "@testing-library/react";
+import { act } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../api/settings";
-import { deferred } from "../testSupport";
 import type { AppSettings, SettingsResponse } from "../types";
 import { useSharedSettings } from "./useSharedSettings";
 
-vi.mock("../api/settings", () => ({ saveSettings: vi.fn(), fetchSettings: vi.fn() }));
+const api = vi.hoisted(() => ({
+  saveSettings: vi.fn<ReturnType<typeof import("../api/settings").createApi>["saveSettings"]>(),
+  fetchSettings: vi.fn<ReturnType<typeof import("../api/settings").createApi>["fetchSettings"]>(),
+}));
+
+vi.mock("../api/settings", () => ({
+  createApi: () => api,
+}));
 
 const settings: AppSettings = { ai: {
   region: "test", screeningModel: "test", screeningReasoningEffort: "none",

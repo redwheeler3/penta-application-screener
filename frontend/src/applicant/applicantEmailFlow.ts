@@ -11,11 +11,11 @@ import {
   updateSnapshotEmail,
 } from "./applicantPersistence";
 import type { UpdateApplicantPersistence } from "./applicantPersistenceState";
-import * as publicApi from "./api";
+import type * as publicApi from "./api";
 import type { ApplicantDraft } from "./types";
 
 type EmailFlowDependencies = {
-  api?: ReturnType<typeof publicApi.createApi>;
+  api: ReturnType<typeof publicApi.createApi>;
   beginApplicationRead: () => RequestIsCurrent;
   captureSession: () => RequestIsCurrent;
   updatePersistence: UpdateApplicantPersistence;
@@ -23,7 +23,7 @@ type EmailFlowDependencies = {
 };
 
 export function createApplicantEmailFlow({
-  api = publicApi,
+  api,
   beginApplicationRead,
   captureSession,
   updatePersistence: dispatch,

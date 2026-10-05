@@ -459,7 +459,10 @@ The central tables are:
 - `openings` and `application_participations`: application-intake or direct-selection vacancy
   configuration, participation, and outcomes;
 - `browser_sessions` and token-credential tables: revocable authentication;
-- `application_ai_results`: cached per-application passes;
+- `application_ai_results`: content-addressed paid output with immutable producer provenance;
+- `application_ai_selections`: each consumer's last consumed result per pass. Output lifetime is
+  protected by current producer or selected-consumer retention, with affected unowned results
+  pruned at deletion/reference replacement;
 - `analyses`, `analysis_audits`, dimension definitions, and scores: opening-specific Rank runs over
   shared canonical dimension history and content-addressed scores;
 - opening committee defaults, per-opening member rules and eligibility overrides, opening-specific

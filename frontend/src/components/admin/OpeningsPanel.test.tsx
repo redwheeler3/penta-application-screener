@@ -1,21 +1,23 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import * as api from "../../api/openings";
 import type { Opening, OpeningPreview, OpeningSelection } from "../../types";
-import { deferred } from "../../testSupport";
 import { OpeningsPanel } from "./OpeningsPanel";
 
+const api = vi.hoisted(() => ({
+  fetchOpenings: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["fetchOpenings"]>(),
+  fetchOpeningEmailUsage: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["fetchOpeningEmailUsage"]>(),
+  fetchOpeningSelection: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["fetchOpeningSelection"]>(),
+  confirmOpeningSelection: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["confirmOpeningSelection"]>(),
+  previewOpening: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["previewOpening"]>(),
+  createOpening: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["createOpening"]>(),
+  updateOpening: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["updateOpening"]>(),
+  confirmNoHouseholdSelected: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["confirmNoHouseholdSelected"]>(),
+}));
+
 vi.mock("../../api/openings", () => ({
-  fetchOpenings: vi.fn(),
-  fetchOpeningEmailUsage: vi.fn(),
-  fetchOpeningSelection: vi.fn(),
-  confirmOpeningSelection: vi.fn(),
-  previewOpening: vi.fn(),
-  createOpening: vi.fn(),
-  updateOpening: vi.fn(),
-  confirmNoHouseholdSelected: vi.fn(),
+  createApi: () => api,
 }));
 
 vi.mock("./DirectSelectionOpeningForm", () => ({

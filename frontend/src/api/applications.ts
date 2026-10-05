@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type { ApplicationDetail, ApplicationSummary, CommitteeOpening } from "../types";
 
 export type ApplicationsResponse = {
@@ -93,10 +93,3 @@ export function createApi(client: ApiClient) {
     deleteCommitteeNote, setStar, setShortlist,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchApplications, fetchApplication, fetchRetainedApplication, overrideStatus,
-  clearStatusOverride, savePrivateNote, addCommitteeNote, updateCommitteeNote,
-  deleteCommitteeNote, setStar, setShortlist,
-} = createApi(publicClient);

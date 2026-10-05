@@ -1,11 +1,16 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../../api/evals";
-import { deferred } from "../../testSupport";
 import { JudgeBackgrounds } from "./JudgeBackgrounds";
 
-vi.mock("../../api/evals", () => ({ fetchJudgeBackgrounds: vi.fn(), saveJudgeBackground: vi.fn() }));
+const api = vi.hoisted(() => ({
+  fetchJudgeBackgrounds: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchJudgeBackgrounds"]>(),
+  saveJudgeBackground: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["saveJudgeBackground"]>(),
+}));
+
+vi.mock("../../api/evals", () => ({
+  createApi: () => api,
+}));
 
 beforeEach(() => {
   vi.resetAllMocks();

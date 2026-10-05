@@ -1,10 +1,17 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-import * as api from "../../api/feedback";
-import { deferred } from "../../testSupport";
 import { FeedbackPanel } from "./FeedbackPanel";
 
-vi.mock("../../api/feedback", () => ({ fetchFeedback: vi.fn(), resolveFeedback: vi.fn(), reopenFeedback: vi.fn() }));
+const api = vi.hoisted(() => ({
+  fetchFeedback: vi.fn<ReturnType<typeof import("../../api/feedback").createApi>["fetchFeedback"]>(),
+  resolveFeedback: vi.fn<ReturnType<typeof import("../../api/feedback").createApi>["resolveFeedback"]>(),
+  reopenFeedback: vi.fn<ReturnType<typeof import("../../api/feedback").createApi>["reopenFeedback"]>(),
+}));
+
+vi.mock("../../api/feedback", () => ({
+  createApi: () => api,
+}));
 const items = [1, 2].map((id) => ({ id, body: `Synthetic feedback ${id}`, userEmail: "member@example.com",
   userName: "Synthetic member", route: null, activeTab: null, analysisId: null, applicantId: null,
   applicantName: null, appVersion: "test", createdAt: "2026-10-03T00:00:00Z", resolvedAt: null }));

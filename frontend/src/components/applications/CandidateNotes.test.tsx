@@ -1,15 +1,19 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import type { CommitteeNote } from "../../types";
-import * as api from "../../api/applications";
 import { usePrivateNotes } from "../../hooks/usePrivateNotes";
-import { deferred } from "../../testSupport";
 import { CandidateNotes } from "./CandidateNotes";
 
-vi.mock("../../api/applications", () => ({ savePrivateNote: vi.fn() }));
+const api = vi.hoisted(() => ({
+  savePrivateNote: vi.fn<ReturnType<typeof import("../../api/applications").createApi>["savePrivateNote"]>(),
+}));
+
+vi.mock("../../api/applications", () => ({
+  createApi: () => api,
+}));
 afterEach(() => vi.useRealTimers());
 
 const committeeNote: CommitteeNote = {

@@ -13,7 +13,8 @@ import type {
   ApplicantPersistenceState,
   UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
-import * as publicApi from "./api";
+import type * as publicApi from "./api";
+import { requestReturnAccessLink as requestBootstrapAccessLink } from "./api";
 import { type DraftIntent } from "./api";
 import { BROWSER_STORAGE_CLEAR_MESSAGE, clearApplicationDraft } from "./draftStorage";
 import {
@@ -24,7 +25,7 @@ import {
 import type { ApplicantDraft } from "./types";
 
 type SaveFlowDependencies = {
-  api?: ReturnType<typeof publicApi.createApi>;
+  api: ReturnType<typeof publicApi.createApi>;
   stateRef: RefObject<ApplicantPersistenceState>;
   draftRef: RefObject<ApplicantDraft>;
   invalidateReads: () => void;
@@ -35,7 +36,7 @@ type SaveFlowDependencies = {
 
 /** Saving, review preparation, and submission share one snapshot acknowledgement rule. */
 export function createApplicantSaveFlow({
-  api = publicApi,
+  api,
   stateRef, draftRef, updatePersistence: dispatch, invalidateReads, captureSession, fail,
 }: SaveFlowDependencies) {
   const { checkGuestSubmission, requestReturnAccessLink, saveApplication, savePendingDraft, submitApplication, submitGuestApplication } = api;
@@ -219,7 +220,7 @@ export function createApplicantSaveFlow({
     const { openingIds } = stateRef.current;
     const working = workingAnswers(draftRef.current);
     const answers = { ...working, applicant: { ...working.applicant, email: email.trim().toLowerCase() } };
-    const response = await publicApi.requestReturnAccessLink(answers, openingIds, null);
+    const response = await requestBootstrapAccessLink(answers, openingIds, null);
     if (!inSession()) return false;
     if (!response.ok) {
       await fail(response);

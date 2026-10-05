@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type { ScreeningEstimateResponse } from "../types";
 
 export function createApi(client: ApiClient) {
@@ -12,8 +12,3 @@ export function createApi(client: ApiClient) {
     fetchScreeningEstimate, runScreening,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchScreeningEstimate, runScreening,
-} = createApi(publicClient);

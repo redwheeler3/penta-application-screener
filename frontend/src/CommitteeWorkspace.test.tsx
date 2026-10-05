@@ -1,18 +1,28 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "./testSupport";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-
-import * as applicationApi from "./api/applications";
-import * as settingsApi from "./api/settings";
 import { CommitteeWorkspace } from "./CommitteeWorkspace";
 import type { CandidateDetail } from "./components/applications/CandidateDetail";
-import { deferred } from "./testSupport";
 import type { CurrentUser, SettingsResponse } from "./types";
+
+const applicationApi = vi.hoisted(() => ({
+  fetchApplication: vi.fn<ReturnType<typeof import("./api/applications").createApi>["fetchApplication"]>(),
+  savePrivateNote: vi.fn<ReturnType<typeof import("./api/applications").createApi>["savePrivateNote"]>(),
+}));
+const settingsApi = vi.hoisted(() => ({
+  fetchSettings: vi.fn<ReturnType<typeof import("./api/settings").createApi>["fetchSettings"]>(),
+  saveSettings: vi.fn<ReturnType<typeof import("./api/settings").createApi>["saveSettings"]>(),
+}));
 
 // Keep the real navigation, settings, note writer, admin section chooser, and
 // configuration form. Unrelated resources have their own suites and no I/O here.
-vi.mock("./api/settings", () => ({ fetchSettings: vi.fn(), saveSettings: vi.fn() }));
-vi.mock("./api/applications", () => ({ fetchApplication: vi.fn(), savePrivateNote: vi.fn() }));
+vi.mock("./api/settings", () => ({
+  createApi: () => settingsApi,
+}));
+vi.mock("./api/applications", () => ({
+  createApi: () => applicationApi,
+}));
 vi.mock("./hooks/useApplications", () => ({ useApplications: () => ({
   applications: [], openings: [], selectedOpeningId: 1, applicationsLoadState: "ready",
   reloadApplications: vi.fn().mockResolvedValue(undefined), loadInitialApplications: vi.fn(), selectOpening: vi.fn(),

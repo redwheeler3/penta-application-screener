@@ -1,11 +1,15 @@
-import { act, renderHook } from "@testing-library/react";
+import { act } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-
-import * as api from "../api/applications";
-import { deferred } from "../testSupport";
 import { usePrivateNotes } from "./usePrivateNotes";
 
-vi.mock("../api/applications", () => ({ savePrivateNote: vi.fn() }));
+const api = vi.hoisted(() => ({
+  savePrivateNote: vi.fn<ReturnType<typeof import("../api/applications").createApi>["savePrivateNote"]>(),
+}));
+
+vi.mock("../api/applications", () => ({
+  createApi: () => api,
+}));
 beforeEach(() => {
   vi.useFakeTimers();
   vi.mocked(api.savePrivateNote).mockReset().mockResolvedValue(new Response(null));

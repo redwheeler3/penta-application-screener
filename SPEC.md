@@ -2023,3 +2023,9 @@ Proposal edits persist individual Add/Remove intent against the current member s
 the shared run/member guards. The composer retains text until a successful acknowledgement,
 clears only the exact submitted draft, and permits typing the next draft while a save is pending.
 Live full Rank continues to reject edits whose inputs it has already captured.
+
+Protected committee API modules expose explicit request-client factories; workspace hooks require
+a captured identity provider. Applicant flow owners receive a required bound API. Public
+bootstrap/email-delivery advisory calls are explicit exceptions; manual harnesses construct
+their own clients. Administrative writes recheck active admin authority under the SQLite writer
+before shared mutation or side-effect staging, with ordinary reads/provider I/O outside that guard.

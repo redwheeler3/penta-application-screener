@@ -2,6 +2,7 @@ import { useCommitteeApi } from "../../api/identity";
 import { type SetStateAction, useEffect, useRef, useState } from "react";
 
 import * as evalsApi from "../../api/evals";
+import { caseOutcomes, savedRunSummary } from "../../api/evals";
 import { streamNdjson } from "../../api/client";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import type {
@@ -23,7 +24,7 @@ export function useEvalRunner(options: {
   caseEvalKey: EvalFixtureKey;
   runKeys: EvalRunMode[];
 }) {
-  const { caseOutcomes, fetchEvalCases, fetchLastEvalRun, runEval, savedRunSummary } = useCommitteeApi(evalsApi);
+  const { fetchEvalCases, fetchLastEvalRun, runEval } = useCommitteeApi(evalsApi);
 
   const [cases, setStoredCases] = useState<Record<string, unknown>[] | null>(null);
   const caseReads = useRequestScope(options.caseEvalKey);

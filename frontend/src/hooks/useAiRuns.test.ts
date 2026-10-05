@@ -1,16 +1,26 @@
-import { act, renderHook } from "@testing-library/react";
+import { act } from "@testing-library/react";
+import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-
-import * as rankingApi from "../api/ranking";
-import * as screeningApi from "../api/screening";
 import { useAiRuns } from "./useAiRuns";
-import { deferred } from "../testSupport";
 import type { CurrentRunResponse } from "../types";
 
-vi.mock("../api/ranking", () => ({
-  runRank: vi.fn(), scoreCurrent: vi.fn(), fetchRankEstimate: vi.fn(), fetchScoreCurrentEstimate: vi.fn(),
+const rankingApi = vi.hoisted(() => ({
+  runRank: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["runRank"]>(),
+  scoreCurrent: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["scoreCurrent"]>(),
+  fetchRankEstimate: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["fetchRankEstimate"]>(),
+  fetchScoreCurrentEstimate: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["fetchScoreCurrentEstimate"]>(),
 }));
-vi.mock("../api/screening", () => ({ runScreening: vi.fn(), fetchScreeningEstimate: vi.fn() }));
+const screeningApi = vi.hoisted(() => ({
+  runScreening: vi.fn<ReturnType<typeof import("../api/screening").createApi>["runScreening"]>(),
+  fetchScreeningEstimate: vi.fn<ReturnType<typeof import("../api/screening").createApi>["fetchScreeningEstimate"]>(),
+}));
+
+vi.mock("../api/ranking", () => ({
+  createApi: () => rankingApi,
+}));
+vi.mock("../api/screening", () => ({
+  createApi: () => screeningApi,
+}));
 
 type Mode = "screening" | "discover" | "score-current";
 const modes: Mode[] = ["screening", "discover", "score-current"];

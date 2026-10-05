@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type { AllowlistEntry, DeniedSignInAttempt } from "../types";
 
 export function createApi(client: ApiClient) {
@@ -28,8 +28,3 @@ export function createApi(client: ApiClient) {
     fetchAllowlist, fetchDeniedSignInAttempts, upsertAllowlistEntry, removeAllowlistEntry,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchAllowlist, fetchDeniedSignInAttempts, upsertAllowlistEntry, removeAllowlistEntry,
-} = createApi(publicClient);

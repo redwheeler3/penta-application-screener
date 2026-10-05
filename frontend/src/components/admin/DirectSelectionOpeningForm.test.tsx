@@ -1,12 +1,18 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { renderCommittee as render, deferred } from "../../testSupport";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import * as api from "../../api/openings";
-import { deferred } from "../../testSupport";
 import type { OpeningSelectionCandidate } from "../../types";
 import { DirectSelectionOpeningForm } from "./DirectSelectionOpeningForm";
 
-vi.mock("../../api/openings", () => ({ searchPreviousApplicants: vi.fn(), createDirectSelectionOpening: vi.fn() }));
+const api = vi.hoisted(() => ({
+  searchPreviousApplicants: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["searchPreviousApplicants"]>(),
+  createDirectSelectionOpening: vi.fn<ReturnType<typeof import("../../api/openings").createApi>["createDirectSelectionOpening"]>(),
+}));
+
+vi.mock("../../api/openings", () => ({
+  createApi: () => api,
+}));
 const applicant = { applicationId: 1, applicantName: "Synthetic Applicant", primaryEmail: "synthetic@example.com" };
 const props = { onCancel: vi.fn(), onCreated: vi.fn(), onError: vi.fn(), onReviewRetained: vi.fn(), onSavingChange: vi.fn() };
 beforeEach(() => vi.resetAllMocks());

@@ -1,4 +1,4 @@
-import { type ApiClient, publicClient } from "./client";
+import { type ApiClient } from "./client";
 import type {
   ConsolidateAuditResponse,
   CurrentRunResponse,
@@ -87,10 +87,3 @@ export function createApi(client: ApiClient) {
     fetchRankingBoard, saveTiers, changeProposal,
   };
 }
-
-// Public/bootstrap callers and manual harnesses use the unbound client.
-export const {
-  fetchRankingCurrent, fetchMatchAudit, fetchDecomposeAudit, fetchConsolidateAudit,
-  fetchFanOutAudit, fetchRankEstimate, runRank, fetchScoreCurrentEstimate, scoreCurrent,
-  fetchRankingBoard, saveTiers, changeProposal,
-} = createApi(publicClient);
