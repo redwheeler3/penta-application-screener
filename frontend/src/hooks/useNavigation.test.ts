@@ -33,3 +33,15 @@ it("preserves a deliberate cross-opening detail request as React renders the sel
   await act(async () => { response.resolve({ id: 7 } as ApplicationDetail); await request; });
   expect(result.current.selectedApplication?.id).toBe(7);
 });
+
+it("does not cancel navigation when an earlier applicant's note acknowledgement arrives", async () => {
+  const response = deferred<ApplicationDetail>();
+  vi.mocked(api.fetchApplication).mockReturnValue(response.promise);
+  const { result } = renderHook(() => useNavigation({ openingId: 1, loadRanking: vi.fn(), onError: vi.fn() }));
+  act(() => result.current.setSelectedApplication({ id: 7, privateNote: "Original" } as ApplicationDetail));
+  let request!: Promise<void>;
+  act(() => { request = result.current.viewApplication(8); });
+  act(() => result.current.updateSelectedApplication({ id: 7, privateNote: "Saved" }));
+  await act(async () => { response.resolve({ id: 8 } as ApplicationDetail); await request; });
+  expect(result.current.selectedApplication?.id).toBe(8);
+});

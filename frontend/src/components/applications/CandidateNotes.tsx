@@ -1,8 +1,8 @@
 import { LockKeyhole, Plus, UsersRound } from "lucide-react";
-import { type FormEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type FormEvent, useLayoutEffect, useRef, useState } from "react";
 import { formatPacificDateTime } from "../../format";
 import type { CommitteeNote } from "../../types";
-import { useRequestScope } from "../../hooks/useRequestScope";
+import type { PrivateNoteEditor } from "../../hooks/usePrivateNotes";
 
 const MAX_PRIVATE_NOTE_HEIGHT_PX = 150;
 type NotesTab = "private" | "committee";
@@ -12,15 +12,15 @@ export function CandidateNotes(props: {
   applicationId: number;
   privateNote: string;
   committeeNotes: CommitteeNote[];
-  onSavePrivateNote: (id: number, note: string) => Promise<boolean>;
+  privateNoteEditor: PrivateNoteEditor | null;
   onAddCommitteeNote: (id: number, body: string) => Promise<boolean>;
   onUpdateCommitteeNote: (id: number, noteId: number, body: string) => Promise<boolean>;
   onDeleteCommitteeNote: (id: number, noteId: number) => Promise<boolean>;
   readOnly?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<NotesTab>(lastOpenTab);
-  const [privateNote, setPrivateNote] = useState(props.privateNote);
-  const [privateStatus, setPrivateStatus] = useState<"saved" | "saving" | "error">("saved");
+  const privateNote = props.privateNoteEditor?.body ?? props.privateNote;
+  const privateStatus = props.privateNoteEditor?.status ?? "saved";
   const [newNote, setNewNote] = useState("");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -29,20 +29,8 @@ export function CandidateNotes(props: {
   const [committeeBusy, setCommitteeBusy] = useState(false);
   const [committeeError, setCommitteeError] = useState<string | null>(null);
   const privateNoteRef = useRef<HTMLTextAreaElement>(null);
-  const pendingPrivateSave = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const privateRevision = useRef(0);
-  const savedPrivateNote = useRef(props.privateNote);
-  const privateSaveQueue = useRef<Promise<void>>(Promise.resolve());
-  const privateRequests = useRequestScope(props.applicationId);
   const editorRef = useRef({ adding, newNote, editingId, editingBody });
   editorRef.current = { adding, newNote, editingId, editingBody };
-
-  useEffect(
-    () => () => {
-      if (pendingPrivateSave.current !== null) clearTimeout(pendingPrivateSave.current);
-    },
-    [],
-  );
 
   useLayoutEffect(() => {
     const textarea = privateNoteRef.current;
@@ -52,43 +40,8 @@ export function CandidateNotes(props: {
     textarea.style.overflowY = textarea.scrollHeight > MAX_PRIVATE_NOTE_HEIGHT_PX ? "auto" : "hidden";
   }, [privateNote, activeTab]);
 
-  function persistPrivateNote(note: string, revision: number) {
-    if (props.readOnly) return;
-    const inScope = privateRequests.capture();
-    setPrivateStatus("saving");
-    privateSaveQueue.current = privateSaveQueue.current.then(async () => {
-      if (revision !== privateRevision.current) return;
-      // Compare after earlier writes finish. Reverting to a previously saved value
-      // still needs a write if an in-flight edit has since changed the server.
-      let saved = note === savedPrivateNote.current;
-      if (!saved) {
-        try {
-          saved = await props.onSavePrivateNote(props.applicationId, note);
-        } catch {
-          saved = false;
-        }
-      }
-      if (saved) savedPrivateNote.current = note;
-      if (inScope() && revision === privateRevision.current) {
-        setPrivateStatus(saved ? "saved" : "error");
-      }
-    });
-  }
-
-  function updatePrivateNote(note: string) {
-    setPrivateNote(note);
-    const revision = (privateRevision.current += 1);
-    if (pendingPrivateSave.current !== null) clearTimeout(pendingPrivateSave.current);
-    setPrivateStatus("saving");
-    pendingPrivateSave.current = setTimeout(() => persistPrivateNote(note, revision), 600);
-  }
-
   function flushPrivateNote() {
-    if (pendingPrivateSave.current !== null) {
-      clearTimeout(pendingPrivateSave.current);
-      pendingPrivateSave.current = null;
-    }
-    persistPrivateNote(privateNote, privateRevision.current);
+    if (!props.readOnly) props.privateNoteEditor?.flush();
   }
 
   function selectTab(tab: NotesTab) {
@@ -189,7 +142,7 @@ export function CandidateNotes(props: {
             className="notes-tab-panel"
           >
             <p className="notes-visibility"><LockKeyhole size={13} /> Only you can see this.</p>
-            {props.readOnly ? (
+            {props.readOnly || !props.privateNoteEditor ? (
               <div className="notes-read-only-body">{privateNote || "No private note."}</div>
             ) : (
               <>
@@ -197,7 +150,7 @@ export function CandidateNotes(props: {
                   ref={privateNoteRef}
                   aria-label="My private notes"
                   value={privateNote}
-                  onChange={(event) => updatePrivateNote(event.target.value)}
+                  onChange={(event) => props.privateNoteEditor?.change(event.target.value)}
                   onBlur={flushPrivateNote}
                   placeholder="Add a private note about this applicant…"
                   rows={2}
@@ -211,6 +164,9 @@ export function CandidateNotes(props: {
                         ? "Saved"
                         : ""}
                 </p>
+                {privateStatus === "error" ? (
+                  <button type="button" onClick={flushPrivateNote}>Retry save</button>
+                ) : null}
               </>
             )}
           </div>

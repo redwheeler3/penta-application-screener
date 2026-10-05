@@ -25,7 +25,7 @@ export function useCandidateActions(options: CandidateActionsOptions) {
 
   async function mutate(
     applicationId: number,
-    field: "status" | "privateNote" | "committeeNotes" | "starredByMe" | "shortlisted",
+    field: "status" | "committeeNotes" | "starredByMe" | "shortlisted",
     send: (openingId: number) => Promise<Response>,
     failureMessage: string,
   ): Promise<ApplicationUpdate | null> {
@@ -89,12 +89,6 @@ export function useCandidateActions(options: CandidateActionsOptions) {
     }
   }
 
-  async function savePrivateNote(id: number, note: string): Promise<boolean> {
-    return Boolean(await mutate(
-      id, "privateNote", (opening) => api.savePrivateNote(id, opening, note), "Could not save your private note.",
-    ));
-  }
-
   async function addCommitteeNote(id: number, body: string): Promise<boolean> {
     return Boolean(await mutate(
       id, "committeeNotes", (opening) => api.addCommitteeNote(id, opening, body), "Could not add the committee note.",
@@ -130,7 +124,7 @@ export function useCandidateActions(options: CandidateActionsOptions) {
   }
 
   return {
-    overrideStatus, clearStatusOverride, savePrivateNote,
+    overrideStatus, clearStatusOverride,
     addCommitteeNote, updateCommitteeNote, deleteCommitteeNote,
     toggleStar, toggleShortlist, refreshEligibilityViews,
   };

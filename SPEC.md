@@ -1300,6 +1300,14 @@ the author may edit or delete an entry. Neither kind of note enters AI inputs or
 responses. Candidate-detail printing includes the current member's private note and the attributed
 committee notes.
 
+Private-note drafts and their ordered autosave queue belong to the authenticated committee
+workspace. Internal tab, applicant, opening, and browser-history navigation preserve unsent text
+without waiting for the network. Failed saves retain the draft and offer **Retry save**; reopening
+it through another opening lets an explicit retry use that opening's authority checks. Drafts
+stay in memory only. Leaving the page warns while work is unconfirmed, and explicit sign-out
+asks before discarding it. Sign-out fences queued writes before credentials change; a failed
+sign-out resumes saving under the original account. Switching accounts clears private drafts.
+
 The per-member-pool/shared-content-cache decision is recorded in
 [ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md).
 

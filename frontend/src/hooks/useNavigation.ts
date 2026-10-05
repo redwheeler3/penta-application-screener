@@ -1,7 +1,7 @@
 import { type SetStateAction, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import * as api from "../api/applications";
-import type { ApplicationDetail, ViewTab } from "../types";
+import type { ApplicationDetail, ApplicationUpdate, ViewTab } from "../types";
 import { useRequestScope } from "./useRequestScope";
 
 type BrowserLocation = {
@@ -166,6 +166,11 @@ export function useNavigation(options: {
     activeTab,
     selectedApplication,
     selectedApplicationReadOnly,
+    updateSelectedApplication: (update: ApplicationUpdate) => {
+      // Save acknowledgements patch the visible record; they are not navigation
+      // and must not cancel a pending read for another applicant.
+      setSelectedApplication((current) => current?.id === update.id ? { ...current, ...update } : current);
+    },
     setSelectedApplication: (application: SetStateAction<ApplicationDetail | null>) => {
       requests.invalidate();
       setSelectedApplication(application);

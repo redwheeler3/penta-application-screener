@@ -24,6 +24,7 @@ import { Toasts } from "./components/shared/Toasts";
 import { WorkflowBar } from "./components/workflow/WorkflowBar";
 import { useApplications } from "./hooks/useApplications";
 import { useCandidateActions } from "./hooks/useCandidateActions";
+import { usePrivateNotes } from "./hooks/usePrivateNotes";
 import { useRanking } from "./hooks/useRanking";
 import { useToasts } from "./hooks/useToasts";
 import { useSharedSettings } from "./hooks/useSharedSettings";
@@ -50,8 +51,13 @@ export function CommitteeWorkspace({ user, logout }: {
   const { toasts, showToast, showError, showWarning, dismissToast } = useToasts();
 
   async function signOut(): Promise<void> {
+    if (privateNotes.hasUnconfirmed && !window.confirm("Some private notes have not been saved. Sign out and discard those drafts?")) return;
+    privateNotes.suspendWrites();
     const error = await logout();
-    if (error) showError(error);
+    if (error) {
+      privateNotes.resumeWrites();
+      showError(error);
+    }
   }
 
   // The applications-list view state (full pool + client-derived filter/sort/facets).
@@ -106,6 +112,7 @@ export function CommitteeWorkspace({ user, logout }: {
     selectedApplication: selectedApp,
     selectedApplicationReadOnly,
     setSelectedApplication: setSelectedApp,
+    updateSelectedApplication,
     viewApplication,
     viewRetainedApplication,
     backToList,
@@ -160,7 +167,6 @@ export function CommitteeWorkspace({ user, logout }: {
   const {
     overrideStatus,
     clearStatusOverride,
-    savePrivateNote,
     addCommitteeNote,
     updateCommitteeNote,
     deleteCommitteeNote,
@@ -171,12 +177,16 @@ export function CommitteeWorkspace({ user, logout }: {
     openingId: selectedOpeningId,
     selectedApplication: selectedApp,
     rankingLoaded: ranking !== null,
-    onApplicationUpdated: (update) => setSelectedApp((current) =>
-      current?.id === update.id ? { ...current, ...update } : current),
+    onApplicationUpdated: updateSelectedApplication,
     onError: showError,
     refreshDashboard,
     reloadApplications,
     loadRanking,
+  });
+
+  const privateNotes = usePrivateNotes({
+    onSaved: (id, privateNote) => updateSelectedApplication({ id, privateNote }),
+    onError: showError,
   });
 
   useEffect(() => {
@@ -407,7 +417,8 @@ export function CommitteeWorkspace({ user, logout }: {
             onBack={backToList}
             onOverrideStatus={overrideStatus}
             onClearOverride={clearStatusOverride}
-            onSavePrivateNote={savePrivateNote}
+            privateNoteEditor={selectedApplicationReadOnly || selectedOpeningId === null
+              ? null : privateNotes.editor(selectedApp.id, selectedOpeningId, selectedApp.privateNote)}
             onAddCommitteeNote={addCommitteeNote}
             onUpdateCommitteeNote={updateCommitteeNote}
             onDeleteCommitteeNote={deleteCommitteeNote}

@@ -1,11 +1,16 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CommitteeNote } from "../../types";
+import * as api from "../../api/applications";
+import { usePrivateNotes } from "../../hooks/usePrivateNotes";
 import { deferred } from "../../testSupport";
 import { CandidateNotes } from "./CandidateNotes";
+
+vi.mock("../../api/applications", () => ({ savePrivateNote: vi.fn() }));
+afterEach(() => vi.useRealTimers());
 
 const committeeNote: CommitteeNote = {
   id: 7,
@@ -16,26 +21,64 @@ const committeeNote: CommitteeNote = {
   editableByMe: true,
 };
 
-function renderNotes(overrides: Partial<ComponentProps<typeof CandidateNotes>> = {}) {
+function renderNotes(overrides: Partial<ComponentProps<typeof CandidateNotes>> & {
+  onSavePrivateNote?: (id: number, note: string) => Promise<boolean>;
+} = {}) {
   const callbacks = {
     onSavePrivateNote: vi.fn().mockResolvedValue(true),
     onAddCommitteeNote: vi.fn().mockResolvedValue(true),
     onUpdateCommitteeNote: vi.fn().mockResolvedValue(true),
     onDeleteCommitteeNote: vi.fn().mockResolvedValue(true),
   };
-  render(
+  const { onSavePrivateNote = callbacks.onSavePrivateNote, ...noteProps } = overrides;
+  vi.mocked(api.savePrivateNote).mockImplementation(async (id, _opening, body) =>
+    new Response(null, { status: await onSavePrivateNote(id, body) ? 200 : 409 }));
+  function Workspace() {
+    const notes = usePrivateNotes({ onSaved: vi.fn(), onError: vi.fn() });
+    return (
     <CandidateNotes
       applicationId={42}
       privateNote="Private context"
       committeeNotes={[committeeNote]}
       {...callbacks}
-      {...overrides}
-    />,
-  );
+      {...noteProps}
+      privateNoteEditor={overrides.readOnly ? null : notes.editor(42, 1, "Private context")}
+    />
+    );
+  }
+  render(<Workspace />);
   return callbacks;
 }
 
 describe("CandidateNotes", () => {
+  it("preserves unsaved text when programmatic navigation disposes the editor without blur", async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.savePrivateNote).mockResolvedValueOnce(new Response(null, { status: 409 }))
+      .mockResolvedValueOnce(new Response(null));
+    function Workspace({ visible, openingId }: { visible: boolean; openingId: number }) {
+      const notes = usePrivateNotes({ onSaved: vi.fn(), onError: vi.fn() });
+      return visible ? <CandidateNotes
+        applicationId={42} privateNote="Private context" committeeNotes={[]}
+        privateNoteEditor={notes.editor(42, openingId, "Private context")}
+        onAddCommitteeNote={vi.fn()} onUpdateCommitteeNote={vi.fn()} onDeleteCommitteeNote={vi.fn()}
+      /> : <p>Another view</p>;
+    }
+    const view = render(<Workspace visible openingId={1} />);
+    fireEvent.click(screen.getByRole("tab", { name: "My notes" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "My private notes" }), { target: { value: "Keep this draft" } });
+    view.rerender(<Workspace visible={false} openingId={2} />);
+    expect(screen.getByText("Another view")).toBeInTheDocument();
+    expect(api.savePrivateNote).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(api.savePrivateNote).toHaveBeenCalledExactlyOnceWith(42, 1, "Keep this draft");
+    view.rerender(<Workspace visible openingId={2} />);
+    expect(screen.getByRole("textbox", { name: "My private notes" })).toHaveValue("Keep this draft");
+    expect(screen.getByText("Could not save — try again.")).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry save" })));
+    expect(api.savePrivateNote).toHaveBeenLastCalledWith(42, 2, "Keep this draft");
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
   it("queues a revert behind an in-flight save before showing Saved", async () => {
     const first = deferred<boolean>();
     const reverted = deferred<boolean>();

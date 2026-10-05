@@ -7,7 +7,7 @@ import type { ApplicationDetail, ApplicationUpdate } from "../types";
 import { useCandidateActions } from "./useCandidateActions";
 
 vi.mock("../api/applications", () => ({
-  overrideStatus: vi.fn(), savePrivateNote: vi.fn(),
+  overrideStatus: vi.fn(),
   addCommitteeNote: vi.fn(), setStar: vi.fn(), setShortlist: vi.fn(),
 }));
 
@@ -35,13 +35,13 @@ it("refreshes every eligibility surface after a successful override", async () =
   expect(initial.loadRanking).toHaveBeenCalledOnce();
 });
 
-it("acknowledges a saved note without reopening a detail the member has left", async () => {
+it("acknowledges a saved committee note without reopening a detail the member has left", async () => {
   const pending = deferred<Response>();
-  vi.mocked(api.savePrivateNote).mockReturnValue(pending.promise);
+  vi.mocked(api.addCommitteeNote).mockReturnValue(pending.promise);
   const initial = options();
   const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
   let save!: Promise<boolean>;
-  act(() => { save = result.current.savePrivateNote(7, "Synthetic committee note"); });
+  act(() => { save = result.current.addCommitteeNote(7, "Synthetic committee note"); });
   rerender({ ...initial, selectedApplication: detail(8) });
   await act(async () => {
     pending.resolve(Response.json({ application: detail(7) })); expect(await save).toBe(true);
@@ -88,10 +88,10 @@ it("reports a failed note save and leaves the loaded detail unchanged", async ()
 
 it("lets independent fields save concurrently without rolling back newer state", async () => {
   const note = deferred<Response>();
-  vi.mocked(api.savePrivateNote).mockReturnValueOnce(note.promise);
+  vi.mocked(api.addCommitteeNote).mockReturnValueOnce(note.promise);
   const overridden = { id: 7, status: "ineligible" };
   vi.mocked(api.overrideStatus).mockResolvedValueOnce(Response.json({ application: overridden }));
-  let displayed = { ...detail(7), privateNote: "" };
+  let displayed: ApplicationDetail = { ...detail(7), committeeNotes: [] };
   const initial = { ...options(), onApplicationUpdated: (update: ApplicationUpdate) => {
     displayed = { ...displayed, ...update };
   } };
@@ -99,37 +99,37 @@ it("lets independent fields save concurrently without rolling back newer state",
   let saving!: Promise<boolean>;
   let overriding!: Promise<void>;
   await act(async () => {
-    saving = result.current.savePrivateNote(7, "Synthetic note");
+    saving = result.current.addCommitteeNote(7, "Synthetic note");
     overriding = result.current.overrideStatus(7, "ineligible");
     await overriding;
   });
   expect(api.overrideStatus).toHaveBeenCalledOnce();
   expect(displayed.status).toBe("ineligible");
   await act(async () => {
-    note.resolve(Response.json({ application: { id: 7, privateNote: "Synthetic note" } }));
+    note.resolve(Response.json({ application: { id: 7, committeeNotes: [{ id: 1, body: "Synthetic note" }] } }));
     expect(await saving).toBe(true);
   });
   expect(displayed.status).toBe("ineligible");
-  expect(displayed.privateNote).toBe("Synthetic note");
+  expect(displayed.committeeNotes).toEqual([{ id: 1, body: "Synthetic note" }]);
 });
 
 it("discards queued candidate writes for an opening the member has left", async () => {
   const first = deferred<Response>();
-  vi.mocked(api.savePrivateNote).mockReturnValueOnce(first.promise);
+  vi.mocked(api.addCommitteeNote).mockReturnValueOnce(first.promise);
   const initial = options();
   const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
   let saving!: Promise<boolean>;
   let second!: Promise<boolean>;
   await act(async () => {
-    saving = result.current.savePrivateNote(7, "Synthetic note");
-    second = result.current.savePrivateNote(7, "Later note");
+    saving = result.current.addCommitteeNote(7, "Synthetic note");
+    second = result.current.addCommitteeNote(7, "Later note");
   });
   rerender({ ...initial, openingId: 2 });
   await act(async () => {
     first.resolve(Response.json({ application: detail(7) }));
     await Promise.all([saving, second]);
   });
-  expect(api.savePrivateNote).toHaveBeenCalledOnce();
+  expect(api.addCommitteeNote).toHaveBeenCalledOnce();
   expect(initial.onApplicationUpdated).not.toHaveBeenCalled();
 });
 

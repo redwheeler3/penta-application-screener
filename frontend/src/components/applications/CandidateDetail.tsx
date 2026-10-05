@@ -19,6 +19,7 @@ import type {
 } from "../../types";
 import { buildDetailSections, type DetailField } from "./applicationDetailSections";
 import { CandidateNotes } from "./CandidateNotes";
+import type { PrivateNoteEditor } from "../../hooks/usePrivateNotes";
 import { ApplicationStatusBadges } from "./ApplicationStatusBadges";
 import { StarButton } from "./StarButton";
 import { SharedShortlistButton } from "./SharedShortlistButton";
@@ -45,7 +46,7 @@ export function CandidateDetail(props: {
   onBack: () => void;
   onOverrideStatus: (id: number, status: AppStatus) => void;
   onClearOverride: (id: number) => void;
-  onSavePrivateNote: (id: number, note: string) => Promise<boolean>;
+  privateNoteEditor: PrivateNoteEditor | null;
   onAddCommitteeNote: (id: number, body: string) => Promise<boolean>;
   onUpdateCommitteeNote: (id: number, noteId: number, body: string) => Promise<boolean>;
   onDeleteCommitteeNote: (id: number, noteId: number) => Promise<boolean>;
@@ -195,7 +196,7 @@ export function CandidateDetail(props: {
           applicationId={app.id}
           privateNote={app.privateNote}
           committeeNotes={app.committeeNotes}
-          onSavePrivateNote={props.onSavePrivateNote}
+          privateNoteEditor={props.privateNoteEditor}
           onAddCommitteeNote={props.onAddCommitteeNote}
           onUpdateCommitteeNote={props.onUpdateCommitteeNote}
           onDeleteCommitteeNote={props.onDeleteCommitteeNote}
@@ -207,7 +208,7 @@ export function CandidateDetail(props: {
           applicationId={app.id}
           privateNote={app.privateNote}
           committeeNotes={app.committeeNotes}
-          onSavePrivateNote={props.onSavePrivateNote}
+          privateNoteEditor={null}
           onAddCommitteeNote={props.onAddCommitteeNote}
           onUpdateCommitteeNote={props.onUpdateCommitteeNote}
           onDeleteCommitteeNote={props.onDeleteCommitteeNote}
