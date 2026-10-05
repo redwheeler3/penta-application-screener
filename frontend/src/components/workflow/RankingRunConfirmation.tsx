@@ -14,15 +14,13 @@ export function RankingRunConfirmation(props: {
 }): ReactNode {
   const { estimate, scoreCurrentEstimate, hasCurrentCriteria, pendingProposals, running, onRun, onCancel } = props;
   const hasMissingScores = (scoreCurrentEstimate?.toAnalyze ?? 0) > 0;
-  const hasCachedRefresh = (scoreCurrentEstimate?.cachedToRefresh ?? 0) > 0;
-  const hasScoreUpdates = hasMissingScores || hasCachedRefresh;
   const hasPendingProposals = pendingProposals.length > 0;
-  const preferScoring = hasScoreUpdates && !hasPendingProposals;
+  const preferScoring = hasMissingScores && !hasPendingProposals;
 
   return (
     <div className="run-confirm">
       <div className="run-confirm-body">
-        <strong>{confirmationTitle(pendingProposals.length, scoreCurrentEstimate)}</strong>
+        <strong>{confirmationTitle(pendingProposals.length, scoreCurrentEstimate, estimate.rankingCurrent)}</strong>
         {hasPendingProposals ? (
           <p>
             You proposed{" "}
@@ -36,19 +34,13 @@ export function RankingRunConfirmation(props: {
             <strong>Discover new criteria</strong> below to fold it in.
           </p>
         ) : null}
-        {scoreCurrentEstimate && hasScoreUpdates ? (
+        {scoreCurrentEstimate && hasMissingScores ? (
           <>
             <p>
-              <strong>{hasMissingScores ? "Score missing applicants" : "Reuse cached scores"}</strong> against the current {scoreCurrentEstimate.dimensions} criteria.
+              <strong>Score missing applicants</strong> against the current {scoreCurrentEstimate.dimensions} criteria.
               The criteria and your tier layout stay unchanged. Estimated cost{" "}
               <strong>~{money(scoreCurrentEstimate.estimatedUsd)}</strong> (cap ${scoreCurrentEstimate.capUsd.toFixed(2)}).
             </p>
-            {hasCachedRefresh && !hasMissingScores ? (
-              <p>
-                Restore scores for {scoreCurrentEstimate.cachedToRefresh} applicant{scoreCurrentEstimate.cachedToRefresh === 1 ? "" : "s"}{" "}
-                using the saved results for the selected AI settings. No AI calls are needed.
-              </p>
-            ) : null}
             {!scoreCurrentEstimate.withinCap ? (
               <p className="run-confirm-warn">
                 Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
@@ -56,12 +48,14 @@ export function RankingRunConfirmation(props: {
             ) : null}
           </>
         ) : null}
-        {scoreCurrentEstimate?.toAnalyze === 0 && !hasCachedRefresh ? (
-          <p>All {scoreCurrentEstimate.cached} eligible applicants are already scored against these criteria.</p>
+        {scoreCurrentEstimate?.toAnalyze === 0 ? (
+          <p>All {scoreCurrentEstimate.cached} eligible applicants have scores against these criteria.
+            {!estimate.rankingCurrent ? " Rank is out of date for this pool." : ""}
+          </p>
         ) : null}
         <div>
           <p>
-            {hasScoreUpdates ? "Or, " : ""}<strong>Discover new criteria</strong> that distinguish this pool and score all{" "}
+            {hasMissingScores ? "Or, " : ""}<strong>Discover new criteria</strong> that distinguish this pool and score all{" "}
             {estimate.eligible} eligible applicant{estimate.eligible === 1 ? "" : "s"} against them.
             Estimated cost <strong>~{money(estimate.estimatedUsd)}</strong> (cap $
             {estimate.capUsd.toFixed(2)}).
@@ -83,14 +77,14 @@ export function RankingRunConfirmation(props: {
         {/* A pending proposal makes Discover the primary action — it's the only run
             that grounds the proposed axis — so score-missing is demoted even when
             scores are short. */}
-        {scoreCurrentEstimate && hasScoreUpdates ? (
+        {scoreCurrentEstimate && hasMissingScores ? (
           <button
             className={preferScoring ? "primary-button" : "secondary-button"}
             type="button"
             onClick={() => onRun("score-current")}
             disabled={running || !scoreCurrentEstimate.withinCap}
           >
-            {running ? "Running…" : hasMissingScores ? "Score missing applicants" : "Reuse cached scores"}
+            {running ? "Running…" : "Score missing applicants"}
           </button>
         ) : null}
         <button
@@ -109,11 +103,10 @@ export function RankingRunConfirmation(props: {
   );
 }
 
-function confirmationTitle(proposalCount: number, scoreEstimate: ScoreCurrentEstimateResponse | null): string {
+function confirmationTitle(proposalCount: number, scoreEstimate: ScoreCurrentEstimateResponse | null, rankingCurrent: boolean): string {
   if (proposalCount === 1) return "Apply your proposed criterion?";
   if (proposalCount > 1) return "Apply your proposed criteria?";
-  if (scoreEstimate?.toAnalyze === 0 && scoreEstimate.cachedToRefresh > 0) return "Reuse saved scores?";
-  if (scoreEstimate?.toAnalyze === 0) return "Ranking is up to date.";
+  if (scoreEstimate?.toAnalyze === 0) return rankingCurrent ? "Ranking is up to date." : "Review the ranking?";
   if (scoreEstimate) return "Update the ranking?";
   return "Rank the candidates?";
 }

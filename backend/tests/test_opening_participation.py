@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -314,3 +314,22 @@ def test_closed_opening_allows_withdrawal_but_archived_opening_does_not() -> Non
     assert closed_state.participating is False
     assert closed_state.has_participated is True
     assert application.retention_due_on is None
+
+
+def test_applicant_choices_hide_inactive_closed_openings_but_preserve_participation_history():
+    from app.api.applicant.presentation import applicant_openings
+    db = _session()
+    application = _application(db)
+    closed = _opening(db, open_date=TODAY - timedelta(days=10), close_date=TODAY - timedelta(days=1), move_in_date=TODAY + timedelta(days=10))
+    participation = ApplicationParticipation(application_id=application.id, opening_id=closed.id, applied_at=NOW)
+    db.add(participation)
+    db.commit()
+    states = applicant_opening_states(db, application, today=TODAY)
+    assert [opening.id for opening in applicant_openings(states)] == [closed.id]
+    participation.withdrawn_at = NOW
+    db.commit()
+    states = applicant_opening_states(db, application, today=TODAY)
+    assert applicant_openings(states) == []
+    assert states[0].has_participated
+    assert db.get(ApplicationParticipation, participation.id) is participation
+    assert applicant_openings(applicant_opening_states(db, None, today=TODAY)) == []

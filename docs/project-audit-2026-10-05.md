@@ -256,7 +256,8 @@ no-household decision, ordinary active candidates, and bounded query counts acro
 
 ## Approved policy: older consumed findings after resubmission
 
-Keep the last consumed findings active until the committee explicitly runs Screen again.
+Matching cached findings become active automatically. When fresh analysis is needed, keep
+the last consumed findings active until the committee explicitly runs Screen again.
 The amber workflow indicator is the freshness signal; do not add applicant-level labels,
 identify which applicant triggered staleness, or introduce additional input metadata for display.
 Preserve history and human overrides, keep ages frozen at submission time, and do not automatically
@@ -394,7 +395,7 @@ or new display identifiers were introduced.
   avoids futile reads. Proposal inputs remain editable while acknowledgement is pending. These
   are control-flow/query-count conclusions, not a production latency benchmark.
 
-Across this implementation, production code and migrations grew by a net **74 lines**; most
+Across the seven-finding implementation above, production code and migrations grew by a net **74 lines**; most
 added code is regression coverage and explicit test factories. Line count alone does not establish
 maintainability, but the runtime change is bounded. The worthwhile complexity establishes two explicit boundaries: who owns request authority and
 who is entitled to retain cached output. It removes hidden unbound API fallbacks, optional bound
@@ -406,3 +407,37 @@ review. Existing age/cache, human override, lease, snapshot acknowledgement and 
 No further confirmed in-scope defect emerged from the closing passes. Captured configuration
 presentation remains optional; stored audit provenance is preserved. This does not assert
 exhaustive bug absence or measured production responsiveness.
+
+## Follow-up product corrections: automatic reuse and truthful freshness
+
+The explicit Screen/Rank boundary was applied too broadly to zero-cost cache reference
+adoption. Cache-only reuse is now automatic in the background, preserving initial read
+responsiveness and performing no provider calls, run claims or spending-ledger inserts.
+Reference choices are checked again under a short writer; changed inputs, withdrawal, expiry,
+finalized openings and live AI runs prevent stale adoption. Paid score-only and discovery
+actions retain explicit confirmation; their distinct behavior remains available.
+
+The local 1BR reproduction had three complete cached score vectors, no missing cache
+references, and an outdated saved Rank fingerprint. The confirmation incorrectly inferred
+whole-Rank freshness from score coverage alone. It now distinguishes complete scores from
+outdated Rank inputs, preserving amber without claiming the ranking is up to date. Cache
+adoption cannot certify changed or unknown discovery configuration.
+
+Closed applicant opening cards with no active participation are omitted from response
+presentation, while participation history, active closed-opening withdrawal and all server
+deadline validation remain. This includes a closed opening the applicant withdrew from.
+No applicant identity or application contents are recorded here.
+
+Follow-up verification: **975 backend tests passed** (one existing POSIX-only skip),
+**287 frontend tests passed** in 46 files, with Ruff, ESLint, TypeScript and build passing.
+Regression coverage includes real HTTP automatic adoption, no provider calls or run-cost
+inserts, input/lifecycle changes before the writer, live-run exclusion, mismatched models,
+partial caches, unknown discovery provenance, opening/session navigation and quiet retry.
+The applicant presentation test preserves active closed choices and durable withdrawn history.
+
+A local 1BR cache refresh applied existing references, left zero screening misses/references
+waiting, and inserted zero AI run rows. The helper took **33.6 ms** in that one local call;
+it is background work, not a production latency benchmark or an added initial-render wait.
+Rank remained out of date because its saved discovery-input fingerprint is not current;
+the confirmation now reports that independently of its three complete cached score vectors.
+No model call, production operation or database reset was performed.

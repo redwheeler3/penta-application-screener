@@ -103,6 +103,7 @@ consolidation audits expose captured configuration where it was recorded.
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
 | GET | `/dashboard` | Read Dashboard | Committee session |
+| POST | `/cached-results/refresh` | Apply existing matching screening and scoring references in the background without AI calls or spend. | Committee session |
 | GET | `/dashboard/email-deliveries` | Read Email Delivery Issues | Admin |
 | POST | `/dashboard/email-deliveries/socketlabs/refresh` | Refresh Socketlabs Delivery Status | Admin |
 

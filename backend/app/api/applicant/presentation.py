@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.core.time import as_utc
-from app.db.models import ApplicantDraft, Application, MagicLinkToken
+from app.db.models import ApplicantDraft, Application, MagicLinkToken, OpeningPhase
 from app.schemas.applicant.contracts import (
     AccessLinkResponse,
     ApplicantOpeningOut,
@@ -57,7 +57,13 @@ def pending_copy(application: Application, draft: ApplicantDraft) -> PendingCopy
     )
 
 
-def applicant_opening(state: ApplicantOpeningState) -> ApplicantOpeningOut:
+def applicant_openings(states: list[ApplicantOpeningState]) -> list[ApplicantOpeningOut]:
+    """Offer closed openings only to applicants still participating in them."""
+    return [_applicant_opening(state) for state in states
+            if state.phase != OpeningPhase.CLOSED or state.participating]
+
+
+def _applicant_opening(state: ApplicantOpeningState) -> ApplicantOpeningOut:
     opening = state.opening
     return ApplicantOpeningOut(
         id=opening.id,

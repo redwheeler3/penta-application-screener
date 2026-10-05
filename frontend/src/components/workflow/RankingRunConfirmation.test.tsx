@@ -11,7 +11,7 @@ const props: ComponentProps<typeof RankingRunConfirmation> = {
     estimatedUsd: 0.8, approximate: true, capUsd: 2, withinCap: true, rankingCurrent: false,
   },
   scoreCurrentEstimate: {
-    eligible: 8, toAnalyze: 2, cached: 6, cachedToRefresh: 0, dimensions: 4, estimatedUsd: 0.05, capUsd: 2, withinCap: true,
+    eligible: 8, toAnalyze: 2, cached: 6, dimensions: 4, estimatedUsd: 0.05, capUsd: 2, withinCap: true,
   },
   hasCurrentCriteria: true,
   pendingProposals: [],
@@ -24,7 +24,7 @@ describe("ranking confirmation", () => {
   it.each([
     { proposals: [], score: null, title: "Rank the candidates?" },
     { proposals: [], score: props.scoreCurrentEstimate, title: "Update the ranking?" },
-    { proposals: [], score: { ...props.scoreCurrentEstimate!, toAnalyze: 0 }, title: "Ranking is up to date." },
+    { proposals: [], score: { ...props.scoreCurrentEstimate!, toAnalyze: 0 }, title: "Review the ranking?" },
     { proposals: ["Participation"], score: props.scoreCurrentEstimate, title: "Apply your proposed criterion?" },
     { proposals: ["Participation", "Skills"], score: props.scoreCurrentEstimate, title: "Apply your proposed criteria?" },
   ])("shows the appropriate heading: $title", ({ proposals, score, title }) => {
@@ -66,12 +66,13 @@ describe("ranking confirmation", () => {
 });
 
 
-it("offers a free cached refresh without claiming the ranking is already current", () => {
-  render(<RankingRunConfirmation {...props} scoreCurrentEstimate={{
-    ...props.scoreCurrentEstimate!, toAnalyze: 0, cachedToRefresh: 8, estimatedUsd: 0,
+it.each([true, false])("reports Rank freshness independently of complete score coverage (current=%s)", (rankingCurrent) => {
+  render(<RankingRunConfirmation {...props} estimate={{ ...props.estimate, rankingCurrent }} scoreCurrentEstimate={{
+    ...props.scoreCurrentEstimate!, eligible: 3, toAnalyze: 0, cached: 3, estimatedUsd: 0,
   }} />);
-  expect(screen.getByText("Reuse saved scores?")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Reuse cached scores" })).toBeEnabled();
-  expect(screen.getByText(/No AI calls are needed/)).toBeInTheDocument();
-  expect(screen.queryByText("Ranking is up to date.")).not.toBeInTheDocument();
+  expect(screen.getByText(rankingCurrent ? "Ranking is up to date." : "Review the ranking?")).toBeInTheDocument();
+  expect(screen.getByText(/All 3 eligible applicants have scores/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reuse cached scores" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Score missing applicants" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Discover new criteria" })).toBeEnabled();
 });

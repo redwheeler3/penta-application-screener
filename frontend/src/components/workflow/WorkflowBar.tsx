@@ -325,14 +325,12 @@ export function WorkflowBar(props: {
         <div className="run-confirm">
           <div className="run-confirm-body">
             <strong>Run AI screening?</strong>
-            {screeningEstimate.toAnalyze === 0 && screeningEstimate.cachedToRefresh === 0 ? (
+            {screeningEstimate.toAnalyze === 0 ? (
               <p>
                 Screening is already up to date — all {screeningEstimate.cached} eligible applicant
                 {screeningEstimate.cached === 1 ? " has" : "s have"} been checked. New or updated submissions will appear here
                 when screening is needed again.
               </p>
-            ) : screeningEstimate.toAnalyze === 0 ? (
-              <p>Apply cached screening to {screeningEstimate.cachedToRefresh} eligible applicant{screeningEstimate.cachedToRefresh === 1 ? "" : "s"}. No new AI calls or cost.</p>
             ) : (
               <p>
                 Analyze {screeningEstimate.toAnalyze} eligible applicant{screeningEstimate.toAnalyze === 1 ? "" : "s"}
@@ -347,7 +345,7 @@ export function WorkflowBar(props: {
             ) : null}
           </div>
           <div className="run-confirm-actions">
-            {screeningEstimate.toAnalyze > 0 || screeningEstimate.cachedToRefresh > 0 ? (
+            {screeningEstimate.toAnalyze > 0 ? (
               <button
                 className="primary-button"
                 type="button"
@@ -358,7 +356,7 @@ export function WorkflowBar(props: {
               </button>
             ) : null}
             <button className="secondary-button" type="button" onClick={props.onCancelScreening}>
-              {screeningEstimate.toAnalyze === 0 && screeningEstimate.cachedToRefresh === 0 ? "Close" : "Cancel"}
+              {screeningEstimate.toAnalyze === 0 ? "Close" : "Cancel"}
             </button>
           </div>
         </div>

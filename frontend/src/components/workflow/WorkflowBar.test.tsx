@@ -103,11 +103,11 @@ describe("WorkflowBar archived state", () => {
 });
 
 
-it("offers explicit zero-cost screening adoption when only consumed references are missing", () => {
+it("shows only a dismiss button when screening results are cached", () => {
   render(<WorkflowBar {...baseProps} aiActionsDisabled={false} screeningEstimate={{
-    total: 1, toAnalyze: 0, cached: 1, cachedToRefresh: 1, estimatedUsd: 0, capUsd: 1, withinCap: true,
+    total: 1, toAnalyze: 0, cached: 1, estimatedUsd: 0, capUsd: 1, withinCap: true,
   }} />);
-  expect(screen.getByText(/Apply cached screening/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Confirm & run" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  expect(screen.getByText(/Screening is already up to date/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Confirm & run" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
 });

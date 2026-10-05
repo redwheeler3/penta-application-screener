@@ -50,13 +50,12 @@ async def test_score_only_restores_cached_choices_for_the_entire_pool(new_applic
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         estimate = (await client.get("/ranking/score-current/estimate")).json()
         assert estimate["toAnalyze"] == int(new_applicant)
-        assert estimate["cachedToRefresh"] == 1
         if not new_applicant:
             assert estimate["estimatedUsd"] == 0
         summary = (await stream_events(client, "/ranking/score-current"))[-1]
         assert summary["scored"] == int(new_applicant)
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
-        assert (await client.get("/ranking/score-current/estimate")).json()["cachedToRefresh"] == 0
+        assert (await client.get("/ranking/score-current/estimate")).json()["toAnalyze"] == 0
         assert (await client.post("/ranking/score-current")).status_code == 409
     assert len(provider.calls) == calls_before + int(new_applicant)
     assert [score.score for score in candidate_scores(db, analysis)[0].scores] == [0.8, 0.8]

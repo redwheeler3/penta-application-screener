@@ -14,6 +14,7 @@ from app.api.allowlist import router as allowlist_router
 from app.api.applicant import router as applicant_router
 from app.api.applications import router as applications_router
 from app.api.auth import router as auth_router
+from app.api.cached_results import router as cached_results_router
 from app.api.dashboard import router as dashboard_router
 from app.api.dev_previews import router as dev_previews_router
 from app.api.email_delivery import router as email_delivery_router
@@ -131,6 +132,7 @@ def create_app(*, maintenance_task: Callable[[], None] | None = None) -> FastAPI
     app.include_router(applications_router)
     app.include_router(auth_router)
     app.include_router(dashboard_router)
+    app.include_router(cached_results_router)
     app.include_router(dev_previews_router)
     app.include_router(evals_router)
     app.include_router(email_delivery_router)

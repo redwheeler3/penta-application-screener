@@ -31,6 +31,7 @@ import { useSharedSettings } from "./hooks/useSharedSettings";
 import { useDashboard } from "./hooks/useDashboard";
 import { useNavigation } from "./hooks/useNavigation";
 import { useAiRuns } from "./hooks/useAiRuns";
+import { useCachedResults } from "./hooks/useCachedResults";
 
 const AIWorkspaceView = lazy(() =>
   import("./components/ai/AIWorkspaceView").then((module) => ({ default: module.AIWorkspaceView })),
@@ -189,6 +190,8 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     loadRanking,
   });
 
+  const refreshCachedResults = useCachedResults(selectedOpeningId, sessionChanged, refreshEligibilityViews);
+
   const privateNotes = usePrivateNotes({
     onSaved: (id, privateNote) => updateSelectedApplication({ id, privateNote }),
     onError: showError,
@@ -240,7 +243,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     const refreshIntake = () => {
       if (document.visibilityState !== "visible" || refreshInFlight) return;
       refreshInFlight = true;
-      void Promise.all([refreshDashboard(), reloadApplications()]).finally(() => {
+      void Promise.all([refreshDashboard(), reloadApplications(), refreshCachedResults()]).finally(() => {
         refreshInFlight = false;
       });
     };
@@ -252,7 +255,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
       window.removeEventListener("focus", refreshIntake);
       document.removeEventListener("visibilitychange", refreshIntake);
     };
-  }, [sessionChanged, refreshDashboard, reloadApplications]);
+  }, [sessionChanged, refreshDashboard, reloadApplications, refreshCachedResults]);
 
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the

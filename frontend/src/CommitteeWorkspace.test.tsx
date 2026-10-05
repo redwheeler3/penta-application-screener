@@ -15,6 +15,8 @@ const settingsApi = vi.hoisted(() => ({
   saveSettings: vi.fn<ReturnType<typeof import("./api/settings").createApi>["saveSettings"]>(),
 }));
 
+vi.mock("./api/cachedResults", () => ({ createApi: () => ({ refreshCachedResults: vi.fn().mockResolvedValue(false) }) }));
+
 // Keep the real navigation, settings, note writer, admin section chooser, and
 // configuration form. Unrelated resources have their own suites and no I/O here.
 vi.mock("./api/settings", () => ({

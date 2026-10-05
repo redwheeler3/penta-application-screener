@@ -99,7 +99,6 @@ def estimate(
         total=int(result["total"]),
         to_analyze=int(result["to_analyze"]),
         cached=int(result["cached"]),
-        cached_to_refresh=int(result["cached_to_refresh"]),
         estimated_usd=estimated_usd,
         cap_usd=settings.ai.spending_cap_usd,
         within_cap=estimated_usd <= settings.ai.spending_cap_usd,

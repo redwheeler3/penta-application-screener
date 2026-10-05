@@ -211,7 +211,6 @@ class ScoreCurrentEstimateResponse(ResponseModel):
     eligible: int
     to_analyze: int
     cached: int
-    cached_to_refresh: int
     dimensions: int
     estimated_usd: float
     cap_usd: float

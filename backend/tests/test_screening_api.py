@@ -445,7 +445,6 @@ async def test_cached_new_consumer_can_explicitly_screen_without_provider_work()
         consumer = add_eligible(db, email="consumer@example.test", raw_hash="shared")
         estimate = (await client.get("/screening/run/estimate")).json()
         assert estimate["toAnalyze"] == 0
-        assert estimate["cachedToRefresh"] == 1
         assert estimate["estimatedUsd"] == 0
         summary = await run_and_summarize(client)
         assert summary["analyzed"] == 0

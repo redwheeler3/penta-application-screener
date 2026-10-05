@@ -11,7 +11,7 @@ from app.api.applicant.dependencies import (
     optional_current_application,
 )
 from app.api.applicant.presentation import (
-    applicant_opening,
+    applicant_openings,
 )
 from app.core.config import get_settings
 from app.core.problems import Problem
@@ -87,7 +87,7 @@ def read_applicant_openings(db: Session = Depends(get_db)) -> ApplicantOpeningsR
     states = applicant_opening_states(db, None)
     return ApplicantOpeningsResponse(
         can_start_application=any(state.can_select for state in states),
-        openings=[applicant_opening(state) for state in states],
+        openings=applicant_openings(states),
     )
 
 

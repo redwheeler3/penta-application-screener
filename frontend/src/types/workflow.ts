@@ -13,7 +13,6 @@ export type Toast = {
 };
 
 export type ScreeningEstimateResponse = {
-  cachedToRefresh: number;
   total: number;
   toAnalyze: number;
   cached: number;
@@ -48,7 +47,6 @@ export type ScoreCurrentEstimateResponse = {
   eligible: number;
   toAnalyze: number;
   cached: number;
-  cachedToRefresh: number;
   dimensions: number;
   estimatedUsd: number;
   capUsd: number;

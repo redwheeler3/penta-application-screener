@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.applicant.dependencies import require_current_application
 from app.api.applicant.presentation import (
-    applicant_opening,
+    applicant_openings,
     pending_copy,
 )
 from app.core.config import get_settings
@@ -146,7 +146,7 @@ def get_applicant_application(
         working_revision=application.working_revision,
         submitted=application.submitted_at is not None,
         can_edit=application_is_editable(db, application, opening_states),
-        openings=[applicant_opening(state) for state in opening_states],
+        openings=applicant_openings(opening_states),
     )
 
 

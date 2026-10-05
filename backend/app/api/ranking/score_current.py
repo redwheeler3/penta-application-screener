@@ -60,7 +60,6 @@ def score_current_estimate(
         eligible=int(result["total"]),
         to_analyze=int(result["to_analyze"]),
         cached=int(result["cached"]),
-        cached_to_refresh=len(plan.refresh_application_ids),
         dimensions=len(report.dimensions),
         estimated_usd=estimated_usd,
         cap_usd=settings.ai.spending_cap_usd,
