@@ -45,9 +45,12 @@ string in development:
 work. Sign-out and account switching dispose it. `ApplicantApp.tsx` owns intake.
 Shared branding and account controls live in small components
 rather than being duplicated between them.
-`hooks/useCandidateActions.ts` owns committee status, note, favourite, and shortlist writes and
-their view refreshes. It updates the open detail only while the same applicant and opening remain
-selected; favourites and shortlist changes refresh the whole cached pool so filtered-out rows
+`hooks/useCandidateActions.ts` owns committee status, shared-note, favourite, and shortlist writes
+and their view refreshes. `hooks/usePrivateNotes.ts` owns account-scoped private-note drafts and
+ordered writes; editors subscribe directly. Navigation reconciles narrow save receipts with
+matching displayed or overlapping detail reads, scoped by opening for committee fields. Selected
+applications keep notes visible but block writes; unsaved drafts can be copied and explicitly
+discarded. Favourites and shortlist changes refresh the whole cached pool so filtered-out rows
 still contribute current facet counts.
 Candidate mutations acknowledge only the fields they own, merged into the loaded detail.
 Writes share a queue per applicant and field group; independent fields save concurrently without

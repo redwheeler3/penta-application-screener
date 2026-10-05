@@ -239,3 +239,23 @@ it("keeps a ranking applicant restoration when its independent criteria refresh 
   expect(result.current.activeTab).toBe("ranking");
   expect(result.current.selectedApplication?.id).toBe(42);
 });
+
+it("reconciles successful writes with an overlapping same-app detail read", async () => {
+  const response = deferred<ApplicationDetail>();
+  vi.mocked(api.fetchApplication).mockReturnValue(response.promise);
+  const { result } = renderHook(() => useNavigation({ openingId: 1,
+    selectOpening: vi.fn(), loadRanking: vi.fn(), onError: vi.fn() }));
+  let reading!: Promise<void>;
+  act(() => { reading = result.current.viewApplication(7); });
+  act(() => {
+    result.current.updateSelectedApplication({ id: 7, privateNote: "Confirmed" });
+    result.current.updateSelectedApplication({ id: 7, status: "ineligible" }, 1);
+    result.current.updateSelectedApplication({ id: 7, shortlisted: true }, 2);
+  });
+  await act(async () => {
+    response.resolve({ id: 7, privateNote: "Old", status: "eligible", shortlisted: false } as ApplicationDetail);
+    await reading;
+  });
+  expect(result.current.selectedApplication).toMatchObject({ privateNote: "Confirmed",
+    status: "ineligible", shortlisted: false });
+});

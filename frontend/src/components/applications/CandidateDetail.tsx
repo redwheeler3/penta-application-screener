@@ -197,6 +197,7 @@ export function CandidateDetail(props: {
           privateNote={app.privateNote}
           committeeNotes={app.committeeNotes}
           privateNoteEditor={props.privateNoteEditor}
+          readOnly={app.selected}
           onAddCommitteeNote={props.onAddCommitteeNote}
           onUpdateCommitteeNote={props.onUpdateCommitteeNote}
           onDeleteCommitteeNote={props.onDeleteCommitteeNote}

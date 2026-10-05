@@ -147,3 +147,27 @@ it("cancels debounce and queued work when the account workspace unmounts", async
   expect(fresh.result.current.editor(7, 1, "Fresh account").getSnapshot().body).toBe("Fresh account");
   expect(fresh.result.current.hasUnconfirmed()).toBe(false);
 });
+
+it("retains a blocked draft for copying and explicit discard without retrying", async () => {
+  vi.mocked(api.savePrivateNote).mockResolvedValue(new Response(null, { status: 404 }));
+  const { result } = workspace();
+  const editor = result.current.editor(7, 1, "Saved");
+  act(() => editor.change("Keep this unsaved text"));
+  await act(() => vi.advanceTimersByTimeAsync(600));
+  expect(editor.getSnapshot()).toEqual({ body: "Keep this unsaved text", status: "blocked" });
+  act(() => editor.flush());
+  expect(api.savePrivateNote).toHaveBeenCalledOnce();
+  expect(pageExit()).toBe(true);
+  act(() => editor.discard());
+  expect(editor.getSnapshot()).toEqual({ body: "Saved", status: "saved" });
+  expect(pageExit()).toBe(false);
+});
+
+it("stops a debounced draft when the application becomes read-only", async () => {
+  const { result } = workspace();
+  const editor = result.current.editor(7, 1, "Saved");
+  act(() => { editor.change("Draft"); editor.block(); });
+  await act(() => vi.advanceTimersByTimeAsync(600));
+  expect(api.savePrivateNote).not.toHaveBeenCalled();
+  expect(editor.getSnapshot().status).toBe("blocked");
+});

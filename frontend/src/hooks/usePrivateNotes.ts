@@ -5,7 +5,7 @@ import { useRequestScope } from "./useRequestScope";
 
 type PrivateNoteSnapshot = {
   body: string;
-  status: "saved" | "saving" | "error";
+  status: "saved" | "saving" | "error" | "blocked";
 };
 
 export type PrivateNoteEditor = {
@@ -13,6 +13,8 @@ export type PrivateNoteEditor = {
   subscribe: (listener: () => void) => () => void;
   change: (body: string) => void;
   flush: () => void;
+  block: () => void;
+  discard: () => void;
 };
 
 type Draft = {
@@ -23,6 +25,7 @@ type Draft = {
   timer: ReturnType<typeof setTimeout> | null;
   queue: Promise<void>;
   listeners: Set<() => void>;
+  blocked: boolean;
 };
 
 /** Account-owned drafts survive editor/tab/opening changes, in memory only. Each
@@ -47,7 +50,7 @@ export function usePrivateNotes(options: {
 
   const flush = useCallback((applicationId: number) => {
     const draft = drafts.current.get(applicationId);
-    if (!draft || draft.snapshot.status === "saved" || suspended.current) return;
+    if (!draft || draft.blocked || draft.snapshot.status === "saved" || suspended.current) return;
     if (draft.timer !== null) clearTimeout(draft.timer);
     draft.timer = null;
     const { snapshot: { body }, revision, openingId } = draft;
@@ -61,7 +64,9 @@ export function usePrivateNotes(options: {
       let saved = !needsWrite;
       if (needsWrite) {
         try {
-          saved = (await savePrivateNote(applicationId, openingId, body)).ok;
+          const response = await savePrivateNote(applicationId, openingId, body);
+          saved = response.ok;
+          if (response.status === 404) draft.blocked = true;
         } catch {
           saved = false;
         }
@@ -70,9 +75,13 @@ export function usePrivateNotes(options: {
       if (saved) {
         draft.savedBody = body;
         if (needsWrite) current.current.onSaved(applicationId, body);
+        if (revision !== draft.revision && draft.snapshot.status === "saved") {
+          draft.snapshot = { body, status: "saved" };
+          draft.listeners.forEach((listener) => listener());
+        }
       }
       if (revision === draft.revision) {
-        draft.snapshot = { body, status: saved ? "saved" : "error" };
+        draft.snapshot = { body, status: saved ? "saved" : draft.blocked ? "blocked" : "error" };
         if (!saved) current.current.onError("Could not save your private note. Your draft is still available in this session.");
         draft.listeners.forEach((listener) => listener());
         releaseConfirmed(applicationId, draft);
@@ -102,7 +111,7 @@ export function usePrivateNotes(options: {
       let draft = drafts.current.get(applicationId);
       if (!draft) {
         draft = { snapshot: initial, savedBody, openingId, revision: 0,
-          timer: null, queue: Promise.resolve(), listeners: new Set() };
+          timer: null, queue: Promise.resolve(), listeners: new Set(), blocked: false };
         drafts.current.set(applicationId, draft);
       }
       return draft;
@@ -120,7 +129,7 @@ export function usePrivateNotes(options: {
         };
       },
       change(body) {
-        if (suspended.current) return;
+        if (suspended.current || getDraft().blocked) return;
         const next = getDraft();
         next.snapshot = { body, status: "saving" };
         next.openingId = openingId;
@@ -135,6 +144,26 @@ export function usePrivateNotes(options: {
         // queued writes still carry their original context and server authority gates.
         if (latest) latest.openingId = openingId;
         flush(applicationId);
+      },
+      block: () => {
+        const draft = getDraft();
+        if (draft.blocked) return;
+        draft.blocked = true;
+        if (draft.timer !== null) clearTimeout(draft.timer);
+        draft.timer = null;
+        if (draft.snapshot.status !== "saved") {
+          draft.snapshot = { ...draft.snapshot, status: "blocked" };
+          draft.listeners.forEach((listener) => listener());
+        }
+      },
+      discard: () => {
+        const draft = getDraft();
+        draft.revision += 1;
+        if (draft.timer !== null) clearTimeout(draft.timer);
+        draft.timer = null;
+        draft.snapshot = { body: draft.savedBody, status: "saved" };
+        draft.listeners.forEach((listener) => listener());
+        releaseConfirmed(applicationId, draft);
       },
     };
   }

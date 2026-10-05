@@ -29,7 +29,7 @@ it("refreshes every eligibility surface after a successful override", async () =
   const { result } = renderHook(() => useCandidateActions(initial));
   await act(() => result.current.overrideStatus(7, "eligible"));
   expect(api.overrideStatus).toHaveBeenCalledWith(7, 1, "eligible");
-  expect(initial.onApplicationUpdated).toHaveBeenCalledWith(detail(7));
+  expect(initial.onApplicationUpdated).toHaveBeenCalledWith(detail(7), 1);
   expect(initial.refreshDashboard).toHaveBeenCalledOnce();
   expect(initial.reloadApplications).toHaveBeenCalledOnce();
   expect(initial.loadRanking).toHaveBeenCalledOnce();
@@ -46,7 +46,7 @@ it("acknowledges a saved committee note without reopening a detail the member ha
   await act(async () => {
     pending.resolve(Response.json({ application: detail(7) })); expect(await save).toBe(true);
   });
-  expect(initial.onApplicationUpdated).not.toHaveBeenCalled();
+  expect(initial.onApplicationUpdated).toHaveBeenCalledWith(detail(7), 1);
   expect(initial.onError).not.toHaveBeenCalled();
 });
 
@@ -74,7 +74,7 @@ it.each(["favourite", "shortlist"])("refreshes the full cached pool for a %s cha
     ? result.current.toggleStar(7, true) : result.current.toggleShortlist(7, true));
   expect(initial.reloadApplications).toHaveBeenCalledOnce();
   expect(initial.loadRanking).toHaveBeenCalledOnce();
-  expect(initial.onApplicationUpdated).not.toHaveBeenCalled();
+  expect(initial.onApplicationUpdated).toHaveBeenCalledWith(detail(7), 1);
 });
 
 it("reports a failed note save and leaves the loaded detail unchanged", async () => {
@@ -152,5 +152,5 @@ it("sends opposing edits to the same field in order", async () => {
     await Promise.all([starred, unstarred]);
   });
   expect(api.setStar).toHaveBeenLastCalledWith(7, 1, false);
-  expect(initial.onApplicationUpdated).toHaveBeenLastCalledWith({ id: 7, starredByMe: false });
+  expect(initial.onApplicationUpdated).toHaveBeenLastCalledWith({ id: 7, starredByMe: false }, 1);
 });

@@ -8,7 +8,7 @@ type CandidateActionsOptions = {
   openingId: number | null;
   selectedApplication: ApplicationDetail | null;
   rankingLoaded: boolean;
-  onApplicationUpdated: (application: ApplicationUpdate) => void;
+  onApplicationUpdated: (application: ApplicationUpdate, openingId: number) => void;
   onError: (message: string) => void;
   refreshDashboard: () => Promise<void>;
   reloadApplications: () => Promise<void>;
@@ -45,10 +45,8 @@ export function useCandidateActions(options: CandidateActionsOptions) {
         }
         const payload: { application: ApplicationUpdate } = await response.json();
         if (!isCurrent()) return null;
-        // A completed save must not reopen a detail the member has since left.
-        if (current.current.selectedApplication?.id === applicationId) {
-          current.current.onApplicationUpdated(payload.application);
-        }
+        // Navigation reconciles this receipt with matching displayed or pending detail.
+        current.current.onApplicationUpdated(payload.application, openingId);
         return payload.application;
       } catch {
         if (isCurrent()) current.current.onError(failureMessage);

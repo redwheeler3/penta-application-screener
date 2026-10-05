@@ -63,7 +63,7 @@ const openings: CommitteeOpening[] = [{
 }];
 
 const noteSnapshot = { body: "", status: "saved" as const };
-const noteEditor = { getSnapshot: () => noteSnapshot, subscribe: () => () => {}, change: vi.fn(), flush: vi.fn() };
+const noteEditor = { getSnapshot: () => noteSnapshot, subscribe: () => () => {}, change: vi.fn(), flush: vi.fn(), block: vi.fn(), discard: vi.fn() };
 
 describe("CandidateDetail", () => {
   it("presents applicant data before essays and styles AI scoring as a peer heading", () => {

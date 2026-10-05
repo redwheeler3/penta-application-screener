@@ -1,5 +1,5 @@
 import { LockKeyhole, Plus, UsersRound } from "lucide-react";
-import { type FormEvent, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { formatPacificDateTime } from "../../format";
 import type { CommitteeNote } from "../../types";
 import type { PrivateNoteEditor } from "../../hooks/usePrivateNotes";
@@ -27,6 +27,8 @@ export function CandidateNotes(props: {
   );
   const privateNote = privateDraft.body;
   const privateStatus = privateDraft.status;
+  const blockPrivateDraft = props.privateNoteEditor?.block;
+  useEffect(() => { if (props.readOnly) blockPrivateDraft?.(); }, [props.readOnly, blockPrivateDraft]);
   const [newNote, setNewNote] = useState("");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -148,7 +150,7 @@ export function CandidateNotes(props: {
             className="notes-tab-panel"
           >
             <p className="notes-visibility"><LockKeyhole size={13} /> Only you can see this.</p>
-            {props.readOnly || !props.privateNoteEditor ? (
+            {(props.readOnly && privateStatus === "saved") || !props.privateNoteEditor ? (
               <div className="notes-read-only-body">{privateNote || "No private note."}</div>
             ) : (
               <>
@@ -156,13 +158,16 @@ export function CandidateNotes(props: {
                   ref={privateNoteRef}
                   aria-label="My private notes"
                   value={privateNote}
+                  readOnly={props.readOnly || privateStatus === "blocked"}
                   onChange={(event) => props.privateNoteEditor?.change(event.target.value)}
                   onBlur={flushPrivateNote}
                   placeholder="Add a private note about this applicant…"
                   rows={2}
                 />
                 <p className={`notes-save-status is-${privateStatus}`} aria-live="polite">
-                  {privateStatus === "saving"
+                  {privateStatus === "blocked"
+                    ? "Notes can no longer be saved for this application. Your draft is available below; select and copy it before discarding."
+                    : privateStatus === "saving"
                     ? "Saving…"
                     : privateStatus === "error"
                       ? "Could not save — try again."
@@ -172,6 +177,9 @@ export function CandidateNotes(props: {
                 </p>
                 {privateStatus === "error" ? (
                   <button type="button" onClick={flushPrivateNote}>Retry save</button>
+                ) : null}
+                {privateStatus === "blocked" ? (
+                  <button type="button" onClick={() => props.privateNoteEditor?.discard()}>Discard unsaved draft</button>
                 ) : null}
               </>
             )}
@@ -209,13 +217,14 @@ export function CandidateNotes(props: {
                       <textarea
                         aria-label={`Edit note by ${note.authorName}`}
                         value={editingBody}
+                        readOnly={props.readOnly}
                         onChange={(event) => setEditingBody(event.target.value)}
                         rows={3}
                         autoFocus
                       />
                       <div className="committee-note-form-actions">
                         <button type="button" onClick={() => setEditingId(null)}>Cancel</button>
-                        <button type="submit" className="is-primary" disabled={committeeBusy || !editingBody.trim()}>Save</button>
+                        {!props.readOnly ? <button type="submit" className="is-primary" disabled={committeeBusy || !editingBody.trim()}>Save</button> : null}
                       </div>
                     </form>
                   ) : (
@@ -231,11 +240,12 @@ export function CandidateNotes(props: {
                 </article>
               ))}
             </div>
-            {!props.readOnly && adding ? (
+            {adding ? (
                 <form className="committee-note-composer" onSubmit={(event) => void addCommitteeNote(event)}>
                   <textarea
                     aria-label="New committee note"
                     value={newNote}
+                    readOnly={props.readOnly}
                     onChange={(event) => setNewNote(event.target.value)}
                     placeholder="Add a note for the committee…"
                     rows={3}
@@ -243,7 +253,7 @@ export function CandidateNotes(props: {
                   />
                   <div className="committee-note-form-actions">
                     <button type="button" onClick={() => { setAdding(false); setNewNote(""); }}>Cancel</button>
-                    <button type="submit" className="is-primary" disabled={committeeBusy || !newNote.trim()}>Add note</button>
+                    {!props.readOnly ? <button type="submit" className="is-primary" disabled={committeeBusy || !newNote.trim()}>Add note</button> : null}
                   </div>
                 </form>
             ) : null}

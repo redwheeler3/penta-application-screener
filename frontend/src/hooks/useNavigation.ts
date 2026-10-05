@@ -51,6 +51,7 @@ export function useNavigation(options: {
   const current = useRef({ ...options, activeTab, selectedApplication });
   current.current = { ...options, activeTab, selectedApplication };
   const pendingLocation = useRef<BrowserLocation | null>(null);
+  const pendingDetail = useRef<{ location: BrowserLocation; receipts: ApplicationUpdate } | null>(null);
   const requestedOpening = useRef(options.openingId);
   const renderedOpening = useRef(options.openingId);
   if (renderedOpening.current !== options.openingId) {
@@ -77,6 +78,9 @@ export function useNavigation(options: {
   const loadLocation = useCallback(async (location: BrowserLocation, addHistory: boolean): Promise<boolean> => {
     requestedOpening.current = location.openingId;
     pendingLocation.current = location;
+    const reading = location.applicantId === undefined ? null
+      : { location, receipts: { id: location.applicantId } as ApplicationUpdate };
+    pendingDetail.current = reading;
     const isCurrent = requests.begin();
     const openingChanged = location.openingId !== current.current.openingId;
     setSelectedApplication(null);
@@ -99,7 +103,8 @@ export function useNavigation(options: {
       if (!selected) throw new Error("Opening unavailable");
       pendingLocation.current = null;
       if (addHistory) pushLocation(location);
-      setSelectedApplication(detail);
+      setSelectedApplication(detail && reading ? { ...detail, ...reading.receipts } : detail);
+      if (pendingDetail.current === reading) pendingDetail.current = null;
       setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));
       // Opening changes refresh ranking after React installs the new scoped hooks.
       // Same-opening history needs a read here.
@@ -196,9 +201,15 @@ export function useNavigation(options: {
 
   return {
     activeTab, selectedApplication, selectedApplicationReadOnly,
-    updateSelectedApplication: (update: ApplicationUpdate) => {
+    updateSelectedApplication: (update: ApplicationUpdate, openingId?: number) => {
       // Acknowledgements are not navigation; don't cancel another applicant's read.
-      setSelectedApplication((value) => value?.id === update.id ? { ...value, ...update } : value);
+      const reading = pendingDetail.current;
+      if (reading && pendingLocation.current === reading.location && reading.location.applicantId === update.id
+        && (openingId === undefined || openingId === reading.location.openingId)) {
+        reading.receipts = { ...reading.receipts, ...update };
+      }
+      setSelectedApplication((value) => value?.id === update.id
+        && (openingId === undefined || openingId === current.current.openingId) ? { ...value, ...update } : value);
     },
     clearSelectedApplication,
     viewApplication, viewRetainedApplication, changeOpening, backToList, navigateToView,
