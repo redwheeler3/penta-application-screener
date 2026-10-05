@@ -1,14 +1,14 @@
 """Cross-run convergence readout for the locked-pool accumulation experiment
 (SPEC "Validation Experiments To Run" #1).
 
-Read-only. Reads every RankingRun from the local DB, oldest→newest, and prints
+Read-only. Reads every Analysis from the local DB, oldest→newest, and prints
 what the experiment needs but no endpoint/UI exposes (the audit endpoints only
 ever show the *current* run): does the dimension set CONVERGE or CREEP across
 repeated runs on a locked pool?
 
 Run it after a Screen → Rank → Rank → Rank sequence on an UNCHANGED pool:
 
-    cd backend && uv run python -m scripts.analyze_convergence
+    cd backend && uv run python -m scripts.analyze_convergence --opening-id OPENING_ID
 
 Columns/sections it prints, per run and cumulatively:
   - dimension keys this run produced (post-adopt, i.e. the stored report)
@@ -28,35 +28,43 @@ so it stays deliberately simple and prints a human-readable report.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+import argparse
 
-from app.db.models import RankingRun
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+
+from app.db.models import Analysis
 from app.db.session import SessionLocal
+from app.services.applications.scope import opening_ai_applications
 from scripts.dimension_overlap import load_score_vectors, overlap_report
 
 
-def _dim_keys(run: RankingRun) -> list[str]:
+def _dim_keys(run: Analysis) -> list[str]:
     """The dimension keys the run's stored report produced (post key-adoption)."""
-    report = (run.criteria or {}).get("dimension_report") or {}
+    report = run.dimension_report or {}
     return [d["key"] for d in report.get("dimensions", [])]
 
 
-def _decompose(run: RankingRun) -> dict | None:
-    return (run.criteria or {}).get("decompose_audit")
+def _decompose(run: Analysis) -> dict | None:
+    return run.audit.decompose if run.audit else None
 
 
-def _match(run: RankingRun) -> dict | None:
-    return (run.criteria or {}).get("match_audit")
+def _match(run: Analysis) -> dict | None:
+    return run.audit.match if run.audit else None
 
 
-def _fingerprint(run: RankingRun) -> str | None:
-    return (run.criteria or {}).get("rank_inputs_fingerprint")
+def _fingerprint(run: Analysis) -> str | None:
+    return run.rank_inputs_fingerprint
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Inspect dimension convergence for one opening.")
+    parser.add_argument("--opening-id", type=int, required=True)
+    args = parser.parse_args(argv)
     db = SessionLocal()
     try:
-        runs = list(db.scalars(select(RankingRun).order_by(RankingRun.id.asc())))
+        runs = list(db.scalars(select(Analysis).options(joinedload(Analysis.audit))
+            .where(Analysis.opening_id == args.opening_id).order_by(Analysis.id.asc())))
     finally:
         db.close()
 
@@ -104,7 +112,7 @@ def main() -> None:
                 f"→ {dec.get('settled_count', 0)} settled ({dec.get('merge_count', 0)} merges)"
             )
         else:
-            print("   decomposition       : (none — run predates the fan-out redesign)")
+            print("   decomposition       : (no captured audit)")
 
         match = _match(run)
         if match:
@@ -141,7 +149,9 @@ def main() -> None:
     # discovered but never scored).
     db = SessionLocal()
     try:
-        vectors = load_score_vectors(db)
+        application_ids = {app.id for app in opening_ai_applications(db, args.opening_id)}
+        vectors = {key: {app_id: score for app_id, score in vector.items() if app_id in application_ids}
+            for key, vector in load_score_vectors(db).items()}
     finally:
         db.close()
     if vectors:

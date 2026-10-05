@@ -4,7 +4,7 @@
 routed into a DIFFERENT settled axis — a defect the model's own words prove.)
 
 This is NOT an automated gate — it's a heuristic you run BY HAND (``python -m
-scripts.decompose_drift``) to surface *candidate* drift for human review when combing a
+scripts.decompose_drift --opening-id OPENING_ID``) to surface *candidate* drift for human review when combing a
 run. It lives in ``scripts/`` (operator diagnostics), not ``app/`` — it has no runtime
 caller; subtle routing drift is otherwise the LLM judge's MATCHES/MISMATCHES job. It scans each settled axis's ``decision`` for snake_case input keys claimed to belong
 here (fold/merge/absorb language), and flags any that routed elsewhere. Deliberately
@@ -24,6 +24,7 @@ well); it earns its keep the run it finally catches one.
 
 from __future__ import annotations
 
+import argparse
 import re
 from dataclasses import dataclass
 
@@ -115,18 +116,21 @@ def find_drift(settled: list[dict]) -> list[DriftCandidate]:
     return candidates
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     from sqlalchemy import select
 
-    from app.db.models import RankingRun
+    from app.db.models import Analysis
     from app.db.session import SessionLocal
 
+    parser = argparse.ArgumentParser(description="Inspect decomposition routing for one opening.")
+    parser.add_argument("--opening-id", type=int, required=True)
+    args = parser.parse_args(argv)
     db = SessionLocal()
     try:
-        runs = list(db.scalars(select(RankingRun).order_by(RankingRun.id)))
+        runs = list(db.scalars(select(Analysis).where(Analysis.opening_id == args.opening_id).order_by(Analysis.id)))
         total = 0
         for run in runs:
-            dec = (run.criteria or {}).get("decompose_audit") or {}
+            dec = (run.audit.decompose if run.audit else None) or {}
             settled = dec.get("settled") or []
             if not settled:
                 continue

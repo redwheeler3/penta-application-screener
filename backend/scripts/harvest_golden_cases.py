@@ -12,17 +12,15 @@ Like the ``capture_*`` harvesters (app/evals/), this PROPOSES only — a human p
 instructive ones, sets ``note``, confirms the ``expected`` label, and commits them into the
 ``<pass>_golden.json`` files. It never writes fixtures itself. Run by hand:
 
-    python -m scripts.harvest_golden_cases [decomposition|matching|all]
+    python -m scripts.harvest_golden_cases [decomposition|matching|all] --opening-id OPENING_ID
 
-Operator diagnostic, so it lives in ``scripts/`` (no runtime caller). NOTE: it reads the run's
-``criteria`` blob directly — the 129KB catch-all flagged for schema cleanup (SPEC docket); when
-that lands, point the audit reads at the rationalized home.
+The reader uses the chosen opening's current analysis and captured audits.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 
 
 def _source_defs(crit: dict) -> dict[str, dict]:
@@ -83,22 +81,30 @@ def matching_candidates(crit: dict, defs: dict[str, dict]) -> None:
         }, indent=2, ensure_ascii=False))
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     from sqlalchemy import select
 
-    from app.db.models import RankingRun
+    from app.db.models import Analysis
     from app.db.session import SessionLocal
 
-    which = sys.argv[1] if len(sys.argv) > 1 else "all"
+    parser = argparse.ArgumentParser(description="Propose categorical eval cases for one opening.")
+    parser.add_argument("which", choices=["all", "decomposition", "matching"], nargs="?", default="all")
+    parser.add_argument("--opening-id", type=int, required=True)
+    args = parser.parse_args(argv)
+    which = args.which
     db = SessionLocal()
     try:
-        run = db.scalars(select(RankingRun).order_by(RankingRun.id.desc())).first()
+        run = db.scalars(select(Analysis).where(Analysis.opening_id == args.opening_id).order_by(Analysis.id.desc())).first()
         if run is None:
             print("No ranking runs to harvest from.")
             return
-        crit = run.criteria or {}
+        crit = {
+            "dimension_report": run.dimension_report,
+            "decompose_audit": run.audit.decompose if run.audit else None,
+            "fan_out_audit": run.audit.fan_out if run.audit else None,
+        }
         defs = _source_defs(crit)
-        print(f"Harvesting from run {run.id} ({run.name}) — {len(defs)} dimension definitions in scope.")
+        print(f"Harvesting from run {run.id} (opening {args.opening_id}) — {len(defs)} dimension definitions in scope.")
         print("Candidates below are UNLABELLED proposals: pick the instructive ones, set `note`, "
               "confirm `expected`, drop the HARVEST_ key prefix, and commit into the golden file.")
         if which in ("all", "decomposition"):
