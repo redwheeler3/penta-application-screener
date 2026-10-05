@@ -74,6 +74,38 @@ def test_restore_replaces_db_and_snapshots_current_first(temp_engine):
         assert conn.execute(text("SELECT count(*) FROM runs")).scalar() == 2
 
 
+def test_cli_treats_quoted_labels_as_data(temp_engine, capsys):
+    backup.main(["backup", "--tag=synthetic's quoted label"], engine=temp_engine)
+    [saved] = backup.list_backups(temp_engine)
+    assert "synthetic-s-quoted-label" in saved.name
+    assert "Backup written:" in capsys.readouterr().out
+
+
+def test_cli_resolves_bare_backup_names_and_cancel_keeps_live_data(temp_engine, monkeypatch, capsys):
+    saved = backup.create_backup(engine=temp_engine)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "CANCEL")
+    backup.main(["restore", saved.name], engine=temp_engine)
+    assert "Restore cancelled." in capsys.readouterr().out
+    assert len(backup.list_backups(temp_engine)) == 1
+    with temp_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM runs")).scalar() == 2
+
+
+def test_cli_restores_a_quoted_path_only_after_confirmation(temp_engine, monkeypatch, capsys):
+    import shutil
+
+    saved = backup.create_backup(engine=temp_engine)
+    quoted = saved.parent / "synthetic's backup.db"
+    shutil.copy2(saved, quoted)
+    with temp_engine.begin() as conn:
+        conn.execute(text("INSERT INTO runs (note) VALUES ('later synthetic row')"))
+    monkeypatch.setattr("builtins.input", lambda _prompt: "RESTORE")
+    backup.main(["restore", str(quoted)], engine=temp_engine)
+    assert "Restored " in capsys.readouterr().out
+    with temp_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM runs")).scalar() == 2
+
+
 def test_restore_preserves_the_live_identity_high_water_mark(temp_engine):
     with temp_engine.begin() as conn:
         conn.exec_driver_sql("CREATE TABLE identities (id INTEGER PRIMARY KEY AUTOINCREMENT, marker TEXT)")

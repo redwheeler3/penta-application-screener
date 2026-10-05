@@ -9,7 +9,7 @@ $databasePath = Join-Path $backendDir "data\penta_screener.db"
 
 Write-Host "This will delete the local SQLite database and recreate an empty schema."
 Write-Host "Database: $databasePath"
-Write-Host "This clears local users, Google credentials, settings, sync runs, and imported applications."
+Write-Host "This clears local applications, sessions, users, settings, analyses, and recorded AI results."
 
 if (-not $Force) {
     $confirmation = Read-Host "Type RESET to continue"
@@ -32,7 +32,9 @@ if (Test-Path -LiteralPath $databasePath) {
 }
 
 Write-Host "Running migrations..."
-Start-Process -NoNewWindow -Wait -WorkingDirectory $backendDir `
+$migration = Start-Process -PassThru -NoNewWindow -Wait -WorkingDirectory $backendDir `
     -FilePath "uv" -ArgumentList "run", "alembic", "upgrade", "head"
+
+if ($migration.ExitCode -ne 0) { throw "Database migration failed with exit code $($migration.ExitCode)." }
 
 Write-Host "Database reset complete."

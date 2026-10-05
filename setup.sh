@@ -12,4 +12,4 @@ echo "Installing frontend dependencies..."
 echo "Running database migrations..."
 (cd "$repo_root/backend" && uv run alembic upgrade head)
 
-echo "Setup complete. Configure Google OAuth before signing in."
+echo "Setup complete. Configure email delivery or Google sign-in before signing in."

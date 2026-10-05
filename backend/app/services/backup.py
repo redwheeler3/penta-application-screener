@@ -14,6 +14,7 @@ scripts provide explicit local recovery points.
 
 from __future__ import annotations
 
+import argparse
 import re
 import sqlite3
 from contextlib import closing
@@ -377,12 +378,54 @@ def _ensure_deletion_ledger(conn: sqlite3.Connection) -> None:
     )
 
 
-def main() -> None:
-    dest = create_and_prune(tag="manual")
-    kept = list_backups()
-    size_mb = dest.stat().st_size / 1_000_000
-    print(f"Backup written: {dest}  ({size_mb:.1f} MB)")
-    print(f"{len(kept)} backup(s) retained in {backups_dir()}")
+def main(argv: list[str] | None = None, *, engine: Engine | None = None) -> None:
+    """Manual recovery CLI; arguments are data and restores require confirmation."""
+    parser = argparse.ArgumentParser(description="Back up or restore the local SQLite database.")
+    parser.add_argument("action", choices=["backup", "list", "restore"], nargs="?", default="backup")
+    parser.add_argument("target", nargs="?")
+    parser.add_argument("--tag", default="manual")
+    parser.add_argument("--latest", action="store_true")
+    args = parser.parse_args(argv)
+    if args.target and (args.action != "restore" or args.latest):
+        parser.error("Use either a restore target or --latest, not both.")
+    if args.latest and args.action != "restore":
+        parser.error("--latest applies only to restore.")
+    eng = _resolve(engine)
+    if args.action == "backup":
+        dest = create_and_prune(engine=eng, tag=args.tag)
+        print(f"Backup written: {dest}  ({dest.stat().st_size / 1_000_000:.1f} MB)")
+        print(f"{len(list_backups(eng))} backup(s) retained in {backups_dir(eng)}")
+        return
+    backups = list_backups(eng)
+    if args.action == "list":
+        for path in backups:
+            print(path.name)
+        return
+    target = args.target
+    if args.latest:
+        if not backups:
+            parser.error("No backups are available.")
+        target = str(backups[0])
+    elif target is None:
+        print("Available backups (newest first):")
+        for path in backups:
+            print(path.name)
+        target = input("Enter a backup filename to restore (or blank to cancel): ").strip()
+    if not target:
+        print("Restore cancelled.")
+        return
+    source = Path(target)
+    if not source.is_file():
+        source = backups_dir(eng) / target
+    if not source.is_file():
+        parser.error(f"No such backup: {target}")
+    print(f"Stop the backend before restoring. This will replace the live DB with:\n  {source}")
+    print("The current DB is snapshotted first (tag pre-restore).")
+    if input("Type RESTORE to continue: ") != "RESTORE":
+        print("Restore cancelled.")
+        return
+    restored = restore_backup(source, engine=eng)
+    print(f"Restored {restored} from {source}")
 
 
 if __name__ == "__main__":

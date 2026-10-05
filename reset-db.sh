@@ -15,7 +15,7 @@ database_path="$backend_dir/data/penta_screener.db"
 
 echo "This will delete the local SQLite database and recreate an empty schema."
 echo "Database: $database_path"
-echo "This clears local users, Google credentials, settings, sync runs, and imported applications."
+echo "This clears local applications, sessions, users, settings, analyses, and recorded AI results."
 
 if [[ "$force" != true ]]; then
   read -r -p "Type RESET to continue: " confirmation
