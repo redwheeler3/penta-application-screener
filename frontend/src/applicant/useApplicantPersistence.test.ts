@@ -516,3 +516,17 @@ it("rejects another application's lifecycle even when its revision matches", asy
   expect(result.current.persistence.applicationId).toBe(1);
   expect(result.current.draft).toEqual(originalDraft);
 });
+
+it("resumes the original application after reauthentication without replacing its unsaved answers", async () => {
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.applicationId).toBe(1));
+  act(() => result.current.setDraft((draft) => ({ ...draft, pets: "Keep this unsaved answer" })));
+  vi.mocked(api.fetchApplication).mockResolvedValue(Response.json({ ...application(), applicationId: 2 }));
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(result.current.persistence.phase).toBe("session_expired");
+  vi.mocked(api.fetchApplication).mockResolvedValue(Response.json(application()));
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(result.current.persistence.phase).toBe("idle");
+  expect(result.current.draft.pets).toBe("Keep this unsaved answer");
+  expect(result.current.persistence.hasUnsavedChanges).toBe(true);
+});

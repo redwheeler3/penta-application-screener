@@ -119,3 +119,26 @@ async def test_delayed_response_cannot_delete_a_newer_sign_in_cookie(kind, opera
         assert "set-cookie" not in response.headers
         assert client.cookies.get(SESSION_COOKIE_NAMES[kind]) == sessions[1].token
         assert sessions[1].record.revoked_at is None
+
+
+@pytest.mark.anyio
+async def test_email_only_recovery_cannot_save_into_another_cookie_application():
+    from app.services.email.sender import CapturedEmailSender, get_email_sender
+    from tests.applicant.support import sample_answers
+
+    kind = PasswordlessIdentityKind.APPLICANT
+    app, db, actors, sessions = identities(kind)
+    sender = CapturedEmailSender()
+    app.dependency_overrides[get_email_sender] = lambda: sender
+    before = dict(actors[1].raw_row)
+    revision = actors[1].working_revision
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        client.cookies.set(SESSION_COOKIE_NAMES[kind], sessions[1].token, domain="testserver.local", path="/")
+        response = await client.post("/applicant/access-links/request", json={
+            "answers": sample_answers(actors[0].primary_email), "openingIds": [current_opening_id(db)],
+            "baseRevision": None})
+    assert response.status_code == 202
+    assert response.json()["currentAnswersSaved"] is False
+    assert actors[1].working_revision == revision
+    assert actors[1].raw_row == before
+    assert sender.messages[-1].to == (actors[0].primary_email,)

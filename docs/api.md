@@ -25,6 +25,19 @@ Application errors use RFC 9457 `application/problem+json`, with a stable `code`
 `title`, `detail`, and optional context fields. Request/response properties use camelCase;
 query parameters and stored domain fields use their declared code/OpenAPI names.
 
+Browser protected calls carry `X-Penta-Identity` (`committee:<user ID>` or
+`applicant:<application ID>`). The server compares this captured page identity with the
+credential before applying the action. A mismatch returns `session_changed` (409), without
+changing credentials or another identity's data. Auth-state reads and the initial applicant
+application GET are deliberate bootstrap exceptions. Manual non-browser test clients can omit
+the header. Signed-out state can be bound explicitly with `applicant:none`.
+
+Sign-out and withdrawal revoke server credentials without cookie-deletion responses; late
+responses cannot erase a newer sign-in. Credential exchanges are coordinated separately from
+ordinary requests. Return-link requests with no `baseRevision` do not save into a cookie's
+current application and do not acknowledge a current-answer save. Ranking discovery and
+consolidation audits expose captured configuration where it was recorded.
+
 ## Allowlist
 
 | Method | Path | Purpose | Access |

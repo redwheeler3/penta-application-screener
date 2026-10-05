@@ -100,3 +100,15 @@ it("freezes a changed session without replacing the old account until acknowledg
   expect(result.current.user?.id).toBe(2);
   expect(result.current.sessionChanged).toBe(false);
 });
+
+it("keeps session recovery and old-account work available if continuation cannot refresh", async () => {
+  const { result } = renderHook(() => useSession({ magicLinkToken: null, googleAccessDenied: false }));
+  await waitFor(() => expect(result.current.user?.id).toBe(1));
+  act(() => window.dispatchEvent(new CustomEvent("penta-session-changed", {
+    detail: { kind: "committee", reason: "mismatch" },
+  })));
+  vi.mocked(api.fetchAuthState).mockRejectedValue(new Error("offline"));
+  await act(async () => expect(await result.current.acceptSessionChange()).toBe(false));
+  expect(result.current.user?.id).toBe(1);
+  expect(result.current.sessionChanged).toBe(true);
+});

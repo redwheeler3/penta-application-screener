@@ -274,3 +274,13 @@ it("distinguishes successful absence from failed and superseded criteria reads",
   expect(result.current.ranking?.analysisId).toBe(1);
 });
 
+
+it("offers recovery when initial criteria fail instead of leaving ranking loading forever", async () => {
+  vi.mocked(api.fetchRankingCurrent).mockRejectedValue(new Error("offline"));
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(async () => expect(await result.current.refreshRankingRun()).toEqual({ status: "error" }));
+  expect(result.current.rankingLoadState).toBe("error");
+  vi.mocked(api.fetchRankingBoard).mockResolvedValue(board(1));
+  await act(() => result.current.loadRanking());
+  expect(result.current.rankingLoadState).toBe("ready");
+});

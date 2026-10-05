@@ -361,6 +361,7 @@ def _stream_consolidate(
     # these deltas to the SAME reasoning box the criteria phase filled.
     yield emit(PhaseEvent(phase=CONSOLIDATE))
     _t0 = time.perf_counter()
+    configuration = rank_configuration(settings)
     canonical_rank, known_defs, known_names = key_history(db)
     vectors = load_score_vectors(db)
 
@@ -418,6 +419,7 @@ def _stream_consolidate(
         merges=consolidation.merges,
         audit=consolidation.audit,
         narrative=consolidation.narrative,
+        configuration=configuration,
     )
     return consolidation, round((time.perf_counter() - _t0) * 1000)
 

@@ -124,3 +124,27 @@ it("resumes note saving if an explicitly confirmed sign-out fails", async () => 
   expect(applicationApi.savePrivateNote).toHaveBeenCalledExactlyOnceWith(7, 1, "Unsaved");
   expect(screen.getByText("Could not sign out.")).toBeInTheDocument();
 });
+
+it("pauses session-changed work and preserves private notes until explicit continuation", async () => {
+  const onContinueSession = vi.fn().mockResolvedValue(undefined);
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
+  try {
+    const { rerender } = render(<CommitteeWorkspace user={user} logout={vi.fn()} onContinueSession={onContinueSession} />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Open synthetic applicant" })));
+    fireEvent.change(screen.getByRole("textbox", { name: "My private notes" }), { target: { value: "Unsaved personal draft" } });
+    rerender(<CommitteeWorkspace user={user} logout={vi.fn()} sessionChanged onContinueSession={onContinueSession} />);
+    await act(() => vi.advanceTimersByTimeAsync(600));
+    expect(applicationApi.savePrivateNote).not.toHaveBeenCalled();
+    expect(document.querySelector("main")?.hasAttribute("inert")).toBe(true);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Copy unsaved private notes" })));
+    expect(clipboard.writeText).toHaveBeenCalledWith("Applicant 7\nUnsaved personal draft");
+    fireEvent.click(screen.getByRole("button", { name: "Continue with current session" }));
+    expect(onContinueSession).not.toHaveBeenCalled();
+  } finally {
+    if (descriptor) Object.defineProperty(navigator, "clipboard", descriptor);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
+});

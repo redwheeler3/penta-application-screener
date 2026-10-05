@@ -379,7 +379,7 @@ def request_applicant_access_link(
         db.commit()
 
     return RequestAccessLinkResponse(
-        current_answers_saved=current is not None,
+        current_answers_saved=acknowledged_revision is not None,
         working_revision=acknowledged_revision,
         email_status=outcome.value,
     )

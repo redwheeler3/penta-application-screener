@@ -8,15 +8,24 @@ import { EmailDeliveryAdvisory } from "./components/auth/EmailDelayNotice";
 import { useSession } from "./hooks/useSession";
 import { useToasts } from "./hooks/useToasts";
 import { RequestIdentityProvider } from "./api/identity";
+import { useState } from "react";
 
 export function App(props: { authRedirect: AuthRedirect }) {
   const session = useSession(props.authRedirect);
   const { toasts, showError, dismissToast } = useToasts();
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
+
+  async function continueSession() {
+    if (!(await session.acceptSessionChange())) return false;
+    // Dispose the paused workspace even when the same account signs in again.
+    setWorkspaceVersion((version) => version + 1);
+    return true;
+  }
 
   if (session.user && !session.linkConflict) {
-    return <RequestIdentityProvider identity={{ kind: "committee", id: session.user.id }}>
+    return <RequestIdentityProvider key={`${session.user.id}:${workspaceVersion}`} identity={{ kind: "committee", id: session.user.id }}>
       <CommitteeWorkspace key={session.user.id} user={session.user} logout={session.logout}
-        sessionChanged={session.sessionChanged} onContinueSession={session.acceptSessionChange} />
+        sessionChanged={session.sessionChanged} onContinueSession={continueSession} />
     </RequestIdentityProvider>;
   }
 

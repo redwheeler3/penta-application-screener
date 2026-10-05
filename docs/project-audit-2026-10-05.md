@@ -2,7 +2,7 @@
 
 ## Recommendation
 
-I recommend addressing **twelve confirmed findings in six work packages**, ordered below.
+The audit identified **twelve confirmed findings in six work packages**, ordered below.
 The highest priorities are binding actions to the page's intended identity, enforcing expiry
 independently of background purge, and reconciling saves with overlapping detail reads.
 There is also an AI age-snapshot consistency gap, a ranking navigation race, unnecessary
@@ -10,9 +10,10 @@ maintenance writes, and a selected-household editor mismatch. Three follow-up pa
 late cookie-response interference, removed-member influence, omitted rank configuration,
 a guest-copy/selection race, and lost personal priorities during shared consolidation.
 
-This is an audit and recommendation phase. Runtime code remains unchanged. The previous
-implementation was pushed successfully: `origin/main` advanced from `75e0032` to
-`0d1ccf8`. This document replaces the completed audit from October 4.
+All twelve findings were approved and implemented, including follow-up cases in their owners.
+The findings below document the audited baseline; they are not open recommendations. The
+implementation closure below records the fixes and verification. The audit incorporated the
+previous implementation through `0d1ccf8` and replaces the completed audit from October 4.
 
 Reviewed baseline: clean `main` at `0d1ccf8`. The recent fixes are incorporated into this
 review, rather than treated as untouchable. R01 and R02 identify composition gaps in those
@@ -211,7 +212,7 @@ through the current normalizer. Changes to consumed normalization code have the 
 sitting there keeps its calculated ages and remains cacheable across birthdays. An explicit
 resubmission recalculates ages; if evidence consumed by a pass changes, an affected cache miss is
 acceptable and supplies the more accurate submission-time age. This supersedes the earlier
-overbroad prohibition on misses after identical-answer resubmission. Runtime repair is pending.
+overbroad prohibition on misses after identical-answer resubmission. Runtime repair is recorded in the implementation closure below.
 
 **Recommendation:** retain the latest-submission age reference used by intake and deterministic
 eligibility. Fingerprint the actual submitted evidence consumed by each AI pass, including its
@@ -570,6 +571,67 @@ No further substantial exact duplicate Python function bodies or proven unused f
 emerged. Source inventory and focused workflow review do not establish that every line received
 equal manual scrutiny or that every possible defect has been found.
 
-No production VM/database inspection, deployment, schema migration/reset/restore, real model call,
-or real outbound email was performed. Git publication and the requested audit document are the
-durable changes in this phase.
+The audit-only phase performed no production VM/database inspection, deployment, schema
+migration/reset/restore, real model call or outbound email. Its durable changes were Git
+publication and this audit document. Implementation verification is recorded below.
+
+
+## Implementation closure — 2026-10-05
+
+All six packages and twelve findings are addressed. Existing recent reliability and cleanup
+work remains in place; no commit was reverted or replaced with an equal-weight ranking fallback.
+The implementation used cohesive commits and included follow-up findings within the approved owners.
+
+| Finding | Resolution | Main implementation |
+| --- | --- | --- |
+| R01 | Narrow receipts reconcile overlapping same-application reads; opening-scoped fields never patch another opening. Unrelated navigation stays independent. | `6795c9a` |
+| R02 | Criteria reads distinguish loaded absence, error and supersession. Only confirmed absence redirects; failed initial reads offer ranking recovery. | `300daee` plus final review |
+| R03 | The Pacific purge date is consistently unavailable across scope, authentication, access, editing, direct fill and email preparation. Reapplication removes the expired identity without reviving its data. | `4738481` |
+| R04 | Closeout maintenance preselects plausible final/unnotified/unexpired candidates and rechecks them under the existing writer lock. | `4738481` |
+| R05 | Captured identity clients bind browser work to its displayed user/application; server checks precede protected work. Session-change recovery retains old-account private drafts and original applicant answers. | `3cf7c7e` plus final review |
+| R06 | Cache keys include the frozen submitted facts each pass consumes. Ordinary birthdays do not change inputs; resubmission can invalidate genuinely changed evidence. Proven historical caches are rekeyed without rewriting outputs or costs. | `b12e49e`, `be914af` |
+| R07 | Selected applications retain full review/print data but expose read-only notes. Blocked private drafts remain copyable until explicit discard. | `6795c9a` |
+| R08 | Invalid reads and revocation/withdrawal responses never delete credential cookies. Authlib state-cookie middleware is limited to Google transitions; browser locks coordinate credential exchanges. | `3cf7c7e` |
+| R09 | Removed members retain history but no longer contribute rules, overrides, kept axes or proposals to shared inputs. Readmission restores their personal history. | `107f7a2` |
+| R10 | Fan-out and consolidation threshold participate in semantic freshness. Starting settings/prompt/model/reasoning configuration is captured in discovery and consolidation audits, including score-only consolidation. | `b12e49e` plus final review |
+| R11 | Guest collision copies recheck selection and expiry under the writer lock before creating a copy or access credential. | `4738481` |
+| R12 | Existing and future personal views resolve aliases through each member's own highest-priority placement, including Ignore and review flags; history uses the existing eager join. | `0e336de` plus final review |
+
+Final review also closed initial-ranking error recovery, truthful email-only save acknowledgements,
+original-application reauthentication with dirty answers, metadata-only ignored merges, immutable
+identity kind in mismatch notifications, and failed session-continuation feedback, and disposal of a paused committee workspace even when
+the same account signs in again. These were
+completed within the approved owners rather than left for another suggestion round.
+
+### Verification and latency
+
+- Full backend: **932 passed**, one existing POSIX-only skip; Ruff passed.
+- Full frontend: **272 passed**; ESLint, TypeScript and production build passed.
+- The Python import graph remains acyclic, including deferred imports.
+- The API map still matches all **111** method/path pairs. The new header, bootstrap exceptions,
+  email-only acknowledgement contract and captured configuration are documented in `docs/api.md`.
+- All six static prompt hashes are unchanged: screening `a36996118cdb`, discovery `87415213bc2b`,
+  decomposition `196def77f77b`, matching `2a463a1f6443`, scoring `d05026e73450`,
+  consolidation `d73b755d3075`. No model judgment or prompt behavior was retuned.
+- A no-work sweep over 100 synthetic applications performs **one SELECT, zero UPDATEs and zero
+  commits**. Tier history across twenty analyses uses **two SELECTs**, without one lazy read per
+  report. These are checked query counts, not production timing claims.
+- Identity binding adds no serial request to an ordinary save, read or AI handshake. Focus and
+  cross-tab checks run separately; only credential exchanges use a browser lock. Same-origin
+  production requests do not acquire a CORS preflight because of the header; local cross-origin
+  development can require a preflight. Private editors still avoid workspace renders per keystroke.
+- Additional evidence hashing measured **52.2 ms** for a synthetic 200-application/30-criterion
+  grid on this machine. This is planning work, not a typing delay or a production benchmark.
+- Changed ages after resubmission can legitimately miss affected passes. Ambiguous historical
+  inputs are retained as history rather than claimed as hits. Expanded rank fingerprints can mark
+  existing analyses out of date; their data stays reviewable and no AI work runs automatically.
+
+The verified local database moved from `c83d5f917a2b` to `a47e5c19b203`. Before/after comparisons
+preserved all **16,667** result IDs, outputs, narratives, model/prompt provenance, token counts
+and costs; **3,875** proven keys were updated, including retired provider routes whose neutral
+identity was proved by the stored digest. SQLite integrity passed. No local reset was performed.
+
+Generated build/cache directories checked have inherited ACLs; the established pytest-temp
+exception was left alone. Temporary transformation scripts were removed. No production
+inspection, deployment, real model call or outbound email was used for implementation verification.
+Git publication is authorized; this closure is committed with the completed changes.

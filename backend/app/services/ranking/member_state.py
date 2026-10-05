@@ -15,11 +15,11 @@ from app.services.ranking.identity import transfer_merged_tiers
 def get_or_reconcile_member_ranking(
     db: Session, analysis: Analysis, user: User, *, commit: bool = True
 ) -> MemberRanking:
-    """This member's view of ``analysis``. Named ``get_or_create`` because it WRITES when
-    absent: a member who didn't trigger the Rank has no view of the new analysis until they
-    open it, so the first read materializes one — seeded by carrying their prior tiers forward
-    (the same all-history carry-forward a re-rank uses). A brand-new member (no prior tiering
-    anywhere) gets the default all-Ignore layout.
+    """Materialize a personal view or reconcile its shared aliases under a writer lock.
+
+    New views inherit canonicalized personal history. Existing views preserve
+    independently edited fields while transferring priorities and review flags.
+    A brand-new member gets the default all-Ignore layout.
     """
     lookup = select(MemberRanking).where(
         MemberRanking.analysis_id == analysis.id,
@@ -28,17 +28,9 @@ def get_or_reconcile_member_ranking(
     existing = db.scalar(lookup)
     if existing is not None:
         aliases = alias_map(db)
-        if transfer_merged_tiers(stored_tiers(existing), aliases) != stored_tiers(existing):
+        if _merged_member_state(existing, aliases) != (existing.run_state or {}):
             lock_member_state(db, existing)
-            state = dict(existing.run_state or {})
-            state["tiers"] = transfer_merged_tiers(stored_tiers(existing), aliases)
-            state["new_dimension_keys"] = [
-                key for key in state.get("new_dimension_keys", []) if key not in aliases
-            ]
-            state["acknowledged_requested_keys"] = sorted({
-                aliases.get(key, key) for key in state.get("acknowledged_requested_keys", [])
-            })
-            existing.run_state = state
+            existing.run_state = _merged_member_state(existing, alias_map(db))
             if commit:
                 db.commit()
         return existing
@@ -86,6 +78,19 @@ def get_or_reconcile_member_ranking(
         return get_or_reconcile_member_ranking(db, analysis, user)
     db.refresh(member_ranking)
     return member_ranking
+
+
+def _merged_member_state(member_ranking: MemberRanking, aliases: dict[str, str]) -> dict:
+    state = dict(member_ranking.run_state or {})
+    if "tiers" in state:
+        state["tiers"] = transfer_merged_tiers(state["tiers"] or [], aliases)
+    if "new_dimension_keys" in state:
+        state["new_dimension_keys"] = [key for key in state["new_dimension_keys"] if key not in aliases]
+    if "acknowledged_requested_keys" in state:
+        state["acknowledged_requested_keys"] = sorted({
+            aliases.get(key, key) for key in state["acknowledged_requested_keys"]
+        })
+    return state
 
 
 def lock_member_state(db: Session, member_ranking: MemberRanking) -> None:

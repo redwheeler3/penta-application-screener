@@ -162,6 +162,8 @@ class ConsolidateAuditResponse(ResponseModel):
     # The confirm call's free-text reasoning (markdown), for the Observability panel.
     narrative: str | None = None
 
+    configuration: dict[str, Any] | None = None
+
 
 class FanOutPassOut(ResponseModel):
     """One of the K parallel discoverers, for the Observability discovery panel: the

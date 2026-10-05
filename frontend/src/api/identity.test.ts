@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { deferred } from "../testSupport";
-import { credentialRequest, identityClient } from "./client";
+import { credentialRequest, identityClient, type RequestIdentity } from "./client";
 import { createApi } from "./applications";
 import { createApi as applicantApi } from "../applicant/api";
 
@@ -29,7 +29,10 @@ it("binds bodyless withdrawal to the captured application and reports mismatch o
   const fetch = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ code: "session_changed" }, { status: 409 })));
   vi.stubGlobal("fetch", fetch);
   try {
-    const api = applicantApi(identityClient({ kind: "applicant", id: 7 }));
+    const identity: RequestIdentity = { kind: "applicant", id: 7 };
+    const captured = identityClient(identity);
+    identity.kind = "committee";
+    const api = applicantApi(captured);
     expect((await api.withdrawApplication()).status).toBe(409);
     await api.withdrawApplication();
     expect(new Headers(fetch.mock.calls[0][1].headers).get("X-Penta-Identity")).toBe("applicant:7");

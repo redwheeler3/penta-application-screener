@@ -98,11 +98,12 @@ export function useSession(authRedirect: AuthRedirect) {
     const isCurrent = identityReads.begin();
     try {
       const state = await api.fetchAuthState();
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       signInRequests.reset();
       setUser(state.user);
       setSessionChanged(false);
-    } catch { /* Keep the frozen page and drafts available for another attempt. */ }
+      return true;
+    } catch { return false; }
   }
 
   async function loadCurrentUser(): Promise<void> {

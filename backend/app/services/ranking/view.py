@@ -1,7 +1,7 @@
 """Assemble the ranker's input from stored dimension scores.
 
 This is the one place that turns persisted ``dimension_scoring`` results into the
-pure ``ranking`` domain's ``CandidateScores`` — shared by the screening router
+pure ``ranking`` domain's ``CandidateScores`` — shared by the ranking router
 (the ranked shortlist) and the applications router (a candidate's detail page),
 so both views compute fit, impact, and pool means from the identical pipeline and
 can never drift. It lives in services (not a router) precisely so both routers can

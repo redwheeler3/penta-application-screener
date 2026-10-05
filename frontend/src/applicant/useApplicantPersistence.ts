@@ -573,7 +573,9 @@ export function useApplicantPersistence(
         canEdit: body.canEdit,
         ...(stale ? {
           message: "This application changed in another tab or browser.", phase: "stale_copy",
-        } : { workingRevision: body.workingRevision }),
+        } : { workingRevision: body.workingRevision,
+          ...(state.phase === "session_expired" ? { phase: "idle" as const, message: "" } : {}),
+        }),
       };
     });
     return currentRevision === null || body.workingRevision === currentRevision;

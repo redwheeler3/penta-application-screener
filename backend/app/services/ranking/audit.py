@@ -165,6 +165,7 @@ def consolidate_audit_view(db: Session, analysis: Analysis) -> dict | None:
         "nominated_count": len(pairs),
         "merged_count": sum(1 for p in pairs if p.get("merged")),
         "narrative": audit.get("narrative"),
+        "configuration": audit.get("configuration"),
     }
 
 

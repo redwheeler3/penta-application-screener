@@ -173,6 +173,7 @@ export function useRanking(
       return { status: "loaded", run };
     } catch {
       // Preserve the loaded board on a transient refresh failure.
+      if (isCurrent() && boardRef.current === null) setRankingLoadState("error");
       return { status: isCurrent() ? "error" : "superseded" };
     }
   }

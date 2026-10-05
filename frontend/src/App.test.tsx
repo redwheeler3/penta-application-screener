@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -10,9 +10,10 @@ vi.mock("./hooks/useSession", () => ({ useSession: vi.fn() }));
 vi.mock("./hooks/useEmailDeliveryStatus", () => ({ useEmailDeliveryStatus: () => false }));
 vi.mock("./components/auth/CommitteeSignIn", () => ({ CommitteeSignIn: () => <p>Signed out</p> }));
 vi.mock("./CommitteeWorkspace", () => ({
-  CommitteeWorkspace: ({ user }: { user: CurrentUser }) => {
+  CommitteeWorkspace: ({ user, onContinueSession }: { user: CurrentUser; onContinueSession?: () => Promise<boolean> }) => {
     const [privateNote, setPrivateNote] = useState("");
-    return <label>{user.email}<input aria-label="Private note" value={privateNote} onChange={(event) => setPrivateNote(event.target.value)} /></label>;
+    return <><label>{user.email}<input aria-label="Private note" value={privateNote} onChange={(event) => setPrivateNote(event.target.value)} /></label>
+      <button type="button" onClick={() => void onContinueSession?.()}>Continue session</button></>;
   },
 }));
 
@@ -41,5 +42,14 @@ it.each(["another account", "sign-out and return"])("drops private workspace sta
   }
   vi.mocked(useSession).mockReturnValue(session(user(transition === "another account" ? 2 : 1)));
   rerender(<App authRedirect={{ magicLinkToken: null, googleAccessDenied: false }} />);
+  expect(screen.getByRole("textbox", { name: "Private note" })).toHaveValue("");
+});
+
+it("disposes paused account work when continuation signs in as the same user", async () => {
+  vi.mocked(useSession).mockReturnValue({ ...session(user(1)), sessionChanged: true,
+    acceptSessionChange: vi.fn().mockResolvedValue(true) });
+  render(<App authRedirect={{ magicLinkToken: null, googleAccessDenied: false }} />);
+  fireEvent.change(screen.getByRole("textbox", { name: "Private note" }), { target: { value: "Old session draft" } });
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Continue session" })));
   expect(screen.getByRole("textbox", { name: "Private note" })).toHaveValue("");
 });

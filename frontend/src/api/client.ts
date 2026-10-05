@@ -24,7 +24,8 @@ export function signalSessionChange(kind: RequestIdentity["kind"], reason: "cred
 
 /** Capture the displayed identity once; queued callbacks retain this client. */
 export function identityClient(identity: RequestIdentity): ApiClient {
-  const expected = `${identity.kind}:${identity.id ?? "none"}`;
+  const { kind, id } = identity;
+  const expected = `${kind}:${id ?? "none"}`;
   let mismatchReported = false;
   async function boundRequest(path: string, init: RequestInit = {}, timeoutMs = ACTION_REQUEST_TIMEOUT_MS, streaming = false) {
     const headers = new Headers(init.headers);
@@ -34,7 +35,7 @@ export function identityClient(identity: RequestIdentity): ApiClient {
       const body = await response.clone().json().catch(() => null);
       if (body?.code === "session_changed" && !mismatchReported) {
         mismatchReported = true;
-        signalSessionChange(identity.kind, "mismatch");
+        signalSessionChange(kind, "mismatch");
       }
     }
     return response;

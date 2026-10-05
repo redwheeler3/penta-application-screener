@@ -113,6 +113,7 @@ def apply_consolidation(
     merges: dict[str, str],
     audit: list[dict],
     narrative: str | None,
+    configuration: dict | None = None,
 ) -> Analysis:
     """Fold confirmed duplicate keys into their canonical key on an already-persisted
     analysis during post-score consolidation.
@@ -239,7 +240,7 @@ def apply_consolidation(
     # otherwise leave no definition behind to evaluate the merge against. The applied
     # merge map is NOT stored here — it's dimension_aliases (the merge-truth); the view
     # derives it from the merged pairs.
-    consolidate_audit = {"pairs": audit, "narrative": narrative}
+    consolidate_audit = {"pairs": audit, "narrative": narrative, "configuration": configuration}
     if analysis.audit is None:
         analysis.audit = AnalysisAudit(consolidate=consolidate_audit)
     else:

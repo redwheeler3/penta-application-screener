@@ -47,7 +47,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
   user: CurrentUser;
   logout: () => Promise<string | null>;
   sessionChanged?: boolean;
-  onContinueSession?: () => Promise<void>;
+  onContinueSession?: () => Promise<boolean>;
 }) {
   const isAdmin = user.role === "admin";
   const [noteCopyMessage, setNoteCopyMessage] = useState("");
@@ -197,7 +197,9 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
   useEffect(() => { if (sessionChanged) suspendPrivateWrites(); }, [sessionChanged, suspendPrivateWrites]);
   async function continueSession() {
     if (privateNotes.hasUnconfirmed() && !window.confirm("Continue with the current session and discard unsaved private notes from this account?")) return;
-    await onContinueSession?.();
+    if (!(await onContinueSession?.())) {
+      setNoteCopyMessage("Couldn't refresh your session. Your drafts are still here. Please try again.");
+    }
   }
   async function copyUnsavedNotes() {
     try {
