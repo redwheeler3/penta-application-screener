@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.api.applications.presentation import eligibility_update
 from app.db.models import (
     Application,
     ApplicationAIResult,
@@ -18,7 +19,6 @@ from app.db.models import (
 )
 from app.schemas.settings import EligibilityRules
 from app.services.eligibility.evaluation import (
-    effective_status_for,
     eligible_application_ids_for,
     union_eligible_application_ids,
 )
@@ -286,7 +286,8 @@ def test_pet_only_ineligible_attributes_to_ai_source(monkeypatch) -> None:
     )
     screen_pets(db, over.id, dogs=2)  # committee default max_dogs=1 -> over the limit
 
-    status, source = effective_status_for(db, member.id, current_opening_id(db), over)
+    view = eligibility_update(over, db, member, current_opening_id(db))
+    status, source = view.status, view.status_source
     assert status == ApplicationStatus.INELIGIBLE
     assert source == StatusSource.AI
 
@@ -310,7 +311,8 @@ def test_mixed_pet_and_numeric_ineligible_stays_rules_source(monkeypatch) -> Non
     )
     screen_pets(db, over.id, dogs=2)
 
-    status, source = effective_status_for(db, member.id, current_opening_id(db), over)
+    view = eligibility_update(over, db, member, current_opening_id(db))
+    status, source = view.status, view.status_source
     assert status == ApplicationStatus.INELIGIBLE
     assert source == StatusSource.RULES
 
@@ -342,6 +344,7 @@ def test_muted_flag_effective_status_is_untouched_not_ai() -> None:
     screen_flagged(db, flagged.id)
     set_member_rules(db, member.id, disabled_checks=["fake_contact"])
 
-    status, source = effective_status_for(db, member.id, current_opening_id(db), flagged)
+    view = eligibility_update(flagged, db, member, current_opening_id(db))
+    status, source = view.status, view.status_source
     assert status == ApplicationStatus.ELIGIBLE
     assert source == StatusSource.UNTOUCHED

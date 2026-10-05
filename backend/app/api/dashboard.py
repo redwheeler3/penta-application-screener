@@ -17,7 +17,6 @@ from app.api.dependencies import require_admin, require_current_user
 from app.core.problems import Problem
 from app.core.time import as_utc
 from app.db.models import (
-    Analysis,
     ApplicationAISelection,
     User,
     UserRole,
@@ -265,7 +264,3 @@ def _result_exists(
             return False
         query = query.where(ApplicationAISelection.application_id.in_(application_ids))
     return db.scalar(query.limit(1)) is not None
-
-
-def _run_exists(db: Session) -> bool:
-    return db.scalar(select(Analysis.id).limit(1)) is not None

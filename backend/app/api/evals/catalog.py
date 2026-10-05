@@ -236,7 +236,7 @@ def last_run(
                     merged[case["key"]] = case  # newest-wins (rows iterate newest→oldest)
         if "cases" in result:
             result["cases"] = list(merged.values())
-        current_prompt = current_prompt_version(newest.eval_key, db)
+        current_prompt = current_prompt_version(newest.eval_key)
         current_model_id = current_model(newest.eval_key, db)
         current_effort = current_reasoning_effort(newest.eval_key, db)
         runs.append(LastRun(

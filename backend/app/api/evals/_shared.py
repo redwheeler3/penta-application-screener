@@ -144,7 +144,7 @@ def over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list:
     return [slots[i] for i in range(len(cases))]
 
 
-def current_prompt_version(eval_key: str, db: Session) -> str:
+def current_prompt_version(eval_key: str) -> str:
     """The prompt version a fresh run of ``eval_key`` would exercise right now — so a
     rehydrated last run can be flagged stale when the prompt has since changed. Judge and
     stability share the judge prompt; scoring uses the scoring prompt."""

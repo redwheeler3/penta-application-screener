@@ -24,7 +24,6 @@ Costs real model calls, so it runs from the Evals tab (POST /evals/judge), never
 from __future__ import annotations
 
 import json
-from collections import Counter
 from dataclasses import dataclass
 
 from app.ai.analysis import derive_prompt_version
@@ -251,36 +250,3 @@ def _stability_token(case: JudgeCase, result: JudgeResult) -> str:
     if case.pass_name in ("scoring", "screening"):
         return "agrees" if result.reproduced.agrees else "disagrees"
     return result.reproduced.judge_label
-
-
-def format_stability(reports: list[StabilityReport]) -> str:
-    lines = ["Blind label-audit stability — K runs per case on fixed inputs", ""]
-    for r in reports:
-        k = len(r.labels)
-        tally = ", ".join(f"{v} x{n}" for v, n in Counter(r.labels).most_common())
-        marker = stability.marker(r.labels, contested=r.case.contested)
-        lines.extend(
-            (
-                f"{marker} [{r.case.pass_name}] {r.case.key}",
-                f"  {r.agreement:.0%} agreement over {k} runs — {tally}",
-                f"  total ${r.total_cost_usd:.4f}",
-                "  " + "-" * 60,
-            )
-        )
-    return "\n".join(lines)
-
-
-def format_report(results: list[JudgeResult]) -> str:
-    lines = ["Blind label audit — judge reproduces each pass, compared to the human label", ""]
-    for r in results:
-        rp = r.reproduced
-        lines.extend(
-            (
-                f"{r.marker} [{r.case.pass_name}] {r.case.key}",
-                f"  judge: {rp.judge_label}; label: {rp.human_label}",
-                f"  {rp.detail}",
-                f"  {r.model_id} / ${rp.cost_usd:.4f}",
-                "  " + "-" * 60,
-            )
-        )
-    return "\n".join(lines)

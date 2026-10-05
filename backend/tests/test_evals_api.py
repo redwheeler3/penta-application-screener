@@ -405,7 +405,7 @@ async def test_last_run_flags_model_changes_for_every_eval_family() -> None:
     for eval_key, model_field in keys_and_fields:
         db.add(EvalRun(
             eval_key=eval_key,
-            prompt_version=current_prompt_version(eval_key, db),
+            prompt_version=current_prompt_version(eval_key),
             result={model_field: "retired-model"},
             thinking=None,
         ))

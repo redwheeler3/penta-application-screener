@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.api.applications.presentation import eligibility_update
 from app.core.time import pacific_today
 from app.db.models import (
     Analysis,
@@ -26,7 +27,6 @@ from app.services.applications.scope import (
     visible_committee_openings,
 )
 from app.services.applications.shared_shortlist import is_shortlisted
-from app.services.eligibility.evaluation import effective_status_for
 from app.services.eligibility.rules import committee_default_rules
 from app.services.openings.catalog import create_opening
 from app.services.ranking.analysis import all_known_dimensions, get_current_analysis
@@ -100,8 +100,8 @@ def test_opening_context_isolates_rules_overrides_shortlist_and_current_analysis
     db.commit()
     application = applicant(db, first, second)
 
-    first_status, _ = effective_status_for(db, user.id, first.id, application)
-    second_status, _ = effective_status_for(db, user.id, second.id, application)
+    first_status = eligibility_update(application, db, user, first.id).status
+    second_status = eligibility_update(application, db, user, second.id).status
     assert first_status == ApplicationStatus.ELIGIBLE
     assert second_status == ApplicationStatus.INELIGIBLE
 
@@ -125,7 +125,7 @@ def test_opening_context_isolates_rules_overrides_shortlist_and_current_analysis
     db.add_all([first_analysis, second_analysis])
     db.commit()
 
-    assert effective_status_for(db, user.id, second.id, application)[0] == ApplicationStatus.ELIGIBLE
+    assert eligibility_update(application, db, user, second.id).status == ApplicationStatus.ELIGIBLE
     assert is_shortlisted(db, first.id, application.id)
     assert not is_shortlisted(db, second.id, application.id)
     assert get_current_analysis(db, first.id).id == first_analysis.id

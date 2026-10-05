@@ -161,7 +161,7 @@ def list_applications(
             )
             for app in applications
         ],
-        openings=[committee_opening(db, opening) for opening in openings],
+        openings=[committee_opening(opening) for opening in openings],
         selected_opening_id=opening_id,
     )
 

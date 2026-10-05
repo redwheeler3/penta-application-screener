@@ -36,7 +36,7 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 rules_router = APIRouter(prefix="/eligibility-rules", tags=["eligibility-rules"])
 
 
-def build_settings_response(db: Session, user: User, settings: AppSettings) -> SettingsResponse:
+def build_settings_response(settings: AppSettings) -> SettingsResponse:
     runtime = get_settings()
     return SettingsResponse(
         settings=settings,
@@ -71,7 +71,7 @@ def read_settings(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> SettingsResponse:
-    return build_settings_response(db, user, get_app_settings(db))
+    return build_settings_response(get_app_settings(db))
 
 
 @router.put("", response_model=SettingsResponse)
@@ -97,7 +97,7 @@ def update_settings(
             "ai_provider_not_configured",
             detail="The selected model provider is not configured on this server.",
         )
-    return build_settings_response(db, admin, save_app_settings(db, settings))
+    return build_settings_response(save_app_settings(db, settings))
 
 
 def _validate_rules(rules: EligibilityRules) -> None:

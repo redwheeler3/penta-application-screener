@@ -1,9 +1,8 @@
 """Per-member eligibility, computed on read.
 
 Eligibility is never stored on the applicant. The *machine verdict* is derived from the
-applicant's shared findings (deterministic rule reasons + cached AI flags) and is the same
-for everyone; a member's *human override* of that verdict lives in a ``MemberEligibility``
-row. This module is the read side of that model: it loads a member's override, resolves
+applicant's findings under each member's rules and enabled checks; a member's human
+override lives in a ``MemberEligibility`` row. This module is the read side of that model: it loads a member's override, resolves
 their effective status via ``app.services.eligibility.status``, and computes the two eligible sets the
 ranking/discovery/scoring passes work over:
 
@@ -25,7 +24,6 @@ from app.db.models import (
     ApplicationStatus,
     MemberEligibility,
     MemberRules,
-    StatusSource,
     User,
 )
 from app.domain.hard_filters import RulesConfig
@@ -79,41 +77,6 @@ def overrides_by_app(
             )
         )
     }
-
-
-def _member_override(
-    db: Session, user_id: int, opening_id: int, application_id: int
-) -> MemberEligibility | None:
-    return db.scalar(
-        select(MemberEligibility).where(
-            MemberEligibility.application_id == application_id,
-            MemberEligibility.user_id == user_id,
-            MemberEligibility.opening_id == opening_id,
-        )
-    )
-
-
-def effective_status_for(
-    db: Session, user_id: int, opening_id: int, application: Application
-) -> tuple[ApplicationStatus, StatusSource]:
-    """One member's effective (status, source) for an applicant: their override if any,
-    else the computed machine verdict over the current findings (rule reasons evaluated
-    under THIS member's rules)."""
-    override = _member_override(db, user_id, opening_id, application.id)
-    rules_config = rules_config_for(db, user_id, opening_id)
-    flags_by_app, facts_by_app = screening_findings_by_app(db, [application.id])
-    flags = flags_by_app.get(application.id)
-    pet_facts = facts_by_app.get(application.id)
-    reasons = hard_filter_reasons_for(
-        rules_config,
-        application,
-        pet_facts=pet_facts,
-    )
-    return effective_status(
-        override,
-        reasons=reasons,
-        has_ai_flags=bool(active_flags(flags, rules_config.disabled_checks)),
-    )
 
 
 def eligible_application_ids_for(db: Session, user_id: int, opening_id: int) -> set[int]:

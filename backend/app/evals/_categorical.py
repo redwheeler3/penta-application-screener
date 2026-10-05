@@ -13,19 +13,32 @@ and screening a per-category flag SET — genuinely different graders, not one v
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from app.ai.schemas import PoolDimension
 from app.evals.stability import DeltaSink, StabilityReport, emit
+
+
+class CategoricalCase(Protocol):
+    """The labelled fields shared by each pass's immutable case dataclass."""
+
+    @property
+    def key(self) -> str: ...
+
+    @property
+    def expected(self) -> str: ...
+
+    @property
+    def contested(self) -> bool: ...
 
 
 @dataclass(frozen=True)
 class CategoricalResult:
     """One categorical case graded: the produced ``verdict`` vs the case's label, plus any
     ``failures`` (a non-empty list = failed). ``case`` is the pass's own case object (it carries
-    ``expected``/``contested``); typed ``object`` here since the three passes each have their
-    own case dataclass."""
+    the shared label fields); its additional input fields remain pass-specific."""
 
-    case: object
+    case: CategoricalCase
     verdict: str
     reason: str
     failures: list[str] = field(default_factory=list)
@@ -37,10 +50,10 @@ class CategoricalResult:
         # by running stably, not by matching the leaning); see the endpoint's `contested or r.passed`.
         if self.failures:
             return False
-        return self.verdict == self.case.expected  # type: ignore[attr-defined]
+        return self.verdict == self.case.expected
 
 
-def grade_verdict(case, verdict: str, reason: str, on_delta: DeltaSink) -> CategoricalResult:
+def grade_verdict(case: CategoricalCase, verdict: str, reason: str, on_delta: DeltaSink) -> CategoricalResult:
     """Grade one produced ``verdict`` against ``case.expected`` and narrate it — the identical
     contested / mismatch / match ladder all three categorical passes share. ``case`` must carry
     ``expected`` and ``contested``. Callers handle a no-verdict result before calling this."""

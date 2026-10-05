@@ -6,9 +6,9 @@ from typing import Literal, NotRequired, TypedDict
 class MagicLinkRetryIntent(TypedDict):
     type: Literal["magic_link"]
     purpose: str
-    remember_device: bool
-    initiating_session_id: int | None
-    committee_invitation: bool
+    remember_device: NotRequired[bool]
+    initiating_session_id: NotRequired[int | None]
+    committee_invitation: NotRequired[bool]
 
 
 class VacancyOpeningRetryIntent(TypedDict):

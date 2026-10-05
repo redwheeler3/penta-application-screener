@@ -110,7 +110,7 @@ def serialize_summary(
     )
 
 
-def committee_opening(db: Session, opening: Opening) -> CommitteeOpeningOut:
+def committee_opening(opening: Opening) -> CommitteeOpeningOut:
     return CommitteeOpeningOut(
         id=opening.id,
         unit_size_bedrooms=opening.unit_size_bedrooms,

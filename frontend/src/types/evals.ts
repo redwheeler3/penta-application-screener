@@ -92,7 +92,6 @@ export type EvalCaseResultByMode = {
   stability: StabilityEvalCaseResult;
 };
 
-export type EvalCaseResult = EvalCaseResultByMode[EvalRunMode];
 export type EvalCaseOutcome = {
   [Mode in EvalRunMode]: { mode: Mode; result: EvalCaseResultByMode[Mode] }
 }[EvalRunMode];

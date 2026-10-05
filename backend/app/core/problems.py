@@ -24,11 +24,9 @@ from typing import Any
 PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "unauthorized": (401, "Authentication required"),
     "invalid_magic_link": (401, "Sign-in link unavailable"),
-    "email_delivery_failed": (503, "Email could not be sent"),
     "database_unavailable": (503, "Database unavailable"),
     "verified_email_required": (409, "Email verification required"),
     "email_unchanged": (400, "Email address unchanged"),
-    "pending_draft_unavailable": (409, "Pending draft unavailable"),
     "pending_copy_changed": (409, "Guest answers changed"),
     "application_already_exists": (409, "Application already exists"),
     "stale_application": (409, "Application changed elsewhere"),

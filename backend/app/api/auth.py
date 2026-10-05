@@ -52,11 +52,11 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         return _google_sign_in_denied()
 
     # OAuth network I/O is async; SQLite waits belong on a worker thread.
-    return await run_in_threadpool(_complete_google_sign_in, request, db, identity, remember_device)
+    return await run_in_threadpool(_complete_google_sign_in, db, identity, remember_device)
 
 
 def _complete_google_sign_in(
-    request: Request, db: Session, identity: GoogleIdentity, remember_device: bool,
+    db: Session, identity: GoogleIdentity, remember_device: bool,
 ) -> RedirectResponse:
     # Access gate: only allowlisted emails may sign in, and the entry's role is the
     # user's role. A non-listed account is bounced back to the login screen with a
