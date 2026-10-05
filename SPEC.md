@@ -11,6 +11,10 @@ The Penta Application Screener collects housing co-op applications, applies dete
 
 The project is also a deliberate learning and portfolio project for Jeff to build practical expertise in AI product management, agentic workflows, evals, cost-aware model use, human-in-the-loop product design, and AI-assisted software delivery. The code may eventually be made public as part of Jeff's AI product management portfolio, so the implementation should be understandable, well-documented, and credible as a real product artifact while preserving applicant privacy.
 
+The application API serves the browser surfaces and our manual tests. It is not an external
+integration API. Endpoints and contracts can evolve with their browser callers and tests;
+unused alternatives do not need to remain available for hypothetical external clients.
+
 ## Primary User
 
 The primary user is Jeff. The output audience is MOMI, who need a clear shortlist of applicants recommended for the interview stage, with justification.
@@ -22,6 +26,12 @@ The notice identifies the purposes for collection, people and service-provider c
 receive information where necessary, opening-based retention periods, and the Privacy Officer. The
 form then collects household details, current housing, essay answers, employment, and income before
 showing the complete review and declaration.
+
+The external form is retired and will not receive new submissions. Applications collected
+through it remain supported stored records: their answers must stay readable for committee
+review, eligibility, ranking, applicant working copies, retention, and recovery. Retaining
+these data readers does not require retaining an external-form ingestion integration or
+reopening that intake path.
 
 The applicant/co-applicant section asks for applicant name, date of birth, phone, and email;
 co-applicant name, date of birth, relationship, phone, and email; and the children who will live in
