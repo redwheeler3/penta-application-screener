@@ -386,8 +386,8 @@ export function CommitteeWorkspace({ user, logout }: {
         {isAdmin ? tabButton("observability", "Observability") : null}
         {isAdmin ? tabButton("evals", "Evals") : null}
         {/* Config tabs, set apart on the right: Eligibility Settings (every member
-            tunes their own screening rules) and Admin Settings (admin-only: data
-            source, pets, AI knobs, and the access allowlist). */}
+            tunes their own screening rules) and Admin Settings (global configuration,
+            openings, notifications, delivery, feedback, and committee access). */}
         {tabButton("eligibilitySettings", "Eligibility Settings", <Filter size={14} />, "tab-button-settings")}
         {isAdmin ? tabButton("adminSettings", "Admin Settings", <Settings size={14} />) : null}
       </div>
@@ -421,42 +421,24 @@ export function CommitteeWorkspace({ user, logout }: {
             />
           )
         ) : activeTab === "adminSettings" && isAdmin ? (
-          // Keep the selected admin tab visible while settings load or fail.
-          draft ? (
-            <AdminSettingsPanel
-              draft={draft}
-              setDraft={setDraft}
-              saved={saved}
-              isSaving={isSavingSettings}
-              onSubmit={saveSettings}
-              onError={showError}
-              onOpenApplicant={viewApplication}
-              onOpenOpeningApplicant={viewApplication}
-              onOpenView={navigateToView}
-              currentUser={user}
-              subtab={adminSubtab}
-              onSubtabChange={setAdminSubtab}
-              onPoolChanged={refreshEligibilityViews}
-              onOpenRetainedApplicant={viewRetainedApplication}
-            />
-          ) : (
-            <div className="settings-load-state" role={settingsLoadFailed ? "alert" : "status"}>
-              {settingsLoadFailed ? (
-                <>
-                  <p>Couldn't load settings. The server may have been starting up.</p>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={retrySettings}
-                  >
-                    Retry
-                  </button>
-                </>
-              ) : (
-                <p>Loading settings…</p>
-              )}
-            </div>
-          )
+          <AdminSettingsPanel
+            draft={draft}
+            setDraft={setDraft}
+            saved={saved}
+            isSaving={isSavingSettings}
+            onSubmit={saveSettings}
+            configurationLoadFailed={settingsLoadFailed}
+            onRetryConfiguration={retrySettings}
+            onError={showError}
+            onOpenApplicant={viewApplication}
+            onOpenOpeningApplicant={viewApplication}
+            onOpenView={navigateToView}
+            currentUser={user}
+            subtab={adminSubtab}
+            onSubtabChange={setAdminSubtab}
+            onPoolChanged={refreshEligibilityViews}
+            onOpenRetainedApplicant={viewRetainedApplication}
+          />
         ) : activeTab === "ranking" && ranking ? (
           <RankingView
             ranking={ranking}

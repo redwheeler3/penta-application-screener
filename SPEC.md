@@ -1368,6 +1368,10 @@ documented in [docs/google-cloud-oauth-setup.md](docs/google-cloud-oauth-setup.m
 
 The settings surfaces: **Eligibility Settings** covers the selected opening's per-member rules, with an admin-only `Committee default` subtab; **Admin Settings** covers global AI configuration, access, openings, vacancy notifications, email delivery, and feedback. Observability and Evals are separate admin-only views.
 
+Each Admin Settings section loads its own resources. Loading or failing to load global AI
+configuration affects only the Configuration section, which offers a retry; the admin section
+navigation, openings, notifications, delivery, access, and feedback remain available.
+
 Implementation defaults:
 
 - Readability first; avoid redundancy; prefer elegant, boring solutions over clever abstractions.

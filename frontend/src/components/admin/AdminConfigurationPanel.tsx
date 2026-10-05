@@ -16,11 +16,13 @@ const PROVIDER_LABELS: Record<AIModelProvider, string> = {
 };
 
 export function AdminConfigurationPanel(props: {
-  draft: AppSettings;
+  draft: AppSettings | null;
   setDraft: (next: AppSettings) => void;
   saved: SettingsResponse | null;
   isSaving: boolean;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
+  loadFailed: boolean;
+  onRetry: () => void;
 }): ReactNode {
   const { draft, setDraft, saved } = props;
 
@@ -29,7 +31,18 @@ export function AdminConfigurationPanel(props: {
       <div className="settings-subtab-head">
         <h3>Configuration</h3>
       </div>
-      {!saved ? null : (
+      {!draft || !saved ? (
+        <div className="settings-load-state" role={props.loadFailed ? "alert" : "status"}>
+          {props.loadFailed ? (
+            <>
+              <p>Couldn't load configuration. Please try again.</p>
+              <button type="button" className="secondary-button" onClick={props.onRetry}>Retry</button>
+            </>
+          ) : (
+            <p>Loading configuration…</p>
+          )}
+        </div>
+      ) : (
         <form className="settings-form" onSubmit={props.onSubmit}>
           <div className="rules-section">
             <h4>AI Screening</h4>

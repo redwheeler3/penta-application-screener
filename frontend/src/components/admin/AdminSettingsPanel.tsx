@@ -20,11 +20,13 @@ const ADMIN_SUBTABS: Array<{ id: AdminSubtab; label: string }> = [
 ];
 
 export function AdminSettingsPanel(props: {
-  draft: AppSettings;
+  draft: AppSettings | null;
   setDraft: (next: AppSettings) => void;
   saved: SettingsResponse | null;
   isSaving: boolean;
   onSubmit: (event: SyntheticEvent<HTMLFormElement>) => void;
+  configurationLoadFailed: boolean;
+  onRetryConfiguration: () => void;
   onError: (message: string) => void;
   onOpenApplicant: (id: number) => void;
   onOpenOpeningApplicant: (id: number, openingId: number) => void;
@@ -87,6 +89,8 @@ export function AdminSettingsPanel(props: {
           saved={props.saved}
           isSaving={props.isSaving}
           onSubmit={props.onSubmit}
+          loadFailed={props.configurationLoadFailed}
+          onRetry={props.onRetryConfiguration}
         />
       )}
     </section>
