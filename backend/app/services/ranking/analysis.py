@@ -424,7 +424,7 @@ def committee_kept_keys(
         return set()
     valid = {d.key for d in report.dimensions}
     kept: set[str] = set()
-    for user in db.scalars(select(User)):
+    for user in db.scalars(select(User).where(User.is_active.is_(True))):
         _, most_recent_tier_by_key = tier_history(db, user, opening_id)
         kept.update(
             key
@@ -449,7 +449,8 @@ def committee_proposed_dimensions(db: Session, analysis: Analysis | None) -> lis
     union: list[str] = []
     rankings = db.scalars(
         select(MemberRanking)
-        .where(MemberRanking.analysis_id == analysis.id)
+        .join(User)
+        .where(MemberRanking.analysis_id == analysis.id, User.is_active.is_(True))
         .order_by(MemberRanking.user_id)
     ).all()
     for ranking in rankings:

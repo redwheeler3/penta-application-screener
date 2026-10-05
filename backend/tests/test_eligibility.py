@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.api.applications.presentation import eligibility_update
@@ -348,3 +348,48 @@ def test_muted_flag_effective_status_is_untouched_not_ai() -> None:
     status, source = view.status, view.status_source
     assert status == ApplicationStatus.ELIGIBLE
     assert source == StatusSource.UNTOUCHED
+
+
+def test_removed_member_no_longer_contributes_to_shared_review() -> None:
+    from app.db.models import MemberRanking
+    from app.services.auth.allowlist import remove_entry, upsert_entry
+    from app.services.eligibility.evaluation import rules_eligible_application_ids
+    from app.services.ranking.analysis import (
+        committee_kept_keys,
+        committee_proposed_dimensions,
+        create_analysis,
+    )
+    from tests.ranking_support import a_pattern_report
+
+    db = make_session()
+    removed = add_user(db, "removed@example.test")
+    active = add_user(db, "active@example.test")
+    upsert_entry(db, email=removed.email, role=removed.role)
+    rejected = add_app(db, email="rejected@example.test", rules_ineligible=True)
+    clean = add_app(db, email="clean@example.test")
+    opening_id = current_opening_id(db)
+    db.add_all([
+        MemberEligibility(user_id=removed.id, opening_id=opening_id,
+                          application_id=rejected.id, status=ApplicationStatus.ELIGIBLE),
+        MemberEligibility(user_id=active.id, opening_id=opening_id,
+                          application_id=clean.id, status=ApplicationStatus.INELIGIBLE),
+    ])
+    report = a_pattern_report()
+    analysis = create_analysis(db, user=removed, opening_id=opening_id, report=report,
+                               inputs_fingerprint="f", narrative=None)
+    ranking = db.scalar(select(MemberRanking).where(MemberRanking.user_id == removed.id))
+    ranking.run_state = {"tiers": [{"id": "top", "label": "Top",
+                                   "dimension_keys": [report.dimensions[0].key]}],
+                         "proposed_dimensions": ["Removed proposal"]}
+    db.commit()
+    assert rejected.id in rules_eligible_application_ids(db, opening_id)
+    assert remove_entry(db, removed.email)
+    assert rejected.id not in rules_eligible_application_ids(db, opening_id)
+    assert union_eligible_application_ids(db, opening_id) == set()
+    assert committee_kept_keys(db, opening_id, report) == set()
+    assert committee_proposed_dimensions(db, analysis) == []
+    # Re-admission restores retained personal history; removal never deletes judgment.
+    upsert_entry(db, email=removed.email, role=removed.role)
+    assert rejected.id in union_eligible_application_ids(db, opening_id)
+    assert committee_kept_keys(db, opening_id, report) == {report.dimensions[0].key}
+    assert committee_proposed_dimensions(db, analysis) == ["Removed proposal"]

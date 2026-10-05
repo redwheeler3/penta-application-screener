@@ -123,7 +123,7 @@ def _ruleset_by_user(
             select(MemberRules).where(MemberRules.opening_id == opening_id)
         )
     }
-    for user_id in db.scalars(select(User.id)):
+    for user_id in db.scalars(select(User.id).where(User.is_active.is_(True))):
         rules = diverged.get(user_id)
         ruleset_by_user[user_id] = (
             rules_config_from(rules) if rules is not None else default_config
@@ -174,6 +174,7 @@ def rules_eligible_application_ids(db: Session, opening_id: int) -> set[int]:
         db.scalars(
             select(MemberEligibility.application_id).where(
                 MemberEligibility.status == ApplicationStatus.ELIGIBLE,
+                MemberEligibility.user_id.in_(ruleset_by_user),
                 MemberEligibility.opening_id == opening_id,
                 MemberEligibility.application_id.in_([app.id for app in applications]),
             )
@@ -216,6 +217,7 @@ def union_eligible_application_ids(db: Session, opening_id: int) -> set[int]:
     for override in db.scalars(
         select(MemberEligibility).where(
             MemberEligibility.opening_id == opening_id,
+            MemberEligibility.user_id.in_(ruleset_by_user),
             MemberEligibility.application_id.in_(ids),
         )
     ):
