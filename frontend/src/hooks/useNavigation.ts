@@ -1,24 +1,31 @@
-import { type SetStateAction, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import * as api from "../api/applications";
 import type { ApplicationDetail, ApplicationUpdate, ViewTab } from "../types";
-import { useRequestScope } from "./useRequestScope";
+import { useRequestScope, type RequestIsCurrent } from "./useRequestScope";
 
 type BrowserLocation = {
   screenerLocation: true;
   tab: ViewTab;
+  openingId: number | null;
   applicantId?: number;
   retainedApplicant?: boolean;
 };
 
 function isBrowserLocation(value: unknown): value is BrowserLocation {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "screenerLocation" in value &&
-    (value as BrowserLocation).screenerLocation === true &&
-    "tab" in value
-  );
+  if (typeof value !== "object" || value === null) return false;
+  const location = value as BrowserLocation;
+  return location.screenerLocation === true
+    && ["applications", "ranking", "eligibilitySettings", "adminSettings", "observability", "evals"].includes(location.tab)
+    && (location.openingId === null || (Number.isInteger(location.openingId) && location.openingId > 0))
+    && (location.applicantId === undefined || (Number.isInteger(location.applicantId) && location.applicantId > 0))
+    && (location.retainedApplicant === undefined || typeof location.retainedApplicant === "boolean");
+}
+
+function sameLocation(left: unknown, right: BrowserLocation): boolean {
+  return isBrowserLocation(left) && left.tab === right.tab && left.openingId === right.openingId
+    && left.applicantId === right.applicantId
+    && Boolean(left.retainedApplicant) === Boolean(right.retainedApplicant);
 }
 
 function replaceLocation(location: BrowserLocation) {
@@ -26,11 +33,14 @@ function replaceLocation(location: BrowserLocation) {
 }
 
 function pushLocation(location: BrowserLocation) {
-  window.history.pushState(location, "", window.location.pathname);
+  if (!sameLocation(window.history.state, location)) {
+    window.history.pushState(location, "", window.location.pathname);
+  }
 }
 
 export function useNavigation(options: {
   openingId: number | null;
+  selectOpening: (openingId: number, isCurrent: RequestIsCurrent) => Promise<boolean>;
   loadRanking: () => Promise<boolean>;
   onError: (message: string) => void;
 }) {
@@ -38,20 +48,20 @@ export function useNavigation(options: {
   const [selectedApplication, setSelectedApplication] = useState<ApplicationDetail | null>(null);
   const [selectedApplicationReadOnly, setSelectedApplicationReadOnly] = useState(false);
   const requests = useRequestScope();
+  const current = useRef({ ...options, activeTab, selectedApplication });
+  current.current = { ...options, activeTab, selectedApplication };
+  const pendingLocation = useRef<BrowserLocation | null>(null);
   const requestedOpening = useRef(options.openingId);
-  const currentOpening = useRef(options.openingId);
-  if (currentOpening.current !== options.openingId) {
-    currentOpening.current = options.openingId;
-    // A cross-opening navigation can start just before React renders the selected
-    // opening. Preserve that deliberate request, but cancel requests for any other opening.
-    if (requestedOpening.current !== options.openingId) requests.invalidate();
+  const renderedOpening = useRef(options.openingId);
+  if (renderedOpening.current !== options.openingId) {
+    renderedOpening.current = options.openingId;
+    // Preserve our deliberate opening restoration; cancel detail reads if another
+    // owner changes the opening instead (for example a refreshed opening list).
+    if (requestedOpening.current !== options.openingId) {
+      requests.invalidate();
+      pendingLocation.current = null;
+    }
   }
-  const loadRankingRef = useRef(options.loadRanking);
-  const onErrorRef = useRef(options.onError);
-  const openingIdRef = useRef(options.openingId);
-  loadRankingRef.current = options.loadRanking;
-  onErrorRef.current = options.onError;
-  openingIdRef.current = options.openingId;
 
   const scrolledDetailId = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -64,121 +74,134 @@ export function useNavigation(options: {
     document.querySelector(".app-detail")?.scrollIntoView({ block: "start" });
   }, [selectedApplication]);
 
-  useEffect(() => {
-    replaceLocation({ screenerLocation: true, tab: "applications" });
-
-    const onPopState = (event: PopStateEvent) => {
-      if (!isBrowserLocation(event.state)) return;
-      const isCurrent = requests.begin();
-      requestedOpening.current = openingIdRef.current;
-      const location = event.state;
-      setSelectedApplication(null);
+  const loadLocation = useCallback(async (location: BrowserLocation, addHistory: boolean): Promise<boolean> => {
+    requestedOpening.current = location.openingId;
+    pendingLocation.current = location;
+    const isCurrent = requests.begin();
+    const openingChanged = location.openingId !== current.current.openingId;
+    setSelectedApplication(null);
+    setSelectedApplicationReadOnly(false);
+    setActiveTab(location.tab);
+    try {
+      const opening = location.openingId !== null && openingChanged
+        ? current.current.selectOpening(location.openingId, isCurrent) : Promise.resolve(true);
+      const application = location.applicantId === undefined
+        ? Promise.resolve(null)
+        : location.retainedApplicant
+          ? api.fetchRetainedApplication(location.applicantId)
+          : location.openingId !== null
+            ? api.fetchApplication(location.applicantId, location.openingId)
+            : Promise.reject(new Error("Missing opening"));
+      // Resolve detail in parallel with the list. Publish it only after the
+      // recorded opening has been accepted, without adding serial latency.
+      const [selected, detail] = await Promise.all([opening, application]);
+      if (!isCurrent()) return false;
+      if (!selected) throw new Error("Opening unavailable");
+      pendingLocation.current = null;
+      if (addHistory) pushLocation(location);
+      setSelectedApplication(detail);
       setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));
-      setActiveTab(location.tab);
-      if (location.tab === "ranking") void loadRankingRef.current();
-      if (!location.applicantId) return;
-
-      const loadApplication = location.retainedApplicant
-        ? api.fetchRetainedApplication
-        : (id: number) => {
-            if (openingIdRef.current === null) return Promise.reject();
-            return api.fetchApplication(id, openingIdRef.current);
-          };
-      void loadApplication(location.applicantId)
-        .then((application) => {
-          if (!isCurrent()) return;
-          setSelectedApplication(application);
-          setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));
-        })
-        .catch(() => {
-          if (isCurrent()) onErrorRef.current("Couldn't load that applicant. Please try again.");
-        });
-    };
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+      // Opening changes refresh ranking after React installs the new scoped hooks.
+      // Same-opening history needs a read here.
+      if (location.tab === "ranking" && !openingChanged) void current.current.loadRanking();
+      return true;
+    } catch {
+      if (!isCurrent()) return false;
+      pendingLocation.current = null;
+      requests.invalidate(); // Fence a list read still pending after detail failed.
+      replaceLocation({ screenerLocation: true, tab: location.tab, openingId: current.current.openingId });
+      current.current.onError("Couldn't load that view. Please try again.");
+      return false;
+    }
   }, [requests]);
 
-  async function viewApplication(id: number, openingId = options.openingId) {
+  useEffect(() => {
+    replaceLocation({ screenerLocation: true, tab: "applications", openingId: current.current.openingId });
+    const onPopState = (event: PopStateEvent) => {
+      if (!isBrowserLocation(event.state)) return;
+      // A root/retained review recorded before any opening existed has no opening
+      // to restore. Use the current server-selected context and record it truthfully.
+      const location = event.state.openingId === null && (!event.state.applicantId || event.state.retainedApplicant)
+        ? { ...event.state, openingId: current.current.openingId } : event.state;
+      replaceLocation(location);
+      void loadLocation(location, false);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [loadLocation]);
+
+  useEffect(() => {
+    if (pendingLocation.current !== null) return;
+    if (isBrowserLocation(window.history.state) && window.history.state.openingId === options.openingId) return;
+    requests.invalidate();
+    setSelectedApplication(null);
+    setSelectedApplicationReadOnly(false);
+    // Install the server-chosen opening into the initial root entry; keep later
+    // externally changed opening/list entries truthful too.
+    replaceLocation({ screenerLocation: true, tab: current.current.activeTab, openingId: options.openingId });
+  }, [options.openingId, requests]);
+
+  async function viewApplication(id: number, openingId = current.current.openingId) {
     if (openingId === null) return;
-    if (openingId === options.openingId && currentOpening.current !== options.openingId) return;
-    requestedOpening.current = openingId;
-    const isCurrent = requests.begin();
-    try {
-      const application = await api.fetchApplication(id, openingId);
-      if (!isCurrent()) return;
-      if (selectedApplication?.id === id) {
-        setSelectedApplication(application);
-        return;
-      }
-      pushLocation({ screenerLocation: true, tab: activeTab, applicantId: id });
-      setSelectedApplication(application);
-      setSelectedApplicationReadOnly(false);
-    } catch {
-      if (isCurrent()) options.onError("Couldn't load that applicant. Please try again.");
-    }
+    await loadLocation({ screenerLocation: true, tab: current.current.activeTab, openingId, applicantId: id }, true);
   }
 
   async function viewRetainedApplication(id: number) {
-    requestedOpening.current = currentOpening.current;
-    const isCurrent = requests.begin();
-    try {
-      const application = await api.fetchRetainedApplication(id);
-      if (!isCurrent()) return;
-      pushLocation({
-        screenerLocation: true,
-        tab: "adminSettings",
-        applicantId: id,
-        retainedApplicant: true,
-      });
-      setSelectedApplication(application);
-      setSelectedApplicationReadOnly(true);
-    } catch {
-      if (isCurrent()) options.onError("Couldn't load that retained application.");
-    }
+    await loadLocation({ screenerLocation: true, tab: "adminSettings", openingId: current.current.openingId,
+      applicantId: id, retainedApplicant: true }, true);
+  }
+
+  function changeOpening(openingId: number): Promise<boolean> {
+    return loadLocation({ screenerLocation: true, tab: current.current.activeTab, openingId }, true);
   }
 
   function backToList() {
     requests.invalidate();
+    pendingLocation.current = null;
     if (isBrowserLocation(window.history.state) && window.history.state.applicantId) {
       window.history.back();
       return;
     }
     setSelectedApplication(null);
+    setSelectedApplicationReadOnly(false);
   }
 
   function navigateToView(tab: ViewTab) {
     requests.invalidate();
-    if (activeTab === tab && !selectedApplication) return;
-    pushLocation({ screenerLocation: true, tab });
+    pendingLocation.current = null;
+    pushLocation({ screenerLocation: true, tab, openingId: current.current.openingId });
     setSelectedApplication(null);
+    setSelectedApplicationReadOnly(false);
     setActiveTab(tab);
-    if (tab === "ranking") void options.loadRanking();
+    if (tab === "ranking") void current.current.loadRanking();
   }
 
-  function openAdminSetup() {
+  function onOpeningRankingLoaded(openingId: number, hasCriteria: boolean) {
+    // The opening refresh can finish after another navigation. Inspect the live
+    // location before loading or redirecting, and preserve a detail being restored.
+    if (current.current.openingId !== openingId || current.current.activeTab !== "ranking") return;
+    if (hasCriteria) void current.current.loadRanking();
+    else if (!current.current.selectedApplication && !pendingLocation.current?.applicantId) {
+      navigateToView("applications");
+    }
+  }
+
+  function clearSelectedApplication() {
     requests.invalidate();
-    setActiveTab("adminSettings");
-    replaceLocation({ screenerLocation: true, tab: "adminSettings" });
+    pendingLocation.current = null;
+    setSelectedApplication(null);
+    setSelectedApplicationReadOnly(false);
+    replaceLocation({ screenerLocation: true, tab: current.current.activeTab, openingId: current.current.openingId });
   }
 
   return {
-    activeTab,
-    selectedApplication,
-    selectedApplicationReadOnly,
+    activeTab, selectedApplication, selectedApplicationReadOnly,
     updateSelectedApplication: (update: ApplicationUpdate) => {
-      // Save acknowledgements patch the visible record; they are not navigation
-      // and must not cancel a pending read for another applicant.
-      setSelectedApplication((current) => current?.id === update.id ? { ...current, ...update } : current);
+      // Acknowledgements are not navigation; don't cancel another applicant's read.
+      setSelectedApplication((value) => value?.id === update.id ? { ...value, ...update } : value);
     },
-    setSelectedApplication: (application: SetStateAction<ApplicationDetail | null>) => {
-      requests.invalidate();
-      setSelectedApplication(application);
-    },
-    viewApplication,
-    viewRetainedApplication,
-    backToList,
-    navigateToView,
-    openAdminSetup,
+    clearSelectedApplication,
+    viewApplication, viewRetainedApplication, changeOpening, backToList, navigateToView,
+    onOpeningRankingLoaded,
   };
 }

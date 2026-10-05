@@ -10,7 +10,7 @@ import type {
   SortState,
 } from "../types";
 import { deriveApplicationFacets, selectApplications } from "./applicationSelectors";
-import { useRequestScope } from "./useRequestScope";
+import { useRequestScope, type RequestIsCurrent } from "./useRequestScope";
 
 export interface ApplicationsState {
   /** The filtered + sorted list the UI renders (derived from the full pool). */
@@ -33,7 +33,7 @@ export interface ApplicationsState {
   loadInitialApplications: () => Promise<void>;
   toggleSort: (key: SortKey) => void;
   applyFilter: (next: AppFilter) => void;
-  selectOpening: (openingId: number) => Promise<boolean>;
+  selectOpening: (openingId: number, navigationIsCurrent?: RequestIsCurrent) => Promise<boolean>;
   search: (value: string) => void;
 }
 
@@ -114,18 +114,24 @@ export function useApplications(): ApplicationsState {
     [allApplications, appFilter, appSearch, appSort],
   );
 
-  async function selectOpening(openingId: number): Promise<boolean> {
+  async function selectOpening(openingId: number, navigationIsCurrent: RequestIsCurrent = () => true): Promise<boolean> {
     const isCurrent = requests.begin();
     selectingOpening.current = true;
     setApplicationsLoadState("loading");
     try {
       const response = await api.fetchApplications(openingId);
       if (!isCurrent()) return false;
+      if (!navigationIsCurrent()) {
+        setApplicationsLoadState("ready");
+        return false;
+      }
+      if (response.selectedOpeningId !== openingId) throw new Error("Opening unavailable");
       acceptApplications(response);
       return true;
     } catch (error) {
       if (!isCurrent()) return false;
       setApplicationsLoadState("ready");
+      if (!navigationIsCurrent()) return false;
       throw error;
     } finally {
       if (isCurrent()) selectingOpening.current = false;

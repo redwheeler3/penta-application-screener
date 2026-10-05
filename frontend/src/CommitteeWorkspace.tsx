@@ -111,13 +111,15 @@ export function CommitteeWorkspace({ user, logout }: {
     activeTab,
     selectedApplication: selectedApp,
     selectedApplicationReadOnly,
-    setSelectedApplication: setSelectedApp,
+    clearSelectedApplication,
     updateSelectedApplication,
     viewApplication,
     viewRetainedApplication,
+    changeOpening,
+    onOpeningRankingLoaded,
     backToList,
     navigateToView,
-  } = useNavigation({ openingId: selectedOpeningId, loadRanking, onError: showError });
+  } = useNavigation({ openingId: selectedOpeningId, selectOpening, loadRanking, onError: showError });
   const [adminSubtab, setAdminSubtab] = useState<AdminSubtab>("configuration");
   const {
     draft,
@@ -161,7 +163,7 @@ export function CommitteeWorkspace({ user, logout }: {
     notifications: { success: showToast, error: showError, warning: showWarning },
     refreshDashboard,
     reloadApplications,
-    clearSelectedApplication: () => setSelectedApp(null),
+    clearSelectedApplication,
   });
 
   const {
@@ -199,35 +201,16 @@ export function CommitteeWorkspace({ user, logout }: {
   useEffect(() => {
     if (selectedOpeningId === null) return;
     let active = true;
-    setSelectedApp(null);
     resetEstimates();
     void loadInitialDashboard();
     void (async () => {
       const run = await refreshRankingRun();
-      if (!active || activeTab !== "ranking") return;
-      if (run) await loadRanking();
-      else navigateToView("applications");
+      if (active) onOpeningRankingLoaded(selectedOpeningId, run !== null);
     })();
     return () => { active = false; };
-    // Opening changes intentionally reset every opening-scoped member surface.
+    // Navigation owns detail disposal/restoration. Other member surfaces are opening-scoped.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOpeningId]);
-
-  async function changeOpening(openingId: number) {
-    try {
-      return await selectOpening(openingId);
-    } catch {
-      showError("Could not load that opening.");
-      return false;
-    }
-  }
-
-  async function viewOpeningApplication(applicationId: number, openingId: number) {
-    if (openingId !== selectedOpeningId) {
-      if (!(await changeOpening(openingId))) return;
-    }
-    await viewApplication(applicationId, openingId);
-  }
 
   // Refresh the lightweight list/dashboard reads while this page is visible and whenever
   // the member returns to it, so new or edited applications appear without a reload.
@@ -300,7 +283,7 @@ export function CommitteeWorkspace({ user, logout }: {
       // a cap increase (or any model/cost setting change) cannot leave a stale
       // over-cap warning and disabled confirmation button on screen.
       resetEstimates();
-      setSelectedApp(null);
+      clearSelectedApplication();
       refreshDashboard();
       requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
     } else {
@@ -448,9 +431,7 @@ export function CommitteeWorkspace({ user, logout }: {
               onSubmit={saveSettings}
               onError={showError}
               onOpenApplicant={viewApplication}
-              onOpenOpeningApplicant={(applicationId, openingId) =>
-                void viewOpeningApplication(applicationId, openingId)
-              }
+              onOpenOpeningApplicant={viewApplication}
               onOpenView={navigateToView}
               currentUser={user}
               subtab={adminSubtab}

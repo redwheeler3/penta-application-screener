@@ -1308,6 +1308,14 @@ stay in memory only. Leaving the page warns while work is unconfirmed, and expli
 asks before discarding it. Sign-out fences queued writes before credentials change; a failed
 sign-out resumes saving under the original account. Switching accounts clears private drafts.
 
+Committee browser history records the tab, opening, applicant, and retained/read-only review
+mode. Back and Forward restore that recorded opening through the normal list-selection workflow
+before displaying its applicant. Detail and list reads may run in parallel, but a superseded
+navigation cannot change the opening or reopen an applicant. An unavailable opening reports a
+load failure rather than substituting another opening's pool. Opening the same applicant in an
+editable opening after a retained review creates the appropriate history entry and clears the
+read-only mode.
+
 The per-member-pool/shared-content-cache decision is recorded in
 [ADR 0011](docs/adr/0011-per-member-eligible-pool-shared-content-cache.md).
 
