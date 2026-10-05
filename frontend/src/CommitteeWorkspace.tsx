@@ -205,7 +205,9 @@ export function CommitteeWorkspace({ user, logout }: {
     void loadInitialDashboard();
     void (async () => {
       const run = await refreshRankingRun();
-      if (active) onOpeningRankingLoaded(selectedOpeningId, run !== null);
+      if (active && run.status === "loaded") {
+        onOpeningRankingLoaded(selectedOpeningId, run.run !== null);
+      }
     })();
     return () => { active = false; };
     // Navigation owns detail disposal/restoration. Other member surfaces are opening-scoped.

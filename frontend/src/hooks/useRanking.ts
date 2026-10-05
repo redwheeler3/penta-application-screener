@@ -4,6 +4,10 @@ import { problemMessage, readProblemBody } from "../api/problems";
 import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
 import { type RequestIsCurrent, useRequestScope } from "./useRequestScope";
 
+export type RankingRunRead =
+  | { status: "loaded"; run: CurrentRunResponse | null }
+  | { status: "superseded" | "error" };
+
 export interface RankingState {
   /** The current run's discovered dimensions, shown above the list once Rank has run;
    * null until discovery has run (or after a failed fetch). */
@@ -17,7 +21,7 @@ export interface RankingState {
   tiers: Tier[] | null;
   /** Re-fetch the current run's dimensions. Returns the promise so callers can await
    * it before rendering anything that resolves dimension keys to names. */
-  refreshRankingRun: () => Promise<CurrentRunResponse | null>;
+  refreshRankingRun: () => Promise<RankingRunRead>;
   /** Fetch the ranked shortlist + tier layout (pure math, no cost). Returns whether it
    * loaded; callers may switch to the Ranking tab immediately and render this hook's load
    * state while the initial response is in flight. */
@@ -133,7 +137,7 @@ export function useRanking(
     if (!currentReads.isFor(openingId)) return false;
     const isCurrent = currentReads.capture();
     const run = await refreshRankingRun();
-    if (!run || !isCurrent()) return false;
+    if (run.status !== "loaded" || !run.run || !isCurrent()) return false;
     const ok = await loadRanking();
     if (ok && isCurrent()) setStaleAnalysis(false);
     return ok;
@@ -150,22 +154,23 @@ export function useRanking(
     }
   }
 
-  async function refreshRankingRun(): Promise<CurrentRunResponse | null> {
-    if (openingId === null || !currentReads.isFor(openingId)) return null;
-    if (hasPendingMutations()) return runRef.current;
+  async function refreshRankingRun(): Promise<RankingRunRead> {
+    if (openingId === null || !currentReads.isFor(openingId) || hasPendingMutations()) {
+      return { status: "superseded" };
+    }
     const isCurrent = currentReads.begin();
     try {
       const run = await api.fetchRankingCurrent(openingId);
-      if (!isCurrent()) return null;
+      if (!isCurrent()) return { status: "superseded" };
       // A displayed board owns its criteria snapshot. Replace it through a full
       // board read, including consolidation changes within the same analysis.
-      if (boardRef.current !== null) return run;
+      if (boardRef.current !== null) return { status: "loaded", run };
       runRef.current = run;
       setRankingRun(run);
-      return run;
+      return { status: "loaded", run };
     } catch {
       // Preserve the loaded board on a transient refresh failure.
-      return null;
+      return { status: isCurrent() ? "error" : "superseded" };
     }
   }
 

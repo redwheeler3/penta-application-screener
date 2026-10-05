@@ -21,7 +21,7 @@ vi.mock("./hooks/useDashboard", () => ({ useDashboard: () => ({
   loadState: "ready", refresh: vi.fn().mockResolvedValue(undefined), loadInitial: vi.fn(),
 }) }));
 vi.mock("./hooks/useRanking", () => ({ useRanking: () => ({
-  rankingRun: null, ranking: null, refreshRankingRun: vi.fn().mockResolvedValue(null), checkForStaleRanking: vi.fn(),
+  rankingRun: null, ranking: null, refreshRankingRun: vi.fn().mockResolvedValue({ status: "loaded", run: null }), checkForStaleRanking: vi.fn(),
 }) }));
 vi.mock("./hooks/useAiRuns", () => ({ useAiRuns: () => ({ resetEstimates: vi.fn() }) }));
 vi.mock("./components/workflow/WorkflowBar", () => ({ WorkflowBar: () => null }));

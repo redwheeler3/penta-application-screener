@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import * as api from "../api/ranking";
 import { deferred } from "../testSupport";
 import type { CurrentRunResponse, RankingBoardResponse, RankingResponse, Tier } from "../types";
-import { useRanking } from "./useRanking";
+import { type RankingRunRead, useRanking } from "./useRanking";
 
 vi.mock("../api/ranking", () => ({
   fetchRankingCurrent: vi.fn(), fetchRankingBoard: vi.fn(),
@@ -110,7 +110,7 @@ it("ignores old current-analysis and board responses after an opening change", a
   const { result, rerender } = renderHook(({ openingId }) => useRanking(openingId, vi.fn()), {
     initialProps: { openingId: 1 },
   });
-  let firstCurrent!: Promise<CurrentRunResponse | null>;
+  let firstCurrent!: Promise<RankingRunRead>;
   let firstRanking!: Promise<boolean>;
   act(() => {
     firstCurrent = result.current.refreshRankingRun(); firstRanking = result.current.loadRanking();
@@ -253,3 +253,24 @@ it("does not replace only the criteria of a displayed board during a lightweight
   expect(result.current.rankingRun?.analysisId).toBe(1);
   expect(result.current.ranking?.analysisId).toBe(1);
 });
+
+it("distinguishes successful absence from failed and superseded criteria reads", async () => {
+  const pending = deferred<CurrentRunResponse>();
+  vi.mocked(api.fetchRankingCurrent).mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("offline"));
+  vi.mocked(api.fetchRankingBoard).mockResolvedValue(board(1));
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  let reading!: ReturnType<typeof result.current.refreshRankingRun>;
+  act(() => { reading = result.current.refreshRankingRun(); });
+  await act(() => result.current.loadRanking());
+  await act(async () => {
+    pending.resolve(current(1));
+    expect(await reading).toEqual({ status: "superseded" });
+  });
+  await act(async () => {
+    expect(await result.current.refreshRankingRun()).toEqual({ status: "loaded", run: null });
+    expect(await result.current.refreshRankingRun()).toEqual({ status: "error" });
+  });
+  expect(result.current.ranking?.analysisId).toBe(1);
+});
+
