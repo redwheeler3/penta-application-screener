@@ -23,9 +23,8 @@ from app.evals.dataset import case_identity, fingerprint
 from app.schemas.base import ResponseModel
 from app.schemas.evals import StabilityRun
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
-from app.schemas.settings import effective_reasoning_effort
+from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.auth.authority import require_admin_write
-from app.services.settings import get_app_settings
 from app.services.stream_worker import StreamWorker
 from app.services.work_stream import WorkStreamingResponse
 
@@ -219,12 +218,11 @@ def result_reasoning_effort(result: dict | None) -> str:
     return value if isinstance(value, str) else ""
 
 
-def current_reasoning_effort(eval_key: str, db: Session) -> str:
+def current_reasoning_effort(eval_key: str, settings: AppSettings) -> str:
     """The effective effort a fresh run would use; blank for unsupported models."""
     base = eval_key.removesuffix("_stability")
     if base in ("stability", "judge"):
         return ""
-    settings = get_app_settings(db)
     from app.ai.pass_catalog import ai_pass
     spec = ai_pass(base)
     if spec is None:
@@ -247,7 +245,7 @@ class ReasoningProvider:
         return self._delegate.structured_output(**kwargs)
 
 
-def current_model(eval_key: str, db: Session) -> str:
+def current_model(eval_key: str, settings: AppSettings) -> str:
     """The model a fresh run of ``eval_key`` would exercise right now."""
     base = eval_key.removesuffix("_stability")
     if base == "stability":
@@ -260,7 +258,7 @@ def current_model(eval_key: str, db: Session) -> str:
     from app.ai.pass_catalog import ai_pass
 
     spec = ai_pass(base)
-    return getattr(get_app_settings(db).ai, spec.model_attr) if spec else ""
+    return getattr(settings.ai, spec.model_attr) if spec else ""
 
 
 

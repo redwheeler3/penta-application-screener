@@ -16,6 +16,7 @@ import { EvalCaseDetail } from "./EvalCaseDetail";
 import { EvalCaseEditor } from "./EvalCaseEditor";
 import { InlineConfirm } from "./InlineConfirm";
 import type { FieldObject } from "./StructuredFields";
+import { RetryLoadError } from "../shared/RetryLoadError";
 import { useEvalRunner } from "./useEvalRunner";
 
 // A runnable eval subtab (a pass, or Judge). Master-detail: a case LIST on the left
@@ -63,7 +64,7 @@ export function RunnableEval(props: {
   const saves = useRef<Promise<void>>(Promise.resolve());
   const saveScope = useRequestScope(caseEvalKey);
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const { cases, setCases, run, caseResults, restored, runMode, refreshHistory } = useEvalRunner({
+  const { cases, casesLoadState, retryCases, setCases, run, caseResults, restored, currentConfigurations, runMode, refreshHistory } = useEvalRunner({
     caseEvalKey,
     runKeys: props.runKeys,
   });
@@ -73,6 +74,8 @@ export function RunnableEval(props: {
     const el = thinkingRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   });
+
+  if (casesLoadState === "error") return <RetryLoadError message="Could not load eval cases." onRetry={retryCases} />;
 
   function persistCase(evalCase: FieldObject): Promise<string | null> {
     const isCurrent = saveScope.capture();
@@ -140,7 +143,7 @@ export function RunnableEval(props: {
             key={m.evalKey}
             type="button"
             className="primary-button"
-            disabled={run.running || cases === null || m.repetitions < 1}
+            disabled={run.running || casesLoadState !== "ready" || m.repetitions < 1}
             onClick={() => setConfirm({ mode: m, calls: totalCalls(m) })}
           >
             {run.running ? "Running…" : `${modeLabel(m)} (~${totalCalls(m)})`}
@@ -150,7 +153,7 @@ export function RunnableEval(props: {
           <button
             type="button"
             className="secondary-button"
-            disabled={run.running}
+            disabled={run.running || casesLoadState !== "ready"}
             onClick={() => {
               setEditing({ existing: null });
               setSelected(null);
@@ -175,7 +178,7 @@ export function RunnableEval(props: {
         // is one self-contained line (label · result · when · prompt · model).
         <div className="eval-runinfo">
           {Object.values(restored).map((r) => (
-            <EvalRunHistoryMarker key={r.evalKey} run={r} totalCases={cases?.length ?? 0} />
+            <EvalRunHistoryMarker key={r.evalKey} run={r} current={currentConfigurations[r.evalKey]} totalCases={cases?.length ?? 0} />
           ))}
         </div>
       ) : null}

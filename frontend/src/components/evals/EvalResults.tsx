@@ -1,8 +1,9 @@
-import { savedRunSummary } from "../../api/evals";
+import { evalCaseIdentity, savedRunSummary } from "../../api/evals";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { formatPacificDate, reasoningEffortLabel } from "../../format";
-import type { EvalCaseOutcome, LastEvalRun } from "../../types";
+import type { EvalCaseOutcome, EvalConfiguration, LastEvalRun } from "../../types";
+import { configurationChanges } from "./evalResultState";
 import { evalCaseStatus, runSummary } from "./evalResultPresentation";
 
 function restoredLabel(evalKey: string): string {
@@ -16,18 +17,20 @@ function restoredLabel(evalKey: string): string {
 // One self-contained line per run mode: label, result summary, when it ran, the prompt
 // version, and the model. Turns amber when either identity no longer matches the current
 // configuration. One line carries pass name + prompt + model.
-export function EvalRunHistoryMarker(props: { run: LastEvalRun; totalCases: number }): ReactNode {
+export function EvalRunHistoryMarker(props: { run: LastEvalRun; current?: EvalConfiguration; totalCases: number }): ReactNode {
   const { run } = props;
   const summary = runSummary(savedRunSummary(run), props.totalCases);
-  const stale = run.promptStale || run.modelStale || run.reasoningStale || run.corpusStale;
-  const changes = [
-    run.promptStale ? `prompt is now ${run.currentPromptVersion}` : "",
-    run.corpusStale ? "case inputs or labels changed" : "",
-    run.modelStale ? `model is now ${run.currentModelId}` : "",
-    run.reasoningStale
-      ? `reasoning is now ${run.currentReasoningEffort || "not applicable"}`
-      : "",
-  ].filter(Boolean).join(" · ");
+  const current = props.current;
+  const drift = current ? configurationChanges(run, current) : null;
+  const corpusStale = current && (run.result.cases ?? []).some((item) =>
+    item.inputFingerprint !== current.caseFingerprints[evalCaseIdentity(item.key, item.passName)]);
+  const changes = current && drift ? [
+    drift.promptStale ? `prompt is now ${current.promptVersion}` : "",
+    corpusStale ? "case inputs or labels changed" : "",
+    drift.modelStale ? `model is now ${current.modelId}` : "",
+    drift.reasoningStale ? `reasoning is now ${current.reasoningEffort || "not applicable"}` : "",
+  ].filter(Boolean).join(" · ") : "";
+  const stale = Boolean(changes);
   return (
     <div className={`eval-restored${stale ? " stale" : ""}`}>
       {restoredLabel(run.evalKey)}

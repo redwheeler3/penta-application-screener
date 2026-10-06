@@ -361,38 +361,29 @@ class SaveBackgroundRequest(RequestModel):
 # --- last run (rehydrate a tab on remount) ----------------------------------
 
 
+class EvalConfiguration(ResponseModel):
+    """Current invocation and case identities, including before the first saved run."""
+
+    prompt_version: str
+    model_id: str
+    reasoning_effort: str
+    case_fingerprints: dict[str, str]
+
+
 class LastRun(ResponseModel):
-    """The most recent persisted run for ONE eval key. Carries the result JSON (as the UI
-    reads it) but NOT the ``thinking`` narration — the tab shows the outcome + per-case dots,
-    not the replayed reasoning. Prompt and model drift are reported separately so a
-    rehydrated result is never mistaken for one produced by the current configuration."""
+    """Historical coverage with the source run of each reconstructed case."""
 
     run_id: int
     eval_key: str
-    ran_at: str  # ISO-8601 timestamp of the run
-    prompt_version: str = ""  # the prompt the run exercised
-    current_prompt_version: str = ""  # the prompt in effect NOW
-    model_id: str = ""  # the model the run exercised
-    current_model_id: str = ""  # the model in effect NOW
+    ran_at: str
+    prompt_version: str = ""
+    model_id: str = ""
     supports_reasoning_effort: bool = False
     reasoning_effort: str = ""
-    current_reasoning_effort: str = ""
-    prompt_stale: bool = False
-    model_stale: bool = False
-    reasoning_stale: bool = False
-    corpus_stale: bool = False
-    current_case_fingerprints: dict[str, str] = {}
+    case_run_ids: dict[str, int] = {}
     result: dict = {}
 
 
 class LastRunResponse(ResponseModel):
-    """The most recent persisted run for EACH of a tab's eval keys — so a tab that runs more
-    than one eval (e.g. live consolidation + its stability) restores BOTH on remount, not just
-    whichever ran last. One ``LastRun`` per key that has any persisted run; empty ⇒ nothing to
-    restore."""
-
     runs: list[LastRun] = []
-
-
-# --- run request ------------------------------------------------------------
-# (Only stability takes a param; others run with server defaults.)
+    current: dict[str, EvalConfiguration] = {}

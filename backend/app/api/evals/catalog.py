@@ -30,12 +30,14 @@ from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invaria
 from app.evals.paths import GOLDEN_FILES
 from app.schemas.evals import (
     EvalCatalogResponse,
+    EvalConfiguration,
     EvalDescriptor,
     InvariantOut,
     InvariantsResponse,
     LastRun,
     LastRunResponse,
 )
+from app.services.settings import get_app_settings
 
 router = APIRouter()
 
@@ -197,27 +199,34 @@ def last_run(
     Returns one entry per key that has a run — so a tab running two evals restores BOTH, not
     just whichever ran last. Result JSON as the UI reads it, WITHOUT the thinking narration;
     each identifies prompt/model drift so an old result is never presented as current."""
-    wanted = [k.strip() for k in keys.split(",") if k.strip()]
+    wanted = list(dict.fromkeys(k.strip() for k in keys.split(",") if k.strip()))
+    families = {"judge" if key in ("judge", "stability") else key.removesuffix("_stability") for key in wanted}
+    if not families <= {*GOLDEN_FILES, "judge"}:
+        raise Problem("invalid_settings", detail="Unknown eval mode.")
+    dataset = load_dataset(families)
+    settings = get_app_settings(db)
+    current = {}
     newest_runs = []
-    for key in dict.fromkeys(wanted):
+    for key in wanted:
+        family = "judge" if key in ("judge", "stability") else key.removesuffix("_stability")
+        current[key] = EvalConfiguration(prompt_version=current_prompt_version(key, dataset),
+            model_id=current_model(key, settings), reasoning_effort=current_reasoning_effort(key, settings),
+            case_fingerprints=dataset.case_fingerprints(family))
         newest = (db.query(EvalRun.id, EvalRun.eval_key, EvalRun.created_at, EvalRun.prompt_version, EvalRun.result)
                   .filter(EvalRun.eval_key == key)
                   .order_by(EvalRun.created_at.desc(), EvalRun.id.desc()).first())
         if newest is not None:
             newest_runs.append(newest)
-    families = {"judge" if row.eval_key in ("judge", "stability") else row.eval_key.removesuffix("_stability")
-                for row in newest_runs}
-    dataset = load_dataset(family for family in families if family in GOLDEN_FILES or family == "judge")
     runs: list[LastRun] = []
     for newest in newest_runs:
         key = newest.eval_key
         result = dict(newest.result or {})
         model = result_model(result)
         reasoning_effort = result_reasoning_effort(result)
-        family = "judge" if key in ("judge", "stability") else key.removesuffix("_stability")
-        fingerprints = dataset.case_fingerprints(family) if family in (*dataset.families, "judge") else {}
+        fingerprints = current[key].case_fingerprints
+        case_run_ids = {}
         if "cases" in result:
-            cases = latest_case_results(db, key, newest.prompt_version or "", result, set(fingerprints))
+            cases, case_run_ids = latest_case_results(db, key, newest.prompt_version or "", result, set(fingerprints))
             # Aggregate counts describe the reconstructed cases. Judge agreement belongs
             # to its original full run, so don't attach it to an accumulated partial set.
             def by_identity(items):
@@ -228,32 +237,15 @@ def last_run(
             if "total" in result:
                 result["total"] = len(cases)
                 result["passed"] = sum(bool(case.get("passed") or case.get("contested")) for case in cases)
-        corpus_stale = any(
-            case.get("inputFingerprint") != fingerprints.get(case_identity(case["key"], case.get("passName", "")))
-            for case in result.get("cases", [])
-        )
-        current_prompt = current_prompt_version(newest.eval_key, dataset)
-        current_model_id = current_model(newest.eval_key, db)
-        current_effort = current_reasoning_effort(newest.eval_key, db)
         runs.append(LastRun(
             run_id=newest.id,
             eval_key=newest.eval_key,
             ran_at=utc_isoformat(newest.created_at),
             prompt_version=newest.prompt_version or "",
-            current_prompt_version=current_prompt,
             model_id=model,
-            current_model_id=current_model_id,
             supports_reasoning_effort=supports_reasoning_effort(model),
             reasoning_effort=reasoning_effort,
-            current_reasoning_effort=current_effort,
-            prompt_stale=bool(
-                current_prompt
-                and newest.prompt_version
-                and newest.prompt_version != current_prompt
-            ),
-            model_stale=bool(model and current_model_id and model != current_model_id),
-            reasoning_stale=reasoning_effort != current_effort,
-            corpus_stale=corpus_stale, current_case_fingerprints=fingerprints,
+            case_run_ids=case_run_ids,
             result=result,
         ))
-    return LastRunResponse(runs=runs)
+    return LastRunResponse(runs=runs, current=current)

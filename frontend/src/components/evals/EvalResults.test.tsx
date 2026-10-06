@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type { CategoricalEvalCaseResult, EvalCaseOutcome, EvalRunSummary, EvalStreamEvent, LastEvalRun } from "../../types";
-import { EvalCaseResultView } from "./EvalResults";
+import { EvalCaseResultView, EvalRunHistoryMarker } from "./EvalResults";
 import { evalCaseStatus, runSummary } from "./evalResultPresentation";
 
 const contested: CategoricalEvalCaseResult = {
@@ -11,6 +11,20 @@ const contested: CategoricalEvalCaseResult = {
 };
 
 describe("eval result presentation", () => {
+  it("derives history drift from the same independent metadata used by case results", () => {
+    const run: LastEvalRun = { evalKey: "scoring", runId: 1, ranAt: "2026-10-01T12:00:00Z",
+      promptVersion: "v1", modelId: "synthetic-old", reasoningEffort: "low", supportsReasoningEffort: true,
+      caseRunIds: { a: 1 }, result: { cases: [{ key: "a", score: 0.8, passed: true,
+        confidence: "high", evidence: "Synthetic", failures: [], inputFingerprint: "a1" }] } };
+    render(<EvalRunHistoryMarker run={run} totalCases={1} current={{ promptVersion: "v2", modelId: "synthetic-new",
+      reasoningEffort: "high", caseFingerprints: { a: "a2" } }} />);
+    const marker = screen.getByText(/last run/);
+    expect(marker).toHaveClass("stale");
+    expect(marker).toHaveTextContent("prompt is now v2");
+    expect(marker).toHaveTextContent("model is now synthetic-new");
+    expect(marker).toHaveTextContent("reasoning is now high");
+    expect(marker).toHaveTextContent("case inputs or labels changed");
+  });
   it("renders a missing score without inventing zero or confidence", () => {
     render(<EvalCaseResultView outcome={{ mode: "scoring", result: {
       key: "missing", passed: false, score: null, confidence: "?", evidence: "",

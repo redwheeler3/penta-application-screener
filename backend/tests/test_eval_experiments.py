@@ -77,15 +77,13 @@ async def test_label_changes_expire_coverage_but_editorial_notes_do_not(tmp_path
         data["cases"][0]["metadata"]["note"] = "Editorial explanation"
         data["cases"][0]["metadata"]["label_rationale"] = "Editorial rationale"
         path.write_text(json.dumps(data), encoding="utf-8")
-        restored = (await client.get("/evals/last-run?keys=scoring")).json()["runs"][0]
-        assert not restored["corpusStale"]
-        assert restored["currentCaseFingerprints"][key] == original
+        restored = (await client.get("/evals/last-run?keys=scoring")).json()
+        assert restored["current"]["scoring"]["caseFingerprints"][key] == original
         data["cases"][0]["metadata"]["expected"] = {"score_min": 0.7, "score_max": 1}
         path.write_text(json.dumps(data), encoding="utf-8")
-        restored = (await client.get("/evals/last-run?keys=scoring")).json()["runs"][0]
-        assert restored["corpusStale"]
-        assert restored["currentCaseFingerprints"][key] != original
-        assert restored["result"]["cases"][0]["inputFingerprint"] == original
+        restored = (await client.get("/evals/last-run?keys=scoring")).json()
+        assert restored["current"]["scoring"]["caseFingerprints"][key] != original
+        assert restored["runs"][0]["result"]["cases"][0]["inputFingerprint"] == original
 
 
 @pytest.mark.parametrize("mode", ["run", "stability"])
@@ -151,7 +149,8 @@ async def test_history_restores_all_cases_after_many_partial_runs_without_narrat
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             run = (await client.get("/evals/last-run?keys=judge")).json()["runs"][0]
             assert len(run["result"]["cases"]) == len(fingerprints) > 30
-            assert not run["corpusStale"]
+            assert len(set(run["caseRunIds"].values())) > 1
+            assert max(run["caseRunIds"].values()) == run["runId"]
             assert not any("thinking" in query for query in queries)
             changed = copy.deepcopy(snapshot.families)
             changed["scoring"]["cases"].pop(0)
@@ -258,11 +257,12 @@ async def test_unicode_scoped_identity_round_trips(tmp_path, monkeypatch, mode, 
         events = await _stream_events(client, f"/evals/judge?{query}")
         summary = next(item for item in events if item["type"] == "summary")
         family = "stability" if mode == "stability" else "judge"
-        run = (await client.get(f"/evals/last-run?keys={family}")).json()["runs"][0]
+        restored = (await client.get(f"/evals/last-run?keys={family}")).json()
+        run = restored["runs"][0]
     assert summary["storedRunId"] == run["runId"]
     assert [case["key"] for case in run["result"]["cases"]] == [key]
     identity = json.dumps(["matching", key], separators=(",", ":"), ensure_ascii=False)
-    assert run["result"]["cases"][0]["inputFingerprint"] == run["currentCaseFingerprints"][identity]
+    assert run["result"]["cases"][0]["inputFingerprint"] == restored["current"][family]["caseFingerprints"][identity]
 
 
 async def test_metadata_reads_only_its_scope_and_returns_captured_brief(tmp_path, monkeypatch):
@@ -279,7 +279,9 @@ async def test_metadata_reads_only_its_scope_and_returns_captured_brief(tmp_path
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         empty = await client.get("/evals/last-run?keys=scoring")
         assert empty.json()["runs"] == []
-        assert reads == []
+        assert reads == [GOLDEN_FILES["scoring"]]
+        assert empty.json()["current"]["scoring"]["caseFingerprints"]
+        reads.clear()
         briefs = await client.get("/evals/judge-backgrounds")
         assert len(briefs.json()["backgrounds"]) == 5
         assert len(reads) == 5

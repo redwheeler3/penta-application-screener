@@ -19,7 +19,7 @@ beforeEach(() => {
   api.fetchEvalCases.mockResolvedValue({ cases: [{ key: "synthetic", metadata: {
     pass: "screening", expected: { fires: [], absent: [] }, note: "Synthetic case",
   }, given: { fields: {}, essays: {} } }] });
-  api.fetchLastEvalRun.mockResolvedValue({ runs: [] });
+  api.fetchLastEvalRun.mockResolvedValue({ runs: [], current: {} });
   api.fetchJudgeBackgrounds.mockResolvedValue({ backgrounds: [{ passName: "scoring", background: "Synthetic brief", caseCount: 1 }] });
   api.fetchEvalInvariants.mockResolvedValue({ hasFixture: true, dimensions: 1, invariants: [] });
 });

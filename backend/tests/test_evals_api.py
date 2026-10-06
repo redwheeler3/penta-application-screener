@@ -332,6 +332,8 @@ async def test_last_run_is_empty_before_any_run() -> None:
     async with AsyncClient(transport=transport, base_url="http://t") as client:
         body = (await client.get("/evals/last-run?keys=judge,stability")).json()
     assert body["runs"] == []
+    assert set(body["current"]) == {"judge", "stability"}
+    assert body["current"]["judge"]["caseFingerprints"]
 
 
 async def test_last_run_returns_newest_PER_KEY_not_one_across_keys() -> None:
@@ -362,7 +364,7 @@ async def test_last_run_omits_a_key_with_no_run() -> None:
     assert [r["evalKey"] for r in body["runs"]] == ["judge"]  # stability has no run → omitted
 
 
-async def test_last_run_flags_a_stale_prompt() -> None:
+async def test_last_run_separates_historical_and_current_prompt() -> None:
     # A run whose stored prompt no longer matches the current judge prompt is flagged stale,
     # so a rehydrated result can't be mistaken for one produced by the prompt in effect now.
     from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
@@ -379,12 +381,11 @@ async def test_last_run_flags_a_stale_prompt() -> None:
     async with AsyncClient(transport=transport, base_url="http://t") as client:
         body = (await client.get("/evals/last-run?keys=judge")).json()
     run = body["runs"][0]
-    assert run["promptStale"] is True
-    assert run["modelStale"] is False
-    assert run["currentPromptVersion"]  # the real judge prompt version
+    assert run["promptVersion"] != body["current"]["judge"]["promptVersion"]
+    assert run["modelId"] == body["current"]["judge"]["modelId"]
 
 
-async def test_last_run_flags_model_changes_for_every_eval_family() -> None:
+async def test_last_run_reports_current_model_for_every_eval_family() -> None:
     from app.api.evals._shared import current_prompt_version
 
     app, db, _p = setup_app()
@@ -419,9 +420,9 @@ async def test_last_run_flags_model_changes_for_every_eval_family() -> None:
     assert len(body["runs"]) == len(keys_and_fields)
     for run in body["runs"]:
         assert run["modelId"] == "retired-model"
-        assert run["currentModelId"]
-        assert run["modelStale"] is True
-        assert run["promptStale"] is False
+        current = body["current"][run["evalKey"]]
+        assert current["modelId"] != run["modelId"]
+        assert current["promptVersion"] == run["promptVersion"]
 
 
 async def test_last_run_does_not_merge_cases_across_models() -> None:
@@ -455,7 +456,7 @@ async def test_last_run_does_not_merge_cases_across_models() -> None:
     assert [case["key"] for case in run["result"]["cases"]] == [second_key]
 
 
-async def test_last_run_flags_and_separates_reasoning_changes() -> None:
+async def test_last_run_separates_historical_and_current_reasoning() -> None:
     from app.ai.screening import screening_prompt_version
     from app.schemas.settings import AppSettings
     from app.services.settings import save_app_settings
@@ -495,8 +496,7 @@ async def test_last_run_flags_and_separates_reasoning_changes() -> None:
 
     run = body["runs"][0]
     assert run["reasoningEffort"] == "low"
-    assert run["currentReasoningEffort"] == "medium"
-    assert run["reasoningStale"] is True
+    assert body["current"]["screening"]["reasoningEffort"] == "medium"
 
 
 async def test_get_cases_reads_the_fixture() -> None:

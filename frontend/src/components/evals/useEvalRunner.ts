@@ -1,19 +1,16 @@
 import { useCommitteeApi } from "../../api/identity";
-import { type SetStateAction, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import * as evalsApi from "../../api/evals";
-import { caseOutcomes, evalCaseIdentity, savedRunSummary } from "../../api/evals";
 import { streamNdjson } from "../../api/client";
 import { useRequestScope } from "../../hooks/useRequestScope";
+import { useFetchResource } from "../../hooks/useFetchResource";
+import { acceptEvalHistory, acceptEvalReceipt, displayedEvalResults, EMPTY_EVAL_RESULTS } from "./evalResultState";
 import type {
-  EvalCaseOutcomesByMode,
-  EvalCaseOutcome,
   EvalFixtureKey,
   EvalRunMode,
   EvalRunOption,
-  EvalRunSummary,
   EvalStreamEvent,
-  LastEvalRun,
 } from "../../types";
 
 type RunState = {
@@ -28,117 +25,48 @@ export function useEvalRunner(options: {
 }) {
   const { fetchEvalCases, fetchLastEvalRun, runEval } = useCommitteeApi(evalsApi);
 
-  const [cases, setStoredCases] = useState<Record<string, unknown>[] | null>(null);
-  const caseReads = useRequestScope(options.caseEvalKey);
+  const fixture = useFetchResource(() => fetchEvalCases(options.caseEvalKey), { reloadKey: options.caseEvalKey });
   const [run, setRun] = useState<RunState>({
     running: false,
     thinking: "",
     error: null,
   });
-  const [caseResults, setCaseResults] = useState<Record<string, EvalCaseOutcomesByMode>>({});
-  const [restored, setRestored] = useState<Record<string, LastEvalRun>>({});
+  const [results, setResults] = useState(EMPTY_EVAL_RESULTS);
   const historyKey = options.runKeys.join(",");
   const historyReads = useRequestScope(historyKey);
-  const experiments = useRef<Record<string, string | undefined>>({});
   const activeRun = useRef<AbortController | null>(null);
   const runScope = useRequestScope(options.caseEvalKey);
   useEffect(() => () => { activeRun.current?.abort(); }, []);
 
-  function loadCases() {
-    const isCurrent = caseReads.begin();
-    fetchEvalCases(options.caseEvalKey)
-      .then((data) => { if (isCurrent()) setStoredCases(data.cases); })
-      .catch(() => { if (isCurrent()) setStoredCases([]); });
+  function setCases(cases: Record<string, unknown>[]) {
+    fixture.setData({ cases });
+    void loadLastRuns();
   }
 
-  function setCases(next: SetStateAction<Record<string, unknown>[] | null>) {
-    caseReads.invalidate();
-    setStoredCases(next);
-    void loadLastRuns(true);
-  }
-
-  // The fixture key owns the read; render-local setters must not replay it on save.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(loadCases, [options.caseEvalKey]);
-
-  async function loadLastRuns(seedResults: boolean, receipt?: EvalRunSummary & { storedRunId?: number | null }): Promise<void> {
+  async function loadLastRuns(): Promise<void> {
     if (!historyReads.isFor(historyKey)) return;
     const isCurrent = historyReads.begin();
     try {
       const data = await fetchLastEvalRun(options.runKeys);
-      if (!isCurrent() || !data.runs.length) return;
-      const stored = data.runs.find((last) => last.evalKey === receipt?.eval);
-      const unconfirmed = !seedResults && receipt != null && (receipt.storedRunId == null
-        || (stored?.runId !== undefined && stored.runId < receipt.storedRunId));
-      const relevant = data.runs.filter((last) => !unconfirmed || last.evalKey !== receipt.eval
-        || last.result.experimentId === receipt.result.experimentId);
-      const byMode: Record<string, LastEvalRun> = {};
-      for (const lastRun of relevant) byMode[lastRun.evalKey] = lastRun;
-      setRestored(byMode);
-
-      const seeded: Record<string, EvalCaseOutcomesByMode> = {};
-      function matchesCurrent(last: LastEvalRun, outcome: EvalCaseOutcome): boolean {
-        if (last.promptStale || last.modelStale || last.reasoningStale) return false;
-        const identity = evalCaseIdentity(outcome.result.key, outcome.result.passName);
-        return !last.currentCaseFingerprints
-          || outcome.result.inputFingerprint === last.currentCaseFingerprints[identity];
-      }
-      for (const lastRun of relevant) {
-        const mode = lastRun.evalKey;
-        experiments.current[mode] = lastRun.result.experimentId;
-        for (const outcome of caseOutcomes(savedRunSummary(lastRun))) {
-          const identity = evalCaseIdentity(outcome.result.key, outcome.result.passName);
-          if (!matchesCurrent(lastRun, outcome)) continue;
-          (seeded[identity] ??= {})[mode] = outcome;
-        }
-      }
-      setCaseResults((current) => {
-        if (seedResults) return seeded;
-        const next = Object.fromEntries(Object.entries(current).map(([key, modes]) => [key, { ...modes }]));
-        for (const last of relevant) {
-          for (const modes of Object.values(next)) delete modes[last.evalKey];
-        }
-        for (const [key, modes] of Object.entries(seeded)) {
-          next[key] = { ...next[key], ...modes };
-        }
-        // Protect only this delivered receipt when its history write failed. Older
-        // local results are not receipts and must yield to the newest stored outcomes.
-        if (unconfirmed) {
-          const last = data.runs.find((item) => item.evalKey === receipt.eval);
-          const model = receipt.result.model ?? receipt.result.scoringModel ?? receipt.result.judgeModel;
-          const prompt = receipt.result.promptVersion ?? receipt.result.scoringPromptVersion ?? receipt.result.judgePromptVersion;
-          const configured = !last || ((model === undefined || model === last.currentModelId)
-            && (prompt === undefined || prompt === last.currentPromptVersion)
-            && (receipt.result.reasoningEffort === undefined || (receipt.result.reasoningEffort ?? "") === last.currentReasoningEffort));
-          if (configured) for (const outcome of caseOutcomes(receipt)) {
-            const key = evalCaseIdentity(outcome.result.key, outcome.result.passName);
-            if (last?.currentCaseFingerprints && outcome.result.inputFingerprint !== last.currentCaseFingerprints[key]) continue;
-            (next[key] ??= {})[outcome.mode] = outcome;
-          }
-        }
-        return next;
-      });
+      if (isCurrent()) setResults((current) => acceptEvalHistory(current, data));
     } catch {
-      // History is optional; a failed refresh must preserve displayed run results.
+      // Keep useful delivered output when optional history cannot be refreshed.
     }
   }
 
   useEffect(() => {
-    void loadLastRuns(true);
-    // The keys are stable per tab; the joined value makes the dependency primitive.
+    setResults(EMPTY_EVAL_RESULTS);
+    void loadLastRuns();
+    // The joined mode keys define the mounted result workspace.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyKey]);
 
   async function runMode(mode: EvalRunOption, caseKey?: string, passName?: string) {
-    if (activeRun.current) return;
+    if (activeRun.current || !runScope.isFor(options.caseEvalKey)) return;
     const controller = new AbortController();
     activeRun.current = controller;
     const isCurrent = runScope.capture();
     historyReads.invalidate();
-    setRestored((current) => {
-      const { [mode.evalKey]: _removed, ...remaining } = current;
-      return remaining;
-    });
     setRun({ running: true, thinking: "", error: null });
     try {
       const response = await runEval(mode.evalKey, { caseKey, passName, k: mode.repetitions, signal: controller.signal });
@@ -167,23 +95,8 @@ export function useEvalRunner(options: {
 
         finished = true;
         setRun((current) => ({ ...current, running: false }));
-        const runCases = caseOutcomes(event);
-        const sameExperiment = experiments.current[event.eval] === event.result.experimentId;
-        experiments.current[event.eval] = event.result.experimentId;
-        setCaseResults((current) => {
-          const next: Record<string, EvalCaseOutcomesByMode> = {};
-          for (const [key, results] of Object.entries(current)) {
-            next[key] = caseKey && sameExperiment
-              ? { ...results }
-              : { ...results };
-            if (!(caseKey && sameExperiment)) delete next[key][event.eval];
-          }
-          for (const outcome of runCases) {
-            (next[evalCaseIdentity(outcome.result.key, outcome.result.passName)] ??= {})[outcome.mode] = outcome;
-          }
-          return next;
-        });
-        void loadLastRuns(false, event);
+        setResults((current) => acceptEvalReceipt(current, event, caseKey !== undefined));
+        void loadLastRuns();
       });
       if (!finished && isCurrent()) {
         setRun((current) => ({
@@ -204,5 +117,7 @@ export function useEvalRunner(options: {
     }
   }
 
-  return { cases, setCases, run, caseResults, restored, runMode, refreshHistory: () => loadLastRuns(true) };
+  return { cases: fixture.data?.cases ?? null, casesLoadState: fixture.state, retryCases: fixture.reload,
+    setCases, run, ...displayedEvalResults(results), currentConfigurations: results.history.current,
+    runMode, refreshHistory: loadLastRuns };
 }

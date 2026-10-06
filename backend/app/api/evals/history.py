@@ -6,10 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.evals._shared import result_model, result_reasoning_effort
+from app.evals.dataset import case_identity
 
 
 def latest_case_results(db: Session, key: str, version: str, result: dict,
-                        identities: set[str]) -> list[dict]:
+                        identities: set[str]) -> tuple[list[dict], dict[str, int]]:
     """SQLite chooses the newest result per current family/key in one experiment.
 
     Only case JSON crosses the DB boundary, even after thousands of per-row runs.
@@ -25,7 +26,7 @@ def latest_case_results(db: Session, key: str, version: str, result: dict,
               AND coalesce(prompt_version, '') = :version
               AND coalesce(json_extract(result, '$.experimentId'), '') = :experiment
         ), ranked AS (
-            SELECT cases.value,
+            SELECT cases.value, valid_runs.id AS source_run_id,
                    row_number() OVER (
                        PARTITION BY json_extract(cases.value, '$.passName'),
                                     json_extract(cases.value, '$.key')
@@ -41,10 +42,15 @@ def latest_case_results(db: Session, key: str, version: str, result: dict,
                        ELSE json_extract(cases.value, '$.key') END
                   IN (SELECT value FROM json_each(:identities))
         )
-        SELECT value FROM ranked WHERE position = 1
+        SELECT value, source_run_id FROM ranked WHERE position = 1
     """), {
         "key": key, "version": version, "model": result_model(result),
         "reasoning": result_reasoning_effort(result), "k": result.get("k", 1),
         "experiment": result.get("experimentId", ""), "identities": json.dumps(sorted(identities)),
-    }).scalars()
-    return [json.loads(value) for value in rows]
+    })
+    cases, sources = [], {}
+    for value, run_id in rows:
+        case = json.loads(value)
+        cases.append(case)
+        sources[case_identity(case["key"], case.get("passName", ""))] = run_id
+    return cases, sources

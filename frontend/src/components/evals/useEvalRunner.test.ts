@@ -1,226 +1,149 @@
 import { act, waitFor } from "@testing-library/react";
-import { renderCommitteeHook as renderHook, deferred } from "../../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
-import type { LastEvalRun, ScoringEvalCaseResult } from "../../types";
+import { deferred, renderCommitteeHook as renderHook } from "../../testSupport";
+import type { EvalHistory, EvalRunOption, LastEvalRun, ScoringEvalCaseResult } from "../../types";
 import { useEvalRunner } from "./useEvalRunner";
 
-const api = vi.hoisted(() => ({
-  fetchEvalCases: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchEvalCases"]>(),
-  fetchLastEvalRun: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchLastEvalRun"]>(),
-  runEval: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["runEval"]>(),
-}));
+const api = vi.hoisted(() => ({ fetchEvalCases: vi.fn(), fetchLastEvalRun: vi.fn(), runEval: vi.fn() }));
+vi.mock("../../api/evals", async (original) => ({ ...await original<typeof import("../../api/evals")>(), createApi: () => api }));
 
-vi.mock("../../api/evals", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../../api/evals")>(),
-  createApi: () => api,
-}));
-
-const history = {
-  ranAt: "2026-10-01T12:00:00Z", promptVersion: "v1", currentPromptVersion: "v1",
-  modelId: "test-model", currentModelId: "test-model", supportsReasoningEffort: false,
-  reasoningEffort: "", currentReasoningEffort: "", promptStale: false, modelStale: false,
-  reasoningStale: false,
-};
-const scored = (key: string, score: number): ScoringEvalCaseResult => ({
-  key, passed: true, score, confidence: "high", evidence: "Synthetic evidence.", failures: [],
-});
-
+const config = { modelId: "synthetic", promptVersion: "v1", reasoningEffort: "", caseFingerprints: { a: "a1", b: "b1" } };
+const mode: EvalRunOption = { evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 };
+const scored = (key: string, score: number): ScoringEvalCaseResult => ({ key, score, inputFingerprint: `${key}1`,
+  passed: score >= 0.5, confidence: "high", evidence: "Synthetic", failures: [] });
+function saved(runId: number, cases: ScoringEvalCaseResult[], experimentId = "same", caseRunIds = Object.fromEntries(cases.map((c) => [c.key, runId]))): LastEvalRun {
+  return { runId, evalKey: "scoring", ranAt: "2026-10-01T12:00:00Z", modelId: config.modelId,
+    promptVersion: config.promptVersion, reasoningEffort: "", supportsReasoningEffort: false, caseRunIds,
+    result: { experimentId, scoringModel: config.modelId, scoringPromptVersion: config.promptVersion, cases } };
+}
+const history = (runs: LastEvalRun[] = []): EvalHistory => ({ runs, current: { scoring: config } });
+function completion(score = 0.8, storedRunId: number | null = null, experimentId = "same", key = "a") {
+  return new Response(JSON.stringify({ type: "summary", eval: "scoring", storedRunId,
+    result: { experimentId, scoringModel: config.modelId, scoringPromptVersion: config.promptVersion, cases: [scored(key, score)] } }));
+}
 beforeEach(() => {
-  vi.clearAllMocks();
-  vi.mocked(api.fetchEvalCases).mockResolvedValue({ cases: [{ key: "a" }, { key: "b" }] });
-  vi.mocked(api.fetchLastEvalRun).mockResolvedValue({ runs: [] });
+  vi.resetAllMocks();
+  api.fetchEvalCases.mockResolvedValue({ cases: [{ key: "a" }, { key: "b" }] });
+  api.fetchLastEvalRun.mockResolvedValue(history());
+  api.runEval.mockImplementation(() => Promise.resolve(completion()));
 });
 
-it("cancels an eval owned by a workspace that has closed", async () => {
-  const pending = deferred<Response>();
-  vi.mocked(api.runEval).mockReturnValue(pending.promise);
-  const { result, unmount } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  let running!: Promise<void>;
-  act(() => { running = result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }); });
-  const signal = vi.mocked(api.runEval).mock.calls[0][1]!.signal!;
-  unmount();
-  expect(signal.aborted).toBe(true);
-  await act(async () => { pending.resolve(new Response(null, { status: 503 })); await running; });
-});
-
-it("keeps newly completed results when initial history arrives late", async () => {
-  const pending = deferred<{ runs: LastEvalRun[] }>();
-  vi.mocked(api.fetchLastEvalRun).mockReturnValueOnce(pending.promise);
-  vi.mocked(api.runEval).mockResolvedValue(new Response(`${JSON.stringify({
-    type: "summary", eval: "scoring", savedPath: null, result: { cases: [scored("a", 0.8)] },
-  })}\n`));
+it.each([null, 3])("keeps delivered output through repeated older history and fixture refreshes (receipt %s)", async (runId) => {
+  api.fetchLastEvalRun.mockResolvedValue(history([saved(2, [scored("a", 0.1), scored("b", 0.9)])]));
+  api.runEval.mockResolvedValue(completion(0.8, runId));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await act(async () => {
-    await result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 });
-  });
-  await act(async () => pending.resolve({ runs: [
-    { ...history, evalKey: "scoring", result: { cases: [scored("a", 0.2)] } },
-  ] }));
-  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
+  await waitFor(() => expect(result.current.caseResults.a).toBeDefined());
+  await act(() => result.current.runMode(mode, "a"));
+  await act(() => result.current.refreshHistory());
+  await act(async () => result.current.setCases([{ key: "a" }, { key: "b" }]));
+  expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(result.current.caseResults.b.scoring).toMatchObject({ result: { score: 0.9 } });
   expect(result.current.restored.scoring).toBeUndefined();
 });
 
-it("discards history from an eval family the member has left", async () => {
-  const pending = deferred<{ runs: LastEvalRun[] }>();
-  vi.mocked(api.fetchLastEvalRun).mockReturnValueOnce(pending.promise);
-  const { result, rerender } = renderHook(({ matching }) => useEvalRunner({
-    caseEvalKey: matching ? "matching" : "scoring", runKeys: matching ? ["matching"] : ["scoring"],
-  }), { initialProps: { matching: false } });
+it("uses each historical case's source run when a newer partial aggregate arrives", async () => {
+  api.runEval.mockResolvedValue(completion(0.8, 3));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await act(() => result.current.runMode(mode, "a"));
+  api.fetchLastEvalRun.mockResolvedValue(history([saved(4, [scored("a", 0.1), scored("b", 0.9)], "same", { a: 2, b: 4 })]));
+  await act(() => result.current.refreshHistory());
+  expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.8 } });
+  api.fetchLastEvalRun.mockResolvedValue(history([saved(5, [scored("a", 0.7), scored("b", 0.9)], "same", { a: 5, b: 4 })]));
+  await act(() => result.current.refreshHistory());
+  expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.7 } });
+  expect(result.current.restored.scoring.runId).toBe(5);
+});
+
+it.each(["labels", "prompt", "model", "reasoning"])("expires unrecorded output after %s changes with no stored history", async (change) => {
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await act(() => result.current.runMode(mode, "a"));
+  const next = { ...config, ...(change === "labels" ? { caseFingerprints: { a: "a2", b: "b1" } }
+    : change === "prompt" ? { promptVersion: "v2" } : change === "model" ? { modelId: "another" } : { reasoningEffort: "high" }) };
+  api.fetchLastEvalRun.mockResolvedValue({ runs: [], current: { scoring: next } });
+  await act(async () => result.current.setCases([{ key: "a" }]));
+  expect(result.current.caseResults.a?.scoring).toBeUndefined();
+  api.fetchLastEvalRun.mockResolvedValue(history());
+  await act(() => result.current.refreshHistory());
+  expect(result.current.caseResults.a?.scoring).toBeUndefined();
+});
+
+it("keeps compatible partial receipts and clears them for a new experiment", async () => {
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await act(() => result.current.runMode(mode, "a"));
+  api.runEval.mockResolvedValue(completion(0.9, null, "same", "b"));
+  await act(() => result.current.runMode(mode, "b"));
+  expect(result.current.caseResults.a.scoring).toBeDefined();
+  expect(result.current.caseResults.b.scoring).toBeDefined();
+  api.runEval.mockResolvedValue(completion(0.7, null, "another", "a"));
+  await act(() => result.current.runMode(mode, "a"));
+  expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.7 } });
+  expect(result.current.caseResults.b?.scoring).toBeUndefined();
+});
+
+it("keeps other modes when a receipt completes and disposes unrecorded output on remount", async () => {
+  const stable: LastEvalRun = { ...saved(1, []), evalKey: "scoring_stability", caseRunIds: { a: 1 }, result: { cases: [
+    { key: "a", inputFingerprint: "a1", marker: "[stable]", agreement: 1, tally: { pass: 5 }, runs: [], scoreMin: 0.8, scoreMax: 0.8 },
+  ] } };
+  api.fetchLastEvalRun.mockResolvedValue({ runs: [stable], current: { scoring: config, scoring_stability: config } });
+  const options = { caseEvalKey: "scoring" as const, runKeys: ["scoring", "scoring_stability"] as const };
+  const mount = () => renderHook(() => useEvalRunner({ ...options, runKeys: [...options.runKeys] }));
+  const first = mount();
+  await waitFor(() => expect(first.result.current.caseResults.a?.scoring_stability).toBeDefined());
+  await act(() => first.result.current.runMode(mode, "a"));
+  expect(first.result.current.caseResults.a.scoring_stability).toBeDefined();
+  first.unmount();
+  const second = mount();
+  await waitFor(() => expect(second.result.current.caseResults.a?.scoring_stability).toBeDefined());
+  expect(second.result.current.caseResults.a.scoring).toBeUndefined();
+});
+
+it("rejects initial history arriving after a new run and preserves output when the refresh fails", async () => {
+  const pending = deferred<EvalHistory>();
+  api.fetchLastEvalRun.mockReturnValueOnce(pending.promise).mockRejectedValue(new Error("Offline"));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await act(() => result.current.runMode(mode, "a"));
+  await act(async () => pending.resolve(history([saved(1, [scored("a", 0.1)])])));
+  expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.8 } });
+});
+
+it("discards old-family reads and cancels work when its view closes", async () => {
+  const pending = deferred<EvalHistory>();
+  api.fetchLastEvalRun.mockReturnValueOnce(pending.promise);
+  const { result, rerender, unmount } = renderHook(({ matching }) => useEvalRunner({ caseEvalKey: matching ? "matching" : "scoring",
+    runKeys: matching ? ["matching"] : ["scoring"] }), { initialProps: { matching: false } });
   rerender({ matching: true });
-  await act(async () => pending.resolve({ runs: [
-    { ...history, evalKey: "scoring", result: { cases: [scored("a", 0.2)] } },
-  ] }));
+  await act(async () => pending.resolve(history([saved(1, [scored("a", 0.1)])])));
   expect(result.current.caseResults).toEqual({});
-  expect(result.current.restored).toEqual({});
+  const response = deferred<Response>();
+  api.runEval.mockReturnValue(response.promise);
+  let running!: Promise<void>;
+  act(() => { running = result.current.runMode({ ...mode, evalKey: "matching" }); });
+  const signal = api.runEval.mock.calls[0][1].signal;
+  unmount();
+  expect(signal.aborted).toBe(true);
+  await act(async () => { response.resolve(new Response(null, { status: 503 })); await running; });
 });
 
-it("restores each mode and replaces only that mode's results after a whole-set run", async () => {
-  const runs: LastEvalRun[] = [
-    { ...history, evalKey: "scoring", result: { cases: [scored("a", 0.2), scored("b", 0.2)] } },
-    { ...history, evalKey: "scoring_stability", result: { cases: ["a", "b"].map((key) => ({
-      key, marker: "[stable]", agreement: 1, tally: { pass: 5 }, runs: [], scoreMin: 0.2, scoreMax: 0.2,
-    })) } },
-  ];
-  vi.mocked(api.fetchLastEvalRun).mockResolvedValueOnce({ runs });
-  vi.mocked(api.runEval).mockResolvedValue(new Response(`${JSON.stringify({
-    type: "summary", eval: "scoring", savedPath: null, result: { cases: [scored("a", 0.8)] },
-  })}\n`));
-  const { result } = renderHook(() => useEvalRunner({
-    caseEvalKey: "scoring", runKeys: ["scoring", "scoring_stability"],
-  }));
-  await waitFor(() => expect(result.current.caseResults.a?.scoring).toMatchObject({
-    mode: "scoring", result: { score: 0.2 },
-  }));
-  expect(result.current.caseResults.b?.scoring_stability).toMatchObject({
-    mode: "scoring_stability", result: { marker: "[stable]" },
-  });
-
-  await act(async () => {
-    await result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 2 });
-  });
-  expect(result.current.caseResults.a?.scoring).toMatchObject({
-    mode: "scoring", result: { score: 0.8 },
-  });
-  expect(result.current.caseResults.b?.scoring).toBeUndefined();
-  expect(result.current.caseResults.b?.scoring_stability).toMatchObject({
-    mode: "scoring_stability", result: { marker: "[stable]" },
-  });
-  expect(result.current.run).toMatchObject({ running: false, error: null });
-});
-
-it("reports incomplete eval progress and preserves the displayed results", async () => {
-  vi.mocked(api.fetchLastEvalRun).mockResolvedValueOnce({ runs: [
-    { ...history, evalKey: "scoring", result: { cases: [scored("a", 0.2)] } },
-  ] });
-  vi.mocked(api.runEval).mockResolvedValue(new Response(`${JSON.stringify({
-    type: "progress", phase: "scoring", processed: 1, total: 2,
-  })}\n`));
+it.each(["interrupted", "fatal"])("reports a %s stream without discarding previous output", async (failure) => {
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await waitFor(() => expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.2 } }));
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 2 }));
-  expect(result.current.run.running).toBe(false);
-  expect(result.current.run.error).toContain("interrupted before completion was confirmed");
-  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.2 } });
+  await act(() => result.current.runMode(mode, "a"));
+  api.runEval.mockResolvedValue(new Response(failure === "fatal" ? JSON.stringify({ type: "error", message: "Synthetic failure" }) : ""));
+  await act(() => result.current.runMode(mode, "a"));
+  expect(result.current.run.error).toContain(failure === "fatal" ? "Synthetic failure" : "interrupted");
+  expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.8 } });
 });
 
-it("accepts a final eval summary without a newline", async () => {
-  vi.mocked(api.runEval).mockResolvedValue(new Response(JSON.stringify({
-    type: "summary", eval: "scoring", savedPath: null, result: { cases: [scored("a", 0.8)] },
-  })));
+it("distinguishes a failed fixture read from an empty corpus and keeps accepted edits ahead of late reads", async () => {
+  api.fetchEvalCases.mockRejectedValueOnce(new Error("Offline"));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }));
-  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
-  expect(result.current.run).toMatchObject({ running: false, error: null });
-});
-
-it("keeps the server's fatal eval error as the outcome", async () => {
-  vi.mocked(api.runEval).mockResolvedValue(new Response(JSON.stringify({
-    type: "error", phase: "scoring", message: "Synthetic model failure.",
-  })));
-  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }));
-  expect(result.current.run).toMatchObject({ running: false, error: "Synthetic model failure." });
-});
-
-it("keeps accepted case data when the initial fixture read arrives late", async () => {
+  await waitFor(() => expect(result.current.casesLoadState).toBe("error"));
+  expect(result.current.cases).toBeNull();
   const pending = deferred<{ cases: Record<string, unknown>[] }>();
-  vi.mocked(api.fetchEvalCases).mockReturnValueOnce(pending.promise);
-  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: [] }));
-  act(() => result.current.setCases([{ key: "saved-case" }]));
-  await act(async () => { pending.resolve({ cases: [{ key: "old-case" }] }); });
-  expect(result.current.cases).toEqual([{ key: "saved-case" }]);
-});
-
-
-it("clears other current dots when a partial run changes experiment", async () => {
-  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [
-    { ...history, evalKey: "scoring", result: { experimentId: "old", cases: [scored("a", 0.2), scored("b", 0.2)] } },
-  ] });
-  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring", savedPath: null,
-    result: { experimentId: "new", cases: [scored("a", 0.8)] } })));
-  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "a"));
-  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
-  expect(result.current.caseResults.b?.scoring).toBeUndefined();
-});
-
-it("keeps same-experiment partial coverage and expires changed labels on fixture save", async () => {
-  const saved: LastEvalRun = { ...history, evalKey: "scoring", currentCaseFingerprints: { a: "a1", b: "b1" },
-    result: { experimentId: "same", cases: [{ ...scored("a", 0.2), inputFingerprint: "a1" }, { ...scored("b", 0.2), inputFingerprint: "b1" }] } };
-  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [saved] }).mockResolvedValueOnce({ runs: [saved] }).mockResolvedValue({ runs: [{ ...saved, corpusStale: true,
-    currentCaseFingerprints: { a: "a2", b: "b1" } }] });
-  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring", savedPath: null,
-    result: { experimentId: "same", cases: [{ ...scored("b", 0.8), inputFingerprint: "b1" }] } })));
-  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await waitFor(() => expect(result.current.caseResults.a?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "b"));
-  expect(result.current.caseResults.a?.scoring).toBeDefined();
-  act(() => result.current.setCases([{ key: "a" }, { key: "b" }]));
-  await waitFor(() => expect(result.current.caseResults.a?.scoring).toBeUndefined());
-  expect(result.current.caseResults.b?.scoring).toBeDefined();
-  expect(result.current.restored.scoring.corpusStale).toBe(true);
-});
-
-
-it.each([false, true])("reconciles compatible stored coverage after a partial run (changed experiment=%s)", async (changed) => {
-  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [{ ...history, runId: 1, evalKey: "scoring",
-    result: { experimentId: changed ? "old" : "same", cases: [scored("a", 0.1), scored("b", 0.1)] } }] })
-    .mockResolvedValue({ runs: [{ ...history, runId: 2, evalKey: "scoring",
-      result: { experimentId: "same", cases: [scored("a", 0.8), scored("b", 0.9)] } }] });
-  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring", savedPath: null, storedRunId: 2,
-    result: { experimentId: "same", cases: [scored("a", 0.8)] } })));
-  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "a"));
-  await waitFor(() => expect(result.current.caseResults.b?.scoring).toMatchObject({ result: { score: 0.9 } }));
-  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
-});
-
-it("protects only the delivered result when telemetry fails, updating other stored cases", async () => {
-  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [{ ...history, evalKey: "scoring",
-    result: { experimentId: "same", cases: [scored("a", 0.1), scored("b", 0.1)] } }] })
-    .mockResolvedValue({ runs: [{ ...history, evalKey: "scoring",
-      result: { experimentId: "same", cases: [scored("a", 0.2), scored("b", 0.9)] } }] });
-  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring", savedPath: null, storedRunId: null,
-    result: { experimentId: "same", cases: [scored("a", 0.8)] } })));
-  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "a"));
-  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
-  expect(result.current.caseResults.b?.scoring).toMatchObject({ result: { score: 0.9 } });
-});
-
-it("preserves the confirmed receipt when a history response is older than its run ID", async () => {
-  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [{ ...history, runId: 1, evalKey: "scoring",
-    result: { experimentId: "same", cases: [scored("a", 0.1), scored("b", 0.1)] } }] })
-    .mockResolvedValue({ runs: [{ ...history, runId: 2, evalKey: "scoring",
-      result: { experimentId: "same", cases: [scored("a", 0.2), scored("b", 0.9)] } }] });
-  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring", savedPath: null, storedRunId: 3,
-    result: { experimentId: "same", cases: [scored("a", 0.8)] } })));
-  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "a"));
-  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
-  expect(result.current.caseResults.b?.scoring).toMatchObject({ result: { score: 0.9 } });
+  api.fetchEvalCases.mockReturnValueOnce(pending.promise);
+  let retry!: Promise<void>;
+  act(() => { retry = result.current.retryCases(); });
+  act(() => result.current.setCases([{ key: "saved" }]));
+  await act(async () => { pending.resolve({ cases: [] }); await retry; });
+  expect(result.current.cases).toEqual([{ key: "saved" }]);
+  expect(result.current.casesLoadState).toBe("ready");
 });

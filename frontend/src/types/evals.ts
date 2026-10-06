@@ -144,24 +144,29 @@ export type EvalDescriptor = {
 // One restored run (GET /evals/last-run): the newest persisted run for a single eval key.
 // `result` is the same shape the streaming summary carries for that evalKey; no thinking
 // narration is restored.
+export type EvalConfiguration = {
+  promptVersion: string;
+  modelId: string;
+  reasoningEffort: string;
+  caseFingerprints: Record<string, string>;
+};
+
 export type LastEvalRun = {
-  runId?: number;
+  runId: number;
   ranAt: string;
   promptVersion: string;
-  currentPromptVersion: string;
   modelId: string;
-  currentModelId: string;
   supportsReasoningEffort: boolean;
   reasoningEffort: string;
-  currentReasoningEffort: string;
-  promptStale: boolean;
-  modelStale: boolean;
-  reasoningStale: boolean;
-  corpusStale?: boolean;
-  currentCaseFingerprints?: Record<string, string>;
+  caseRunIds: Record<string, number>;
 } & {
   [Mode in EvalRunMode]: { evalKey: Mode; result: EvalRunResult<Mode> }
 }[EvalRunMode];
+
+export type EvalHistory = {
+  runs: LastEvalRun[];
+  current: Partial<Record<EvalRunMode, EvalConfiguration>>;
+};
 
 export type InvariantOut = { check: string; description: string; passed: boolean; violations: string[] };
 export type InvariantsResult = {

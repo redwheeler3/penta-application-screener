@@ -34,7 +34,7 @@ async function edit(key: "a" | "b") {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.fetchEvalCases).mockResolvedValue({ cases });
-  vi.mocked(api.fetchLastEvalRun).mockResolvedValue({ runs: [] });
+  vi.mocked(api.fetchLastEvalRun).mockResolvedValue({ runs: [], current: {} });
 });
 
 it("keeps the newer case editor when a previous case save finishes", async () => {

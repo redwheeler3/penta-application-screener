@@ -2,6 +2,7 @@ import { type ApiClient } from "./client";
 import type {
   EvalCaseOutcome,
   EvalDescriptor,
+  EvalHistory,
   EvalRunSummary,
   EvalRunMode,
   InvariantsResult,
@@ -46,7 +47,7 @@ export function createApi(client: ApiClient) {
   // The most recent persisted run among `keys` (comma-joined), to restore a tab on remount.
   // Result JSON only (no thinking narration); identifies prompt and model drift separately.
   const fetchLastEvalRun = (keys: EvalRunMode[]) =>
-    getJson<{ runs: LastEvalRun[] }>(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`);
+    getJson<EvalHistory>(`/evals/last-run?keys=${encodeURIComponent(keys.join(","))}`);
 
   // Upsert one case (by its `key`) into the eval's fixture FILE. Validated server-side;
   // the operator commits the changed file to git deliberately.
