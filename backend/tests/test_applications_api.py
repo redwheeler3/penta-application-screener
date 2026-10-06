@@ -196,9 +196,11 @@ async def test_committee_notes_are_shared_attributed_and_author_owned() -> None:
             )
         ).status_code == 200
 
-    notes = list(db.scalars(select(ApplicationCommitteeNote)))
+    notes = list(db.scalars(select(ApplicationCommitteeNote).where(ApplicationCommitteeNote.deleted_at.is_(None))))
     assert len(notes) == 1
     assert notes[0].body == first_note["body"]
+    receipt = db.scalar(select(ApplicationCommitteeNote).where(ApplicationCommitteeNote.deleted_at.is_not(None)))
+    assert receipt.body == ""
 
 
 @pytest.mark.anyio
@@ -374,3 +376,37 @@ async def test_note_creation_retry_keeps_one_note_but_new_attempt_can_repeat_tex
         body["creationKey"] = "00000000-0000-4000-8000-000000000004"
         intentional = await client.post(f"/applications/{application.id}/committee-notes", json=body)
         assert len(intentional.json()["application"]["committeeNotes"]) == 2
+
+
+@pytest.mark.anyio
+async def test_deleted_note_creation_stays_deleted_on_replay_and_receipts_are_scoped():
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    db.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
+    db.commit()
+    application = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    other_application = add_eligible(db, email="other@example.com", raw_hash="other")
+    body = {"body": "Synthetic text to delete", "creationKey": "00000000-0000-4000-8000-000000000005"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        url = f"/applications/{application.id}/committee-notes"
+        first = await client.post(url, json=body)
+        note_id = first.json()["application"]["committeeNotes"][0]["id"]
+        assert (await client.delete(f"{url}/{note_id}")).status_code == 200
+        assert (await client.delete(f"{url}/{note_id}")).status_code == 200
+        replay = await client.post(url, json=body)
+        assert replay.status_code == 200
+        assert replay.json()["application"]["committeeNotes"] == []
+        assert (await client.patch(f"{url}/{note_id}", json={"body": "Cannot revive"})).status_code == 404
+        receipt = db.get(ApplicationCommitteeNote, note_id, populate_existing=True)
+        assert receipt.body == ""
+        assert receipt.deleted_at is not None
+        other = await client.post(f"/applications/{other_application.id}/committee-notes", json=body)
+        assert len(other.json()["application"]["committeeNotes"]) == 1
+        member = User(email="second@example.com", display_name="Synthetic member", role=UserRole.MEMBER, is_active=True)
+        db.add(member)
+        db.commit()
+        app.dependency_overrides[require_current_user] = lambda: member
+        assert (await client.delete(f"{url}/{note_id}")).status_code == 403
+        assert len((await client.post(url, json=body)).json()["application"]["committeeNotes"]) == 1
+    db.delete(application)
+    db.commit()
+    assert db.scalar(select(ApplicationCommitteeNote.id).where(ApplicationCommitteeNote.id == note_id)) is None

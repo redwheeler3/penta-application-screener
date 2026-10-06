@@ -1312,6 +1312,9 @@ Committee-note creation carries one browser-generated key per publishing attempt
 acknowledgement retries that same attempt without appending a duplicate; deliberately
 publishing the same text again uses a new key. The composer confirms an uncertain attempt
 before publishing a newer draft, retaining text typed while the request was pending.
+Deleting a keyed committee note clears its text and retains only its existing scoped
+creation/deletion receipt until the application is purged. Retrying that creation cannot
+restore the deleted note, and editing a deleted note is rejected.
 Permanent opening decisions with uncertain acknowledgements refresh openings in the
 background and require review before another choice is offered.
 

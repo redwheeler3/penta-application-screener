@@ -793,6 +793,8 @@ class ApplicationCommitteeNote(TimestampMixin, Base):
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     creation_key: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # A deleted creation keeps its identity for retries, with body cleared to "".
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     application: Mapped[Application] = relationship()
     author: Mapped[User] = relationship()

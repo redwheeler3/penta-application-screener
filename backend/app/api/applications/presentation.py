@@ -276,7 +276,8 @@ def committee_notes(
     rows = db.execute(
         select(ApplicationCommitteeNote, User)
         .join(User, User.id == ApplicationCommitteeNote.author_user_id)
-        .where(ApplicationCommitteeNote.application_id == application_id)
+        .where(ApplicationCommitteeNote.application_id == application_id,
+               ApplicationCommitteeNote.deleted_at.is_(None))
         .order_by(
             ApplicationCommitteeNote.created_at.desc(),
             ApplicationCommitteeNote.id.desc(),

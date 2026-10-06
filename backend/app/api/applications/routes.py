@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -321,12 +323,13 @@ def save_private_note(
 
 
 def _committee_note_or_404(
-    db: Session, application_id: int, note_id: int
+    db: Session, application_id: int, note_id: int, *, include_deleted: bool = False
 ) -> ApplicationCommitteeNote:
     note = db.scalar(
         select(ApplicationCommitteeNote).where(
             ApplicationCommitteeNote.id == note_id,
             ApplicationCommitteeNote.application_id == application_id,
+            True if include_deleted else ApplicationCommitteeNote.deleted_at.is_(None),
         )
     )
     if note is None:
@@ -408,9 +411,13 @@ def delete_committee_note(
 ) -> CommitteeNotesResponse:
     opening_id = resolve_visible_opening_id(db, opening_id)
     _lock_mutable_application_or_404(db, opening_id, application_id)
-    note = _committee_note_or_404(db, application_id, note_id)
+    note = _committee_note_or_404(db, application_id, note_id, include_deleted=True)
     _require_committee_note_author(note, user)
-    db.delete(note)
+    if note.creation_key is None:
+        db.delete(note)
+    elif note.deleted_at is None:
+        note.body = ""
+        note.deleted_at = datetime.now(UTC)
     db.commit()
     return CommitteeNotesResponse(application={
         "id": application_id, "committee_notes": committee_notes(db, application_id, user.id),
