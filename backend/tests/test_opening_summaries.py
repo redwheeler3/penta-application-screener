@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import event
+from sqlalchemy import event, select
 
 from app.api.openings import _response, _selection_response
 from app.core.time import pacific_today
@@ -64,3 +64,54 @@ def test_large_opening_archive_uses_two_queries_and_no_answer_blobs():
     assert len(statements) == 2
     assert all(opening.selected_applicant_name is not None for opening in response.openings)
     assert all("raw_row" not in statement and "normalized" not in statement for statement in statements)
+
+
+@pytest.mark.parametrize("state", ["active", "empty", "withdrawn-entry", "withdrawn-app", "unsubmitted", "expired", "future", "decided"])
+def test_overdue_openings_only_need_an_active_participant(state):
+    from app.services.openings.selection import overdue_openings_needing_decision
+    db = memory_session()
+    opening = seed(db)[0]
+    opening.decided_at = None
+    participation = db.scalar(select(ApplicationParticipation))
+    application = db.get(Application, participation.application_id)
+    if state == "empty":
+        db.delete(participation)
+    elif state == "withdrawn-entry":
+        participation.withdrawn_at = datetime.now(UTC)
+    elif state == "withdrawn-app":
+        application.withdrawn_at = datetime.now(UTC)
+    elif state == "unsubmitted":
+        application.submitted_at = None
+    elif state == "expired":
+        application.retention_due_on = pacific_today()
+    elif state == "future":
+        opening.move_in_date = pacific_today() + timedelta(days=1)
+    elif state == "decided":
+        opening.decided_at = datetime.now(UTC)
+    db.commit()
+    assert [o.id for o in overdue_openings_needing_decision(db)] == ([opening.id] if state == "active" else [])
+
+
+def test_overdue_openings_use_one_query_without_answers():
+    from app.services.openings.selection import overdue_openings_needing_decision
+    db = memory_session()
+    openings = seed(db, count=20)
+    for opening in openings:
+        opening.decided_at = None
+    # Several matching households still produce one opening row.
+    application_id = db.scalar(select(Application.id))
+    db.add(ApplicationParticipation(opening_id=openings[-1].id, application_id=application_id, applied_at=datetime.now(UTC)))
+    expected = sorted(o.id for o in openings)
+    db.commit()
+    statements = []
+    def record(_conn, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+    event.listen(db.bind, "before_cursor_execute", record)
+    try:
+        assert [o.id for o in overdue_openings_needing_decision(db)] == expected
+    finally:
+        event.remove(db.bind, "before_cursor_execute", record)
+    assert len(statements) == 1
+    assert "raw_row" not in statements[0]
+    assert "normalized" not in statements[0]

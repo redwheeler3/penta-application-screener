@@ -100,16 +100,22 @@ def require_ai_actions_available(db: Session, opening_id: int) -> Opening:
 
 
 def overdue_openings_needing_decision(db: Session) -> list[Opening]:
-    openings = db.scalars(
+    active_participant = select(ApplicationParticipation.id).join(Application).where(
+        ApplicationParticipation.opening_id == Opening.id,
+        ApplicationParticipation.withdrawn_at.is_(None),
+        Application.submitted_at.is_not(None), Application.withdrawn_at.is_(None),
+        current_retention_clause(),
+    ).exists().correlate(Opening)
+    return list(db.scalars(
         select(Opening)
         .where(
             Opening.published_at.is_not(None),
             Opening.move_in_date <= pacific_today(),
             Opening.decided_at.is_(None),
+            active_participant,
         )
         .order_by(Opening.move_in_date, Opening.id)
-    ).all()
-    return [opening for opening in openings if active_opening_participants(db, opening)]
+    ))
 
 
 def confirm_opening_selection(
