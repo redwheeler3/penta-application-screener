@@ -4,13 +4,16 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import Integer, delete, func, or_, select
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.text import normalize_email
 from app.core.time import pacific_today
 from app.db.models import (
+    ApplicantDraft,
+    Application,
     EmailDelivery,
     EmailDeliveryState,
     MagicLinkPurpose,
@@ -18,6 +21,7 @@ from app.db.models import (
     Opening,
     OpeningPhase,
     PasswordlessIdentityKind,
+    User,
     VacancySubscription,
 )
 from app.services.applications.drafts import draft_is_available
@@ -215,12 +219,12 @@ def email_queue_status(
     db: Session, *, now: datetime | None = None
 ) -> EmailQueueStatus:
     now = now or datetime.now(UTC)
-    deliveries = db.scalars(
-        select(EmailDelivery).where(
-            EmailDelivery.state == EmailDeliveryState.QUEUED,
-            EmailDelivery.retry_intent.is_not(None),
-        )
-    ).all()
+    count, blocked, oldest, newest, attempted = db.execute(select(
+        func.count(), func.sum(sql_cast(EmailDelivery.quota_blocked, Integer)),
+        func.min(EmailDelivery.created_at), func.max(EmailDelivery.created_at),
+        func.max(EmailDelivery.last_attempt_at),
+    ).where(EmailDelivery.state == EmailDeliveryState.QUEUED,
+            EmailDelivery.retry_intent.is_not(None))).one()
     recent_failed = db.scalar(
         select(func.count())
         .select_from(EmailDelivery)
@@ -230,53 +234,26 @@ def email_queue_status(
             >= now - FAILURE_BANNER_WINDOW,
         )
     ) or 0
-    if not deliveries:
-        return EmailQueueStatus(recent_failed=recent_failed)
     return EmailQueueStatus(
-        count=len(deliveries),
-        quota_blocked=sum(delivery.quota_blocked for delivery in deliveries),
-        recent_failed=recent_failed,
-        oldest_queued_at=min(delivery.created_at for delivery in deliveries),
-        newest_queued_at=max(delivery.created_at for delivery in deliveries),
-        last_attempt_at=max(
-            (
-                delivery.last_attempt_at
-                for delivery in deliveries
-                if delivery.last_attempt_at is not None
-            ),
-            default=None,
-        ),
+        count=count, quota_blocked=blocked or 0, recent_failed=recent_failed,
+        oldest_queued_at=oldest, newest_queued_at=newest, last_attempt_at=attempted,
     )
 
 
 def email_delivery_issues(db: Session, *, limit: int = 100) -> list[EmailDeliveryIssue]:
-    deliveries = db.scalars(
-        select(EmailDelivery)
-        .where(
-            or_(
-                EmailDelivery.state == EmailDeliveryState.QUEUED,
-                _unexpected_failure_filter(),
-            )
-        )
-        .order_by(
-            func.coalesce(EmailDelivery.last_attempt_at, EmailDelivery.created_at).desc(),
-            EmailDelivery.id.desc(),
-        )
-        .limit(limit)
-    ).all()
-    return [
-        EmailDeliveryIssue(
-            id=delivery.id,
-            recipient_email=_delivery_recipient(delivery),
-            message_kind=delivery.message_kind,
-            state=delivery.state,
-            attempted_at=delivery.last_attempt_at or delivery.created_at,
-            attempt_count=delivery.attempt_count,
-            error_code=delivery.last_error_code,
-            quota_blocked=delivery.quota_blocked,
-        )
-        for delivery in deliveries
-    ]
+    recipient = func.coalesce(func.nullif(EmailDelivery.recipient_email, ""),
+        Application.primary_email, ApplicantDraft.email, User.email, "Unavailable")
+    attempted = func.coalesce(EmailDelivery.last_attempt_at, EmailDelivery.created_at)
+    rows = db.execute(select(
+        EmailDelivery.id, recipient.label("recipient_email"), EmailDelivery.message_kind,
+        EmailDelivery.state, attempted.label("attempted_at"), EmailDelivery.attempt_count,
+        EmailDelivery.last_error_code.label("error_code"), EmailDelivery.quota_blocked,
+    ).outerjoin(Application, Application.id == EmailDelivery.application_id)
+        .outerjoin(ApplicantDraft, ApplicantDraft.id == EmailDelivery.applicant_draft_id)
+        .outerjoin(User, User.id == EmailDelivery.user_id)
+        .where(or_(EmailDelivery.state == EmailDeliveryState.QUEUED, _unexpected_failure_filter()))
+        .order_by(attempted.desc(), EmailDelivery.id.desc()).limit(limit)).mappings()
+    return [EmailDeliveryIssue(**row) for row in rows]
 
 
 def _unexpected_failure_filter():
@@ -287,18 +264,6 @@ def _unexpected_failure_filter():
             EmailDelivery.last_error_code.not_in(EXPECTED_FAILURE_CODES),
         )
     )
-
-
-def _delivery_recipient(delivery: EmailDelivery) -> str:
-    if delivery.recipient_email:
-        return delivery.recipient_email
-    if delivery.application is not None:
-        return delivery.application.primary_email
-    if delivery.applicant_draft is not None:
-        return delivery.applicant_draft.email
-    if delivery.user is not None:
-        return delivery.user.email
-    return "Unavailable"
 
 
 def _build_retry(

@@ -423,3 +423,57 @@ def test_committee_magic_link_retry_uses_the_current_user_record() -> None:
     sender = CapturedEmailSender()
     assert retry_queued_emails(db, sender, now=now + timedelta(days=1)).accepted == 1
     assert sender.messages[0].to == (user.email,)
+
+
+
+def test_admin_email_reads_preserve_recipients_without_loading_answers():
+    from sqlalchemy import event
+
+    from app.db.models import ApplicantDraft
+    db = _db()
+    now = datetime.now(UTC)
+    application = Application(primary_email="app@example.com", raw_row={"synthetic": "answer"}, raw_row_hash="projection")
+    draft = ApplicantDraft(email="draft@example.com", intent="save", draft_token_hash="synthetic", created_at=now,
+        saved_at=now, expires_on=(now + timedelta(days=1)).date(), working_answers={})
+    user = User(email="member@example.com", display_name="Synthetic", role=UserRole.MEMBER, is_active=True)
+    db.add_all([application, draft, user])
+    db.flush()
+    recipients = [
+        ({"application_id": application.id}, "app@example.com"),
+        ({"applicant_draft_id": draft.id}, "draft@example.com"),
+        ({"user_id": user.id, "recipient_kind": PasswordlessIdentityKind.COMMITTEE}, "member@example.com"),
+        ({"recipient_email": "targetless@example.com"}, "targetless@example.com"),
+        ({"application_id": application.id, "recipient_email": "explicit@example.com"}, "explicit@example.com"),
+        ({}, "Unavailable"),
+    ]
+    expected = {}
+    for index, (fields, address) in enumerate(recipients):
+        delivery = EmailDelivery(**{"recipient_kind": PasswordlessIdentityKind.APPLICANT, **fields},
+            message_kind="synthetic", state=EmailDeliveryState.QUEUED, retry_intent={"type": "application_confirmation"},
+            created_at=now + timedelta(seconds=index), quota_blocked=index % 2 == 0)
+        db.add(delivery)
+        db.flush()
+        expected[delivery.id] = address
+    db.commit()
+    db.expunge_all()
+    statements = []
+    def record(_conn, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+    event.listen(db.bind, "before_cursor_execute", record)
+    try:
+        issues = outbox.email_delivery_issues(db, limit=5)
+        assert [i.id for i in issues] == sorted(expected, reverse=True)[:5]
+        assert all(i.recipient_email == expected[i.id] for i in issues)
+        assert len(statements) == 1
+        status = email_queue_status(db)
+        assert status.count == 6
+        assert status.quota_blocked == 3
+        assert as_utc(status.oldest_queued_at) == now
+        assert as_utc(status.newest_queued_at) == now + timedelta(seconds=5)
+        assert status.last_attempt_at is None
+        assert len(statements) == 3
+        assert all("raw_row" not in sql and "working_answers" not in sql for sql in statements)
+        assert all("email_deliveries.retry_intent," not in sql for sql in statements)
+    finally:
+        event.remove(db.bind, "before_cursor_execute", record)
