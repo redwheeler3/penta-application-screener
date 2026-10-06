@@ -3,14 +3,16 @@ import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { deferred } from "../testSupport";
-import * as api from "./api";
+import * as applicantApi from "./api";
+import { publicClient } from "../api/client";
 import type { ApplicationResponse } from "./applicantPersistence";
 import { emptyApplicantDraft, workingAnswers } from "./applicationDraft";
 import { useApplicantPersistence } from "./useApplicantPersistence";
 
 vi.mock("./api", async (original) => {
+  const actual = await original<typeof import("./api")>();
   const mocked = {
-  ...await original<typeof import("./api")>(),
+  ...actual,
   fetchApplication: vi.fn(), fetchPendingCopy: vi.fn(), fetchApplicantOpenings: vi.fn(),
   saveApplication: vi.fn(), savePendingDraft: vi.fn(), submitGuestApplication: vi.fn(),
   requestReturnAccessLink: vi.fn(), logoutApplicant: vi.fn(),
@@ -18,8 +20,12 @@ vi.mock("./api", async (original) => {
   reconcilePendingCopy: vi.fn(),
   checkGuestSubmission: vi.fn(), submitApplication: vi.fn(), cancelEmailChange: vi.fn(),
   };
-  return { ...mocked, createApi: () => mocked };
+  return { ...actual, fetchApplication: mocked.fetchApplication, fetchApplicantOpenings: mocked.fetchApplicantOpenings,
+    deletePendingDraft: mocked.deletePendingDraft, requestReturnAccessLink: mocked.requestReturnAccessLink,
+    createApi: () => mocked };
 });
+
+const api = applicantApi.createApi(publicClient);
 
 function initialDraft() {
   const draft = emptyApplicantDraft();

@@ -13,7 +13,7 @@ import type {
   ApplicantPersistenceState,
   UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
-import type * as publicApi from "./api";
+import type * as applicantApi from "./api";
 import { requestReturnAccessLink as requestBootstrapAccessLink } from "./api";
 import { type DraftIntent } from "./api";
 import { BROWSER_STORAGE_CLEAR_MESSAGE, clearApplicationDraft } from "./draftStorage";
@@ -25,7 +25,7 @@ import {
 import type { ApplicantDraft } from "./types";
 
 type SaveFlowDependencies = {
-  api: ReturnType<typeof publicApi.createApi>;
+  api: ReturnType<typeof applicantApi.createApi>;
   stateRef: RefObject<ApplicantPersistenceState>;
   draftRef: RefObject<ApplicantDraft>;
   invalidateReads: () => void;

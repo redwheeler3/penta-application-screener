@@ -3,12 +3,12 @@ import {
   resetApplicantSession,
   type UpdateApplicantPersistence,
 } from "./applicantPersistenceState";
-import type * as publicApi from "./api";
+import type * as applicantApi from "./api";
 import { BROWSER_STORAGE_CLEAR_MESSAGE, captureApplicantStorage, clearApplicantStorage } from "./draftStorage";
 import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 type WithdrawalFlowDependencies = {
-  api: ReturnType<typeof publicApi.createApi>;
+  api: ReturnType<typeof applicantApi.createApi>;
   updatePersistence: UpdateApplicantPersistence;
   endSessionWork: () => void;
   captureSession: () => RequestIsCurrent;

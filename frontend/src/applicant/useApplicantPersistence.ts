@@ -1,7 +1,7 @@
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useReducer, useRef } from "react";
 
 import { identityClient } from "../api/client";
-import * as publicApi from "./api";
+import * as applicantApi from "./api";
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import { retryForServiceRecovery } from "../serviceRecovery";
 import { useRequestScope, type RequestIsCurrent } from "../hooks/useRequestScope";
@@ -87,7 +87,7 @@ export function useApplicantPersistence(
     withdrawalMessage,
   } = persistence;
 
-  const api = useMemo(() => publicApi.createApi(identityClient({ kind: "applicant", id: applicationId })), [applicationId]);
+  const api = useMemo(() => applicantApi.createApi(identityClient({ kind: "applicant", id: applicationId })), [applicationId]);
   const { reconcilePendingCopy: reconcilePendingCopyRequest } = api;
 
   const stateRef = useRef(persistence);
@@ -218,7 +218,7 @@ export function useApplicantPersistence(
     const inSession = sessionWork.capture();
     try {
       updatePersistence({ phase: "working" });
-      const exchange = publicApi.createApi(identityClient({ kind: "applicant", id: inspectedApplicationId.current }));
+      const exchange = applicantApi.createApi(identityClient({ kind: "applicant", id: inspectedApplicationId.current }));
       const response = await exchange.openAccessLink(token, switchCurrent, rememberDevice);
       if (!inSession()) return;
       if (!response.ok) return fail(response);
@@ -271,8 +271,8 @@ export function useApplicantPersistence(
   async function restoreApplication(knownId?: number): Promise<void> {
     const isCurrent = applicationReads.begin();
     const expectedId = knownId ?? stateRef.current.applicationId;
-    const read = expectedId == null ? publicApi.fetchApplication
-      : publicApi.createApi(identityClient({ kind: "applicant", id: expectedId })).fetchApplication;
+    const read = expectedId == null ? applicantApi.fetchApplication
+      : applicantApi.createApi(identityClient({ kind: "applicant", id: expectedId })).fetchApplication;
     const response = await recoverInitialLoad(read, isCurrent);
     if (response === null || !isCurrent()) return;
     if (response.status === 401) {
@@ -326,7 +326,7 @@ export function useApplicantPersistence(
   async function restorePendingCopy(acceptedApplicationId = applicationId): Promise<void> {
     if (acceptedApplicationId === null) return;
     const isCurrent = pendingCopyReads.begin();
-    const restoredApi = publicApi.createApi(identityClient({ kind: "applicant", id: acceptedApplicationId }));
+    const restoredApi = applicantApi.createApi(identityClient({ kind: "applicant", id: acceptedApplicationId }));
     const response = await restoredApi.fetchPendingCopy().catch(() => null);
     if (!isCurrent()) return;
     if (response === null) {
@@ -549,7 +549,7 @@ export function useApplicantPersistence(
     const isCurrent = applicationReads.begin();
     const expectedId = stateRef.current.applicationId;
     if (expectedId == null) return false;
-    const response = await publicApi.createApi(identityClient({ kind: "applicant", id: expectedId })).fetchApplication().catch(() => null);
+    const response = await applicantApi.createApi(identityClient({ kind: "applicant", id: expectedId })).fetchApplication().catch(() => null);
     if (!isCurrent()) return false;
     if (response === null) return false;
     if (response.status === 401) {

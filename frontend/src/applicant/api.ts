@@ -1,4 +1,4 @@
-import { url } from "../api/client";
+import { type ApiClient, credentialRequest, publicClient, signalSessionChange, url } from "../api/client";
 
 import type { CanonicalApplicationAnswers, WorkingApplicationAnswers } from "./types";
 
@@ -13,7 +13,6 @@ const APPLICANT_GOOGLE_ACCESS_RESULTS = [
 export type ApplicantGoogleAccessResult = typeof APPLICANT_GOOGLE_ACCESS_RESULTS[number];
 
 export type DraftIntent = "save" | "submit";
-import { type ApiClient, credentialRequest, publicClient, signalSessionChange } from "../api/client";
 
 export function createApi(client: ApiClient) {
   const { request } = client;
@@ -187,11 +186,9 @@ export function createApi(client: ApiClient) {
   };
 }
 
-// Public/bootstrap callers and manual harnesses use the unbound client.
+// Only public/bootstrap operations have an unbound export. Protected operations
+// require createApi with the caller's captured identity; manual harnesses bind a client too.
 export const {
   fetchApplicantOpenings, applicantGoogleSignInUrl, takeApplicantGoogleAccessResult,
-  checkGuestSubmission, savePendingDraft, deletePendingDraft, inspectAccessLink, openAccessLink,
-  regenerateAccessLink, requestReturnAccessLink, fetchApplication, fetchPendingCopy,
-  reconcilePendingCopy, requestEmailChange, cancelEmailChange, logoutApplicant, saveApplication,
-  withdrawApplication, submitApplication, submitGuestApplication,
+  deletePendingDraft, inspectAccessLink, regenerateAccessLink, requestReturnAccessLink, fetchApplication,
 } = createApi(publicClient);
