@@ -92,6 +92,30 @@ it("merges different applicants' writes under the shared browser lock", async ()
   expect(loadApplicationDraft(2)?.openingIds).toEqual([12]);
 });
 
+it("preserves a newer revision through an older tab's debounce and resumes after a server save", async () => {
+  const scope = (await setRememberDevice(true))!;
+  const newer = { ...snapshot.draft, pets: "Newer unsaved answers" };
+  const { result, rerender } = renderHook((props) => useRememberedApplicantDraft(props), { initialProps: snapshot });
+  await saveApplicationDraft(1, newer, [11], 4, scope);
+  await act(() => vi.runAllTimersAsync());
+  expect(loadApplicationDraft(1)).toMatchObject({ baseRevision: 4, draft: newer });
+  expect(result.current.savedAt).toBeNull();
+  expect(result.current.currentDraftIsStored()).toBe(false);
+  // An acknowledged server save can advance a restored or stale browser revision.
+  rerender({ ...snapshot, workingRevision: 5 });
+  await act(() => vi.runAllTimersAsync());
+  expect(result.current.currentDraftIsStored()).toBe(true);
+  expect(loadApplicationDraft(1)?.baseRevision).toBe(5);
+});
+
+it("allows explicit disposal of a browser copy newer than a restored server revision", async () => {
+  const scope = (await setRememberDevice(true))!;
+  await saveApplicationDraft(1, snapshot.draft, [11], 4, scope);
+  expect(await saveApplicationDraft(1, snapshot.draft, [11], 3, scope)).toBeNull();
+  expect(await clearApplicationDraft(1)).toBe(true);
+  expect(await saveApplicationDraft(1, snapshot.draft, [11], 3, scope)).not.toBeNull();
+});
+
 it("revokes a recovery acknowledgement when another tab replaces the same applicant's draft", async () => {
   const scope = (await setRememberDevice(true))!;
   const { result } = renderHook(() => useRememberedApplicantDraft(snapshot));

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ApplicantApp } from "./ApplicantApp";
 import { INITIAL_APPLICANT_PERSISTENCE_STATE } from "./applicantPersistenceState";
 import { emptyApplicantDraft } from "./applicationDraft";
-import { clearApplicantStorage, setRememberDevice } from "./draftStorage";
+import { clearApplicantStorage, loadApplicationDraft, rememberedStorageScope, saveApplicationDraft, setRememberDevice } from "./draftStorage";
 import type { ApplicantDraft } from "./types";
 
 const controls = vi.hoisted(() => ({ setDraft: null as Dispatch<SetStateAction<ApplicantDraft>> | null }));
@@ -71,5 +71,14 @@ it("warns when a browser-storage write fails instead of promising recovery", asy
   typeAnswer();
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Synthetic quota", "QuotaExceededError"); });
   await act(() => vi.advanceTimersByTimeAsync(350));
+  expect(leavingIsPrevented()).toBe(true);
+});
+
+it("keeps the leaving warning when an older tab cannot replace a newer stored revision", async () => {
+  render(<ApplicantApp />);
+  typeAnswer();
+  await saveApplicationDraft(1, { ...emptyApplicantDraft(), pets: "Newer copy" }, [], 2, rememberedStorageScope()!);
+  await act(() => vi.advanceTimersByTimeAsync(350));
+  expect(loadApplicationDraft(1)?.draft.pets).toBe("Newer copy");
   expect(leavingIsPrevented()).toBe(true);
 });

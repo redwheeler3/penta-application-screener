@@ -102,6 +102,8 @@ export async function saveApplicationDraft(
   return withStorageLock(() => {
     if (rememberedStorageScope() !== consentScope) return null;
     const drafts = readDrafts();
+    // A delayed tab cannot replace answers based on a newer server save.
+    if ((drafts[String(applicationId)]?.baseRevision ?? -1) > baseRevision) return null;
     drafts[String(applicationId)] = {
       savedAt: now.toISOString(),
       draft,
