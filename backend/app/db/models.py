@@ -993,7 +993,7 @@ class RunPassCost(TimestampMixin, Base):
 
 class Analysis(TimestampMixin, Base):
     """One Rank's shared AI output: the discovered dimensions (``dimension_report``) and the
-    pool+prompt fingerprint that flags it out-of-date. This is the compute-once substrate —
+    captured pool+prompt fingerprint for provenance. This is the compute-once substrate —
     shared across all committee members. Each member's *view* of these dimensions
     (tiers, badges, proposals) lives in a per-member ``MemberRanking`` child, NOT here, so one
     member's tiering never becomes everyone's. The AI-legibility audits (discovery narrative +
@@ -1017,8 +1017,7 @@ class Analysis(TimestampMixin, Base):
     dimension_report: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
-    # Everything the ranking depends on — pool + each rank-chain prompt/model — hashed.
-    # The next Rank compares it to flag the analysis "out of date". Indexed: read on every estimate.
+    # Submitted pool and rank-chain controls captured before the latest explicit AI work.
     rank_inputs_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
 
     audit: Mapped[AnalysisAudit | None] = relationship(

@@ -62,18 +62,14 @@ function WorkflowStep(props: {
   progress?: { processed: number; total: number } | null;
   // A single value for line 2 when there's no coverage fraction.
   caption?: string;
-  // Explicit "out of date" signal for steps not captured by score coverage (Rank:
-  // the pool can change while every candidate keeps a cached score). Drives the
-  // stale badge instead of the coverage comparison.
+  // Additional work not represented by score coverage, such as a proposed criterion.
   outOfDate?: boolean;
-  // Tooltip shown when stale, overriding the default coverage-based one.
-  staleTitle?: string;
-  // Tooltip explaining why the step is disabled. Locked, then stale, takes precedence.
+  // Tooltip explaining why the step is unavailable.
   disabledTitle?: string;
 }): ReactNode {
   const {
     n, title, icon, done, busy, busyLabel, disabled, locked = false, onClick,
-    last, coverage, progress, caption, outOfDate, staleTitle, disabledTitle,
+    last, coverage, progress, caption, outOfDate, disabledTitle,
   } = props;
   // Stale only applies once done — from the explicit out-of-date signal when given
   // (Rank), else coverage falling short of the current scope.
@@ -105,15 +101,7 @@ function WorkflowStep(props: {
         }
         onClick={onClick}
         disabled={disabled}
-        title={
-          locked
-            ? disabledTitle
-            : stale
-            ? staleTitle ?? `${coverage!.cached}/${coverage!.inScope} current — re-run to cover everyone`
-            : disabled
-              ? disabledTitle
-              : undefined
-        }
+        title={disabled || locked ? disabledTitle : undefined}
       >
         <span className="workflow-step-badge">
           {stale ? <AlertTriangle size={13} /> : showCheck ? <Check size={14} /> : n}
@@ -177,6 +165,8 @@ export function WorkflowBar(props: {
     pendingProposals,
   } = props;
   const hasPendingProposals = pendingProposals.length > 0;
+  const screenHasResults = workflow.screened || (coverage.screened?.cached ?? 0) > 0;
+  const rankHasResults = workflow.candidatesScored || (coverage.candidatesScored?.cached ?? 0) > 0;
   // Screen and Rank are shared actions over the union scope, so both gate on the shared
   // pool being empty — not on this member's personal eligible count.
   const noApplicantsInScope = (coverage.screened?.inScope ?? 0) === 0;
@@ -206,7 +196,7 @@ export function WorkflowBar(props: {
             n={1}
             title="Screen"
             icon={<Sparkles size={16} />}
-            done={workflow.screened}
+            done={screenHasResults}
             busy={props.screeningRunning}
             busyLabel="Screening…"
             locked={props.aiActionsDisabled}
@@ -233,7 +223,7 @@ export function WorkflowBar(props: {
                   : undefined
             }
             onClick={props.onRequestScreening}
-            coverage={workflow.screened ? coverage.screened : undefined}
+            coverage={coverage.screened}
             progress={screeningProgress}
           />
           <WorkflowStep
@@ -242,7 +232,7 @@ export function WorkflowBar(props: {
             icon={<Sparkles size={16} />}
             // Done only once the final pass (scoring) has full coverage, which
             // coverage tracks so an applicant edit correctly shows it stale.
-            done={workflow.candidatesScored}
+            done={rankHasResults}
             busy={props.rankRunning}
             busyLabel="Ranking…"
             locked={props.aiActionsDisabled}
@@ -251,7 +241,7 @@ export function WorkflowBar(props: {
             // scores over), NOT this member's own eligible count: Rank is a shared action, so
             // a member with an emptier personal view must not see it amber-but-disabled.
             disabled={
-              !workflow.screened ||
+              !screenHasResults ||
               props.rankRunning ||
               props.rankEstimateLoading ||
               rankEstimate !== null ||
@@ -259,7 +249,7 @@ export function WorkflowBar(props: {
               props.aiActionsDisabled
             }
             disabledTitle={
-              !workflow.screened
+              !screenHasResults
                 ? "Run Screen first."
                 : props.aiActionsDisabled
                   ? "This archived opening has a final outcome. Existing results are read-only."
@@ -269,17 +259,10 @@ export function WorkflowBar(props: {
             }
             onClick={props.onRequestRank}
             coverage={coverage.candidatesScored}
-            // Rank's currency is the pool fingerprint, not score coverage: a pool
-            // change makes ranking out of date even with full coverage. A pending
-            // proposal also ambers it — the proposed axis stays inert until a discovery
-            // run grounds it, so the step is genuinely out of date until then.
+            // Complete current scores make existing criteria ready. A proposed
+            // criterion awaits discovery; an ignored criterion does not.
             outOfDate={
-              workflow.candidatesScored && (!workflow.rankingCurrent || hasPendingProposals)
-            }
-            staleTitle={
-              hasPendingProposals
-                ? "You proposed new criteria — run Rank to discover and apply them."
-                : "The applicant pool changed — score missing applicants or discover fresh criteria."
+              !workflow.rankingCurrent || hasPendingProposals
             }
             // Only scoring reports per-candidate progress.
             progress={rankProgress?.phase === "scores" ? rankProgress : null}
@@ -324,23 +307,17 @@ export function WorkflowBar(props: {
       {screeningEstimate ? (
         <div className="run-confirm">
           <div className="run-confirm-body">
-            <strong>Run AI screening?</strong>
-            {screeningEstimate.toAnalyze === 0 ? (
+            <strong>{screeningEstimate.toAnalyze === 0 ? "Screening is up to date." : "Run screening?"}</strong>
+            {screeningEstimate.toAnalyze > 0 ? (
               <p>
-                Screening is already up to date — all {screeningEstimate.cached} eligible applicant
-                {screeningEstimate.cached === 1 ? " has" : "s have"} been checked. New or updated submissions will appear here
-                when screening is needed again.
-              </p>
-            ) : (
-              <p>
-                Analyze {screeningEstimate.toAnalyze} eligible applicant{screeningEstimate.toAnalyze === 1 ? "" : "s"}
-                {screeningEstimate.cached > 0 ? ` (${screeningEstimate.cached} already cached)` : ""}. Estimated cost{" "}
+                Screen {screeningEstimate.toAnalyze} applicant{screeningEstimate.toAnalyze === 1 ? "" : "s"}.
+                {screeningEstimate.cached > 0 ? ` ${screeningEstimate.cached} already cached.` : ""}{" "}
                 <strong>{money(screeningEstimate.estimatedUsd)}</strong> (cap ${screeningEstimate.capUsd.toFixed(2)}).
               </p>
-            )}
+            ) : null}
             {screeningEstimate.toAnalyze > 0 && !screeningEstimate.withinCap ? (
               <p className="run-confirm-warn">
-                Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
+                Estimate exceeds the cap. Increase it in settings to run.
               </p>
             ) : null}
           </div>

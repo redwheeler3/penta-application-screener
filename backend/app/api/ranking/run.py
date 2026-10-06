@@ -25,10 +25,6 @@ from app.schemas.settings import AppSettings
 from app.services.applications.scope import resolve_visible_opening_id
 from app.services.cost_report import RunCostRecorder
 from app.services.openings.selection import require_ai_actions_available
-from app.services.ranking.analysis import (
-    get_current_analysis,
-    ranking_is_current,
-)
 from app.services.ranking.estimates import build_rank_estimate
 from app.services.ranking.pipeline import stream_rank
 from app.services.run_lock import acquire_run_lock, release_run_lock
@@ -67,11 +63,6 @@ def rank_estimate(
         approximate=result["approximate"],
         cap_usd=cap,
         within_cap=result["estimated_usd"] <= cap,
-        # When the pool is unchanged, the ranking is already current; the UI uses
-        # this to say "up to date" instead of offering to spend.
-        ranking_current=ranking_is_current(
-            db, get_current_analysis(db, opening_id), settings, applications=pool
-        ),
     )
 
 

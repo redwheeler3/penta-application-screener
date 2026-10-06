@@ -89,6 +89,7 @@ describe("WorkflowBar archived state", () => {
         {...baseProps}
         openings={[{ ...baseProps.openings[0], phase: "closed" }]}
         aiActionsDisabled={false}
+        coverage={{ ...baseProps.coverage, candidatesScored: { cached: 87, inScope: 88 } }}
       />,
     );
 
@@ -97,6 +98,7 @@ describe("WorkflowBar archived state", () => {
       expect(button).toBeEnabled();
       expect(button).toHaveClass("is-stale");
       expect(button).not.toHaveClass("is-locked");
+      expect(button).not.toHaveAttribute("title");
       expect(button).not.toHaveTextContent("Finalized");
     }
   });
@@ -107,7 +109,24 @@ it("shows only a dismiss button when screening results are cached", () => {
   render(<WorkflowBar {...baseProps} aiActionsDisabled={false} screeningEstimate={{
     total: 1, toAnalyze: 0, cached: 1, estimatedUsd: 0, capUsd: 1, withinCap: true,
   }} />);
-  expect(screen.getByText(/Screening is already up to date/)).toBeInTheDocument();
+  expect(screen.getByText("Screening is up to date.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Confirm & run" })).toBeNull();
   expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+});
+
+
+it("keeps fully cached Screen and Rank green and ambers Rank only for a proposed criterion", () => {
+  const complete = { screened: { cached: 3, inScope: 3 }, candidatesScored: { cached: 3, inScope: 3 } };
+  const { rerender } = render(<WorkflowBar {...baseProps} aiActionsDisabled={false} coverage={complete}
+    workflow={{ ...baseProps.workflow, rankingCurrent: true }} />);
+  for (const name of ["Screen", "Rank"]) {
+    const button = screen.getByRole("button", { name: new RegExp(`^${name}`) });
+    expect(button).toHaveClass("is-done");
+    expect(button).not.toHaveClass("is-stale");
+    expect(button).not.toHaveAttribute("title");
+  }
+  rerender(<WorkflowBar {...baseProps} aiActionsDisabled={false} coverage={complete}
+    workflow={{ ...baseProps.workflow, rankingCurrent: true }} pendingProposals={["Community contribution"]} />);
+  expect(screen.getByRole("button", { name: /^Rank/ })).toHaveClass("is-stale");
+  expect(screen.getByRole("button", { name: /^Screen/ })).not.toHaveClass("is-stale");
 });

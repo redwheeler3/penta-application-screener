@@ -26,7 +26,7 @@ from app.db.models import (
 )
 from app.schemas.settings import AppSettings
 from app.services.cached_results import refresh_cached_results
-from app.services.ranking.analysis import create_analysis, ranking_is_current
+from app.services.ranking.analysis import create_analysis
 from app.services.ranking.freshness import rank_configuration, rank_inputs_fingerprint
 from app.services.ranking.view import candidate_scores
 from app.services.run_lock import acquire_run_lock
@@ -70,7 +70,7 @@ async def test_background_reuses_screening_and_scores_without_provider_calls_or_
     for kind in ["screening", *(kind_for_dimension(dim.key) for dim in a_pattern_report().dimensions)]:
         assert db.get(ApplicationAISelection, (producer.id, kind)).result_id == db.get(ApplicationAISelection, (consumer.id, kind)).result_id
     assert len(candidate_scores(db, analysis)) == 2
-    assert ranking_is_current(db, analysis, settings)
+    assert analysis.rank_inputs_fingerprint != rank_inputs_fingerprint(db, opening_id, settings)
     assert len(provider.calls) == calls
     assert db.scalar(select(func.count()).select_from(RunCostLedger)) == costs
 
@@ -99,12 +99,12 @@ def test_background_rechecks_scope_under_writer_before_adopting(change, monkeypa
 
 
 @pytest.mark.parametrize("unknown_configuration", [False, True])
-def test_score_reuse_does_not_certify_changed_or_unknown_discovery_inputs(unknown_configuration):
+def test_score_reuse_preserves_discovery_provenance_with_changed_or_unknown_configuration(unknown_configuration):
     _app, db, _provider, _producer, consumer, analysis, settings, opening_id = cached_pool()
     if unknown_configuration:
         analysis.audit.fan_out = None
     else:
-        # A changed strategy needs explicit discovery even when every score is cached.
+        # Changed discovery controls apply to a future optional discovery run.
         settings.ai.discovery_fan_out += 1
         from app.services.settings import save_app_settings
         save_app_settings(db, settings)
@@ -112,7 +112,7 @@ def test_score_reuse_does_not_certify_changed_or_unknown_discovery_inputs(unknow
     db.commit()
     assert refresh_cached_results(db, opening_id)
     assert db.get(ApplicationAISelection, (consumer.id, "screening")) is not None
-    assert not ranking_is_current(db, analysis, settings)
+    assert analysis.rank_inputs_fingerprint != rank_inputs_fingerprint(db, opening_id, settings)
 
 
 def test_genuine_cache_miss_preserves_last_consumed_findings():
@@ -155,5 +155,5 @@ def test_partial_cached_scores_stay_partial_and_do_not_certify_rank_freshness():
     calls = len(provider.calls)
     assert refresh_cached_results(db, opening_id)
     assert db.get(ApplicationAISelection, (consumer.id, kind)) is None
-    assert not ranking_is_current(db, analysis, settings)
+    assert analysis.rank_inputs_fingerprint != rank_inputs_fingerprint(db, opening_id, settings)
     assert len(provider.calls) == calls

@@ -46,10 +46,8 @@ Return the high-confidence identity matches: one entry (new_key + matching old_k
 ## Guardrails
 - {INJECTION_GUARD_NOTE}"""
 
-# Prompt identity, derived from the static prompt text. This pass is UNCACHED, but it
-# still has a version: it is folded into the run's rank-inputs fingerprint (see
-# rank_inputs_fingerprint in services/ranking/freshness.py) so editing this prompt makes
-# Rank show "out of date".
+# Prompt identity is captured with Rank inputs and configuration for audit.
+# Matching runs only when the committee explicitly discovers criteria.
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 

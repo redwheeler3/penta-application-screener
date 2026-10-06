@@ -12,7 +12,7 @@ from app.ai.pricing import PassCost
 from app.ai.schemas import DimensionScoringReport
 from app.db.models import User, UserRole
 from app.schemas.settings import AppSettings
-from app.services.ranking.analysis import create_analysis, ranking_is_current
+from app.services.ranking.analysis import create_analysis
 from app.services.ranking.criteria import CriteriaPassResult, CriteriaStageChange
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.pipeline import _stream_criteria
@@ -62,7 +62,7 @@ def test_discovery_keeps_its_starting_fingerprint_when_the_pool_changes(monkeypa
         allow_completion.set()
     assert seen_hashes == ["original-input"]
     assert result.analysis.rank_inputs_fingerprint == original_fingerprint
-    assert ranking_is_current(db, result.analysis, settings) is False
+    assert result.analysis.rank_inputs_fingerprint != rank_inputs_fingerprint(db, opening_id, settings)
 
 
 @pytest.mark.anyio
@@ -96,12 +96,12 @@ async def test_score_current_keeps_its_starting_fingerprint_after_an_edit(monkey
     assert response.status_code == 200
     assert seen_hashes == ["ready-for-scoring"]
     assert analysis.rank_inputs_fingerprint == scoring_fingerprint
-    assert ranking_is_current(db, analysis, settings) is False
+    assert analysis.rank_inputs_fingerprint != rank_inputs_fingerprint(db, opening_id, settings)
 
 
 @pytest.mark.parametrize(("field", "value"), [("discovery_fan_out", 6),
                                         ("consolidate_correlation_threshold", 0.4)])
-def test_semantic_strategy_controls_make_rank_out_of_date(field, value):
+def test_semantic_strategy_controls_are_part_of_captured_inputs(field, value):
     _, db, _ = setup_app(UserRole.MEMBER)
     add_eligible(db, email="strategy@example.test", raw_hash="same")
     user = db.scalar(select(User))
@@ -112,10 +112,10 @@ def test_semantic_strategy_controls_make_rank_out_of_date(field, value):
     analysis = create_analysis(db, user=user, opening_id=opening_id, report=a_pattern_report(),
                                inputs_fingerprint=rank_inputs_fingerprint(db, opening_id, settings),
                                narrative=None, fan_out_audit={"k": 5, "passes": []}, configuration=captured)
-    assert ranking_is_current(db, analysis, settings)
+    assert analysis.rank_inputs_fingerprint == rank_inputs_fingerprint(db, opening_id, settings)
     settings.ai.max_workers += 1
-    assert ranking_is_current(db, analysis, settings)  # scheduling is not evidence
+    assert analysis.rank_inputs_fingerprint == rank_inputs_fingerprint(db, opening_id, settings)  # scheduling is not evidence
     setattr(settings.ai, field, value)
-    assert not ranking_is_current(db, analysis, settings)
+    assert analysis.rank_inputs_fingerprint != rank_inputs_fingerprint(db, opening_id, settings)
     assert analysis.audit.fan_out["configuration"] == captured
     assert captured["strategy"][field] != value

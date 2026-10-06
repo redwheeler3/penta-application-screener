@@ -40,7 +40,6 @@ export type RankEstimateResponse = {
   withinCap: boolean;
   // True when the pool is unchanged — ranking is already current. Re-running is
   // still allowed (discovery is non-deterministic), but the UI flags it.
-  rankingCurrent: boolean;
 };
 
 export type ScoreCurrentEstimateResponse = {

@@ -438,6 +438,31 @@ The applicant presentation test preserves active closed choices and durable with
 A local 1BR cache refresh applied existing references, left zero screening misses/references
 waiting, and inserted zero AI run rows. The helper took **33.6 ms** in that one local call;
 it is background work, not a production latency benchmark or an added initial-render wait.
-Rank remained out of date because its saved discovery-input fingerprint is not current;
-the confirmation now reports that independently of its three complete cached score vectors.
+The saved Rank fingerprint did not match the current calculation, despite three complete
+cached score vectors. That marker alone does not justify telling the committee the ranking
+needs another run; the confirmation makes no blanket freshness claim.
 No model call, production operation or database reset was performed.
+
+## Readiness and concise confirmation correction
+
+Local inspection confirmed complete current score coverage for both openings. The 1BR
+stored signature matches the previous fingerprint algorithm; changing the algorithm alone
+made its old UI comparison fail. The 2BR signature differs under both calculations; recorded
+metadata is insufficient to identify that cause, but all 52 score vectors are current.
+
+The approved policy makes Screen/Rank green for complete current cache coverage; Rank also
+ambers for that member's proposed criteria awaiting discovery. Discovery remains optional.
+Old fingerprints retain auditable inputs and do not determine readiness. Background cache
+reuse preserves them instead of stamping new discovery metadata. The unused estimate
+freshness field and comparison helper are removed.
+
+Confirmation headings/copy are concise, use “Run ranking?”, omit blanket freshness claims
+and generic stale hover text, and keep the discovery/tier sentence inline with the cost
+summary. Cache-only Screen retains just its up-to-date heading and dismiss button.
+
+Verification for the readiness correction: all **975 backend tests** (one existing skip)
+and **287 frontend tests** passed, with Ruff, ESLint and production build passing. Local
+dashboard reads report Screen **71/71**, Rank **52/52** ready for 2BR, and **3/3** ready
+for both steps in 1BR. No stored fingerprint was rewritten and no model call was made.
+Discovery model/prompt changes preserve this readiness; screening/scoring configuration
+changes still require matching cache entries. Role, input, lifecycle and stream fencing remain.

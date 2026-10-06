@@ -20,55 +20,41 @@ export function RankingRunConfirmation(props: {
   return (
     <div className="run-confirm">
       <div className="run-confirm-body">
-        <strong>{confirmationTitle(pendingProposals.length, scoreCurrentEstimate, estimate.rankingCurrent)}</strong>
+        <strong>Run ranking?</strong>
         {hasPendingProposals ? (
           <p>
-            You proposed{" "}
+            Discovery considers:{" "}
             {pendingProposals.map((text, i) => (
               <span key={text}>
                 {i > 0 ? ", " : ""}
                 <strong>{text}</strong>
               </span>
             ))}
-            . A proposal stays inactive until a discovery run grounds it in the pool — run{" "}
-            <strong>Discover new criteria</strong> below to fold it in.
+            .
           </p>
         ) : null}
         {scoreCurrentEstimate && hasMissingScores ? (
           <>
             <p>
-              <strong>Score missing applicants</strong> against the current {scoreCurrentEstimate.dimensions} criteria.
-              The criteria and your tier layout stay unchanged. Estimated cost{" "}
+              Score {scoreCurrentEstimate.toAnalyze} applicant{scoreCurrentEstimate.toAnalyze === 1 ? "" : "s"} with {scoreCurrentEstimate.dimensions} existing criteria.{" "}
               <strong>~{money(scoreCurrentEstimate.estimatedUsd)}</strong> (cap ${scoreCurrentEstimate.capUsd.toFixed(2)}).
             </p>
             {!scoreCurrentEstimate.withinCap ? (
               <p className="run-confirm-warn">
-                Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
+                Estimate exceeds the cap. Increase it in settings to run.
               </p>
             ) : null}
           </>
         ) : null}
-        {scoreCurrentEstimate?.toAnalyze === 0 ? (
-          <p>All {scoreCurrentEstimate.cached} eligible applicants have scores against these criteria.
-            {!estimate.rankingCurrent ? " Rank is out of date for this pool." : ""}
-          </p>
-        ) : null}
         <div>
           <p>
-            {hasMissingScores ? "Or, " : ""}<strong>Discover new criteria</strong> that distinguish this pool and score all{" "}
-            {estimate.eligible} eligible applicant{estimate.eligible === 1 ? "" : "s"} against them.
-            Estimated cost <strong>~{money(estimate.estimatedUsd)}</strong> (cap $
-            {estimate.capUsd.toFixed(2)}).
+            Discover criteria and score {estimate.eligible} applicant{estimate.eligible === 1 ? "" : "s"}.{" "}
+            <strong>~{money(estimate.estimatedUsd)}</strong> (cap ${estimate.capUsd.toFixed(2)}).
+            {hasCurrentCriteria ? " Tiered criteria stay; ignored criteria may change." : ""}
           </p>
-          {hasCurrentCriteria ? (
-            <p>
-              Criteria you've tiered are kept and re-scored; only ignored criteria may be
-              dropped or re-carved.
-            </p>
-          ) : null}
           {!estimate.withinCap ? (
             <p className="run-confirm-warn">
-              Estimated cost exceeds the spending cap. Raise the cap in settings to proceed.
+              Estimate exceeds the cap. Increase it in settings to run.
             </p>
           ) : null}
         </div>
@@ -101,12 +87,4 @@ export function RankingRunConfirmation(props: {
       </div>
     </div>
   );
-}
-
-function confirmationTitle(proposalCount: number, scoreEstimate: ScoreCurrentEstimateResponse | null, rankingCurrent: boolean): string {
-  if (proposalCount === 1) return "Apply your proposed criterion?";
-  if (proposalCount > 1) return "Apply your proposed criteria?";
-  if (scoreEstimate?.toAnalyze === 0) return rankingCurrent ? "Ranking is up to date." : "Review the ranking?";
-  if (scoreEstimate) return "Update the ranking?";
-  return "Rank the candidates?";
 }

@@ -23,11 +23,8 @@ from tests.ranking_support import (
 
 
 @pytest.mark.anyio
-async def test_rank_flags_unchanged_pool_but_allows_rerun() -> None:
-    # After a Rank run, the estimate flags an unchanged pool as already current (so
-    # the UI can say nothing requires a re-run). But a re-run is NOT blocked:
-    # categorization is non-deterministic, so a member may deliberately re-run for a
-    # fresh set of criteria. The confirmation card is the gate, not the server.
+async def test_rank_allows_optional_discovery_when_scores_are_complete() -> None:
+    # A member can deliberately discover another set of criteria even with complete scores.
     app, db, provider = setup_app(role=UserRole.MEMBER)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
     route_criteria(provider, a_pattern_report())
@@ -39,7 +36,7 @@ async def test_rank_flags_unchanged_pool_but_allows_rerun() -> None:
 
         # Pool unchanged → estimate flags it current, but the re-run still succeeds.
         estimate = (await client.get("/ranking/run/estimate")).json()
-        assert estimate["rankingCurrent"] is True
+        assert estimate["withinCap"] is True
         assert (await client.post("/ranking/run")).status_code == 200
 
 

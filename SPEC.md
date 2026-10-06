@@ -1179,7 +1179,7 @@ Then the ranked list is **pure deterministic math** (`app/domain/ranking.py`): f
 
 **Two Rank modes.** *Discover new criteria* runs the full chain and may replace the criteria set. *Score missing applicants* runs only scoring, for eligible applicants missing a current-dimension result — preserving the run's dimensions and tier layout, independently cap-gated. Complete score coverage makes the retained criteria current for the changed pool.
 
-**Cost gating and staleness.** The whole chain is gated on a **rank-inputs fingerprint** (`Analysis.rank_inputs_fingerprint`, an indexed column — a hash of the eligible pool *plus* each rank-chain prompt, model identity, and applicable reasoning level). If unchanged, the UI flags "up to date"; a re-run is still allowed (discovery is nondeterministic, so a member may want a fresh criteria set — the confirmation card explains nothing requires it). Switching only between certified-equivalent Bedrock and direct routes preserves freshness; changing the actual model or reasoning level does not. The workflow strip is **Screen** (the AI integrity pass) then **Rank** (this chain), with amber freshness derived from current inputs and consumed results. Every AI step opens a confirmation card before running, even when there's nothing to do. Rank streams phase-aware progress; the opaque criteria/consolidation calls stream the model's live reasoning as a "thinking" panel. A completed Rank lands the user directly in the ranked view.
+**Cost gating and readiness.** Screen is ready when its in-scope applicants have valid cached screening results. Rank is ready when every eligible applicant has valid scores for every current criterion, with no pending proposed criteria for that member. Answer, scoring-model, effective reasoning, scoring-prompt or criterion changes can cause real cache gaps and amber the step. Ignored existing criteria are not pending proposals. Discovery remains optional even with complete scores and always requires cost confirmation. `Analysis.rank_inputs_fingerprint` records the inputs captured before explicit AI work for provenance; it does not determine button colour. Discovery-only model, prompt or strategy changes do not invalidate scores for retained criteria. Switching between certified-equivalent routes preserves cached work. Rank streams phase-aware progress and model reasoning for its pool-level calls, then opens the ranked view.
 
 ### Ranking And Outputs
 
@@ -1995,7 +1995,7 @@ Rank fingerprints include discovery fan-out and consolidation correlation thresh
 count and spending limits do not invalidate semantic freshness. New Rank analyses capture the
 AI settings and all five prompt/model/reasoning identities in their discovery audit, available
 through the existing fan-out audit endpoint. Analyses without the expanded fingerprint remain
-reviewable but out of date until an explicitly requested Rank; no work runs automatically.
+reviewable; only current cache gaps or pending proposed criteria make Rank amber. New AI work requires an explicit run.
 
 
 Browser API work carries `X-Penta-Identity` for its captured committee user or applicant
@@ -2035,8 +2035,8 @@ workspace adopts valid saved screening findings and scores in the background on 
 intake/focus refresh. It does not delay initial reads, generate output, claim an AI run or
 record AI spend. Cached references are rechecked under a short writer; active AI runs and
 finalized openings are left alone. A cache miss preserves the last consumed result until
-explicit analysis. Complete score coverage alone does not certify Rank freshness: changed
-or unknown discovery inputs remain amber. Confirmation copy uses overall Rank freshness.
+explicit analysis. Complete current score coverage makes retained criteria ready. Discovery provenance is
+kept intact and does not determine button colour. Rank confirmation uses the action heading “Run ranking?” and concise action/cost summaries; it makes no blanket freshness claim. The workflow indicator carries freshness.
 Keep the distinct paid actions for scoring missing applicants against existing criteria and
 discovering criteria. Cache-only Screen has an up-to-date message and a dismiss button.
 
@@ -2044,3 +2044,23 @@ Applicant opening choices omit closed openings without active participation, inc
 withdrawn choices. Closed openings with an active participation remain available for
 withdrawal or undoing a private, unsubmitted withdrawal. Historical participation and
 server deadline/selection validation remain intact.
+
+Screen/Rank confirmations use concise action and cost copy. Rank uses “Run ranking?” for
+all states, omits redundant score coverage and freshness verdicts, and summarizes the
+discovery tier behavior in one sentence. Cache-only Screen shows “Screening is up to date.”
+and its dismiss button without an additional explanation. Paid action choices and cost caps
+remain visible.
+
+Active Screen/Rank buttons do not use generic staleness hover text. Disabled/archived
+buttons retain the explanation of why the action is unavailable.
+
+Readiness is independent of stored fingerprint format or unknown discovery history. A
+complete current cache makes Screen/Rank green without repeating paid work or rewriting
+recorded provenance. Rank also becomes amber for free-text proposed criteria awaiting
+discovery; existing criteria in Ignore are not pending. Confirmation uses “Run ranking?”,
+brief action/cost text and the discovery tier-retention sentence in the same paragraph.
+
+Discovery-only model/prompt/strategy changes leave existing scored criteria ready. Changing
+a screening/scoring model, effective reasoning or prompt requires a matching cache for that
+configuration; otherwise that step becomes amber while last-consumed results remain visible.
+Certified-equivalent routes share model identity and reuse valid work. No AI runs automatically.

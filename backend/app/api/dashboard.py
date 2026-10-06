@@ -47,7 +47,6 @@ from app.services.openings.selection import overdue_openings_needing_decision
 from app.services.ranking.analysis import (
     current_dimension_kinds,
     get_current_analysis,
-    ranking_is_current,
 )
 from app.services.settings import get_app_settings
 
@@ -69,16 +68,14 @@ def read_dashboard(
     applications = opening_applications(db, opening_id)
     coverage = _coverage(db, opening_id, settings)
     scoring_coverage = coverage.get("candidatesScored")
-    # A current Rank needs both halves: its criteria fingerprint must still match and
-    # every in-scope candidate must have current scores for every live dimension. A
-    # fingerprint alone cannot make a partial or failed scoring run look complete.
+    # Existing criteria are ready when every in-scope applicant has current scores.
+    # Discovery remains an optional paid action; its captured inputs are provenance.
     current_criteria_scored = (
         scoring_coverage is not None
         and scoring_coverage.in_scope > 0
         and scoring_coverage.cached == scoring_coverage.in_scope
     )
     current_analysis = get_current_analysis(db, opening_id)
-    current_rank_inputs = ranking_is_current(db, current_analysis, settings)
     email_queue = email_queue_status(db)
 
     return DashboardResponse(
@@ -97,12 +94,7 @@ def read_dashboard(
                 prefix="dimension_scoring:",
                 application_ids=[app.id for app in applications],
             ),
-            # Analyses without dimensions have no scoring coverage to require. Once
-            # dimensions exist, incomplete coverage always leaves Rank out of date.
-            ranking_current=(
-                current_rank_inputs
-                and (scoring_coverage is None or current_criteria_scored)
-            ),
+            ranking_current=current_criteria_scored,
         ),
         # Per-AI-step coverage of the current scope. Applicant edits make the cached
         # content key stale, so the UI warns instead of showing a misleading check.

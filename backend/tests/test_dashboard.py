@@ -346,62 +346,38 @@ async def test_workflow_flags_track_progress() -> None:
 
 
 @pytest.mark.anyio
-async def test_ranking_current_tracks_rank_inputs() -> None:
-    """rankingCurrent follows the rank-inputs fingerprint until the committee
-    completes score-only coverage for the retained criteria.
-
-    A pool or prompt change is amber until the committee either discovers new criteria
-    or has every eligible applicant scored against the existing set.
-    """
+async def test_rank_readiness_uses_current_score_coverage_instead_of_discovery_fingerprint(monkeypatch) -> None:
+    from app.ai.analysis import cache_key
+    from app.ai.dimension_scoring import PROMPT_VERSION, kind_for_dimension
     from app.schemas.settings import AppSettings
-    from app.services.ranking.freshness import rank_inputs_fingerprint
 
     app, db = _logged_in_app()
     settings = AppSettings()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        first = Application(
-            primary_email="a@x.com", applicant_name="A", raw_row={}, raw_row_hash="h1",
-            normalized={},
-            submitted_at=SUBMITTED_AT,
-        )
-        activate_application(db, first)
-
-        # A run whose fingerprint matches the current pool + prompts + models -> current.
-        run = Analysis(opening_id=current_opening_id(db),
-            dimension_report={},
-            rank_inputs_fingerprint=rank_inputs_fingerprint(db, current_opening_id(db), settings),
-        )
-        db.add(run)
+    first = Application(primary_email="a@x.com", raw_row={}, raw_row_hash="h1", normalized={}, submitted_at=SUBMITTED_AT)
+    activate_application(db, first)
+    analysis = Analysis(opening_id=current_opening_id(db), rank_inputs_fingerprint="unknown-history",
+        dimension_report={"summary": "s", "dimensions": [{"key": "community", "name": "Community", "definition": "d",
+            "high_end": "hi", "low_end": "lo", "why_it_differentiates": "w"}]})
+    db.add(analysis)
+    db.commit()
+    def seed_score(application):
+        add_selected_result(db, ApplicationAIResult(producer_application_id=application.id, kind=kind_for_dimension("community"),
+            cache_key=cache_key(application=application, kind=kind_for_dimension("community"),
+                model_id=settings.ai.dimension_scoring_model, prompt_version=PROMPT_VERSION),
+            model_id=settings.ai.dimension_scoring_model, prompt_version=PROMPT_VERSION,
+            output={"score": 0.7, "confidence": "high", "rationale": "", "evidence": "", "dimension_key": "community"}))
         db.commit()
-        workflow = (await client.get("/dashboard")).json()["workflow"]
-        assert workflow["rankingCurrent"] is True
-
-        # A new eligible applicant changes the pool -> ranking no longer current,
-        # even though we added no scores and removed nothing.
-        second = Application(
-            primary_email="b@x.com", applicant_name="B", raw_row={}, raw_row_hash="h2",
-            normalized={},
-            submitted_at=SUBMITTED_AT,
-        )
-        activate_application(db, second)
-        workflow = (await client.get("/dashboard")).json()["workflow"]
-        assert workflow["rankingCurrent"] is False
-
-        # Restore the pool, then prove a rank-chain PROMPT change alone also flips it:
-        # re-stamp the run as current, then perturb the stored fingerprint as if a
-        # prompt had changed. The dashboard recomputes from live prompts -> mismatch.
-        db.delete(second)
-        db.commit()
-        run.rank_inputs_fingerprint = rank_inputs_fingerprint(db, current_opening_id(db), settings)
-        db.add(run)
-        db.commit()
+    seed_score(first)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
-        run.rank_inputs_fingerprint = "stale-prompt-version"
-        db.add(run)
-        db.commit()
-        workflow = (await client.get("/dashboard")).json()["workflow"]
-        assert workflow["rankingCurrent"] is False
+        second = Application(primary_email="b@x.com", raw_row={}, raw_row_hash="h2", normalized={}, submitted_at=SUBMITTED_AT)
+        activate_application(db, second)
+        assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is False
+        seed_score(second)
+        assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
+        # A genuine scoring prompt change invalidates cache coverage and still ambers Rank.
+        monkeypatch.setattr("app.api.dashboard.SCORING_PROMPT_VERSION", "new-prompt")
+        assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is False
 
 
 def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:

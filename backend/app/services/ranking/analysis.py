@@ -9,15 +9,12 @@ from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import (
     Analysis,
     AnalysisAudit,
-    Application,
     DimensionAlias,
     MemberRanking,
     User,
 )
-from app.schemas.settings import AppSettings
 from app.services.applications.scope import opening_ai_applications
 from app.services.ranking.dimensions import alias_map, current_dimension_report
-from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.identity import flatten_merges, transfer_merged_tiers
 from app.services.ranking.member_state import (
     IGNORE_TIER_ID,
@@ -344,31 +341,6 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
     if not minted_by_key:
         return None
     return PoolDimensionReport(dimensions=list(minted_by_key.values()))
-
-
-def ranking_is_current(
-    db: Session,
-    analysis: Analysis | None,
-    settings: AppSettings,
-    *,
-    applications: list[Application] | None = None,
-) -> bool:
-    """True when ``analysis``'s stored rank-inputs fingerprint matches the inputs now —
-    i.e. the submitted evidence, rank-chain prompts/models/reasoning and semantic
-    strategy controls match. This describes inputs, not reproducibility of model output. Drives the "Rank out of date" badge.
-
-    False if there is no analysis or no rank-input fingerprint is stored.
-    """
-    if analysis is None:
-        return False
-    stored = analysis.rank_inputs_fingerprint
-    if not stored:
-        return False
-    if analysis.opening_id is None:
-        return False
-    return stored == rank_inputs_fingerprint(
-        db, analysis.opening_id, settings, applications=applications
-    )
 
 
 def record_rank_inputs(db: Session, analysis: Analysis, inputs_fingerprint: str) -> None:

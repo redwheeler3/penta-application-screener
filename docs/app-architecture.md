@@ -426,7 +426,8 @@ Screening and dimension scoring capture their cache keys alongside the model inp
 start. Result persistence uses those captured keys, so an applicant edit during a run leaves the
 answer attached to the content actually analyzed and keeps the newer content uncached.
 Full Rank and score-current capture the eligible pool's fingerprint before AI work begins and
-persist that original identity. An edit or new applicant during a run keeps Rank out of date.
+persist that original identity. Recorded fingerprints retain the starting inputs for audit;
+current cache coverage determines whether further screening/scoring work is needed.
 Dimension scoring carries each applicant's input, cache keys, pending dimensions, and cached
 scores in a named `ScoringPlan`; worker calls read its captured input without touching the ORM.
 

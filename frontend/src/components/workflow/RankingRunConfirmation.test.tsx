@@ -8,7 +8,7 @@ import { RankingRunConfirmation } from "./RankingRunConfirmation";
 const props: ComponentProps<typeof RankingRunConfirmation> = {
   estimate: {
     eligible: 8, fanOut: 5, breakdown: { criteriaUsd: 0.5, matchUsd: 0.1, scoringUsd: 0.2 },
-    estimatedUsd: 0.8, approximate: true, capUsd: 2, withinCap: true, rankingCurrent: false,
+    estimatedUsd: 0.8, approximate: true, capUsd: 2, withinCap: true,
   },
   scoreCurrentEstimate: {
     eligible: 8, toAnalyze: 2, cached: 6, dimensions: 4, estimatedUsd: 0.05, capUsd: 2, withinCap: true,
@@ -22,14 +22,14 @@ const props: ComponentProps<typeof RankingRunConfirmation> = {
 
 describe("ranking confirmation", () => {
   it.each([
-    { proposals: [], score: null, title: "Rank the candidates?" },
-    { proposals: [], score: props.scoreCurrentEstimate, title: "Update the ranking?" },
-    { proposals: [], score: { ...props.scoreCurrentEstimate!, toAnalyze: 0 }, title: "Review the ranking?" },
-    { proposals: ["Participation"], score: props.scoreCurrentEstimate, title: "Apply your proposed criterion?" },
-    { proposals: ["Participation", "Skills"], score: props.scoreCurrentEstimate, title: "Apply your proposed criteria?" },
-  ])("shows the appropriate heading: $title", ({ proposals, score, title }) => {
+    { proposals: [], score: null },
+    { proposals: [], score: props.scoreCurrentEstimate },
+    { proposals: [], score: { ...props.scoreCurrentEstimate!, toAnalyze: 0 } },
+    { proposals: ["Participation"], score: props.scoreCurrentEstimate },
+    { proposals: ["Participation", "Skills"], score: props.scoreCurrentEstimate },
+  ])("uses the same run heading across score and proposal states", ({ proposals, score }) => {
     render(<RankingRunConfirmation {...props} pendingProposals={proposals} scoreCurrentEstimate={score} />);
-    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getByText("Run ranking?")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Discover new criteria" })).toBeEnabled();
   });
 
@@ -66,12 +66,12 @@ describe("ranking confirmation", () => {
 });
 
 
-it.each([true, false])("reports Rank freshness independently of complete score coverage (current=%s)", (rankingCurrent) => {
-  render(<RankingRunConfirmation {...props} estimate={{ ...props.estimate, rankingCurrent }} scoreCurrentEstimate={{
+it("offers optional discovery without a freshness verdict when scores are complete", () => {
+  render(<RankingRunConfirmation {...props} estimate={props.estimate} scoreCurrentEstimate={{
     ...props.scoreCurrentEstimate!, eligible: 3, toAnalyze: 0, cached: 3, estimatedUsd: 0,
   }} />);
-  expect(screen.getByText(rankingCurrent ? "Ranking is up to date." : "Review the ranking?")).toBeInTheDocument();
-  expect(screen.getByText(/All 3 eligible applicants have scores/)).toBeInTheDocument();
+  expect(screen.getByText("Run ranking?")).toBeInTheDocument();
+  expect(screen.queryByText(/out of date|up to date/i)).toBeNull();
   expect(screen.queryByRole("button", { name: "Reuse cached scores" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Score missing applicants" })).toBeNull();
   expect(screen.getByRole("button", { name: "Discover new criteria" })).toBeEnabled();

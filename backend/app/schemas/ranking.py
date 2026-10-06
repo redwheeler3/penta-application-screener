@@ -202,7 +202,6 @@ class RankEstimateResponse(ResponseModel):
     approximate: bool
     cap_usd: float
     within_cap: bool
-    ranking_current: bool
 
 
 class ScoreCurrentEstimateResponse(ResponseModel):

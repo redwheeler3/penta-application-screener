@@ -92,9 +92,8 @@ For each dimension provide:
 - Score every dimension, even an unaddressed one (0, low confidence, evidence noting it was not addressed).
 - Do not invent evidence."""
 
-# Cached pass: version derives from the static prompt text and gates the per-dimension
-# cache (see derive_prompt_version). Also folded into the run's rank-inputs
-# fingerprint so a prompt edit shows Rank as out of date.
+# The static prompt version gates per-dimension caches and is captured in run provenance.
+# A scoring prompt change requires matching cached results or explicitly requested scoring.
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 
