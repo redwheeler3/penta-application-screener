@@ -43,11 +43,11 @@ export function createApi(client: ApiClient) {
     });
   }
 
-  function addCommitteeNote(id: number, openingId: number, body: string): Promise<Response> {
+  function addCommitteeNote(id: number, openingId: number, body: string, creationKey: string): Promise<Response> {
     return request(`/applications/${id}/committee-notes?opening_id=${openingId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, creationKey }),
     });
   }
 

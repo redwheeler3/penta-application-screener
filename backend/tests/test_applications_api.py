@@ -36,7 +36,7 @@ from tests.committee_app_support import (
     ("DELETE", "star", None, {"id", "starredByMe"}),
     ("PUT", "shortlist", None, {"id", "shortlisted"}),
     ("DELETE", "shortlist", None, {"id", "shortlisted"}),
-    ("POST", "committee-notes", {"body": "Synthetic context"}, {"id", "committeeNotes"}),
+    ("POST", "committee-notes", {"body": "Synthetic context", "creationKey": "00000000-0000-4000-8000-000000000001"}, {"id", "committeeNotes"}),
     ("PATCH", "status", {"status": "eligible"}, {
         "id", "status", "statusSource", "stale", "autoStatus", "autoStatusSource", "hardFilterReasons",
     }),
@@ -137,7 +137,7 @@ async def test_committee_notes_are_shared_attributed_and_author_owned() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         added = await client.post(
             f"/applications/{application.id}/committee-notes",
-            json={"body": "Call references before the meeting."},
+            json={"body": "Call references before the meeting.", "creationKey": "00000000-0000-4000-8000-000000000001"},
         )
         assert added.status_code == 200
         first_note = added.json()["application"]["committeeNotes"][0]
@@ -170,7 +170,7 @@ async def test_committee_notes_are_shared_attributed_and_author_owned() -> None:
 
         second = await client.post(
             f"/applications/{application.id}/committee-notes",
-            json={"body": "Interview availability confirmed."},
+            json={"body": "Interview availability confirmed.", "creationKey": "00000000-0000-4000-8000-000000000002"},
         )
         second_note = next(
             note
@@ -359,3 +359,18 @@ async def test_list_and_detail_expose_opening_participation() -> None:
     assert detail["lastSubmittedAt"] == "2026-02-03T04:05:00+00:00"
     assert "declarationAcceptedAt" not in detail
     assert detail["submissionVersionCount"] == 1
+
+
+@pytest.mark.anyio
+async def test_note_creation_retry_keeps_one_note_but_new_attempt_can_repeat_text():
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    application = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    body = {"body": "Synthetic context", "creationKey": "00000000-0000-4000-8000-000000000003"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        # Discard the first acknowledgement, then repeat the same creation attempt.
+        assert (await client.post(f"/applications/{application.id}/committee-notes", json=body)).status_code == 200
+        retry = await client.post(f"/applications/{application.id}/committee-notes", json=body)
+        assert len(retry.json()["application"]["committeeNotes"]) == 1
+        body["creationKey"] = "00000000-0000-4000-8000-000000000004"
+        intentional = await client.post(f"/applications/{application.id}/committee-notes", json=body)
+        assert len(intentional.json()["application"]["committeeNotes"]) == 2

@@ -90,9 +90,9 @@ export function useCandidateActions(options: CandidateActionsOptions) {
     }
   }
 
-  async function addCommitteeNote(id: number, body: string): Promise<boolean> {
+  async function addCommitteeNote(id: number, body: string, creationKey: string): Promise<boolean> {
     return Boolean(await mutate(
-      id, "committeeNotes", (opening) => api.addCommitteeNote(id, opening, body), "Could not add the committee note.",
+      id, "committeeNotes", (opening) => api.addCommitteeNote(id, opening, body, creationKey), "Could not add the committee note.",
     ));
   }
 

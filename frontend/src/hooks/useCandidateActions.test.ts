@@ -45,7 +45,7 @@ it("acknowledges a saved committee note without reopening a detail the member ha
   const initial = options();
   const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
   let save!: Promise<boolean>;
-  act(() => { save = result.current.addCommitteeNote(7, "Synthetic committee note"); });
+  act(() => { save = result.current.addCommitteeNote(7, "Synthetic committee note", "synthetic-creation-key"); });
   rerender({ ...initial, selectedApplication: detail(8) });
   await act(async () => {
     pending.resolve(Response.json({ application: detail(7) })); expect(await save).toBe(true);
@@ -85,7 +85,7 @@ it("reports a failed note save and leaves the loaded detail unchanged", async ()
   const initial = options();
   vi.mocked(api.addCommitteeNote).mockResolvedValue(Response.json({ detail: "Locked" }, { status: 409 }));
   const { result } = renderHook(() => useCandidateActions(initial));
-  await act(async () => { expect(await result.current.addCommitteeNote(7, "Synthetic note")).toBe(false); });
+  await act(async () => { expect(await result.current.addCommitteeNote(7, "Synthetic note", "synthetic-creation-key")).toBe(false); });
   expect(initial.onError).toHaveBeenCalledWith("Could not add the committee note.");
   expect(initial.onApplicationUpdated).not.toHaveBeenCalled();
 });
@@ -103,7 +103,7 @@ it("lets independent fields save concurrently without rolling back newer state",
   let saving!: Promise<boolean>;
   let overriding!: Promise<void>;
   await act(async () => {
-    saving = result.current.addCommitteeNote(7, "Synthetic note");
+    saving = result.current.addCommitteeNote(7, "Synthetic note", "synthetic-creation-key");
     overriding = result.current.overrideStatus(7, "ineligible");
     await overriding;
   });
@@ -125,8 +125,8 @@ it("discards queued candidate writes for an opening the member has left", async 
   let saving!: Promise<boolean>;
   let second!: Promise<boolean>;
   await act(async () => {
-    saving = result.current.addCommitteeNote(7, "Synthetic note");
-    second = result.current.addCommitteeNote(7, "Later note");
+    saving = result.current.addCommitteeNote(7, "Synthetic note", "synthetic-creation-key");
+    second = result.current.addCommitteeNote(7, "Later note", "synthetic-creation-key");
   });
   rerender({ ...initial, openingId: 2 });
   await act(async () => {

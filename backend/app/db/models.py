@@ -779,7 +779,10 @@ class ApplicationCommitteeNote(TimestampMixin, Base):
     """
 
     __tablename__ = "application_committee_notes"
-    __table_args__ = {"sqlite_autoincrement": True}
+    __table_args__ = (
+        UniqueConstraint("application_id", "author_user_id", "creation_key"),
+        {"sqlite_autoincrement": True},
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(
@@ -789,6 +792,7 @@ class ApplicationCommitteeNote(TimestampMixin, Base):
         ForeignKey("users.id"), index=True, nullable=False
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    creation_key: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     application: Mapped[Application] = relationship()
     author: Mapped[User] = relationship()

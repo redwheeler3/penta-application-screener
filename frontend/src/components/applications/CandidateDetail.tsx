@@ -47,7 +47,7 @@ export function CandidateDetail(props: {
   onOverrideStatus: (id: number, status: AppStatus) => void;
   onClearOverride: (id: number) => void;
   privateNoteEditor: PrivateNoteEditor | null;
-  onAddCommitteeNote: (id: number, body: string) => Promise<boolean>;
+  onAddCommitteeNote: (id: number, body: string, creationKey: string) => Promise<boolean>;
   onUpdateCommitteeNote: (id: number, noteId: number, body: string) => Promise<boolean>;
   onDeleteCommitteeNote: (id: number, noteId: number) => Promise<boolean>;
   onToggleStar: (id: number, starred: boolean) => void;

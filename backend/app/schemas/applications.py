@@ -9,6 +9,7 @@ free-form dicts — their keys are raw form-field names (data like
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import Field, field_validator
 
@@ -213,6 +214,10 @@ class CommitteeNoteWrite(RequestModel):
         if not stripped:
             raise ValueError("Committee note cannot be blank.")
         return stripped
+
+
+class CommitteeNoteCreate(CommitteeNoteWrite):
+    creation_key: UUID
 
 
 class PrivateNoteUpdate(RequestModel):

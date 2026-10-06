@@ -199,7 +199,7 @@ describe("CandidateNotes", () => {
     await user.type(screen.getByRole("textbox", { name: "New committee note" }), "Share this");
     await user.click(screen.getByRole("button", { name: "Add note" }));
     await waitFor(() => {
-      expect(callbacks.onAddCommitteeNote).toHaveBeenCalledWith(42, "Share this");
+      expect(callbacks.onAddCommitteeNote).toHaveBeenCalledWith(42, "Share this", expect.any(String));
     });
   });
 
@@ -227,4 +227,25 @@ describe("CandidateNotes", () => {
       expect(callbacks.onDeleteCommitteeNote).toHaveBeenCalledWith(42, 7);
     });
   });
+});
+
+
+it("retries the exact unconfirmed creation before publishing a newer draft", async () => {
+  const add = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+  renderNotes({ onAddCommitteeNote: add });
+  fireEvent.click(screen.getByRole("tab", { name: /Committee notes/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Add committee note" }));
+  const editor = screen.getByRole("textbox", { name: "New committee note" });
+  fireEvent.change(editor, { target: { value: "First" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+  await screen.findByText(/note is unconfirmed/);
+  fireEvent.change(editor, { target: { value: "Next" } });
+  fireEvent.click(screen.getByRole("button", { name: "Retry note" }));
+  await waitFor(() => expect(add).toHaveBeenCalledTimes(2));
+  expect(add.mock.calls[1]).toEqual(add.mock.calls[0]);
+  expect(editor).toHaveValue("Next");
+  fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+  await waitFor(() => expect(add).toHaveBeenCalledTimes(3));
+  expect(add.mock.calls[2][1]).toBe("Next");
+  expect(add.mock.calls[2][2]).not.toBe(add.mock.calls[0][2]);
 });

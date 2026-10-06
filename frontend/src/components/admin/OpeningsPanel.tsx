@@ -142,6 +142,7 @@ export function OpeningsPanel(props: {
 
       {mode.kind === "selection" ? (
         <OpeningDecisionPanel
+          onUnconfirmed={() => { props.onPoolChanged(); return openingsResource.reload(); }}
           key={mode.selection.openingId}
           selection={mode.selection}
           onSaved={(items, message) => {

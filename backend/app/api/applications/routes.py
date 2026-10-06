@@ -29,6 +29,7 @@ from app.db.session import get_db
 from app.schemas.applications import (
     ApplicationEnvelope,
     ApplicationListResponse,
+    CommitteeNoteCreate,
     CommitteeNotesResponse,
     CommitteeNoteWrite,
     EligibilityResponse,
@@ -347,7 +348,7 @@ def _require_committee_note_author(
 @router.post("/{application_id}/committee-notes", response_model=CommitteeNotesResponse)
 def add_committee_note(
     application_id: int,
-    body: CommitteeNoteWrite,
+    body: CommitteeNoteCreate,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
@@ -355,13 +356,16 @@ def add_committee_note(
     """Add one attributed application-wide note visible to the committee."""
     opening_id = resolve_visible_opening_id(db, opening_id)
     _lock_mutable_application_or_404(db, opening_id, application_id)
-    db.add(
-        ApplicationCommitteeNote(
-            application_id=application_id,
-            author_user_id=user.id,
-            body=body.body,
-        )
-    )
+    existing = db.scalar(select(ApplicationCommitteeNote).where(
+        ApplicationCommitteeNote.application_id == application_id,
+        ApplicationCommitteeNote.author_user_id == user.id,
+        ApplicationCommitteeNote.creation_key == str(body.creation_key),
+    ))
+    if existing is None:
+        db.add(ApplicationCommitteeNote(
+            application_id=application_id, author_user_id=user.id,
+            body=body.body, creation_key=str(body.creation_key),
+        ))
     db.commit()
     return CommitteeNotesResponse(application={
         "id": application_id, "committee_notes": committee_notes(db, application_id, user.id),

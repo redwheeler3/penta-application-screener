@@ -14,7 +14,7 @@ export function CandidateNotes(props: {
   privateNote: string;
   committeeNotes: CommitteeNote[];
   privateNoteEditor: PrivateNoteEditor | null;
-  onAddCommitteeNote: (id: number, body: string) => Promise<boolean>;
+  onAddCommitteeNote: (id: number, body: string, creationKey: string) => Promise<boolean>;
   onUpdateCommitteeNote: (id: number, noteId: number, body: string) => Promise<boolean>;
   onDeleteCommitteeNote: (id: number, noteId: number) => Promise<boolean>;
   readOnly?: boolean;
@@ -30,6 +30,7 @@ export function CandidateNotes(props: {
   const blockPrivateDraft = props.privateNoteEditor?.block;
   useEffect(() => { if (props.readOnly) blockPrivateDraft?.(); }, [props.readOnly, blockPrivateDraft]);
   const [newNote, setNewNote] = useState("");
+  const creationAttempt = useRef<{ key: string; body: string; draft: string } | null>(null);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingBody, setEditingBody] = useState("");
@@ -61,18 +62,21 @@ export function CandidateNotes(props: {
 
   async function addCommitteeNote(event: FormEvent) {
     event.preventDefault();
-    const body = newNote.trim();
-    if (!body) return;
-    const submitted = newNote;
+    if (committeeBusy || props.readOnly) return;
+    const attempt = creationAttempt.current ?? { key: crypto.randomUUID(), body: newNote.trim(), draft: newNote };
+    if (!attempt.body) return;
+    creationAttempt.current = attempt;
+    const submitted = attempt.draft;
     setCommitteeBusy(true);
     setCommitteeError(null);
-    const saved = await props.onAddCommitteeNote(props.applicationId, body);
+    const saved = await props.onAddCommitteeNote(props.applicationId, attempt.body, attempt.key);
     setCommitteeBusy(false);
+    if (saved) creationAttempt.current = null;
     if (saved && editorRef.current.adding && editorRef.current.newNote === submitted) {
       setNewNote("");
       setAdding(false);
     } else if (!saved) {
-      setCommitteeError("Could not add the note. Try again.");
+      setCommitteeError("The note is unconfirmed. Retry to confirm it before adding another.");
     }
   }
 
@@ -252,8 +256,8 @@ export function CandidateNotes(props: {
                     autoFocus
                   />
                   <div className="committee-note-form-actions">
-                    <button type="button" onClick={() => { setAdding(false); setNewNote(""); }}>Cancel</button>
-                    {!props.readOnly ? <button type="submit" className="is-primary" disabled={committeeBusy || !newNote.trim()}>Add note</button> : null}
+                    <button type="button" disabled={creationAttempt.current !== null} onClick={() => { setAdding(false); setNewNote(""); }}>Cancel</button>
+                    {!props.readOnly ? <button type="submit" className="is-primary" disabled={committeeBusy || (!creationAttempt.current && !newNote.trim())}>{creationAttempt.current ? "Retry note" : "Add note"}</button> : null}
                   </div>
                 </form>
             ) : null}

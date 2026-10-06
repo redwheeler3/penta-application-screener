@@ -22,7 +22,6 @@ def test_monotonic_identity_migration_preserves_every_row_and_detaches_compariso
         ApplicantDraftIntent,
         Application,
         ApplicationAISelection,
-        ApplicationCommitteeNote,
         BrowserSession,
         PasswordlessIdentityKind,
         User,
@@ -52,19 +51,20 @@ def test_monotonic_identity_migration_preserves_every_row_and_detaches_compariso
                 BrowserSession(id=4, identity_kind=PasswordlessIdentityKind.APPLICANT, application_id=2,
                     reconciliation_draft_id=3, token_hash="synthetic-session", created_at=now, last_activity_at=now,
                     idle_expires_at=now + timedelta(days=1), absolute_expires_at=now + timedelta(days=2)),
-                ApplicationCommitteeNote(id=5, application_id=2, author_user_id=1, body="Synthetic note"),
             ])
             db.flush()
+            db.execute(text("INSERT INTO application_committee_notes (id, application_id, author_user_id, body) VALUES (5, 2, 1, 'Synthetic note')"))
             db.execute(text("INSERT INTO application_ai_results (id, application_id, kind, cache_key, model_id, prompt_version, output, input_tokens, output_tokens, cost_usd) VALUES (6, 2, 'screening', 'synthetic-result', 'synthetic', 'synthetic', '{\"flags\": []}', 100, 50, 0.1)"))
             db.add(ApplicationAISelection(application_id=2, kind="screening", result_id=6))
             db.commit()
         with engine.connect() as connection:
             tables = connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'alembic_version'").scalars().all()
+            columns = {name: ", ".join(f'"{row[1]}"' for row in connection.exec_driver_sql(f'PRAGMA table_info("{name}")')) for name in tables}
             before = {name: connection.exec_driver_sql(f'SELECT * FROM "{name}" ORDER BY rowid').all() for name in tables}
         command.upgrade(config, "head")
         with engine.begin() as connection:
             for name in tables:
-                assert connection.exec_driver_sql(f'SELECT * FROM "{name}" ORDER BY rowid').all() == before[name]
+                assert connection.exec_driver_sql(f'SELECT {columns[name] if name == "application_committee_notes" else "*"} FROM "{name}" ORDER BY rowid').all() == before[name]
             connection.exec_driver_sql("PRAGMA foreign_keys=ON")
             connection.exec_driver_sql("DELETE FROM applicant_drafts WHERE id=3")
             assert connection.exec_driver_sql("SELECT reconciliation_draft_id FROM browser_sessions WHERE id=4").scalar_one() is None

@@ -21,15 +21,23 @@ export function OpeningDecisionPanel(props: {
   onError: (message: string) => void;
   onReview: (applicationId: number) => void;
   onClose: () => void;
+  onUnconfirmed: () => Promise<void>;
 }): ReactNode {
   const api = useCommitteeApi(openingsApi);
 
   const [choice, setChoice] = useState<DecisionChoice>({ kind: "candidates" });
   const { busy, setBusy } = props;
   const requests = useRequestScope(props.selection.openingId);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+
+  function reconcileUnconfirmed(): void {
+    setUnconfirmed(true);
+    props.onError("Could not confirm the decision. It may already be saved. Review openings before trying again.");
+    void props.onUnconfirmed().catch(() => { /* The opening list exposes its refresh error and retry. */ });
+  }
 
   async function confirm(): Promise<void> {
-    if (choice.kind === "candidates" || busy) return;
+    if (choice.kind === "candidates" || busy || unconfirmed) return;
     setBusy(true);
     const isCurrent = requests.capture();
     try {
@@ -38,11 +46,15 @@ export function OpeningDecisionPanel(props: {
         : await api.confirmNoHouseholdSelected(props.selection.openingId);
       if (!isCurrent()) return;
       if (!response.ok) {
+        if (response.status >= 500) { reconcileUnconfirmed(); return; }
         const problem = await readProblem(response);
         if (isCurrent()) props.onError(problem ?? "Could not save the opening decision.");
         return;
       }
       const saved = await response.json() as OpeningCommit;
+      if (!Array.isArray(saved.openings) || typeof saved.queuedNotificationCount !== "number") {
+        throw new Error("Decision acknowledgement is incomplete.");
+      }
       if (!isCurrent()) return;
       const prefix = choice.kind === "candidate" ? "Successful applicant selected." : "Opening decision recorded.";
       const message = saved.queuedNotificationCount > 0
@@ -50,9 +62,7 @@ export function OpeningDecisionPanel(props: {
         : `${prefix} No new outcome emails were needed. Check Email delivery for existing deliveries.`;
       props.onSaved(saved.openings, message);
     } catch {
-      if (isCurrent()) props.onError(
-        "The connection was interrupted. The decision may already be saved; review the opening before trying again.",
-      );
+      if (isCurrent()) reconcileUnconfirmed();
     } finally {
       if (isCurrent()) setBusy(false);
     }
@@ -64,6 +74,12 @@ export function OpeningDecisionPanel(props: {
     const searchable = `${candidate.applicantName ?? ""} ${candidate.primaryEmail}`.toLocaleLowerCase();
     return filterTerms.every((term) => searchable.includes(term));
   });
+  if (unconfirmed) return (
+    <section className="opening-selection-panel">
+      <p role="status">The decision may already be saved. Review openings before trying again.</p>
+      <button className="secondary-button" type="button" onClick={props.onClose}>Review openings</button>
+    </section>
+  );
   if (choice.kind === "no-household") {
     const count = props.selection.activeParticipantCount;
     return (

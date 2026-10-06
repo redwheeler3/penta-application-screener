@@ -1308,6 +1308,13 @@ the author may edit or delete an entry. Neither kind of note enters AI inputs or
 responses. Candidate-detail printing includes the current member's private note and the attributed
 committee notes.
 
+Committee-note creation carries one browser-generated key per publishing attempt. A lost
+acknowledgement retries that same attempt without appending a duplicate; deliberately
+publishing the same text again uses a new key. The composer confirms an uncertain attempt
+before publishing a newer draft, retaining text typed while the request was pending.
+Permanent opening decisions with uncertain acknowledgements refresh openings in the
+background and require review before another choice is offered.
+
 Private-note drafts and their ordered autosave queue belong to the authenticated committee
 workspace. Internal tab, applicant, opening, and browser-history navigation preserve unsent text
 without waiting for the network. The editor subscribes to its applicant's draft so typing does
