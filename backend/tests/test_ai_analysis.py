@@ -317,15 +317,19 @@ def test_estimate_excludes_cached_applications() -> None:
     assert est["to_analyze"] == 1
 
 
-def test_estimate_reads_cache_coverage_in_one_query() -> None:
+@pytest.mark.parametrize(("count", "batches"), [(20, 1), (1201, 3)])
+def test_estimate_reads_thin_cache_coverage_in_bounded_batches(count, batches) -> None:
     db = make_session()
     applications = [
-        make_application(db, email=f"{index}@x.com", raw_hash=f"h{index}")
-        for index in range(20)
+        Application(primary_email=f"{index}@x.com", raw_row={}, raw_row_hash=f"h{index}", normalized={})
+        for index in range(count)
     ]
+    db.add_all(applications)
+    db.commit()
     provider = MockProvider()
     provider.queue(clean_report(), model_id=MODEL)
     seed_cached(db, provider, applications[0])
+    applications = list(db.scalars(select(Application)))
 
     statements: list[str] = []
 
@@ -335,7 +339,7 @@ def test_estimate_reads_cache_coverage_in_one_query() -> None:
     assert db.bind is not None
     event.listen(db.bind, "before_cursor_execute", capture)
     try:
-        estimate_cost(
+        estimate = estimate_cost(
             db,
             applications=applications,
             kind=KIND,
@@ -352,8 +356,10 @@ def test_estimate_reads_cache_coverage_in_one_query() -> None:
         for statement in statements
         if "from application_ai_results" in statement.lower()
     ]
-    # One coverage query plus one observed-usage query, independent of applicant count.
-    assert len(cache_reads) == 2
+    assert estimate["cached"] == 1
+    assert estimate["to_analyze"] == count - 1
+    assert len(cache_reads) == batches + 1  # bounded coverage plus observed usage
+    assert all("narrative" not in query and "application_ai_results.output," not in query for query in cache_reads)
 
 
 def test_estimate_uses_fallback_with_no_history() -> None:

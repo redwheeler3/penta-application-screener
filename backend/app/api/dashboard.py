@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 # Scope + cache-key helpers reused from the passes themselves, so "coverage" counts
 # exactly what a re-run would process (never a parallel definition that could drift).
-from app.ai.analysis import cache_key, present_cache_keys
+from app.ai.analysis import cache_keys_for, present_cache_keys
 from app.ai.dimension_scoring import (
     PROMPT_VERSION as SCORING_PROMPT_VERSION,
 )
@@ -76,7 +76,7 @@ def read_dashboard(
         and scoring_coverage.cached == scoring_coverage.in_scope
     )
     current_analysis = get_current_analysis(db, opening_id)
-    email_queue = email_queue_status(db)
+    email_queue = email_queue_status(db) if user.role == UserRole.ADMIN else None
 
     return DashboardResponse(
         # Whether each step has work available or has run, from persisted data so
@@ -181,17 +181,9 @@ def _coverage(db: Session, opening_id: int, settings) -> dict[str, CoverageEntry
     # Screening freshness depends only on its prompt and model. Pet limits are evaluated
     # deterministically on read and therefore do not invalidate screening coverage.
     screening_apps = screening_scope(db, opening_id)
-    screening_keys = {
-        app.id: cache_key(
-            application=app, kind="screening",
-            model_id=settings.ai.screening_model,
-            prompt_version=screening_prompt_version(),
-            reasoning_effort=effective_reasoning_effort(
-                settings.ai.screening_model, settings.ai.screening_reasoning_effort
-            ),
-        )
-        for app in screening_apps
-    }
+    screening_keys = cache_keys_for(screening_apps, ["screening"],
+        model_id=settings.ai.screening_model, prompt_version=screening_prompt_version(),
+        reasoning_effort=effective_reasoning_effort(settings.ai.screening_model, settings.ai.screening_reasoning_effort))
     present = present_cache_keys(db, set(screening_keys.values()))
     result = {
         "screened": CoverageEntry(
@@ -207,29 +199,11 @@ def _coverage(db: Session, opening_id: int, settings) -> dict[str, CoverageEntry
     kinds = current_dimension_kinds(db, opening_id)
     if kinds:
         applications = applications_to_score(db, opening_id)
-        keys_by_app = {
-            app.id: [
-                cache_key(
-                    application=app, kind=kind,
-                    model_id=settings.ai.dimension_scoring_model,
-                    prompt_version=SCORING_PROMPT_VERSION,
-                    reasoning_effort=effective_reasoning_effort(
-                        settings.ai.dimension_scoring_model,
-                        settings.ai.dimension_scoring_reasoning_effort,
-                    ),
-                )
-                for kind in kinds
-            ]
-            for app in applications
-        }
-        present = present_cache_keys(
-            db, {key for keys in keys_by_app.values() for key in keys}
-        )
-        fully_scored = sum(
-            1
-            for keys in keys_by_app.values()
-            if all(key in present for key in keys)
-        )
+        expected = cache_keys_for(applications, kinds, model_id=settings.ai.dimension_scoring_model,
+            prompt_version=SCORING_PROMPT_VERSION, reasoning_effort=effective_reasoning_effort(
+                settings.ai.dimension_scoring_model, settings.ai.dimension_scoring_reasoning_effort))
+        present = present_cache_keys(db, expected.values())
+        fully_scored = sum(all(expected[app.id, kind] in present for kind in kinds) for app in applications)
         result["candidatesScored"] = CoverageEntry(
             cached=fully_scored, in_scope=len(applications)
         )

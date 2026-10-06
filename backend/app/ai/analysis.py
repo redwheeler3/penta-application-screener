@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextvars import copy_context
 from dataclasses import dataclass
@@ -193,17 +193,27 @@ def estimate_cost(
     }
 
 
-def present_cache_keys(db: Session, keys: set[str]) -> set[str]:
-    """Return the requested cache keys that exist, using one indexed query."""
-    if not keys:
-        return set()
-    return set(
-        db.scalars(
-            select(ApplicationAIResult.cache_key).where(
-                ApplicationAIResult.cache_key.in_(keys)
-            )
-        )
-    )
+def cache_keys_for(
+    applications: list[Application], kinds: Iterable[str], *, model_id: str,
+    prompt_version: str, reasoning_effort: ReasoningEffort | None = None,
+) -> dict[tuple[int, str], str]:
+    """One expected cache identity per consumer/pass, without loading result payloads."""
+    kinds = tuple(kinds)
+    return {(app.id, kind): cache_key(application=app, kind=kind, model_id=model_id,
+        prompt_version=prompt_version, reasoning_effort=reasoning_effort)
+        for app in applications for kind in kinds}
+
+
+def cached_result_rows(db: Session, keys: Iterable[str], *columns):
+    """Read only the requested cache columns, in bounded indexed batches."""
+    unique = list(set(keys))
+    for start in range(0, len(unique), 500):
+        yield from db.execute(select(*columns).where(ApplicationAIResult.cache_key.in_(unique[start:start + 500])))
+
+
+def present_cache_keys(db: Session, keys: Iterable[str]) -> set[str]:
+    """Return existing keys without reading outputs, narratives or token counts."""
+    return {row.cache_key for row in cached_result_rows(db, keys, ApplicationAIResult.cache_key)}
 
 
 def observed_avg_tokens(

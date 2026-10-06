@@ -20,16 +20,17 @@ import json
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import (
     AnalysisOutcome,
     PassResult,
-    cache_key,
+    cache_keys_for,
+    cached_result_rows,
     derive_prompt_version,
     exception_type_name,
     log,
+    present_cache_keys,
     retry_per_application_timeout,
     run_in_pool,
     stage_result,
@@ -42,7 +43,7 @@ from app.ai.prompt_fragments import (
     INJECTION_GUARD_NOTE,
 )
 from app.ai.provider import AIProvider, AIResult, Usage
-from app.ai.result_selection import select_results
+from app.ai.result_selection import select_results, selected_result_ids
 from app.ai.schemas import (
     DimensionScore,
     DimensionScoringReport,
@@ -50,7 +51,7 @@ from app.ai.schemas import (
     PoolDimensionReport,
 )
 from app.core.work_cancellation import WorkCancelled
-from app.db.models import Application, ApplicationAIResult, ApplicationAISelection
+from app.db.models import Application, ApplicationAIResult
 from app.schemas.settings import (
     AppSettings,
     effective_reasoning_effort,
@@ -173,43 +174,12 @@ def missing_dimensions_by_application(
     makes its latency grow with every criterion, so fetch the relevant cache keys in
     bounded batches and map the misses back to each applicant.
     """
-    keys_by_application = {
-        application.id: {
-            dimension.key: cache_key(
-                application=application,
-                kind=kind_for_dimension(dimension.key),
-                model_id=model_id,
-                prompt_version=PROMPT_VERSION,
-                reasoning_effort=reasoning_effort,
-            )
-            for dimension in report.dimensions
-        }
-        for application in applications
-    }
-    all_keys = [
-        key
-        for by_dimension in keys_by_application.values()
-        for key in by_dimension.values()
-    ]
-    existing: set[str] = set()
-    # SQLite's bound-variable ceiling is commonly 999. Keep well below it so the
-    # same code handles a much larger applicant pool without a dialect-specific path.
-    for start in range(0, len(all_keys), 500):
-        existing.update(
-            db.scalars(
-                select(ApplicationAIResult.cache_key).where(
-                    ApplicationAIResult.cache_key.in_(all_keys[start:start + 500])
-                )
-            )
-        )
-    return {
-        application.id: [
-            dimension
-            for dimension in report.dimensions
-            if keys_by_application[application.id][dimension.key] not in existing
-        ]
-        for application in applications
-    }
+    expected = cache_keys_for(applications, [kind_for_dimension(dim.key) for dim in report.dimensions],
+        model_id=model_id, prompt_version=PROMPT_VERSION, reasoning_effort=reasoning_effort)
+    existing = present_cache_keys(db, expected.values())
+    return {app.id: [dim for dim in report.dimensions
+                    if expected[app.id, kind_for_dimension(dim.key)] not in existing]
+            for app in applications}
 
 
 def _split_usage(usage: Usage, parts: int) -> Usage:
@@ -363,33 +333,19 @@ def plan_dimension_scoring(
     """Capture the whole pool before any commit, using bounded cache reads."""
     model_id = settings.ai.dimension_scoring_model
     reasoning_effort = effective_reasoning_effort(model_id, settings.ai.dimension_scoring_reasoning_effort)
-    keys_by_application = {
-        application.id: {dim.key: cache_key(application=application, kind=kind_for_dimension(dim.key),
-            model_id=model_id, prompt_version=PROMPT_VERSION, reasoning_effort=reasoning_effort)
-            for dim in report.dimensions}
-        for application in applications
-    }
-    keys = list({key for by_dimension in keys_by_application.values() for key in by_dimension.values()})
-    cached_rows = {}
-    for start in range(0, len(keys), 500):
-        rows = db.execute(select(ApplicationAIResult.id, ApplicationAIResult.cache_key,
-            ApplicationAIResult.output, ApplicationAIResult.input_tokens, ApplicationAIResult.output_tokens)
-            .where(ApplicationAIResult.cache_key.in_(keys[start:start + 500])))
-        cached_rows.update((row.cache_key, row) for row in rows)
-    selected = {}
-    ids = list(keys_by_application)
     kinds = [kind_for_dimension(dim.key) for dim in report.dimensions]
-    for start in range(0, len(ids), 500):
-        rows = db.execute(select(ApplicationAISelection.application_id, ApplicationAISelection.kind,
-            ApplicationAISelection.result_id).where(ApplicationAISelection.application_id.in_(ids[start:start + 500]),
-                ApplicationAISelection.kind.in_(kinds)))
-        selected.update(((row.application_id, row.kind), row.result_id) for row in rows)
+    expected = cache_keys_for(applications, kinds, model_id=model_id,
+        prompt_version=PROMPT_VERSION, reasoning_effort=reasoning_effort)
+    cached_rows = {row.cache_key: row for row in cached_result_rows(db, expected.values(),
+        ApplicationAIResult.id, ApplicationAIResult.cache_key, ApplicationAIResult.output,
+        ApplicationAIResult.input_tokens, ApplicationAIResult.output_tokens)}
+    selected = selected_result_ids(db, [app.id for app in applications], kinds)
 
     plans = []
     references = []
     refresh_ids = set()
     for application in applications:
-        result_keys = keys_by_application[application.id]
+        result_keys = {dim.key: expected[application.id, kind_for_dimension(dim.key)] for dim in report.dimensions}
         cached = {}
         to_score = []
         cached_saved_usd = 0.0
