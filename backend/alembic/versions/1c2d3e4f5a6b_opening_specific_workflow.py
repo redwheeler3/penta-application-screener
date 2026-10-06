@@ -279,8 +279,8 @@ def upgrade() -> None:
 
     # A one-opening deployment has only one possible owner: preserve every paid analysis,
     # member ranking, and cost row there without making the committee rerun anything.
-    # With several openings, preserve a global analysis only when its complete stored
-    # fingerprint maps to exactly one scoped pool; ambiguous history remains nullable.
+    # With several openings, the global fingerprint does not record opening ownership.
+    # Preserve that history unscoped rather than infer it from current rules or prompts.
     if len(opening_ids) == 1:
         connection.execute(
             sa.text("UPDATE analyses SET opening_id = :opening_id WHERE opening_id IS NULL"),
@@ -293,44 +293,11 @@ def upgrade() -> None:
             ),
             {"opening_id": opening_ids[0]},
         )
-    elif len(opening_ids) > 1:
-        _assign_unambiguous_analyses(connection, opening_ids)
 
     connection.execute(
         sa.text("DELETE FROM admin_settings WHERE key = 'committee_default_rules'")
     )
 
-
-def _assign_unambiguous_analyses(connection, opening_ids: list[int]) -> None:
-    from sqlalchemy.orm import Session
-
-    from app.schemas.settings import AppSettings
-    from app.services.ranking.provenance import rank_inputs_fingerprint
-    from app.services.settings import get_app_settings
-
-    db = Session(bind=connection)
-    settings: AppSettings = get_app_settings(db)
-    fingerprint_by_opening = {
-        opening_id: rank_inputs_fingerprint(db, opening_id, settings)
-        for opening_id in opening_ids
-    }
-    analyses = connection.execute(
-        sa.text(
-            "SELECT id, rank_inputs_fingerprint FROM analyses "
-            "WHERE opening_id IS NULL AND rank_inputs_fingerprint IS NOT NULL"
-        )
-    ).mappings()
-    for analysis in analyses:
-        matches = [
-            opening_id
-            for opening_id, fingerprint in fingerprint_by_opening.items()
-            if fingerprint == analysis["rank_inputs_fingerprint"]
-        ]
-        if len(matches) == 1:
-            connection.execute(
-                sa.text("UPDATE analyses SET opening_id = :opening_id WHERE id = :id"),
-                {"opening_id": matches[0], "id": analysis["id"]},
-            )
 
 def downgrade() -> None:
     connection = op.get_bind()

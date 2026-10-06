@@ -4,6 +4,7 @@ Revision ID: e81c9a53f647
 Revises: d70b8f42e536
 """
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "e81c9a53f647"

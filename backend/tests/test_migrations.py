@@ -1,3 +1,4 @@
+import ast
 import json
 import runpy
 from pathlib import Path
@@ -9,8 +10,51 @@ from sqlalchemy.orm import Session
 
 from alembic import command
 from app.core.config import get_settings
-from app.db.models import Base
 from app.schemas.settings import AppSettings
+
+
+def test_migrations_do_not_import_mutable_application_code():
+    for path in (Path(__file__).parents[1] / "alembic/versions").glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            modules = ([node.module or ""] if isinstance(node, ast.ImportFrom)
+                       else [item.name for item in node.names] if isinstance(node, ast.Import) else [])
+            assert not any(name == "app" or name.startswith("app.") for name in modules), path.name
+
+
+@pytest.mark.parametrize("opening_count", [1, 2])
+@pytest.mark.parametrize("restore", [False, True])
+def test_populated_historical_openings_preserve_paid_history(tmp_path, opening_count, restore):
+    from app.services.backup import create_backup, restore_backup
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'historical.db').as_posix()}")
+    backend = Path(__file__).parents[1]
+    config = Config(str(backend / "alembic.ini"))
+    config.set_main_option("script_location", str(backend / "alembic"))
+    try:
+        with engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "f0a1b2c3d4e5")
+            for identity in range(1, opening_count + 1):
+                connection.exec_driver_sql("INSERT INTO openings (id, unit_size_bedrooms, housing_charge_cents, application_open_date, application_close_date, move_in_date, intake_mode, published_at) VALUES (?, 2, 125000, '2026-01-01', '2099-10-31', '2099-11-30', 'applications', CURRENT_TIMESTAMP)", (identity,))
+            connection.exec_driver_sql("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized, submitted_at) VALUES (1, 'synthetic@example.test', '{}', 'synthetic', '{}', CURRENT_TIMESTAMP)")
+            connection.exec_driver_sql("INSERT INTO application_participations (application_id, opening_id, applied_at) VALUES (1, 1, CURRENT_TIMESTAMP)")
+            connection.exec_driver_sql("INSERT INTO analyses (id, dimension_report, rank_inputs_fingerprint) VALUES (1, '{\"dimensions\": []}', 'historical-fingerprint')")
+            connection.exec_driver_sql("INSERT INTO analysis_audit (analysis_id, discovery_narrative) VALUES (1, 'Synthetic paid history')")
+            connection.exec_driver_sql("INSERT INTO run_cost_ledger (kind, estimated_usd) VALUES ('rank', 0.25)")
+        if restore:
+            restore_backup(create_backup(engine=engine), engine=engine)
+        else:
+            with engine.begin() as connection:
+                config.attributes["connection"] = connection
+                command.upgrade(config, "head")
+        with engine.connect() as connection:
+            expected_owner = 1 if opening_count == 1 else None
+            assert connection.exec_driver_sql("SELECT opening_id, rank_inputs_fingerprint FROM analyses").one() == (expected_owner, "historical-fingerprint")
+            assert connection.exec_driver_sql("SELECT discovery_narrative FROM analysis_audit").scalar_one() == "Synthetic paid history"
+            assert connection.exec_driver_sql("SELECT opening_id, estimated_usd FROM run_cost_ledger").one() == (expected_owner, 0.25)
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+    finally:
+        engine.dispose()
 
 
 def test_monotonic_identity_migration_preserves_every_row_and_detaches_comparison(tmp_path, monkeypatch):
@@ -233,38 +277,6 @@ def test_run_dimension_count_migration_preserves_unmeasured_history(tmp_path, mo
         engine.dispose()
     finally:
         get_settings.cache_clear()
-
-
-def test_cache_identity_migration_can_build_rank_fingerprints() -> None:
-    migration_path = (
-        Path(__file__).parents[1]
-        / "alembic"
-        / "versions"
-        / "d3e4f5a6b7c8_share_cache_across_provider_routes.py"
-    )
-    migration = runpy.run_path(str(migration_path))
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as db:
-        historical_ai = AppSettings().ai
-        historical_ai.screening_model = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        historical_ai.dimension_scoring_model = (
-            "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-        )
-        for key in (
-            "discovery_model",
-            "decompose_model",
-            "match_model",
-            "consolidate_model",
-        ):
-            setattr(historical_ai, key, "us.anthropic.claude-sonnet-4-6")
-
-        legacy = migration["_rank_fingerprint"](db, historical_ai, canonical=False)
-        canonical = migration["_rank_fingerprint"](db, historical_ai, canonical=True)
-
-    assert len(legacy) == 16
-    assert len(canonical) == 16
 
 
 def test_global_profile_migration_updates_only_saved_us_claude_routes() -> None:
@@ -652,7 +664,7 @@ def test_cache_evidence_migration_preserves_proven_hits_and_uncertain_history(mo
             normalized={"child_details": [{"age": age}]}, content_hash="unchanged",
             selected_opening_ids=[], submitted_at=datetime.now(UTC)))
     row = {"kind": "screening", "model_id": AppSettings().ai.screening_model, "reasoning_effort": None, "prompt_version": "v"}
-    old_key = migration["_key"](row, "unchanged")
+    old_key = migration["_key"](row, "unchanged", neutral_model="anthropic:claude-haiku-4-5-20251001")
     if retired_route:
         row["model_id"] = "retired-provider-route"
     result = ApplicationAIResult(producer_application_id=application.id, cache_key=old_key, output={"flags": []},

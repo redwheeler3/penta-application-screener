@@ -11,7 +11,6 @@ import json
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Connection, RowMapping
-from sqlalchemy.orm import Session
 
 from alembic import op
 
@@ -30,17 +29,6 @@ _ROUTE_TO_MODEL_IDENTITY = {
     "openai.gpt-5.6-terra": "openai:gpt-5.6-terra",
     "gpt-5.6-terra": "openai:gpt-5.6-terra",
 }
-
-# Frozen prompt identities at this migration. They let a currently valid Rank stay
-# current while genuinely stale fingerprints remain untouched.
-_PROMPT_VERSIONS = {
-    "discovery": "87415213bc2b",
-    "decompose": "196def77f77b",
-    "match": "2a463a1f6443",
-    "scoring": "d05026e73450",
-    "consolidate": "d73b755d3075",
-}
-
 
 def _cache_key(row: RowMapping, model_identity: str) -> str:
     identity = {
@@ -91,79 +79,11 @@ def _rekey_results(connection: Connection, *, canonical: bool) -> None:
             )
 
 
-def _rank_fingerprint(db: Session, ai: object, *, canonical: bool) -> str:
-    def identity(model_id: str) -> str:
-        return _ROUTE_TO_MODEL_IDENTITY[model_id] if canonical else model_id
-
-    # Frozen, conservative pool approximation for this historical migration. Importing
-    # the live eligibility service here would make a fresh upgrade depend on a future
-    # schema. If this superset differs from the stored eligible-pool hash, the migration
-    # simply leaves the old Rank stale and the committee can rerun it.
-    hashes = db.execute(
-        sa.text(
-            "SELECT raw_row_hash FROM applications "
-            "WHERE submitted_at IS NOT NULL AND withdrawn_at IS NULL"
-        )
-    ).scalars()
-    pool = hashlib.sha256(
-        "\n".join(sorted(hashes)).encode("utf-8")
-    ).hexdigest()[:16]
-    parts = [
-        pool,
-        *[f"{name}:{version}" for name, version in _PROMPT_VERSIONS.items()],
-        f"discovery_model:{identity(ai.discovery_model)}",
-        f"decompose_model:{identity(ai.decompose_model)}",
-        f"match_model:{identity(ai.match_model)}",
-        f"scoring_model:{identity(ai.dimension_scoring_model)}",
-        f"consolidate_model:{identity(ai.consolidate_model)}",
-    ]
-    reasoning_settings = (
-        ("discovery", ai.discovery_model, ai.discovery_reasoning_effort),
-        ("decompose", ai.decompose_model, ai.decompose_reasoning_effort),
-        ("match", ai.match_model, ai.match_reasoning_effort),
-        ("scoring", ai.dimension_scoring_model, ai.dimension_scoring_reasoning_effort),
-        ("consolidate", ai.consolidate_model, ai.consolidate_reasoning_effort),
-    )
-    for pass_name, model_id, effort in reasoning_settings:
-        if model_id.startswith("openai.") or model_id.startswith("gpt-"):
-            parts.append(f"{pass_name}_reasoning:{effort}")
-    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
-
-
-def _rekey_current_rank(connection: Connection, *, canonical: bool) -> None:
-    from app.schemas.settings import AppSettings
-    from app.services.settings import APP_SETTINGS_KEY
-
-    value = connection.scalar(
-        sa.text("SELECT value FROM admin_settings WHERE key = :key"),
-        {"key": APP_SETTINGS_KEY},
-    )
-    if value is None:
-        return
-    settings = (
-        AppSettings.model_validate_json(value)
-        if isinstance(value, str)
-        else AppSettings.model_validate(value)
-    )
-    db = Session(bind=connection)
-    source = _rank_fingerprint(db, settings.ai, canonical=not canonical)
-    target = _rank_fingerprint(db, settings.ai, canonical=canonical)
-    connection.execute(
-        sa.text(
-            "UPDATE analyses SET rank_inputs_fingerprint = :target "
-            "WHERE rank_inputs_fingerprint = :source"
-        ),
-        {"source": source, "target": target},
-    )
-
-
 def upgrade() -> None:
     connection = op.get_bind()
     _rekey_results(connection, canonical=True)
-    _rekey_current_rank(connection, canonical=True)
 
 
 def downgrade() -> None:
     connection = op.get_bind()
-    _rekey_current_rank(connection, canonical=False)
     _rekey_results(connection, canonical=False)

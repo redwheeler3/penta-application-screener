@@ -11,14 +11,17 @@ from collections import defaultdict
 import sqlalchemy as sa
 
 from alembic import op
-from app.ai.model_catalog import MODEL_IDENTITIES, model_identity
 
 revision = "a47e5c19b203"
 down_revision = "c83d5f917a2b"
 branch_labels = None
 depends_on = None
 
-# Freeze the input projections used by this data migration.
+# Model identities and input projections are frozen for this data migration.
+_MODEL_IDENTITIES = (
+    "anthropic:claude-haiku-4-5-20251001", "anthropic:claude-sonnet-4-6",
+    "openai:gpt-5.6-luna", "openai:gpt-5.6-terra",
+)
 SCREENING_KEYS = ("applicant_name", "co_applicant_name", "child_details", "pets_text",
                   "applicant_email", "co_applicant_email", "co_applicant_phone")
 RANK_KEYS = ("adult_count", "child_count", "applicant_age", "co_applicant_age", "child_details",
@@ -26,8 +29,8 @@ RANK_KEYS = ("adult_count", "child_count", "applicant_age", "co_applicant_age", 
              "applicant_employment_start", "co_applicant_employment_start", "pets_text")
 
 
-def _key(row, raw_hash, normalized=None, *, neutral_model=None):
-    identity = {"kind": row["kind"], "model_id": neutral_model or model_identity(row["model_id"]),
+def _key(row, raw_hash, normalized=None, *, neutral_model):
+    identity = {"kind": row["kind"], "model_id": neutral_model,
                 "prompt_version": row["prompt_version"]}
     if row["reasoning_effort"] is not None:
         identity["reasoning_effort"] = row["reasoning_effort"]
@@ -58,15 +61,10 @@ def _rekey(*, reverse=False):
     rows = connection.execute(sa.select(results)).mappings().all()
     occupied = {row["cache_key"] for row in rows}
     for row in rows:
-        try:
-            models = {model_identity(row["model_id"])}
-        except ValueError:
-            # A retired provider route can still have a valid neutral-model cache.
-            # The stored digest proves the identity; never guess it from route text.
-            models = set(MODEL_IDENTITIES.values())
+        # The stored digest proves the identity, including for retired routes.
         candidates = set()
         for raw_hash, normalized in snapshots[row["application_id"]]:
-            for neutral_model in models:
+            for neutral_model in _MODEL_IDENTITIES:
                 old = _key(row, raw_hash, neutral_model=neutral_model)
                 new = _key(row, raw_hash, normalized, neutral_model=neutral_model)
                 source, target = (new, old) if reverse else (old, new)
