@@ -2,12 +2,9 @@ import re
 from datetime import UTC, date, datetime, timedelta
 
 from httpx2 import AsyncClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.db.models import (
-    Base,
     Opening,
 )
 from app.db.session import get_db
@@ -15,6 +12,7 @@ from app.services.email.outbox import retry_queued_emails
 from app.services.email.sender import CapturedEmailSender, get_email_sender
 from app.services.maintenance import get_outbox_runner
 from tests.app_support import shared_test_app
+from tests.db_support import memory_engine
 
 
 class FailingEmailSender:
@@ -23,12 +21,7 @@ class FailingEmailSender:
 
 
 def app_and_db() -> tuple:
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
+    engine = memory_engine(foreign_keys=True)
     test_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = test_session()
     today = date.today()

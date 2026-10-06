@@ -18,18 +18,29 @@ import argparse
 import re
 import sqlite3
 from contextlib import closing
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from alembic.config import Config
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, text, update
 from sqlalchemy.orm import Session
 
 from alembic import command
 from app.core.time import as_utc
-from app.db.models import RECORD_ID_FLOOR
+from app.db.models import (
+    RECORD_ID_FLOOR,
+    ApplicantDraft,
+    Application,
+    BrowserSession,
+    DailyMaintenanceRun,
+    EmailDelivery,
+    EmailDeliveryState,
+    MagicLinkToken,
+    RunLock,
+)
 from app.db.session import engine as default_engine
+from app.services.applications.purge import erase_application, erase_draft
 from app.services.applications.result_retention import prune_unowned_results
 
 # Keep this many most-recent backups; older ones are pruned. A snapshot is a few MB and
@@ -40,19 +51,6 @@ _TS_FMT = "%Y%m%d_%H%M%S"
 # tag is a short human label ("rank", "manual", "pre-restore"); constrained so it can't
 # inject path separators into the filename.
 _TAG_RE = re.compile(r"[^a-z0-9-]+")
-
-_APPLICATION_CHILD_TABLES = (
-    "application_participations",
-    "application_versions",
-    "browser_sessions",
-    "member_eligibility",
-    "application_notes",
-    "application_committee_notes",
-    "application_stars",
-    "application_shortlist",
-    "application_ai_selections",
-)
-
 
 def _sqlite_path(engine: Engine) -> Path:
     """The on-disk path of ``engine``'s SQLite database. Raises if the engine is not a
@@ -168,6 +166,7 @@ def restore_backup(source: Path, *, engine: Engine | None = None) -> Path:
                 saved.backup(prepared)
         _upgrade_restored_schema(candidate)
         _reapply_deletion_ledger(candidate, deletion_ledger)
+        _reset_restored_authority(candidate)
         _preserve_sequences(candidate, sequences)
         with closing(sqlite3.connect(str(candidate))) as prepared:
             _check_integrity(prepared, candidate)
@@ -220,7 +219,7 @@ def _upgrade_restored_schema(db_path: Path) -> None:
     """Migrate a project snapshot in isolation before publishing it as the live database."""
     with closing(sqlite3.connect(str(db_path))) as conn:
         if not _table_exists(conn, "alembic_version"):
-            return
+            raise RuntimeError("Application snapshots require an Alembic revision; unversioned schemas cannot be restored safely.")
     backend = Path(__file__).resolve().parents[2]
     config = Config(str(backend / "alembic.ini"))
     config.set_main_option("script_location", str(backend / "alembic"))
@@ -256,7 +255,6 @@ def _reapply_deletion_ledger(
         return
     with closing(sqlite3.connect(str(db_path))) as conn, conn:
         conn.execute("PRAGMA foreign_keys=ON")
-        _ensure_deletion_ledger(conn)
         restored_ledger = list(
             conn.execute(
                 "SELECT record_kind, record_id, retention_rule, due_on, deleted_at "
@@ -268,13 +266,12 @@ def _reapply_deletion_ledger(
             key = (row[0], row[1])
             if key not in entries or _utc_timestamp(row[4]) > _utc_timestamp(entries[key][4]):
                 entries[key] = row
+        covered_records = []
         for row in entries.values():
             kind, record_id, retention_rule, due_on, deleted_at = row
             covered = _record_is_covered(conn, kind, record_id, deleted_at)
-            if kind == "application" and covered:
-                _delete_restored_application(conn, record_id)
-            elif kind == "applicant_draft" and covered:
-                _delete_restored_draft(conn, record_id)
+            if covered:
+                covered_records.append((kind, record_id))
             conn.execute(
                 "INSERT INTO retention_deletions "
                 "(record_kind, record_id, retention_rule, due_on, deleted_at) "
@@ -283,20 +280,49 @@ def _reapply_deletion_ledger(
                 (kind, record_id, retention_rule, due_on, deleted_at),
             )
 
-    # Schema migration precedes deletion replay so a producer's old FK cannot remove
-    # a retained consumer's output. Recovery can prune the complete isolated snapshot.
-    with closing(sqlite3.connect(str(db_path))) as conn:
-        has_results = _table_exists(conn, "application_ai_results")
-    if has_results:
-        prepared_engine = create_engine(f"sqlite:///{db_path.as_posix()}")
-        try:
-            with prepared_engine.begin() as connection:
-                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
-                with Session(bind=connection) as db:
-                    prune_unowned_results(db)
-                    db.flush()
-        finally:
-            prepared_engine.dispose()
+    prepared_engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    try:
+        with prepared_engine.begin() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            with Session(bind=connection) as db:
+                for kind, record_id in covered_records:
+                    if kind == "application":
+                        application = db.get(Application, record_id)
+                        if application is not None:
+                            erase_application(db, application)
+                    elif kind == "applicant_draft":
+                        draft = db.get(ApplicantDraft, record_id)
+                        if draft is not None:
+                            erase_draft(db, draft)
+                prune_unowned_results(db)
+                db.flush()
+    finally:
+        prepared_engine.dispose()
+
+
+def _reset_restored_authority(db_path: Path) -> None:
+    """A stopped process cannot resume credentials or claimed work from a snapshot."""
+    prepared_engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    now = datetime.now(UTC)
+    try:
+        with prepared_engine.begin() as connection:
+            connection.execute(update(BrowserSession).where(BrowserSession.revoked_at.is_(None)).values(revoked_at=now))
+            connection.execute(update(MagicLinkToken).where(MagicLinkToken.revoked_at.is_(None)).values(revoked_at=now))
+            queued = EmailDelivery.state == EmailDeliveryState.QUEUED
+            # These intents issue credentials when rebuilt; ordinary notifications
+            # remain durable and recheck their lifecycle in the existing outbox.
+            credential_intent = EmailDelivery.retry_intent["type"].as_string().in_(
+                ["magic_link", "application_confirmation", "application_opening"])
+            connection.execute(update(EmailDelivery).where(queued, credential_intent).values(
+                state=EmailDeliveryState.FAILED, retry_intent=None,
+                quota_blocked=False, last_error_code="RecoveryReset"))
+            connection.execute(update(EmailDelivery).where(queued).values(last_error_code="RecoveryReset"))
+            connection.execute(update(RunLock).values(
+                holder_user_id=None, kind=None, held_since=None, renewed_at=None))
+            connection.execute(update(DailyMaintenanceRun).where(DailyMaintenanceRun.status == "running").values(
+                status="failed", lease_expires_at=now, last_error_code="RecoveryReset"))
+    finally:
+        prepared_engine.dispose()
 
 
 def _utc_timestamp(value: str) -> datetime:
@@ -305,8 +331,8 @@ def _utc_timestamp(value: str) -> datetime:
 
 def _record_is_covered(conn: sqlite3.Connection, kind: str, record_id: int, deleted_at: str) -> bool:
     table = {"application": "applications", "applicant_draft": "applicant_drafts"}.get(kind)
-    if table is None or not _table_exists(conn, table) or not _column_exists(conn, table, "created_at"):
-        return True
+    if table is None:
+        raise RuntimeError(f"Unknown deletion record kind: {kind}")
     row = conn.execute(f"SELECT created_at FROM {table} WHERE id = ?", (record_id,)).fetchone()
     if row is None:
         return True
@@ -318,93 +344,12 @@ def _record_is_covered(conn: sqlite3.Connection, kind: str, record_id: int, dele
     return True
 
 
-def _delete_restored_application(conn: sqlite3.Connection, application_id: int) -> None:
-    if not _table_exists(conn, "applications"):
-        return
-    if _table_exists(conn, "feedback"):
-        conn.execute(
-            "UPDATE feedback SET applicant_id = NULL WHERE applicant_id = ?",
-            (application_id,),
-        )
-    draft_ids = _ids_for(conn, "applicant_drafts", "application_id", application_id)
-    token_ids = _ids_for(conn, "magic_link_tokens", "application_id", application_id)
-    for draft_id in draft_ids:
-        token_ids.extend(_ids_for(conn, "magic_link_tokens", "applicant_draft_id", draft_id))
-    _delete_delivery_references(conn, application_id, draft_ids, token_ids)
-    _delete_ids(conn, "magic_link_tokens", token_ids)
-    _delete_ids(conn, "applicant_drafts", draft_ids)
-    for table in _APPLICATION_CHILD_TABLES:
-        _delete_where(conn, table, "application_id", application_id)
-    conn.execute("DELETE FROM applications WHERE id = ?", (application_id,))
-
-
-def _delete_restored_draft(conn: sqlite3.Connection, draft_id: int) -> None:
-    if _column_exists(conn, "browser_sessions", "reconciliation_draft_id"):
-        conn.execute("UPDATE browser_sessions SET reconciliation_draft_id = NULL WHERE reconciliation_draft_id = ?", (draft_id,))
-    token_ids = _ids_for(conn, "magic_link_tokens", "applicant_draft_id", draft_id)
-    _delete_delivery_references(conn, None, [draft_id], token_ids)
-    _delete_ids(conn, "magic_link_tokens", token_ids)
-    _delete_where(conn, "applicant_drafts", "id", draft_id)
-
-
-def _delete_delivery_references(
-    conn: sqlite3.Connection,
-    application_id: int | None,
-    draft_ids: list[int],
-    token_ids: list[int],
-) -> None:
-    if not _table_exists(conn, "email_deliveries"):
-        return
-    if application_id is not None:
-        _delete_where(conn, "email_deliveries", "application_id", application_id)
-    for draft_id in draft_ids:
-        _delete_where(conn, "email_deliveries", "applicant_draft_id", draft_id)
-    for token_id in token_ids:
-        _delete_where(conn, "email_deliveries", "magic_link_token_id", token_id)
-
-
-def _ids_for(
-    conn: sqlite3.Connection, table: str, column: str, value: int
-) -> list[int]:
-    if not _column_exists(conn, table, column):
-        return []
-    return [row[0] for row in conn.execute(f"SELECT id FROM {table} WHERE {column} = ?", (value,))]
-
-
-def _delete_ids(conn: sqlite3.Connection, table: str, ids: list[int]) -> None:
-    for record_id in set(ids):
-        _delete_where(conn, table, "id", record_id)
-
-
-def _delete_where(
-    conn: sqlite3.Connection, table: str, column: str, value: int
-) -> None:
-    if _column_exists(conn, table, column):
-        conn.execute(f"DELETE FROM {table} WHERE {column} = ?", (value,))
-
-
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     return (
         conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
         ).fetchone()
         is not None
-    )
-
-
-def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    return _table_exists(conn, table) and column in {
-        row[1] for row in conn.execute(f"PRAGMA table_info({table})")
-    }
-
-
-def _ensure_deletion_ledger(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS retention_deletions ("
-        "id INTEGER PRIMARY KEY, record_kind VARCHAR(30) NOT NULL, "
-        "record_id INTEGER NOT NULL, retention_rule VARCHAR(50) NOT NULL, "
-        "due_on DATE NOT NULL, deleted_at DATETIME NOT NULL, "
-        "UNIQUE (record_kind, record_id))"
     )
 
 

@@ -186,6 +186,7 @@ EXPECTED_FAILURE_CODES = frozenset(
         "ApplicationWithdrawn",
         "CommitteeAccessRemoved",
         "CredentialUsed",
+        "RecoveryReset",
         "VacancyRequestUnavailable",
         "OutcomeNoLongerDue",
         "EmailChangeCancelled",

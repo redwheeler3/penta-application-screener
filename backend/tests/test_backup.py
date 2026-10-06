@@ -9,11 +9,15 @@ import sqlite3
 import subprocess
 import sys
 from contextlib import closing
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+from alembic.config import Config
 from sqlalchemy import create_engine, event, text
 
+from alembic import command
+from app.db.models import Base
 from app.services import backup
 
 
@@ -23,7 +27,12 @@ def temp_engine(tmp_path):
     db_path = tmp_path / "data" / "penta_screener.db"
     db_path.parent.mkdir(parents=True)
     eng = create_engine(f"sqlite:///{db_path}")
+    Base.metadata.create_all(eng)
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
     with eng.begin() as conn:
+        config.attributes["connection"] = conn
+        command.stamp(config, "head")
         conn.execute(text("CREATE TABLE runs (id INTEGER PRIMARY KEY, note TEXT)"))
         conn.execute(text("INSERT INTO runs (note) VALUES ('run-1'), ('run-2')"))
     return eng
@@ -122,27 +131,23 @@ def test_restore_preserves_the_live_identity_high_water_mark(temp_engine):
 
 def test_restore_does_not_delete_a_later_generation_of_a_legacy_id(temp_engine):
     with temp_engine.begin() as conn:
-        conn.exec_driver_sql("CREATE TABLE applications (id INTEGER PRIMARY KEY, created_at TEXT, marker TEXT)")
-        conn.exec_driver_sql("INSERT INTO applications VALUES (1, '2026-10-04 12:00:00', 'new generation')")
+        conn.exec_driver_sql("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized, working_revision, created_at) VALUES (1, 'synthetic@example.test', '{}', 'new generation', '{}', 1, '2026-10-04 12:00:00')")
     saved = backup.create_backup(engine=temp_engine)
     path = backup._sqlite_path(temp_engine)
     with sqlite3.connect(path) as conn:
-        backup._ensure_deletion_ledger(conn)
         conn.execute("INSERT INTO retention_deletions (record_kind, record_id, retention_rule, due_on, deleted_at) "
             "VALUES ('application', 1, 'one_year', '2026-10-01', '2026-10-01 12:00:00')")
     backup.restore_backup(saved, engine=temp_engine)
     with temp_engine.connect() as conn:
-        assert conn.exec_driver_sql("SELECT marker FROM applications WHERE id=1").scalar_one() == "new generation"
+        assert conn.exec_driver_sql("SELECT raw_row_hash FROM applications WHERE id=1").scalar_one() == "new generation"
 
 
 def test_ambiguous_legacy_restore_fails_before_replacing_live_data(temp_engine):
     with temp_engine.begin() as conn:
-        conn.exec_driver_sql("CREATE TABLE applications (id INTEGER PRIMARY KEY, created_at TEXT)")
-        conn.exec_driver_sql("INSERT INTO applications VALUES (1, '2026-10-04 12:00:00')")
+        conn.exec_driver_sql("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized, working_revision, created_at) VALUES (1, 'synthetic@example.test', '{}', 'synthetic', '{}', 1, '2026-10-04 12:00:00')")
     saved = backup.create_backup(engine=temp_engine)
     path = backup._sqlite_path(temp_engine)
     with sqlite3.connect(path) as conn:
-        backup._ensure_deletion_ledger(conn)
         conn.execute("INSERT INTO retention_deletions (record_kind, record_id, retention_rule, due_on, deleted_at) "
             "VALUES ('application', 1, 'one_year', '2026-10-04', '2026-10-04 12:00:00.500000')")
         conn.execute("INSERT INTO runs (note) VALUES ('live data')")
@@ -161,8 +166,9 @@ def test_restore_rejects_a_corrupt_backup(temp_engine, tmp_path):
         backup.restore_backup(bogus, engine=temp_engine)
 
 
-def test_restore_replaces_crash_left_wal_and_preserves_a_recovery_snapshot(tmp_path):
-    live = tmp_path / "synthetic-live.db"
+def test_restore_replaces_crash_left_wal_and_preserves_a_recovery_snapshot(tmp_path, temp_engine):
+    live = backup._sqlite_path(temp_engine)
+    temp_engine.dispose()
     saved = tmp_path / "synthetic-backup.db"
     script = """
 import os, sqlite3, sys
@@ -203,69 +209,115 @@ os._exit(0)
 
 def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
     with temp_engine.begin() as conn:
-        conn.execute(text("CREATE TABLE applications (id INTEGER PRIMARY KEY)"))
-        conn.execute(
-            text(
-                "CREATE TABLE application_notes (id INTEGER PRIMARY KEY, "
-                "application_id INTEGER NOT NULL)"
-            )
-        )
-        conn.execute(
-            text(
-                "CREATE TABLE application_committee_notes (id INTEGER PRIMARY KEY, "
-                "application_id INTEGER NOT NULL)"
-            )
-        )
-        conn.execute(
-            text(
-                "CREATE TABLE retention_deletions (id INTEGER PRIMARY KEY, "
-                "record_kind VARCHAR(30) NOT NULL, record_id INTEGER NOT NULL, "
-                "retention_rule VARCHAR(50) NOT NULL, due_on DATE NOT NULL, "
-                "deleted_at DATETIME NOT NULL, UNIQUE(record_kind, record_id))"
-            )
-        )
-        conn.execute(text("INSERT INTO applications (id) VALUES (42)"))
-        conn.execute(
-            text("INSERT INTO application_notes (application_id) VALUES (42)")
-        )
-        conn.execute(
-            text("INSERT INTO application_committee_notes (application_id) VALUES (42)")
-        )
-    before_deletion = backup.create_backup(engine=temp_engine, tag="before-deletion")
-
+        conn.exec_driver_sql("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized, working_revision, created_at) VALUES (42, 'synthetic@example.test', '{}', 'synthetic', '{}', 1, '2026-08-01 12:00:00')")
+        conn.exec_driver_sql("INSERT INTO users (id, email, display_name, role, is_active) VALUES (1, 'author@example.test', 'Author', 'member', 1)")
+        conn.exec_driver_sql("INSERT INTO application_notes (application_id, user_id, note) VALUES (42, 1, 'Synthetic private note')")
+        conn.exec_driver_sql("INSERT INTO application_committee_notes (application_id, author_user_id, body, creation_key, deleted_at) VALUES (42, 1, '', 'synthetic-receipt', '2026-08-20 12:00:00')")
+    saved = backup.create_backup(engine=temp_engine)
     with temp_engine.begin() as conn:
-        conn.execute(text("DELETE FROM application_notes WHERE application_id = 42"))
-        conn.execute(
-            text("DELETE FROM application_committee_notes WHERE application_id = 42")
-        )
-        conn.execute(text("DELETE FROM applications WHERE id = 42"))
-        conn.execute(
-            text(
-                "INSERT INTO retention_deletions "
-                "(record_kind, record_id, retention_rule, due_on, deleted_at) "
-                "VALUES ('application', 42, 'one_year', '2026-08-26', "
-                "'2026-08-26 12:00:00')"
-            )
-        )
+        conn.exec_driver_sql("INSERT INTO retention_deletions (record_kind, record_id, retention_rule, due_on, deleted_at) VALUES ('application', 42, 'one_year', '2026-08-26', '2026-08-26 12:00:00')")
+    backup.restore_backup(saved, engine=temp_engine)
+    with temp_engine.connect() as conn:
+        for table in ("applications", "application_notes", "application_committee_notes"):
+            assert conn.exec_driver_sql(f"SELECT count(*) FROM {table}").scalar_one() == 0
+        assert conn.exec_driver_sql("SELECT count(*) FROM retention_deletions").scalar_one() == 1
+        assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
 
-    backup.restore_backup(before_deletion, engine=temp_engine)
-
-    db_path = backup._sqlite_path(temp_engine)
-    restored = create_engine(f"sqlite:///{db_path}")
-    with restored.connect() as conn:
-        assert conn.execute(text("SELECT count(*) FROM applications")).scalar() == 0
-        assert conn.execute(text("SELECT count(*) FROM application_notes")).scalar() == 0
-        assert (
-            conn.execute(text("SELECT count(*) FROM application_committee_notes")).scalar()
-            == 0
-        )
-        assert conn.execute(text("SELECT count(*) FROM retention_deletions")).scalar() == 1
 
 def test_sqlite_path_rejects_in_memory(tmp_path):
     from sqlalchemy import create_engine
 
     with pytest.raises(RuntimeError, match="file-backed"):
         backup._sqlite_path(create_engine("sqlite:///:memory:"))
+
+
+def test_restore_requires_fresh_credentials_and_releases_abandoned_work(temp_engine):
+    from sqlalchemy.orm import Session
+
+    from app.db.models import (
+        AccessAllowlistEntry,
+        DailyMaintenanceRun,
+        EmailDelivery,
+        EmailDeliveryState,
+        MagicLinkPurpose,
+        PasswordlessIdentityKind,
+        User,
+        UserRole,
+    )
+    from app.services.auth.committee import authenticate_committee_user
+    from app.services.auth.passwordless import (
+        consume_magic_link,
+        create_browser_session,
+        issue_magic_link,
+        revoke_browser_session,
+    )
+    from app.services.run_lock import (
+        acquire_run_lock,
+        ensure_lock_row,
+        release_run_lock,
+    )
+
+    now = datetime.now(UTC)
+    kind, purpose = PasswordlessIdentityKind.COMMITTEE, MagicLinkPurpose.COMMITTEE_ACCESS
+    with Session(temp_engine) as db:
+        user = User(email="synthetic@example.test", display_name="Synthetic", role=UserRole.ADMIN, is_active=True)
+        db.add_all([user, AccessAllowlistEntry(email=user.email, role=user.role)])
+        db.flush()
+        session = create_browser_session(db, identity_kind=kind, user_id=user.id, now=now)
+        link = issue_magic_link(db, identity_kind=kind, purpose=purpose, email=user.email, user_id=user.id, now=now)
+        session_token, link_token, user_id = session.token, link.token, user.id
+        for intent in ("magic_link", "application_confirmation", "application_opening", "application_unsuccessful"):
+            db.add(EmailDelivery(message_kind=intent, recipient_kind=kind, user_id=user_id,
+                state=EmailDeliveryState.QUEUED, retry_intent={"type": intent}, last_attempt_at=now))
+        db.add(DailyMaintenanceRun(task="synthetic", pacific_date=now.date(), status="running", lease_expires_at=now))
+        db.commit()
+        ensure_lock_row(db)
+        lease = acquire_run_lock(db, user_id=user_id, kind="rank", now=now)
+    saved = backup.create_backup(engine=temp_engine)
+    with Session(temp_engine) as db:
+        release_run_lock(db, lease)
+        assert revoke_browser_session(db, session_token, now=now)
+        assert consume_magic_link(db, link_token, identity_kind=kind, purpose=purpose, now=now) is not None
+        db.commit()
+        assert authenticate_committee_user(db, session_token, now=now) is None
+    backup.restore_backup(saved, engine=temp_engine)
+    with Session(temp_engine) as db:
+        assert authenticate_committee_user(db, session_token, now=now) is None
+        assert consume_magic_link(db, link_token, identity_kind=kind, purpose=purpose, now=now) is None
+        assert acquire_run_lock(db, user_id=user_id, kind="rank", now=now) is not None
+        for delivery in db.query(EmailDelivery):
+            assert delivery.last_error_code == "RecoveryReset"
+            if delivery.message_kind == "application_unsuccessful":
+                assert delivery.state == EmailDeliveryState.QUEUED
+                assert delivery.retry_intent is not None
+            else:
+                assert delivery.state == EmailDeliveryState.FAILED
+                assert delivery.retry_intent is None
+        assert db.query(DailyMaintenanceRun).one().status == "failed"
+        fresh = create_browser_session(db, identity_kind=kind, user_id=user_id, now=now)
+        db.commit()
+        assert authenticate_committee_user(db, fresh.token, now=now) is not None
+
+
+@pytest.mark.parametrize("failure", ["unversioned", "sanitization"])
+def test_failed_recovery_preparation_keeps_live_database(temp_engine, monkeypatch, failure):
+    saved = backup.create_backup(engine=temp_engine)
+    with temp_engine.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO runs (note) VALUES ('live data')")
+    if failure == "unversioned":
+        with sqlite3.connect(saved) as conn:
+            conn.execute("DROP TABLE alembic_version")
+        message = "Alembic revision"
+    else:
+        def fail(_path):
+            raise RuntimeError("Synthetic preparation failure")
+        monkeypatch.setattr(backup, "_reset_restored_authority", fail)
+        message = "preparation failure"
+    with pytest.raises(RuntimeError, match=message):
+        backup.restore_backup(saved, engine=temp_engine)
+    with temp_engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM runs").scalar_one() == 3
+    assert len(backup.list_backups(temp_engine)) == 1
 
 
 @pytest.mark.parametrize("expired_consumer", [False, True])

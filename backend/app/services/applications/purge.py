@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import delete as sql_delete
 from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
@@ -14,11 +13,8 @@ from app.db.models import (
     Application,
     ApplicationParticipation,
     BrowserSession,
-    EmailDelivery,
     Feedback,
-    MagicLinkToken,
     OpeningOutcome,
-    PasswordlessIdentityKind,
     RetentionDeletion,
 )
 from app.services.applications.locking import lock_application
@@ -98,11 +94,7 @@ def purge_expired_application(db: Session, application: Application, *, now: dat
     _record_deletion(db, record_kind="application", record_id=application.id,
                      retention_rule=_application_retention_rule(db, application.id),
                      due_on=application.retention_due_on, now=now)
-    db.execute(update(Feedback).where(Feedback.applicant_id == application.id).values(applicant_id=None))
-    affected_results = application_result_ids(db, application.id)
-    db.delete(application)
-    db.flush()
-    prune_unowned_results(db, affected_results, now=now)
+    erase_application(db, application, now=now)
     return True
 
 
@@ -136,6 +128,11 @@ def purge_draft(db: Session, draft: ApplicantDraft, *, now: datetime, retention_
     """Remove one temporary copy, retaining its deletion fact in the caller's transaction."""
     _record_deletion(db, record_kind="applicant_draft", record_id=draft.id,
         retention_rule=retention_rule, due_on=min(draft.expires_on, pacific_today(now=now)), now=now)
+    erase_draft(db, draft)
+
+
+def erase_draft(db: Session, draft: ApplicantDraft) -> None:
+    """Erase a temporary aggregate without changing the caller's deletion ledger."""
     db.execute(update(BrowserSession).where(BrowserSession.reconciliation_draft_id == draft.id)
         .values(reconciliation_draft_id=None).execution_options(synchronize_session=False))
     db.delete(draft)
@@ -145,31 +142,17 @@ def purge_never_submitted_application(db: Session, application: Application) -> 
     """Physically remove a draft-only application and its access records."""
     _record_deletion(db, record_kind="application", record_id=application.id,
         retention_rule="explicit_application_delete", due_on=pacific_today(), now=datetime.now(UTC))
-    draft_ids = select(ApplicantDraft.id).where(ApplicantDraft.application_id == application.id)
-    link_ids = select(MagicLinkToken.id).where(
-        or_(
-            MagicLinkToken.application_id == application.id,
-            MagicLinkToken.applicant_draft_id.in_(draft_ids),
-        )
-    )
-    db.execute(
-        sql_delete(EmailDelivery).where(
-            or_(
-                EmailDelivery.application_id == application.id,
-                EmailDelivery.applicant_draft_id.in_(draft_ids),
-                EmailDelivery.magic_link_token_id.in_(link_ids),
-            )
-        )
-    )
-    db.execute(sql_delete(MagicLinkToken).where(MagicLinkToken.id.in_(link_ids)))
-    db.execute(sql_delete(ApplicantDraft).where(ApplicantDraft.id.in_(draft_ids)))
-    db.execute(
-        sql_delete(BrowserSession).where(
-            BrowserSession.identity_kind == PasswordlessIdentityKind.APPLICANT,
-            BrowserSession.application_id == application.id,
-        )
-    )
+    erase_application(db, application)
+
+
+def erase_application(db: Session, application: Application, *, now: datetime | None = None) -> None:
+    """Erase an aggregate using schema cascades, preserving unrelated shared output.
+
+    The caller owns policy, deletion receipts and the transaction. The same current
+    schema applies to ordinary purges and an upgraded isolated recovery candidate.
+    """
+    db.execute(update(Feedback).where(Feedback.applicant_id == application.id).values(applicant_id=None))
     affected_results = application_result_ids(db, application.id)
     db.delete(application)
     db.flush()
-    prune_unowned_results(db, affected_results)
+    prune_unowned_results(db, affected_results, now=now)
