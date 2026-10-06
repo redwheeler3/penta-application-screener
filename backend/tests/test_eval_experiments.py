@@ -240,3 +240,26 @@ async def test_whole_run_agreement_survives_history_reordering_and_contested_cou
         runs = (await client.get("/evals/last-run?keys=judge,matching")).json()["runs"]
     assert runs[0]["result"]["agreement"] == agreement
     assert runs[1]["result"]["passed"] == 1
+
+
+@pytest.mark.parametrize("mode", ["run", "stability"])
+@pytest.mark.parametrize("key", ["synthetic-café", "synthetic-🙂", 'synthetic-"quoted"\\key'])
+async def test_unicode_scoped_identity_round_trips(tmp_path, monkeypatch, mode, key):
+    local_corpus(tmp_path, monkeypatch)
+    path = GOLDEN_FILES["matching"]
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["cases"][0]["key"] = key
+    path.write_text(json.dumps(data), encoding="utf-8")
+    app, _db, provider = setup_app()
+    provider.route("", JudgeReport(verdict=JudgeVerdict.KEEP, reason="Synthetic"))
+    from urllib.parse import urlencode
+    query = urlencode({"mode": mode, "k": 2, "case": key, "passName": "matching"})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        events = await _stream_events(client, f"/evals/judge?{query}")
+        summary = next(item for item in events if item["type"] == "summary")
+        family = "stability" if mode == "stability" else "judge"
+        run = (await client.get(f"/evals/last-run?keys={family}")).json()["runs"][0]
+    assert summary["storedRunId"] == run["runId"]
+    assert [case["key"] for case in run["result"]["cases"]] == [key]
+    identity = json.dumps(["matching", key], separators=(",", ":"), ensure_ascii=False)
+    assert run["result"]["cases"][0]["inputFingerprint"] == run["currentCaseFingerprints"][identity]

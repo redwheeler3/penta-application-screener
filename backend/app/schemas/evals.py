@@ -366,6 +366,7 @@ class LastRun(ResponseModel):
     not the replayed reasoning. Prompt and model drift are reported separately so a
     rehydrated result is never mistaken for one produced by the current configuration."""
 
+    run_id: int
     eval_key: str
     ran_at: str  # ISO-8601 timestamp of the run
     prompt_version: str = ""  # the prompt the run exercised

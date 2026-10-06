@@ -144,6 +144,7 @@ class EvalSummaryEvent(ResponseModel):
     eval: str  # the eval_key (scoring/consolidation/matching/decomposition/screening,
     # their _stability variants, invariants, judge, stability)
     saved_path: str | None = None  # server-side path the run was recorded to
+    stored_run_id: int | None = None  # existing EvalRun identity; null when telemetry could not be saved
     result: dict  # the eval's response model, already camelCase-serialized
 
 

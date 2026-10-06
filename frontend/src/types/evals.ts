@@ -103,6 +103,10 @@ export type EvalCaseOutcomesByMode = Partial<Record<EvalRunMode, EvalCaseOutcome
 // (Cohen's κ + failure-recall); `model`/`scoringModel`/`judgeModel` name the model that mode used.
 export type EvalRunResult<Mode extends EvalRunMode = EvalRunMode> = {
   experimentId?: string;
+  promptVersion?: string;
+  scoringPromptVersion?: string;
+  judgePromptVersion?: string;
+  reasoningEffort?: string | null;
   cases?: EvalCaseResultByMode[Mode][];
   agreement?: {
     kappa: number | null;
@@ -124,7 +128,7 @@ export type EvalStreamEvent =
   | ThinkingEvent
   | ErrorEvent
   | PingEvent
-  | ({ type: "summary"; savedPath: string | null } & EvalRunSummary);
+  | ({ type: "summary"; savedPath: string | null; storedRunId?: number | null } & EvalRunSummary);
 
 export type JudgeBackground = { passName: string; background: string; caseCount: number };
 
@@ -140,6 +144,7 @@ export type EvalDescriptor = {
 // `result` is the same shape the streaming summary carries for that evalKey; no thinking
 // narration is restored.
 export type LastEvalRun = {
+  runId?: number;
   ranAt: string;
   promptVersion: string;
   currentPromptVersion: string;

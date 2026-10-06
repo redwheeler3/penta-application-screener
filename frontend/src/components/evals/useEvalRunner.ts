@@ -11,6 +11,7 @@ import type {
   EvalFixtureKey,
   EvalRunMode,
   EvalRunOption,
+  EvalRunSummary,
   EvalStreamEvent,
   LastEvalRun,
 } from "../../types";
@@ -60,14 +61,15 @@ export function useEvalRunner(options: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(loadCases, [options.caseEvalKey]);
 
-  async function loadLastRuns(seedResults: boolean): Promise<void> {
+  async function loadLastRuns(seedResults: boolean, receipt?: EvalRunSummary & { storedRunId?: number | null }): Promise<void> {
     if (!historyReads.isFor(historyKey)) return;
     const isCurrent = historyReads.begin();
     try {
       const data = await fetchLastEvalRun(options.runKeys);
       if (!isCurrent() || !data.runs.length) return;
-      const relevant = data.runs.filter((last) => seedResults
-        || experiments.current[last.evalKey] === last.result.experimentId);
+      const unconfirmed = !seedResults && receipt != null && receipt.storedRunId == null;
+      const relevant = data.runs.filter((last) => !unconfirmed || last.evalKey !== receipt.eval
+        || last.result.experimentId === receipt.result.experimentId);
       const byMode: Record<string, LastEvalRun> = {};
       for (const lastRun of relevant) byMode[lastRun.evalKey] = lastRun;
       setRestored(byMode);
@@ -92,15 +94,25 @@ export function useEvalRunner(options: {
         if (seedResults) return seeded;
         const next = Object.fromEntries(Object.entries(current).map(([key, modes]) => [key, { ...modes }]));
         for (const last of relevant) {
-          for (const modes of Object.values(next)) {
-            const outcome = modes[last.evalKey];
-            if (outcome && !matchesCurrent(last, outcome)) delete modes[last.evalKey];
-          }
+          for (const modes of Object.values(next)) delete modes[last.evalKey];
         }
-        // A telemetry write can fail after a summary was delivered. Preserve that
-        // fresh receipt while filling other current coverage from stored history.
         for (const [key, modes] of Object.entries(seeded)) {
-          next[key] = { ...modes, ...next[key] };
+          next[key] = { ...next[key], ...modes };
+        }
+        // Protect only this delivered receipt when its history write failed. Older
+        // local results are not receipts and must yield to the newest stored outcomes.
+        if (unconfirmed) {
+          const last = data.runs.find((item) => item.evalKey === receipt.eval);
+          const model = receipt.result.model ?? receipt.result.scoringModel ?? receipt.result.judgeModel;
+          const prompt = receipt.result.promptVersion ?? receipt.result.scoringPromptVersion ?? receipt.result.judgePromptVersion;
+          const configured = !last || ((model === undefined || model === last.currentModelId)
+            && (prompt === undefined || prompt === last.currentPromptVersion)
+            && (receipt.result.reasoningEffort === undefined || (receipt.result.reasoningEffort ?? "") === last.currentReasoningEffort));
+          if (configured) for (const outcome of caseOutcomes(receipt)) {
+            const key = evalCaseIdentity(outcome.result.key, outcome.result.passName);
+            if (last?.currentCaseFingerprints && outcome.result.inputFingerprint !== last.currentCaseFingerprints[key]) continue;
+            (next[key] ??= {})[outcome.mode] = outcome;
+          }
         }
         return next;
       });
@@ -161,14 +173,15 @@ export function useEvalRunner(options: {
           for (const [key, results] of Object.entries(current)) {
             next[key] = caseKey && sameExperiment
               ? { ...results }
-              : { ...results, [event.eval]: undefined };
+              : { ...results };
+            if (!(caseKey && sameExperiment)) delete next[key][event.eval];
           }
           for (const outcome of runCases) {
             (next[evalCaseIdentity(outcome.result.key, outcome.result.passName)] ??= {})[outcome.mode] = outcome;
           }
           return next;
         });
-        void loadLastRuns(false);
+        void loadLastRuns(false, event);
       });
       if (!finished && isCurrent()) {
         setRun((current) => ({

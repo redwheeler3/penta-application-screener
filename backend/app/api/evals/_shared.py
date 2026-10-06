@@ -41,19 +41,24 @@ def require_local_fixture_write(db: Session, actor_id: int) -> None:
     require_admin_write(db, actor_id)
 
 
-def persist(db: Session, eval_key: str, prompt_version: str, result: ResponseModel, thinking: str) -> None:
+def persist(db: Session, eval_key: str, prompt_version: str, result: ResponseModel, thinking: str) -> int | None:
     """Record one run as an EvalRun row. Best-effort — a persistence failure must not fail
     the run (the result already streamed to the user)."""
     try:
-        db.add(EvalRun(
+        row = EvalRun(
             eval_key=eval_key,
             prompt_version=prompt_version,
             result=result.model_dump(mode="json", by_alias=True),
             thinking=thinking or None,
-        ))
+        )
+        db.add(row)
+        db.flush()
+        run_id = row.id
         db.commit()
+        return run_id
     except Exception:  # telemetry write; never propagate
         db.rollback()
+        return None
 
 
 def runs_out(report) -> list[StabilityRun]:
@@ -99,8 +104,8 @@ def stream(db: Session, eval_key: str, prompt_version: str, work, *, case_finger
                 "cases": [case.model_copy(update={"input_fingerprint": case_fingerprints[
                     case_identity(case.key, getattr(case, "pass_name", ""))]}) for case in result.cases],
             })
-        persist(db, eval_key, prompt_version, result, "".join(thinking_parts))
-        yield emit(EvalSummaryEvent(eval=eval_key, result=result.model_dump(by_alias=True)))
+        stored_run_id = persist(db, eval_key, prompt_version, result, "".join(thinking_parts))
+        yield emit(EvalSummaryEvent(eval=eval_key, stored_run_id=stored_run_id, result=result.model_dump(by_alias=True)))
 
     return WorkStreamingResponse(gen())
 

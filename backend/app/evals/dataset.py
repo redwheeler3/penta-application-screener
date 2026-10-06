@@ -14,7 +14,7 @@ from app.evals.paths import GOLDEN_FILES
 
 
 def case_identity(key: str, family: str = "") -> str:
-    return json.dumps([family, key], separators=(",", ":")) if family else key
+    return json.dumps([family, key], separators=(",", ":"), ensure_ascii=False) if family else key
 
 
 def fingerprint(value: object) -> str:

@@ -200,7 +200,7 @@ def last_run(
     dataset = load_dataset()
     runs: list[LastRun] = []
     for key in wanted:
-        newest = (db.query(EvalRun.eval_key, EvalRun.created_at, EvalRun.prompt_version, EvalRun.result)
+        newest = (db.query(EvalRun.id, EvalRun.eval_key, EvalRun.created_at, EvalRun.prompt_version, EvalRun.result)
                   .filter(EvalRun.eval_key == key)
                   .order_by(EvalRun.created_at.desc(), EvalRun.id.desc()).first())
         if newest is None:
@@ -230,6 +230,7 @@ def last_run(
         current_model_id = current_model(newest.eval_key, db)
         current_effort = current_reasoning_effort(newest.eval_key, db)
         runs.append(LastRun(
+            run_id=newest.id,
             eval_key=newest.eval_key,
             ran_at=utc_isoformat(newest.created_at),
             prompt_version=newest.prompt_version or "",
