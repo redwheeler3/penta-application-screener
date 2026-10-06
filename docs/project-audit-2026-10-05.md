@@ -1,468 +1,330 @@
-# Follow-up project audit — 2026-10-05
-
-**Status: implemented and verified.** Four audit passes established the findings below against
-clean `main` at `deb2ea1`, following the completed twelve-finding audit. All seven groups and
-the API ownership cleanup are implemented; implementation progress and final verification follow.
-Descriptions of reproduced faults below document the audit baseline.
-
-## Implemented scope
-
-The work addresses **seven finding groups in five implementation packages**, plus the small
-owner-specific cleanup below. Applicant restoration no longer produces a false session-expired
-page on startup. The other substantial findings concern
-cached-result lifetime, zero-cost cache adoption, authority at administrative commit, proposal
-acknowledgements, and expiry in opening summaries.
-
-| ID | Priority | Recommendation |
-| --- | --- | --- |
-| F01 | P1 | Bind applicant restoration follow-ups to the application response that was accepted. |
-| F02 | P2 | Make session-mismatch recovery repeatable within a long-lived applicant client. |
-| F03 | P1 | Keep a retained consumer's valid cached result when its original producer is purged. |
-| F04 | P1 | Allow Screen to adopt cached results when no new model work is needed. |
-| F05 | P1 | Recheck administrative authority under the write boundary before shared changes and final decisions. |
-| F06 | P2 | Preserve proposal drafts until acknowledgement; persist Add/Remove intent instead of replacing stale lists. |
-| F07 | P2 | Respect expiry in opening summaries and batch their selected-household reads. |
-
-P1 here means a normal workflow can be blocked, paid reusable work can disappear, or a permanent
-administrative action can commit after authority changes. These are repository-grounded findings,
-not claims that an incident occurred in production.
-
-## F01 — Applicant restoration uses the pre-restoration identity for its follow-up
-
-Owners: [applicant persistence](../frontend/src/applicant/useApplicantPersistence.ts:90),
-[restore sequence](../frontend/src/applicant/useApplicantPersistence.ts:271),
-[pending-copy read](../frontend/src/applicant/useApplicantPersistence.ts:326),
-[server identity contract](../backend/app/api/applicant/dependencies.py).
-
-The initial application GET deliberately bootstraps identity. `restoreApplication` reads the
-application correctly, dispatches its ID, and then calls `restorePendingCopy`. That follow-up
-still closes over the API created when the original render had `applicationId === null`.
-It sends `X-Penta-Identity: applicant:none` while the cookie identifies the application just read.
-Updating React state does not replace an already-running function's captured client.
-
-A reproduction through the real API factory and request layer captured `applicant:none` after
-accepting application 7. A second reproduction enforced the real server comparison and observed
-`session_expired` even though that same application remained signed in. This can also miss the
-pending-copy decision that the server requires before further saves. Explicit link-target changes
-use the same restore sequence, so they need the same ownership fix.
-
-**Recommend:** derive the follow-up client from the accepted response ID and carry it through the
-restore sequence. Validate known-target responses as today. Do not wait for a React render or use
-whatever identity happens to be live later. Add a thin integration test at the actual request
-boundary; the current API-factory mock returns identical mocks for every identity and hid this fault.
-
-**Regressions:** initial existing-session load, guest-link claim, account-switch link, same-account
-renewal, pending-copy presence, and a cookie change after the main read but before the follow-up.
-
-**Latency:** no extra request or synchronization is needed. This removes spurious recovery work.
-
-## F02 — Mismatch notification is permanently latched after the first failure
-
-Owners: [identity client](../frontend/src/api/client.ts:29),
-[applicant lifecycle recovery](../frontend/src/applicant/useApplicantPersistence.ts),
-[email workflow](../frontend/src/applicant/applicantEmailFlow.ts).
-
-`identityClient` sets `mismatchReported` on its first 409 `session_changed` and never resets it.
-Applicant APIs are memoized by application ID, so a recovery into the same application keeps that
-client. Lifecycle refresh uses a separately constructed client, which does not reset the original.
-
-The direct failure/success/failure reproduction emitted only one mismatch notification. A full
-hook/request-layer reproduction then changed the cookie away from the application, recovered the
-original application, and changed it again. The first email-change attempt entered
-`session_expired`; the second only set an email error while leaving the page in `idle`.
-Server identity checks still rejected the action: this is a recovery/affordance problem, not a
-confirmed write to the wrong application.
-
-**Recommend:** make mismatch signalling repeatable after recovery. Keep deduplication with the
-lifecycle owner while it is already paused, rather than suppressing future events forever in a
-request client. Ensure all action paths interpret `session_changed` consistently.
-
-Related latency cleanup: the committee intake refresh interval remains installed while its
-workspace is frozen (`CommitteeWorkspace.tsx:239`). Stop those background reads while paused;
-they cannot refresh the old identity successfully. Do not automatically cancel already-paid AI
-work as an incidental part of this cleanup.
-
-**Regressions:** two mismatch/recovery cycles, email request and cancellation, queued saves,
-multiple simultaneous failures, focus recovery, and no recursive mismatch-triggered read loop.
-
-**Latency:** no new model work or ordinary-request serialization; fewer futile paused-page reads.
-
-## F03 — Producer retention controls another application's cached result
-
-Owners: [result ownership](../backend/app/db/models.py:849),
-[selected references](../backend/app/db/models.py:888),
-[consumption](../backend/app/ai/result_selection.py),
-[purge](../backend/app/services/applications/purge.py:89).
-
-`ApplicationAIResult.application_id` identifies the original producer and cascades on producer
-deletion. `ApplicationAISelection.result_id` also cascades when that result disappears. A later
-application may legitimately reuse that content-addressed result, but its reference does not
-protect the result from its producer's retention deadline.
-
-The reproduction used native canonical answers across withdrawal/reapplication. Adult ages
-changed between the two submission dates, but screening does not consume adult ages: the two
-screening keys were provably equal. The retained consumer selected the producer's result.
-Purging the expired producer left the consumer application present but removed its result and
-selected reference. A supplemental native/schema-valid run let the real screening helper adopt
-that cached result with zero provider calls, then repeated the purge and lost the reference again.
-
-This loses reusable paid output and consumed findings from a still-retained application. It is
-also the point where original-producer provenance and data-retention ownership currently disagree.
-
-**Recommend:** decouple result lifetime from the producer alone. Preserve original provenance
-and costs; retain valid selected results that a retained consumer still needs; delete output
-when no entitled retention owner remains. Design and test the migration before changing the FK.
-Do not copy output into duplicate billed-result rows, salt cache keys with new application IDs,
-or retain every orphaned result indefinitely.
-
-**Regressions:** one/multiple consumers, producer-first and consumer-first purge, different
-retention deadlines, replaced/stale selected references, score and screening kinds, restore,
-original provenance, result IDs, and unchanged cost history.
-
-**Latency:** primarily a schema/lifecycle correction. It avoids repeat model calls after purge;
-ordinary saves must not wait for model work or a full-table cache sweep.
-
-## F04 — Valid cached screening cannot be adopted as zero-cost work
-
-Owners: [Screen no-op guard](../backend/app/api/screening.py:139),
-[estimate/cache reuse](../backend/app/ai/analysis.py),
-[dashboard](../backend/app/api/dashboard.py),
-[confirmation](../frontend/src/components/workflow/WorkflowBar.tsx).
-
-Cache presence and consumed-reference presence are different. A withdrawal/reapplication can
-have a valid cache key but no `ApplicationAISelection` for its new ID. The existing screening
-helper can attach reused results, but the endpoint refuses to invoke it when `to_analyze == 0`.
-The confirmation also offers only Close for that estimate.
-
-The actual HTTP reproduction returned one cached result and zero missing model calls, while
-the dashboard said `screened: false`. Starting Screen returned 409 `unchanged_pool`, left the
-consumer unselected, and made no provider call. Rank is then disabled for this one-app pool.
-The failure repeats with a validated `ScreeningReport`. Score-current already distinguishes
-`cachedToRefresh`; that is the useful sibling pattern.
-
-**Recommend:** distinguish model misses from cached results that still need to be applied.
-Expose a zero-cost reuse operation, validate current input/lifecycle at commit, attach the
-references, and refresh derived views. Keep the true no-op guard when both kinds of work are empty.
-
-**Regressions:** all-cached new consumer, stale/missing selected reference, mixed fresh/cached
-pool, input change before commit, withdrawn/selected/expired target, zero provider calls and cost,
-and restored dashboard/Rank readiness.
-
-**Latency:** a short persistence operation replaces an unnecessary analysis or blocked workflow.
-No new input identifier is needed: cache key, application ID and selected reference already exist.
-
-## F05 — Administrative admission is not rechecked at shared-write commit
-
-Owners: [shared settings](../backend/app/api/settings.py:78),
-[committee-default rules](../backend/app/api/settings.py:175),
-[opening decisions](../backend/app/api/openings.py:281),
-[selection service](../backend/app/services/openings/selection.py:95),
-[existing guarded pattern](../backend/app/services/auth/allowlist.py).
-
-`require_admin` checks authority when the dependency resolves. Shared settings/default-rule
-writers and permanent opening decisions then use the admitted actor without a fresh authority
-check under their writer boundary. Allowlist mutations already do the latter.
-
-Two request-session reproductions loaded an admin actor, committed its demotion in another
-session, and then continued the admitted operation. One committed shared rules; the other
-confirmed a permanent selected-household decision. The tests reproduce the gap between
-admission and mutation; they do not claim that a newly admitted member can call an admin endpoint.
-
-**Recommend:** extend the existing locked-admin pattern to administrative mutations. Recheck
-active authority after acquiring the relevant write boundary and before making permanent changes
-or staging side effects. Review shared settings, default rules, publication/update/direct fill,
-selection/no-selection and admin mutation endpoints together. Avoid a blanket lock around reads,
-provider I/O, or every ordinary member action.
-
-**Regressions:** demotion/deactivation after admission, actor changed while waiting for a writer,
-allowed unchanged actor, existing idempotent retries, no partial decision or queued notice,
-and preserved application/opening lock ordering.
-
-**Latency:** an authoritative DB recheck in an existing write transaction; no network/provider wait.
-
-## F06 — Proposal handling loses rejected drafts and concurrent Add intent
-
-Owners: [composer](../frontend/src/components/ranking/RankingView.tsx:55),
-[proposal queue](../frontend/src/hooks/useRanking.ts:265),
-[endpoint](../backend/app/api/ranking/shortlist.py),
-[member state](../backend/app/services/ranking/member_state.py:143).
-
-There are two related failures:
-
-1. `submitDraft` calls a void callback and clears the input immediately. A rejected save removes
-   its optimistic chip after the board reload. The rendered request-layer reproduction entered
-   a criterion, received `run_in_progress`, and ended with neither the text nor its chip present.
-2. The UI offers individual Add/Remove operations, but the API persists a complete array captured
-   by that tab. Two tabs starting from `[Existing]` can both get successful saves while the second
-   list `[Existing, Second]` removes the first tab's acknowledged addition.
-
-The per-field writer lock preserves unrelated tier/flag fields but cannot infer Add intent from
-an old complete list. The current same-tab queue likewise cannot protect another tab.
-
-**Recommend:** return an acknowledged outcome to the composer and retain text on failure, clearing
-only the exact submitted draft on success. Persist narrow Add/Remove intent under the existing
-run/member-state guards. Use the existing deduplicated proposal text; do not mint proposal IDs or
-introduce a generic merge engine. Keep rejection of edits during a live full Rank, because its
-inputs have already been captured.
-
-**Regressions:** rejection/offline save, edits typed during acknowledgement, duplicate Add, two-tab
-Add/Add and Add/Remove, stale analysis, live run, independent tier/flag writes, and account change.
-
-**Latency:** retain optimistic feedback and short ordered writes; no model wait or full-page blocking.
-
-## F07 — Opening summaries bypass expiry and perform one selection query per row
-
-Owners: [opening summary](../backend/app/api/openings.py:84),
-[opening selection response](../backend/app/api/openings.py),
-[catalog read](../backend/app/services/openings/catalog.py),
-[retention predicate](../backend/app/services/applications/retention.py).
-
-The retained-detail endpoint now respects the first unavailable Pacific date, but opening
-summaries load the selected `Application` directly and return its name/ID without that predicate.
-A selected fixture at its retention boundary still appeared by name in the opening list before
-physical purge. This is an administrative metadata surface, not public exposure.
-
-The same owner issues a selected-participation query for every opening, and loads a full
-application blob just to obtain a selected name. Instrumentation on 100 synthetic archived
-openings with no selected household measured **101 SELECTs**. There is no production timing claim.
-
-**Recommend:** batch selected-household metadata with the opening read, selecting only needed
-columns and applying current retention. Preserve non-identifying permanent decision facts when
-household data is unavailable. Apply the same boundary to the selection/detail summary response.
-Avoid introducing an opening cache or another background sweep.
-
-**Regressions:** selected expiry before purge, future/indefinite retention, already-purged household,
-no-household decision, ordinary active candidates, and bounded query counts across large archives.
-
-**Latency:** fewer queries and no unnecessary applicant JSON loads; no additional model work.
-
-## Worthwhile cleanup to include with those owners
-
-- **Make protected request ownership explicit in tests and APIs (F01/F02).** Protected modules
-  export both a client factory and default unbound functions; `useCommitteeApi` silently returns
-  those defaults outside a provider. The browser guard fails closed, but isolated tests use that
-  fallback and miss real binding. Prefer a required protected client/context, with deliberate
-  public/bootstrap calls and explicit manual harness construction. Keep state/math unit tests;
-  add a small set of real-factory/request-boundary tests rather than rewriting all tests.
-- **Correct stale documentation/comments.** SPEC still says “R06 cache repair pending” at its
-  age invariant and describes override staleness by timestamps; runtime uses reason-code/flag-category
-  fingerprints. The Screen guard's “nothing uncached means identical output/no-op” comment misses
-  selected-reference adoption, and refers to a Rank no-op gate although full Rank is intentionally
-  allowed. Correct these descriptions with their fixes, not another wholesale SPEC rewrite.
-- **Capture metadata is useful, even where not rendered.** Discovery/consolidation configuration
-  is available in audit endpoints but not displayed by the current frontend traces. A compact
-  “configuration used” detail could help operators. This is optional presentation, not a missing
-  persisted record or a reason to remove the capture.
-
-## Approved policy: older consumed findings after resubmission
-
-Matching cached findings become active automatically. When fresh analysis is needed, keep
-the last consumed findings active until the committee explicitly runs Screen again.
-The amber workflow indicator is the freshness signal; do not add applicant-level labels,
-identify which applicant triggered staleness, or introduce additional input metadata for display.
-Preserve history and human overrides, keep ages frozen at submission time, and do not automatically
-rerun AI. This is intentional eventual consistency, separate from F03/F04.
-
-## Implementation packages
-
-1. **Applicant identity/recovery:** F01/F02, real-factory boundary tests, paused-page read suppression,
-   and proportional API ownership cleanup.
-2. **Cached-result applicability and lifetime:** F03/F04, migration/provenance verification and
-   zero-cost screening adoption, preserving the approved amber-only freshness policy.
-3. **Administrative commit authority:** F05 across shared/admin mutations, using the existing guard.
-4. **Proposal intent and acknowledgement:** F06 frontend recovery plus narrow server operations.
-5. **Opening summaries:** F07 expiry semantics and the measured query cleanup in one owner.
-
-Documentation corrections accompany these packages. The cache-lifetime package deserves the
-most design/verification care; the applicant startup fix should land first. Multiple cohesive
-commits make this reviewable without another sequence of small suggestion rounds.
-
-## Passes, coverage and rejected threads
-
-1. **Request/session pass:** read bootstrap, credential exchange, captured clients, mismatch
-   signalling and recovery. Reproduced F01/F02 through real API factories and mocked HTTP responses.
-2. **Persistence/cache pass:** followed references through reuse/purge, no-work Screen gating,
-   role changes and permanent decisions. Used real SQLAlchemy/FK behavior and the real HTTP guard.
-3. **Intent/maintainability pass:** followed proposal failures and multi-tab payloads; measured
-   opening reads; checked expiry metadata, owner sizes, substantial exact duplicates and imports.
-4. **Consolidation pass:** checked sibling safeguards, rejected overbroad fixes, repeated both cache
-   failures with schema-validated screening output, removed probes and verified the unchanged baseline.
-
-The tracked inventory contains **200 Python app/scripts** and **131 non-test frontend TS/TSX files**.
-Reference/graph scans cover that inventory; manual review concentrates on these full workflows
-and the recent fixes. The largest owners remain ORM models (1,127 lines), applicant persistence
-(668), AI engine (570), committee workspace (540), email outbox (534), dimension scoring (527),
-and ranking pipeline/TierList (525 each). File size alone does not establish a needed split.
-
-I would leave these alone:
-
-- Submission-time ages, positive-weight/unranked behavior, frozen dimension definitions,
-  captured identity headers, narrow receipts, provider-neutral cache identities, result IDs/costs,
-  lease fencing, explicit AI confirmation, and existing short write guards.
-- Tier/proposal rejection during full Rank: the shared run lock already closes the hypothesized
-  mid-run proposal-loss path. F06 repairs the rejected draft, not that guard.
-- Per-input caches and semantic fingerprints: do not salt them with dates/new applicant IDs merely
-  to repair missing reference adoption. Score-current already has `cachedToRefresh` handling.
-- Imported-answer readers and manual diagnostic entrypoints. Stored records/tests still use them.
-- The cohesive ORM registry, a wholesale router/service split, a new global state machine,
-  generic caching/merge infrastructure, formatting churn, or a strict-typing sweep.
-- Apparent frontend runtime orphans: the reachability exclusions are type/declaration files and
-  test setup/support. No proven unused application module or substantial exact duplicate Python
-  function body emerged. These checks do not establish that every possible duplicate is absent.
-
-## Baseline verification and limits
-
-- **13 distinct temporary synthetic probes passed:** five frontend and eight backend, including
-  the stale-output characterization and opening query-count measurement. Two cache cases were
-  additionally repeated with validated `ScreeningReport` data; the native lifetime case also used
-  the real cache-consumption helper. Harness errors were corrected
-  before accepting evidence; probes assert current faults and are not fix regressions.
-- Probes and temporary inventory scripts were removed. Runtime/source tests remain unchanged.
-- Full baseline: **932 backend tests passed**, one existing POSIX-only skip; Ruff passed.
-  **272 frontend tests passed**; ESLint, TypeScript and production build passed.
-- Python import graph has no cycles, including deferred imports. Frontend runtime reachability
-  produced only the expected type/declaration and test-harness exclusions described above.
-- Checked build/cache directories retain inherited ACLs. The established pytest-temp exception
-  was not altered. No dev server was started or page reloaded.
-- No production inspection/deployment, local application DB modification, real model call or
-  outbound email was needed. Findings use synthetic data, source evidence and real local plumbing.
-- This is not an assertion of exhaustive bug absence or production latency. Query counts and
-  control-flow reproductions are evidence; implementation still needs regressions that prove fixes.
-
-## Implementation progress
-
-- F01/F02: restored-app follow-ups use the accepted identity immediately; mismatch events remain
-  repeatable and the lifecycle owner deduplicates an already-paused session. Committee intake
-  polling pauses with the workspace. Real request-boundary regressions cover startup, a linked
-  account switch, and two mismatch/recovery cycles. Frontend build, lint and all 275 tests passed.
-
-- F03/F04: producer provenance is independent of lifetime; retained selected consumers protect
-  shared output. Purge/replacement prune affected unowned results, and restore migrates before
-  deletion replay. Screen estimates distinguish cached work needing adoption and allow explicit
-  zero-cost application. Regression coverage includes deletion order, multiple consumers,
-  replaced references, historical-snapshot restore, and an actual HTTP zero-provider run.
-
-- F05: one administrative write-authority owner now rechecks active admin status under the
-  existing SQLite writer boundary. Shared AI settings, committee-default rules, allowlist,
-  opening creation/update/permanent decisions, feedback administration and vacancy support
-  writes use it. Two-session tests demote or deactivate admitted actors before mutation and
-  verify no partial decision or queued notice. All 954 backend tests passed (one existing skip);
-  Ruff passed. Ordinary reads and provider I/O remain outside this boundary.
-
-- F06: proposal writes apply narrow Add/Remove intent to the locked current state; the full-list
-  replacement endpoint is removed. The composer waits for acknowledgement and retains rejected
-  or newer draft text. Cross-tab Add/Add and Add/Remove, duplicate intent, failed acknowledgement
-  and typing during a save are covered. All 956 backend and 279 frontend tests passed, with Ruff,
-  ESLint and build passing. Existing run guards and optimistic chip feedback are preserved.
-
-- F07: opening summaries batch projected selected IDs/names and apply current retention.
-  Detail/candidate reads use the same expiry boundary; permanent non-identifying decision facts
-  remain. The 100-opening regression measures two SELECTs and no applicant answer columns.
-  Exact expiry-day, expired, future and indefinite retention cases pass. All 961 backend tests
-  passed (one existing skip), with Ruff passing. No cache or extra refresh loop was introduced.
-
-- API ownership cleanup: protected committee modules expose only explicit client factories;
-  `useCommitteeApi` requires workspace context. Applicant flow dependencies require their bound
-  API. Public bootstrap and email-delivery advisory reads remain deliberate public calls. Pure
-  eval presentation helpers are independent of request clients. Isolated tests use typed factory
-  mocks and an explicit synthetic committee provider; real-factory regressions exercise context
-  absence, late captured callbacks, and vacancy support headers.
-- The factory sweep found vacancy support still sending unbound protected requests. Its owner
-  now captures the committee identity rather than relying on the server's fail-closed response.
-- Final restore review found the prepared snapshot's pruning connection needed foreign keys
-  enabled. An expired-consumer restore now removes unentitled output and cascades references
-  without publishing a snapshot with dangling foreign keys.
-
-## Final review, verification and complexity tradeoff
-
-Two closing passes followed consumption through deletion/restore and checked browser request
-ownership through public entrypoints, providers, queued work and test factories. Confirmed
-follow-ups were fixed within their existing owners. The last-consumed-findings regression
-confirms resubmission keeps flags and pet facts active until explicit Screen; no stale labels
-or new display identifiers were introduced.
-
-- **963 backend tests passed**, one existing POSIX-only skip; Ruff passed.
-- **282 frontend tests passed** in 45 files; ESLint, TypeScript and production build passed.
-- Python import graph: **192 application modules, no cycles**, including deferred imports.
-- The local in-place migration preserved every table row, 16,667 cached results, selected
-  references, IDs, output, costs and SQLite identity high-water marks; a recovery snapshot was
-  made first. No reset, production change, real provider call or outbound email occurred.
-- A 100-opening archive uses **two SELECTs**, selecting no applicant answer columns.
-- Routine consumed-reference updates add one bounded read of prior references; replacement
-  pruning is limited to affected IDs. Admin writes add a local authority recheck inside the
-  write transaction. Neither introduces model/network waiting or serializes ordinary reads.
-- Cache reuse preserves paid findings and explicit zero-cost adoption; paused committee intake
-  avoids futile reads. Proposal inputs remain editable while acknowledgement is pending. These
-  are control-flow/query-count conclusions, not a production latency benchmark.
-
-Across the seven-finding implementation above, production code and migrations grew by a net **74 lines**; most
-added code is regression coverage and explicit test factories. Line count alone does not establish
-maintainability, but the runtime change is bounded. The worthwhile complexity establishes two explicit boundaries: who owns request authority and
-who is entitled to retain cached output. It removes hidden unbound API fallbacks, optional bound
-flow dependencies and stale whole-list replacement. The new authority and result-retention modules
-own shared invariants; they do not add a global state machine, generic merge engine, extra result
-identity or duplicate paid output. The cohesive ORM registry remains intact after responsibility
-review. Existing age/cache, human override, lease, snapshot acknowledgement and run guards remain.
-
-No further confirmed in-scope defect emerged from the closing passes. Captured configuration
-presentation remains optional; stored audit provenance is preserved. This does not assert
-exhaustive bug absence or measured production responsiveness.
-
-## Follow-up product corrections: automatic reuse and truthful freshness
-
-The explicit Screen/Rank boundary was applied too broadly to zero-cost cache reference
-adoption. Cache-only reuse is now automatic in the background, preserving initial read
-responsiveness and performing no provider calls, run claims or spending-ledger inserts.
-Reference choices are checked again under a short writer; changed inputs, withdrawal, expiry,
-finalized openings and live AI runs prevent stale adoption. Paid score-only and discovery
-actions retain explicit confirmation; their distinct behavior remains available.
-
-The local 1BR reproduction had three complete cached score vectors, no missing cache
-references, and an outdated saved Rank fingerprint. The confirmation incorrectly inferred
-whole-Rank freshness from score coverage alone. It now distinguishes complete scores from
-outdated Rank inputs, preserving amber without claiming the ranking is up to date. Cache
-adoption cannot certify changed or unknown discovery configuration.
-
-Closed applicant opening cards with no active participation are omitted from response
-presentation, while participation history, active closed-opening withdrawal and all server
-deadline validation remain. This includes a closed opening the applicant withdrew from.
-No applicant identity or application contents are recorded here.
-
-Follow-up verification: **975 backend tests passed** (one existing POSIX-only skip),
-**287 frontend tests passed** in 46 files, with Ruff, ESLint, TypeScript and build passing.
-Regression coverage includes real HTTP automatic adoption, no provider calls or run-cost
-inserts, input/lifecycle changes before the writer, live-run exclusion, mismatched models,
-partial caches, unknown discovery provenance, opening/session navigation and quiet retry.
-The applicant presentation test preserves active closed choices and durable withdrawn history.
-
-A local 1BR cache refresh applied existing references, left zero screening misses/references
-waiting, and inserted zero AI run rows. The helper took **33.6 ms** in that one local call;
-it is background work, not a production latency benchmark or an added initial-render wait.
-The saved Rank fingerprint did not match the current calculation, despite three complete
-cached score vectors. That marker alone does not justify telling the committee the ranking
-needs another run; the confirmation makes no blanket freshness claim.
-No model call, production operation or database reset was performed.
-
-## Readiness and concise confirmation correction
-
-Local inspection confirmed complete current score coverage for both openings. The 1BR
-stored signature matches the previous fingerprint algorithm; changing the algorithm alone
-made its old UI comparison fail. The 2BR signature differs under both calculations; recorded
-metadata is insufficient to identify that cause, but all 52 score vectors are current.
-
-The approved policy makes Screen/Rank green for complete current cache coverage; Rank also
-ambers for that member's proposed criteria awaiting discovery. Discovery remains optional.
-Old fingerprints retain auditable inputs and do not determine readiness. Background cache
-reuse preserves them instead of stamping new discovery metadata. The unused estimate
-freshness field and comparison helper are removed.
-
-Confirmation headings/copy are concise, use “Run ranking?”, omit blanket freshness claims
-and generic stale hover text, and keep the discovery/tier sentence inline with the cost
-summary. Cache-only Screen retains just its up-to-date heading and dismiss button.
-
-Verification for the readiness correction: all **975 backend tests** (one existing skip)
-and **287 frontend tests** passed, with Ruff, ESLint and production build passing. Local
-dashboard reads report Screen **71/71**, Rank **52/52** ready for 2BR, and **3/3** ready
-for both steps in 1BR. No stored fingerprint was rewritten and no model call was made.
-Discovery model/prompt changes preserve this readiness; screening/scoring configuration
-changes still require matching cache entries. Role, input, lifecycle and stream fencing remain.
+# General project audit — 2026-10-05
+
+**Status: complete.** Baseline: clean `main` at `f20ff82`, two authorized implementation
+commits ahead of `origin/main`. This audit replaces the completed report; its history remains
+in Git. Runtime fixes are not part of this audit phase.
+
+## Scope and method
+
+Cover the whole application, tests, migrations, operational scripts and current documentation
+for readability, correctness, reliability, redundancy and simplicity. Include latency,
+cache/display/readiness agreement, applicant and committee journeys, and recent changes.
+
+1. Inventory and ownership: module graph, dead/redundant code, names, shared contracts and docs.
+2. Backend behavior: transactions, authority, lifecycle/retention, cached results, AI/cost streams,
+   email delivery, recovery and operational boundaries.
+3. Frontend behavior: complete journeys, scopes/acknowledgements, background refresh, editable
+   drafts, action affordances, request counts and UI/backend agreement.
+4. Consolidation: reproduce credible findings using synthetic data, cross-check siblings,
+   distinguish confirmed defects from optional improvements, verify baseline and finish report.
+
+## Findings
+
+Four review passes and baseline checks are complete. The findings below have
+been reproduced or checked against their actual consumers. Priorities describe the
+consequence if the path is exercised; they do not assert that a production incident occurred.
+
+| Item | Recommendation | Evidence | Priority |
+| --- | --- | --- | --- |
+| A04 | Fix committable export privacy/source checks first | Two synthetic reproductions | P1 |
+| A01 | Refresh loaded boards after same-analysis shared changes | API and real-hook reproductions | P2 |
+| A02 | Validate nested eval cases and publish fixtures atomically | API/loader reproduction; baseline writer inspection | P2 |
+| A03 | Handle missing eval scores as nullable values | API, persisted JSON and renderer reproductions | P2 |
+| A05 | Scope fixture vectors and use truthful provenance | Two synthetic reproductions | P2 |
+| A06 | Make hosted corpus editing policy explicit | Image, mount and route configuration | P2 / decision |
+| A07 | Reconcile uncertain direct-selection outcomes | Real component reproduction | P2 |
+| A09 | Remove redundant unbound applicant interfaces and obsolete instructions | Runtime reference and consumer review | P3 |
+| A08 | Improve motivation helper | User approved; implemented in `2861ab0` | Complete |
+
+### A01 — Refresh the displayed ranking when shared inputs change (P2)
+
+`frontend/src/hooks/useRanking.ts` checks whether the latest analysis ID changed. Scoring
+against retained criteria, screening, eligibility changes and other shared changes can alter
+the board without creating an analysis. The workspace's intake refresh updates applications,
+dashboard and cached-result references, but does not reload an already displayed board unless
+this client's cache adoption reports a change. Another client's completed work can therefore
+leave the board stale until navigation or reload, even while counts/readiness elsewhere update.
+
+**Evidence:** a synthetic API probe changed the board from one to two scored applicants with
+the same analysis ID and `refresh_cached_results == False`. A hook probe then supplied that
+updated board: the focus check kept the old one-scored board and made no second board request.
+Settings saves also refresh the dashboard without immediately reconciling displayed scores
+and selected cached outputs; distinguish that bounded background delay from the indefinite
+same-analysis issue.
+
+**Recommendation:** give the displayed board one clear refresh owner. Reconcile on relevant
+focus/intake/settings events using the existing board endpoint and request scopes. Preserve
+pending member edits and live-run ownership. Avoid a second revision identity or a global
+state framework. Cover same-analysis score updates, screening/eligibility changes, purge,
+settings changes with matching cached results, pending writes and account/opening switches.
+**Latency:** background reads only; reuse or replace the current ID-only check and avoid
+fetching hidden boards. Do not block saves or add model calls.
+
+### A02 — Validate eval cases before publishing them (P2)
+
+`backend/app/evals/case_store.py` validates the top-level envelope, but not the nested shapes
+required by each family's loader. The structured editor allows removal of nested fields.
+A normal edit can therefore save a case which breaks subsequent catalog loading/runs.
+
+**Evidence:** removing `given.dimension.high_end` from a valid synthetic scoring case was
+accepted with HTTP 200; the actual `load_golden` reader then raised `KeyError('high_end')`.
+This is not a path-traversal issue: fixture files are allowlisted and replacement is atomic.
+
+**Recommendation:** perform family-aware, side-effect-free validation before atomic publish,
+using the same contracts as the consuming loaders. Return a useful field error and retain the
+prior file on rejection. Test nested required fields/types and valid cases for all families.
+Keep the flexible editor; do not create a parallel generic schema/validation framework.
+Also bring baseline recording through the same small atomic-file publication primitive:
+`fixture.record` uses `Path.write_text` directly, so concurrent invariant reads can encounter
+a truncated/incomplete JSON file. Case saves already use a flushed temporary file and atomic
+replacement; preserve that design and share the publication boundary, not a generic store.
+**Latency:** small local validation on explicit operator saves; no applicant-path cost.
+
+### A03 — Represent missing eval scores as absence throughout (P2)
+
+`backend/app/evals/scoring.py` uses NaN for a missing model score. An all-missing scoring
+stability run yields NaN bounds, which serialize as null in the response but are stored as
+nonstandard JSON in the eval run. `frontend/src/components/evals/EvalResults.tsx` assumes
+numeric bounds and calls `toFixed`, crashing the results view on that real response shape.
+
+**Evidence:** two mock empty scoring reports produced HTTP 200 with null range bounds;
+SQLite `json_valid(result)` was zero. Rendering the exact response shape threw at `toFixed`.
+Consistently missing output being marked stable is a separate consistency measurement, not
+proof of correctness; do not redefine stability to disguise the missing score.
+
+**Recommendation:** use nullable finite scores/bounds in the producer, persisted JSON and
+frontend contract; show a concise missing-score state and retain each failure reason. Do not
+substitute zero. Cover all-missing, partially missing, valid and saved-history cases.
+**Latency:** none; simplifies an inconsistent data contract.
+
+### A04 — Enforce the actual data boundary for committable eval exports (P1)
+
+`backend/app/evals/fixture.py` calls its output PII-safe. It drops top-level narratives and
+top-level `why_it_differentiates`, but retains nested discovery dimensions in the matching
+audit, including the same applicant-quoting field. Removing names/IDs does not make model
+prose safe to commit. Baseline recording has no synthetic-source gate.
+
+Separately, `backend/scripts/_harvest_common.py` trusts the analysis's historical synthetic
+flag, while harvest candidates are read from current applications/results. A real applicant
+can join a formerly synthetic opening after that analysis was created.
+
+**Evidence:** a fabricated private marker in a nested discovery justification survived the
+fixture serializer while the top-level narrative was removed. A synthetic-analysis probe
+then added/scored a nonsynthetic application: the guard still passed and the actual scoring
+harvest candidates included it. No real applicant content was exported in this audit.
+
+**Recommendation:** require trustworthy synthetic provenance for the actual applications
+and results being exported, including mixed/unknown sources, for every committable path.
+Project only the structured fields needed by eval properties; remove applicant-derived
+quotes/reasoning throughout audit trees. An old analysis flag or opaque numeric index is not
+sufficient proof. Prefer a synthetic-only export policy to an unreliable prose scrubber.
+Review existing committed fixtures for provenance separately, without publishing applicant
+content. Test nested markers, mixed pools, later arrivals and unknown source provenance.
+**Latency:** operator-only reads/validation; no normal applicant or committee latency.
+
+### A05 — Make eval fixtures faithful to their declared source (P2)
+
+`fixture._build_provenance` pairs the Nth analysis with the Nth Rank ledger. Failed Rank
+attempts can create ledger rows without an analysis, breaking that relationship. It also
+reads today's prompt versions instead of the configuration captured with the analysis.
+Its comment claiming the metrics code uses the same correlation is obsolete.
+
+`build_fixture` reads global selected score vectors without restricting them to its declared
+analysis/opening/criteria. A fixture described as one Rank can contain unrelated dimensions
+and applicant columns.
+
+**Evidence:** a failed ledger followed by a successful analysis attributed the failed model
+to the fixture. A separate selected score for an unrelated applicant/criterion appeared in
+the fixture's vectors despite that criterion being absent from its dimensions.
+
+**Recommendation:** scope fixture inputs explicitly; derive provenance from captured
+configuration and actual persisted source relationships. Mark unavailable history unknown
+instead of guessing from row positions or current modules. If a ledger relationship must be
+stored, use the existing analysis ID. Preserve legitimate global vectors used by production
+consolidation; fix the export boundary rather than changing their semantics everywhere.
+Test failed/cancelled preceding runs, changed prompts, multiple openings and historical scores.
+**Latency:** bounded operator queries; reduced fixture size and no new normal-path waits.
+
+### A06 — Clarify where versioned eval corpus edits are durable (P2; policy choice)
+
+Eval case/baseline mutators write under `backend/eval-data`. The image includes that directory,
+but Fly mounts only the runtime data directory. Hosted edits therefore do not update Git and
+are replaced by a new image. The editor's instruction to commit the saved file applies to
+local development, although the editing affordance is also available when hosted.
+
+**Evidence:** `backend/app/evals/paths.py`, `Dockerfile`, `fly.toml` and the editor/save routes;
+this is a configuration consequence, not an observed production loss.
+
+**Recommendation:** keep the versioned corpus as the source of truth. Make hosted corpus
+editing read-only unless there is an explicit export/review/commit workflow. Avoid a second
+database-backed copy of the corpus. Confirm whether hosted editing is actually desired
+before choosing the UI/API policy. Test that local editing remains available and hosted
+mutators cannot imply durable success. **Latency:** none.
+
+### A07 — Reconcile uncertain acknowledgements for direct selection (P2)
+
+`frontend/src/components/admin/DirectSelectionOpeningForm.tsx` reports “Could not fill that
+opening” after transport or successful-response parsing failures, with no list reconciliation.
+The server may already have committed that permanent decision. Its sibling decision panel
+already explains uncertain outcomes more accurately. Backend selection uniqueness prevents
+duplicate selection, but does not make the failure message truthful.
+
+**Recommendation:** classify a lost acknowledgement as unconfirmed, refresh the scoped
+opening state, and ask the operator to review it before retrying. Preserve the submitted
+facts while reconciling. Avoid adding new IDs or a general retry framework.
+**Evidence:** a real component probe supplied HTTP 200 with an incomplete response body;
+the form reported the definitive failure, reopened confirmation, and did not reconcile the
+opening list. This proves acknowledgement handling, not an observed production incident.
+**Latency:** a read on an exceptional path, not a successful save.
+
+### A08 — Applicant motivation helper (approved small copy change)
+
+The motivation field's helper asked how the household would contribute, duplicating the
+separate skills question. The user selected: “Share what you’re looking for in a home and a
+co-op community.” That change was implemented separately from the audit findings.
+
+The approved one-line change is committed as `2861ab0`; no other runtime finding has been
+implemented in this audit phase. The field key and stored-answer contract are unchanged.
+
+### A09 — Finish applicant API boundary cleanup and remove obsolete instructions (P3)
+
+`frontend/src/applicant/api.ts` exports both a captured-client factory and a complete unbound
+instance of its methods. Runtime owners already use the required captured API for protected
+actions. Unbound exports such as `saveApplication`, `submitApplication`, `withdrawApplication`,
+`requestEmailChange` and `reconcilePendingCopy` have no production caller. They advertise a
+second way to call protected actions which the browser boundary correctly rejects. The name
+`publicApi` also refers to a module/factory containing protected operations.
+
+**Recommendation:** retain explicit public/bootstrap exports, including the application
+bootstrap read and return-access-link flow; expose protected calls through the required
+captured factory only. Rename the misleading import alias. Adapt tests/manual harnesses to
+construct their own client, following the existing committee API pattern. This removes an
+unused interface, not the underlying protected operation or the deliberate bootstrap path.
+
+While updating export documentation, correct `.clinerules`' instruction to run
+`python -m app.evals.fixture`: that module explicitly has no CLI entry point. The supported
+baseline action is the local Evals tab. Fix the fixture's obsolete metrics/provenance comment
+and the unconditional privacy/durability claims in `docs/ai-evals.md` as part of A04–A06.
+Keep historical ADRs and migration history; they are not runtime tombstone code.
+**Latency:** none; fewer misleading interfaces and instructions for the next maintainer.
+
+## Product decisions to settle before implementation
+
+### D01 — Operator capabilities
+
+The UI shows Evals/Observability only to administrators, while eval routes require an ordinary
+current committee user. Existing API tests explicitly use member access, so this is an
+ambiguous permission contract rather than an assumed new authorization regression.
+
+**Evidence:** a member-role synthetic API probe successfully changed an allowlisted fixture.
+
+**Recommendation:** restrict corpus writes/baseline recording and paid engineering evals to
+administrators, while preserving ordinary committee screening, ranking and audit reads.
+Confirm that operator-only access is the desired API contract; the current tests deliberately
+encode member access. Reuse existing fresh admin authority checks for writes, not new roles.
+
+### D02 — Paid eval spending
+
+**Evidence:** a paid eval with the application AI cap set to zero still called the mock
+provider. Eval streaming uses the shared work lifetime, but not the application run
+lease/budget/ledger; cost reporting differs by eval family. The project rule says AI calls
+should be observable, estimated and costed; current eval controls chiefly estimate call counts.
+
+**Recommendation:** explicitly define the eval spending boundary. Reuse shared cost
+primitives and show an estimate/receipt, with a clearly named engineering budget if it is
+intentionally separate. Preserve existing per-case outcomes and cancellation semantics.
+Do not silently apply the application cap to every engineering eval or serialize them all
+behind a blanket lock. Decide whether engineering runs share the application cap or have
+their own operator budget before implementation. This is a scope/contract ambiguity, not a
+claim that the application cap is currently documented to cover every engineering tool.
+
+### D03 — Hosted fixture editing
+
+For A06, the recommended policy is local corpus editing with hosted read-only controls.
+Confirm whether hosted editing is required before implementing an alternative export/commit
+workflow. Keeping the file on a runtime volume alone would create a second source of truth.
+
+## Recommended implementation packages
+
+1. Export source/privacy/provenance boundary: A04–A05, with A06's chosen hosting policy.
+2. Eval input/output contracts and atomic publication: A02–A03.
+3. Display refresh ownership: A01, including settings/cache/display agreement.
+4. Permanent decision acknowledgement: A07.
+5. Operator boundaries: D01–D02's agreed policy, using existing authority/cost primitives.
+6. Redundant interfaces and accurate documentation: A09; complete the docs alongside the
+   owner changes above so source and instructions agree. A08 is already committed separately.
+
+Each package should be a cohesive reviewed commit with targeted regressions and existing
+full checks. Existing identities, scopes, cache keys and writer boundaries should carry the
+fixes. A new blanket synchronization layer would increase brittleness without addressing
+these particular defects.
+
+## What I would leave alone
+
+- Keep submission-time age normalization, canonical cache identity, selected-result
+  references, automatic cache adoption and complete-coverage readiness. Birthday changes
+  alone should continue to hit the cache. Discovery provenance is useful audit data without
+  determining readiness of retained scores. Keep the two distinct paid Rank actions.
+- Keep last consumed findings active while new model work is needed. Amber expresses that
+  freshness; do not add per-applicant stale labels or more cache-reuse confirmations.
+- Keep short writer guards, work cancellation, run leases, acknowledgement snapshot checks
+  and scoped reads. They have named responsibilities and protect real boundaries. Do not
+  replace them with a blanket transaction/lock, an event bus or a global state framework.
+- Keep per-consumer query projections where outputs/permissions differ; sharing cache-key
+  identity does not require a generic cache manager. Preserve privacy-aware deletion of
+  shared results and credential fencing before email delivery.
+- Keep supported legacy answers for existing imported records. The retired form's ingestion
+  path is not a reason to remove the data reader or invent unavailable dates of birth.
+- Keep the cohesive ORM model registry (about 1,124 lines). Its size triggered ownership
+  review, but splitting related mapped definitions solely to meet a line limit adds navigation
+  cost without fixing a confirmed responsibility problem. Other large owners remain below
+  the architecture-review threshold.
+- Do not perform a broad utility, naming, formatting, dependency-upgrade or component-splitting
+  sweep. No additional runtime module deletion or repeated long Python body justified one.
+
+## Complexity and responsiveness assessment
+
+The earlier concurrency work is still justified: existing resource identities, shared-cache
+references, writer checks and snapshots now make important ownership explicit. The remaining
+problems are mostly incomplete consumer contracts and export boundaries. The remedy is to
+finish those boundaries and remove redundant interfaces, not add another general-purpose
+layer. A01 needs a single owner for displayed-board refresh; A02–A05 need truthful typed data
+and one safe publication/export path.
+
+Successful applicant edits/submissions and ordinary committee saves should gain no additional
+network round trip from these recommendations. A01 adds or substitutes a background board
+read only while relevant; A07 adds reconciliation only after an uncertain permanent action.
+Eval validation/export/role/cost work stays on explicit operator actions. There is no proposed
+extra AI generation, delay waiting for other members or cache invalidation on birthdays.
+Any D02 budget choice needs its own cost/latency explanation during implementation.
+
+This audit measured request behavior and query scope through code and synthetic probes; it
+did not collect production response-time percentiles. Avoid claiming a measured speedup from
+code inspection. Existing lazy entry points remain useful; there is no demonstrated need
+for new client caching or micro-optimizations.
+
+## Coverage and verification
+
+| Pass | Coverage and result |
+| --- | --- |
+| 1 — Inventory / ownership | Inventoried 204 Python app/script modules and 130 non-test frontend source/type modules. Reviewed owner map, current changes, long files and shared contracts. Python graph: 194 app modules, no import cycle including deferred imports. Frontend graph, including lazy imports: every runtime module reachable; nine type-only modules excluded from runtime reachability; no runtime import cycle. Exact Python body scan of functions at least ten lines found no duplicate body after docstring exclusion. These are bounded scans, not proof of zero semantic redundancy. |
+| 2 — Backend / operations | Read transaction/authority boundaries, intake/publication, retention/deletion, selected caches and ranking, screening, stream lifetime/cancellation/budget, passwordless/Google access, email claims and retries, maintenance and rate limits, backup/recovery, eval authoring/export/harvest, Docker/Fly/watchdog settings and operational instructions. Followed export findings into the actual reader and live-data source. No production inspection or operation was used. |
+| 3 — Frontend / journeys | Traced guest-to-authenticated submission, draft/save/reconciliation/email change/withdrawal, committee navigation and details, eligibility edits, ranking tiers/proposals/refresh/readiness/cache adoption, Screen/Rank confirmations, openings publication/permanent/direct decisions, admin controls, eval editing/live/saved results and sign-in scope. Compared sibling acknowledgement and publication patterns rather than prescribing another abstraction. |
+| 4 — Reproduction / consolidation | Nine isolated backend probes and three real frontend hook/component probes passed as characterizations of the defects/contracts above. Used temporary files, isolated test databases and mock providers with fabricated markers. Removed those throwaway probes before baseline checks. Reviewed fixes as cohesive packages, explicitly separated policy choices, latency implications, approved copy and things to leave alone. |
+
+Baseline verification passed:
+
+- Backend: Ruff; **975 tests passed, one existing platform-dependent skip**.
+- Frontend: lint, TypeScript/Vite build; **287 tests passed**.
+- Watchdog: TypeScript check; **nine tests passed**.
+- `git diff --check`; generated build/cache directories inspected with inherited ACLs.
+
+Passing baseline tests do not negate the defects reproduced by the throwaway probes: the
+existing suite does not exercise those particular combinations. Add the listed regression
+cases with implementation rather than committing tests which simply assert the bugs exist.
+
+No production operations, real model calls, outbound emails, local database reset,
+dev-server start or page reload took place. This is a repository-wide, multi-pass static
+review with targeted executions, not a load test or line-by-line certification of every
+module. Historical runtime findings have not been reimplemented; the previous completed
+audit is recoverable in Git. Commit this report separately from the approved helper change.
