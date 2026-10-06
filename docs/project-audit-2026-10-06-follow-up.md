@@ -1,326 +1,315 @@
-# Two-pass analysis: invalidation and uncertainty — 2026-10-06
+# General audit: correctness and simplification — 2026-10-06
 
-**Status: V01–V03 implemented, reviewed, and verified locally.**
-Analysis baseline: clean `main` at `b68e6a0`, matching the recorded `origin/main` then.
-The analysis and original counterexamples below describe that baseline. Implementation
-results follow at the end. The completed U01–U06 campaign and its full evidence remain in
-`b68e6a0:docs/project-audit-2026-10-06-follow-up.md`.
+**Status: five review passes complete; W01–W06 recommended, not implemented.**
+Baseline: clean `main` at `c4c2ffc`, verified equal to `origin/main` after the authorized push.
+The completed V01–V03 audit and implementation evidence remain in
+`c4c2ffc:docs/project-audit-2026-10-06-follow-up.md`.
 
-## Result
+## Recommendation
 
-We missed three worthwhile issues. Two are gaps in the recent eval/ranking changes;
-the private-note issue predates that consolidation. Four controlled frontend probes
-confirmed the behaviors below. None used applicant data, a real model, or production.
+Implement these six bounded changes. Four address incorrect or unusable eval behavior;
+two remove unnecessary work. The most useful simplifications are removing misleading
+Judge metrics, shrinking the unused eval catalog contract, sharing grading rules, and
+replacing the dashboard's participant-loading loop with an existence query.
 
-| ID | Priority | Finding | Discovered in |
+This is not evidence that the recent reliability work needs to be dismantled. Git blame
+places the failed-repetition filtering, screening Judge adapter, and scalar-only array
+editor in July. Recent changes improved their surrounding persistence and validation
+without covering these older semantic gaps. Keep the existing ownership boundaries.
+
+| ID | Priority | Recommendation | Evidence |
 | --- | --- | --- | --- |
-| V01 | P2 | Eval output can be promoted to current after its validation context is lost or not refreshed | First pass; related failure case found in second pass |
-| V02 | P2 | An older board response can erase newer evidence that the displayed analysis is stale, suppressing its warning | Second pass using the revised method |
-| V03 | P2 | Reverting an unconfirmed private-note save can claim success without restoring the server value | Second pass using the revised method |
-
-The shared lesson is specific: **retaining a value does not establish that it is
-current or saved.** Earlier tests exercised successful retention, invalidation, and
-failure separately. They did not sufficiently combine an adverse starting state,
-an unrelated completion, and failed verification, or run independent completions in
-both orders. The previous closure conclusion was too strong for that coverage.
-
-The recommendation is to fix these within their existing owners. A new workflow
-engine, global status registry, persistent identity, or broader synchronization
-scheme is not warranted. Most protections reviewed continue to serve distinct purposes.
-
-## Pass 1 — Challenge the completed changes
-
-Reviewed the new eval result-source contract and its callers/tests, the ranking
-dashboard/board observation paths, saved-draft acknowledgements, and existing uncertain
-write handling. The first counterexample was V01-A: a result already excluded as
-stale became current again after an unrelated case completed and metadata refresh failed.
-
-That is stronger evidence than a green suite or a source smell: the real hook's current
-case results changed from absent to passing without any new evidence for that case.
-The failure led to the revised method below, which was then used for the second pass.
-
-## Revised best practice
-
-For an asynchronous workflow, write down four things before choosing test cases:
-
-1. **Claim:** what does the UI/API mean by current, saved, permitted, complete, or blocked?
-2. **Evidence:** which authoritative fact supports that claim, and when was it captured?
-3. **Invalidation:** what event makes the evidence stale, uncertain, or inapplicable?
-4. **Recovery:** what positive evidence is required before the claim can become true again?
-
-Then start from stale, blocked, or unconfirmed state and combine it with a second
-operation. Exercise both completion orders, plus a delayed/failed dependent refresh.
-An unrelated success, an old matching value, or missing metadata must not silently
-restore confidence. Conversely, a genuinely new grant, confirmed save, or fresh
-authoritative read can restore it; this is not a rule against legitimate recovery.
-
-For this project, the smallest useful set is:
-
-| Starting state | Interleaving to exercise | Required property |
-| --- | --- | --- |
-| A case's result is known stale | Another case completes; metadata read fails | The stale case does not become current |
-| A fixture edit is acknowledged | Its follow-up metadata read fails | Old output is not certified against the changed label |
-| A board is known superseded | An older parallel board read completes | It cannot erase the stale observation |
-| A write is unconfirmed | The user returns to the previously acknowledged value | Equality alone cannot prove the server has that value |
-| A session/lease/intent is revoked or replaced | Old work returns | Only the still-authorized owner may publish/acknowledge |
-
-This complements the previous trigger → authority → consumer review. Tests must
-exercise real triggers, but they must also start with inconvenient state and permute
-the competing completions. The narrowly scoped rule is now recorded in `.clinerules`
-under Engineering Defaults for future async reconciliation work.
-
-Preserve responsiveness: old values may remain visible while verification is delayed.
-The requirement concerns the strength of the claim made about them, not a mandatory
-network wait before every render or action.
-
-## Pass 2 — Apply the new method
-
-Reviewed each row below from an adverse starting state. The method found V02, V03,
-and a second manifestation of V01; it also rejected or narrowed several hypotheses.
-
-| Owner/boundary | Evidence and result |
-| --- | --- |
-| Eval receipts, saved cases, current metadata | Two reproduced promotions without sufficient evidence; V01 |
-| Dashboard observation and board acceptance | Reproduced the reverse completion order missing from the previous tests; V02 |
-| Private-note queue and last acknowledged body | Reproduced unconfirmed write → revert → false saved acknowledgement; V03 |
-| Browser draft revision/consent | Existing scope/revision checks reject delayed older writes; targeted regressions passed |
-| Session change and revalidation | Failed revalidation does not clear the session-changed state; explicit successful continuation does; source review and targeted session tests |
-| Settings/eligibility saves | Save success requires an acknowledged response; drafts and their saved indication remain distinct; no equivalent no-write shortcut was found |
-| Opening publication/selection uncertainty | Unconfirmed publication prevents changing its facts; uncertain final decisions remain held for reconciliation; reviewed callers and publication regressions |
-| Email cancellation and superseded attempts | Completion is conditional on queued state, attempt count and attempt time; targeted regressions passed |
-| Replaced/expired run leases | Renewal, commit and release check the acquired lease, not merely the user ID; targeted regressions passed |
-| Revoked administrative authority | Shared writes reload authority under the writer guard; targeted regressions passed |
-
-An apparent authenticated draft-clear cleanup issue was not promoted to a finding:
-the ordinary Clear this draft UI is signed-out-only, so a search hit in an authenticated
-branch did not establish a normal reachable failure. Any cleanup there should first
-prove its real caller. Do not add defensive machinery merely because a branch exists.
-
-Production snapshot rollback remains an explicitly accepted policy. This pass does
-not reclassify that decision as a new bug or propose a general recovery ledger.
-
-## V01 — Preserve validation knowledge independently of retained eval output
-
-**Anchors:** `frontend/src/components/evals/evalResultState.ts:33,82`;
-`frontend/src/components/evals/useEvalRunner.ts:41`; the case-save acknowledgement in
-`components/evals/RunnableEval.tsx`.
-
-### A. A different case's completion revives known-stale output
-
-Controlled sequence through the real `useEvalRunner` hook:
-
-1. History contains passing results A and B. B was produced from fingerprint `b1`;
-   current metadata says B is now `b2`.
-2. The hook correctly omits B from current case results.
-3. Run A only. Its valid summary arrives; make the ensuing metadata/history request fail.
-4. B reappears as a passing current result using `b1`.
-
-`acceptEvalReceipt` deletes the mode's current metadata so a newly delivered receipt
-can be visible. `matchesCurrent` then treats missing metadata as acceptance for every
-source, including reconstructed historical cases. The comment describes a fresh-receipt
-exception, but the predicate also grants that exception to unrelated stored output.
-This can last beyond a transient render when refresh fails.
-
-This manifestation was introduced by the recent reconciliation change. The new
-retention design is useful, but deleting validation context lost previously established
-negative knowledge. The tests combined a failed refresh with good output; the stale
-other-case sentinel was missing.
-
-### B. A confirmed label edit can leave its old pass current
-
-A second controlled hook sequence began with A=0.8 passing a minimum of 0.5. The real
-case setter accepted a saved fixture whose minimum was now 0.9. Its follow-up metadata
-read failed. The displayed fixture contained the new minimum, but A remained a current
-passing result with the previous fingerprint.
-
-The setter updates fixture data and asks for new metadata without invalidating the
-affected current-result claim. The missing-history fix therefore does not cover failure
-of the metadata read after a known successful edit. This is a residual failure-path gap,
-not evidence that the fixture save itself failed.
-
-**Recommendation:** keep last-confirmed validation metadata; do not erase it to make
-received output visible. Distinguish retention/presentation of the receipt from whether
-that output qualifies as current coverage. A fresh receipt must not make unrelated
-historical cases eligible. An acknowledged case/brief change must invalidate affected
-coverage using metadata from that acknowledgement, or leave it explicitly unverified
-until refreshed. Prefer returning the existing semantic fingerprints/version information
-with the successful edit response over duplicating the hashing rules in JavaScript.
-
-Continue preserving paid output, editorial-note reuse, per-case source run IDs and
-separate mode coverage. Do not add another durable results store, automatically rerun
-models, or turn every metadata refresh into a blocking UI operation.
-
-**Acceptance:** retain a stale B sentinel while A completes; delay, reject and then
-recover the metadata read. Test both recorded and unrecorded A. Repeat with a label
-edit, input edit, and judge-brief change, while confirming editorial-only changes keep
-valid output. Assert current dots/summaries and retained details separately.
-
-**Latency/complexity:** use the existing pure reconciliation owner and mutation response.
-No model work is needed. Metadata acknowledgement may add a small projection to a
-response, but should not add a serial network dependency for ordinary operation.
-
-## V02 — A stale observation must fence older board reads
-
-**Anchors:** `frontend/src/hooks/useRanking.ts:130,151,164` and the parallel intake
-refresh / stale-toast effect in `frontend/src/CommitteeWorkspace.tsx`.
-
-Controlled sequence through the real `useRanking` hook:
-
-1. Display board 1 and begin a passive board refresh whose captured response is board 1.
-2. A parallel dashboard read establishes that analysis 2 is current.
-3. `observeCurrentAnalysis(2)` marks the displayed board stale.
-4. The older board-1 response arrives and `adoptBoard` clears `staleAnalysis` again.
-
-The probe batched steps 2–4 as neighboring async completions. The effect that would
-show the stale warning never observed `true`: the old board remained displayed and
-no warning was raised. This is not merely an internal flag mismatch. Server-side
-stale-analysis checks still reject writes to the superseded board; no wrong-board
-database write was demonstrated.
-
-The previous tests covered old dashboard observation **after** newer board acceptance.
-They did not cover the reverse: newer dashboard knowledge **before** older board
-acceptance. Reusing the dashboard read introduced an independent producer of this
-fact, without making its stale transition invalidate the older board request.
-
-**Recommendation:** when a trustworthy observation marks the board stale, invalidate
-older board reads using the existing request scope, and keep the displayed view settled.
-Clear that knowledge only when a suitable fresh/explicit board read is accepted. Check
-the loading-state consequence of cancelling a request too; do not leave a spinner waiting
-for an acknowledgement that was intentionally discarded. No extra ID or observer registry
-is needed, and fresh reads should remain parallel.
-
-**Acceptance:** both dashboard/board completion orders, including one React batch;
-stale observation → failed reload → successful fresh reload; pending member edits and
-an opening change. Verify the warning effect and displayed analysis together, not only
-one final boolean in isolation.
-
-**Latency/complexity:** request invalidation and state ownership only. No additional
-normal-case request or lock is required.
-
-## V03 — Equality with an old acknowledgement cannot settle an uncertain note save
-
-**Anchors:** `frontend/src/hooks/usePrivateNotes.ts:66,87,197`;
-`frontend/src/api/client.ts` ordinary-response failure handling;
-`backend/app/api/applications/routes.py:save_private_note`.
-
-Controlled sequence through the real private-note hook and a simulated committed server:
-
-1. The last acknowledged note is `Original`.
-2. Save `Committed but unconfirmed`. The server model accepts it, but the client receives
-   the transport's 503 outcome instead of the acknowledgement.
-3. The hook correctly reports an error and keeps the draft.
-4. The user changes the text back to `Original` and flushes the queue.
-5. `body === savedBody` skips the request. The hook reports `saved`, and
-   `hasUnconfirmed()` becomes false, although the server still has the changed text.
-
-The scenario is reachable: the actual endpoint commits before returning, and the browser
-transport maps a lost/timed-out response body to 503. The mock explicitly models the
-server commit; no real applicant note was changed during the probe.
-
-The equality optimization assumes the last acknowledged value still describes the
-server after an uncertain write. It does not. This issue predates the consolidation.
-Existing tests covered reverting during a successful pending save and retrying rejected
-writes, but not a committed write with a lost acknowledgement followed by a revert.
-
-**Recommendation:** remove the equality-based no-write shortcut for dirty/retry drafts.
-Keep the existing early return for a confirmed saved draft, debounce, per-applicant queue,
-and superseded-draft skipping. Once a dirty or retry draft reaches the writer, send its
-desired value and mark it saved only after acknowledgement. This is simpler than adding
-another confidence flag alongside `savedBody` and `status`.
-
-**Acceptance:** commit → lost acknowledgement → revert → retry; test the retry succeeding
-and failing. Confirm the actual server model, displayed text, saved status and leaving
-warning agree. Also retain newer typing, independent-applicant, account-exit and blocked
-draft tests. An explicit discard is not a promise to undo an already-sent server write.
-
-**Latency/complexity:** typing remains debounced and nonblocking. A local edit reverted
-to the prior value can now make one otherwise-skipped small save; there is no preceding
-read or extra round trip per ordinary save. The correctness benefit warrants that bounded
-write, and the implementation should remove branching rather than add a new subsystem.
-
-## Analysis verification and limits (before implementation)
-
-- **Four temporary counterexample probes passed assertions for the defective behavior.**
-  They exercise real React hooks with controlled API completions and synthetic values.
-  They are evidence of bugs, not successful regression tests for proposed fixes.
-- Existing targeted frontend suites: **81 passed across six files** (eval runner, ranking,
-  private notes, sessions, remembered drafts, opening editor).
-- Existing targeted backend suites: **41 passed** (run locks/streams, email outbox and
-  administrative write authority).
-- Those green suites alongside the probes demonstrate a coverage gap. A larger count of
-  similar tests would not address the missing state/order combinations.
-- Probes were removed after recording the sequences. No permanent test or application
-  code changed. No dev server, real email/model call, production read/write, database reset,
-  or applicant-data export was involved.
-- This was a targeted follow-up analysis of asynchronous truth/acknowledgement boundaries,
-  not another line-by-line whole-repository certification or a production latency benchmark.
-
-## Implementation plan and stopping rule
-
-Implement V03, V02 and V01 as cohesive changes in their existing owners, adding the
-counterexamples as expected-behavior regressions. Retain the useful test cases; replace
-overlapping branch assertions rather than stack them indefinitely. Review each fix with
-the adverse-state table and both completion orders before calling it closed.
-
-Then perform a cross-owner pass specifically asking: **what evidence could this transition
-forget, and what claim would then become too strong?** Report covered boundaries and
-remaining product decisions explicitly. Do not respond to a newly found combination by
-adding a global framework or by claiming that another broad reread can guarantee no misses.
-
-The method improved the second pass: it found two additional owners with the same class
-of mistaken confidence and one related eval edit case. It does not establish that every
-remaining defect has been found. At this point these three recommendations are the
-confirmed, worthwhile follow-up work; the other reviewed guards do not need a rewrite.
-
-## Implementation results — 2026-10-06
-
-| Finding | Commit | Result |
-| --- | --- | --- |
-| V03 | `2f760f9` | Dirty/retry note drafts require a real save acknowledgement; repeated flushes still coalesce after a confirmed save. |
-| V02 | `29b487c` | Stale observations invalidate older board/current reads and settle loading state; a fresh accepted reload restores the board. |
-| V01 | `83cd0da` | Retained eval output and verified coverage are separate projections; receipts preserve validation metadata, and case saves acknowledge semantic fingerprints. |
-
-Case GET/PUT responses reuse the dataset's input/label/contested-policy hash projection.
-Coverage matches both independent history metadata and the visible fixture, so different
-case/history read completion orders cannot certify output against the wrong visible inputs.
-Editorial-only saves retain valid coverage. Judge-brief saves clear configuration certainty
-until the existing free refresh succeeds. That simpler invalidation avoids extra fixture
-reads and ordering machinery for independently saved briefs. Retained details say **not
-current** when they cannot be verified; a free metadata recovery can restore coverage.
-
-### Final adverse-state review
-
-- **Private notes:** simulated server commit with lost acknowledgement, followed by revert;
-  both successful and failed retries preserve agreement between saved status and server state.
-  Duplicate flushes, newer typing, account scope, and blocked drafts retain their protections.
-- **Ranking:** passive and explicit board reads in both dashboard/board completion orders,
-  including batched completions; the warning survives, failed reload retains it, and a
-  successful fresh reload clears it. Existing mutation/opening-scope tests still pass.
-- **Evals:** a stale B sentinel remains stale while A completes with a failed refresh, for
-  both recorded and unrecorded receipts. Label/input/editorial edits, pending-run/edit orders,
-  case/history read orders, and actual label/brief editor callbacks exercise the full path.
-  A successful metadata retry restores compatible output without another model call.
-- **Shared boundaries:** reviewed the request-scope and resource-setter ownership used by
-  all three fixes. Existing queues and invalidation scopes carry the required ordering;
-  no additional cross-owner registry, lock, or persistent identity is needed. The review
-  found no further confirmed issue worth expanding this implementation to address.
-
-### Verification and complexity
-
-- Full frontend suite: **356 passed across 49 files**. The strengthened recovery assertion
-  was then checked with the affected hook suite: **23 passed**.
-- Full backend suite: **1081 passed, 1 skipped** (existing POSIX-only check on Windows).
-- Production frontend build, ESLint, Ruff, and `git diff --check` passed.
-- Across the three code commits: **44 net application-code lines and 200 net test lines**.
-  Tests extend existing suites; the backend label test now exercises the real save endpoint
-  instead of editing its fixture directly. No new module, state store, or framework was added.
-- No new ranking request or model call. Eval fingerprints add small CPU/response work to
-  existing reads/saves, with no extra serial network dependency. A reverted dirty note may
-  now require one previously skipped write; typing remains debounced and nonblocking.
-- No production action, real model/email call, database reset, or applicant-data change.
-  No browser gesture/visual or production-latency claim is made. This implementation was
-  committed locally; pushing was not requested for this turn.
-
-These changes strengthen the evidence behind existing state claims while retaining the
-existing ownership boundaries. The review method reduces a specific class of misses;
-neither its coverage nor the passing suites guarantee that all defects are eliminated.
+| W01 | P2 | Distinguish complete, valid eval outcomes from missing/failed attempts | Five attempts with four timeouts report stable with 100% agreement; repeated missing verdicts also report stable |
+| W02 | P2 | Use the same expected-value parsing and grading rules for live and Judge consumers | Wrong pets and wrong scoring key pass Judge; valid any-of screening expectation fails Judge; two committed cases have different contested policy between consumers |
+| W03 | P2 | Remove misleading pooled Judge kappa and failure-recall metrics | Correct outputs produce 100% agreement / 0% recall; wrong outputs produce 0% agreement / 100% recall |
+| W04 | P2 / P3 focus issue | Make the fixture editor preserve and edit nested lists; keep text controls stable | Object arrays render as `[object Object]`; editing converts them into strings; crossing 60 characters loses focus |
+| W05 | P3 | Reduce the eval catalog to the configuration actually consumed | Five fixture reads and 13 verbose descriptors; browser consumes only keys, repetitions, and editing availability |
+| W06 | P3 | Check overdue-opening participation with `EXISTS` | Twenty overdue openings cause 21 queries and 20 answer-blob reads; a one-query probe returns the same IDs |
+
+No production action or paid AI work is part of this recommendation. Preserve submission-time
+age, automatic cache reuse, coverage-based Screen/Rank readiness, committee authority,
+retained imported records, local-only fixture editing, admin-only operator surfaces, and
+uncapped eval runs. The previously deferred export/source-guard policy stays deferred.
+
+## Review method and coverage
+
+1. **Inventory and history:** recent commits, existing audits, module sizes, exported-symbol
+   references, repeated blocks, CSS consumers, and documentation. Inventory covered 198
+   backend application Python files and 134 non-test frontend TypeScript files. This was
+   navigation/triage, not a claim to have read every line of every file.
+2. **Ownership and simplification:** applicant persistence and its save/email/withdrawal
+   boundaries; committee refresh, ranking, notes, eligibility/settings, opening decisions;
+   backend application presentation, eligibility pools, result selection, opening summaries,
+   email adapters, stream lifetime, retention and recovery. Look for unnecessary work and
+   duplicated decisions, not merely similar syntax or large files.
+3. **Consumer parity:** trace the same fixture and output through live grading, Judge grading,
+   stability, API summaries, restored history, and UI presentation. Exercise object/array/scalar
+   forms as actual controls. This expanded beyond the earlier emphasis on response ordering.
+4. **Controlled counterexamples:** real functions/hooks/components with synthetic values,
+   mock providers, and an isolated in-memory database; measure calls and query projections.
+5. **Consolidation:** inspect siblings and historical consumers, run existing affected suites,
+   check proposed removals for consumers, reject low-value rewrites, and group changes by owner.
+
+## W01 — An incomplete or invalid run must not become successful evidence
+
+**Anchors:** `backend/app/evals/stability.py:120–150`,
+`backend/app/evals/judge.py:190–222`, `backend/app/api/evals/_categorical.py:113`,
+`frontend/src/components/evals/evalResultPresentation.ts:8–27`.
+
+Both stability implementations filter failed pool results out before computing agreement.
+They then divide by the successful subset, without representing missing attempts. The API
+still reports the requested K. A synthetic five-call probe with one success and four
+`TimeoutError`s returned one run, `[stable]`, and `agreement=1.0`. The real Judge stability
+path produced the same result with a mock provider containing only one queued response.
+
+There is a related validity gap: the consolidation runner explicitly identifies missing
+pair output as verdict `?` with a failure. Five such outputs yield `{ '?': 5 }` and `[stable]`.
+If the single-run case is contested, `contested or passed` also counts this missing verdict
+as passing. The frontend contested branch softens it without checking output validity.
+Contested means two valid answers are defensible; it does not establish that any answer arrived.
+
+**Recommended implementation:** keep every attempted repetition and its error/validity outcome
+in the existing report, retaining successful details and original attempt numbering. Compute
+stability only when the required attempts have usable outputs. Expose an incomplete/error
+result without certifying current coverage; do not automatically retry paid work. Share this
+small collection/completeness rule between live and Judge stability. Ensure missing categorical
+verdicts stay errors even on contested cases, in fresh responses, restored summaries, and dots.
+A valid but consistently incorrect answer can still be stable: accuracy and repeatability
+remain separate concepts.
+
+**Acceptance:** all succeed; one/four/all fail; out-of-order completion; cancellation;
+missing verdicts; contested valid disagreement; complete repeated valid failures; persisted
+history and unrecorded receipts. Successful details must remain inspectable, while incomplete
+output cannot count as completed stability coverage. An all-failed run must not reach an empty
+majority calculation.
+
+**Complexity/latency:** a local outcome distinction and shared collector, not a new job system.
+No extra requests, model calls, or serialization of currently parallel work.
+
+## W02 — Live and Judge consumers still grade different contracts
+
+**Anchors:** `backend/app/evals/screening.py:106–125,230–253`,
+`backend/app/evals/scoring.py:113–127,196–215`, `backend/app/evals/judge.py:86–110`.
+
+Four concrete discrepancies belong to the same correction:
+
+- **Pet facts:** a committed synthetic screening case expects two dogs and one cat. The same
+  mocked output with no pets fails the live grader but returns `agrees=True` in Judge. The
+  Judge adapter drops `expected.pets` when constructing its probe and does not pass produced
+  pets to the shared checker.
+- **Any-of flags:** the supported `fires: "fake_contact|minimal_essay"` representation is
+  normalized by the live loader. Judge instead applies `list(...)`, producing characters.
+  A correct `fake_contact` output passes live and fails Judge in the controlled probe.
+- **Scoring identity:** live scoring requires the requested dimension key. Judge falls back
+  to the first score when that key is missing. An in-band score for an unrelated key fails
+  live and passes Judge in the controlled probe.
+- **Contested policy:** the screening loader reads `metadata.expected.contested`; Judge reads
+  `metadata.contested`. The current committed corpus has two screening cases contested only
+  in the live consumer. They therefore enter Judge's decisive agreement denominator.
+
+**Recommended implementation:** one screening expectation parser used by the live loader and
+Judge adapter, and the same grading inputs (flags and pets) on both paths. Remove the
+wrong-key scoring fallback. Put contested policy in the common metadata envelope and update
+the two affected fixtures and their readers together; do not retain two permanent locations
+or a compatibility branch. Keep family-specific graders: a score band, flag set, and pair
+verdict are different rules and do not need a generic grading framework.
+
+**Acceptance:** a table of supported expectation shapes, run through both real consumers with
+identical mocked output: any-of string/list forms, required/forbidden flags, correct/wrong pet
+counts, other pets, clean applicants, exact/missing/wrong scoring keys, and contested cases.
+Assert the returned grade and aggregate inclusion, not merely parser output or direct dataclass
+construction. Blind prompts must continue to exclude human labels.
+
+**Historical-output requirement shared with W01/W03:** corrected bookkeeping must not silently
+certify results produced under the defective harness. Use the existing eval fingerprint/validity
+boundary to distinguish corrected grading, and retain older output as historical evidence.
+Do not change production Screen/Rank prompt versions or invalidate applicant AI caches for
+an eval-only correction. No automatic paid rerun is required.
+
+**Complexity/latency:** remove divergent parsing and fallback behavior; reuse the actual grader.
+No extra model calls. Prompt changes are not needed merely to repair deterministic grading.
+
+## W03 — Remove aggregate metrics whose inputs do not represent their claims
+
+**Anchors:** `backend/app/evals/agreement.py:62–118`,
+`backend/app/evals/screening.py:250–253`, `frontend/src/components/evals/evalResultPresentation.ts:34–43`.
+
+A synthetic probe passed two real screening Judge results into `score_agreement`:
+
+| Produced output | Graded agreement | Reported kappa | Reported failure recall |
+| --- | --- | --- | --- |
+| Both required flags correctly produced | 100% | 0.0 | 0% |
+| Both required flags omitted | 0% | 0.0 | 100% |
+
+Kappa compares display strings: for example the human's `fires: fake_contact` with the
+Judge's `fake_contact`; scoring compares a band string with a numeric score string. These
+are not matching category representations even when grading establishes agreement. Mixing
+families further combines different label vocabularies.
+
+The screening adapter sets `human_is_problem` when a case has a guard and `judge_is_problem`
+when the Judge fails it. Consequently, failing the expected behavior increases the metric
+labelled failure recall. Existing metric tests construct the boolean fields directly; they
+prove arithmetic for those fabricated fields, not the semantics supplied by the adapters.
+A full saved Judge run retains this aggregate for its UI history marker.
+
+**Recommendation:** remove pooled kappa and the current cross-family failure-recall/precision
+contract, including unused fields, UI text, and tests that preserve those definitions. Retain
+plain overall and per-family graded agreement with an explicit decisive-case denominator and
+separate contested counts. Keep explanatory per-case output. Do not just rename the current
+number or invert one boolean: clean cases, negative guards, score bands, and matching labels
+do not share one established failure-detection taxonomy here.
+
+This is a visible operator-report simplification worth approving as part of implementation.
+If a future decision actually needs a categorical statistic, define its population and labels
+for that particular family first. Do not build that hypothetical statistics layer now.
+
+**Acceptance:** real adapters feeding aggregates; all-right/all-wrong/mixed cases; contested
+exclusion; zero decisive cases; full vs accumulated partial history. Summary text must agree
+with case-level grades. Remove all producer/type/consumer remnants of the abandoned metrics.
+
+**Complexity/latency:** a net reduction in code and misleading surface area; no waiting cost.
+
+## W04 — Finish the existing structured editor's supported value types
+
+**Anchors:** `frontend/src/components/evals/StructuredFields.tsx:24–46,49–89,104–136`;
+family templates in `EvalCaseEditor.tsx`.
+
+`FieldValue` includes arrays, and the templates require arrays of objects and nested arrays.
+The renderer excludes arrays from its object branch and casts them to scalar input. A real
+component probe rendered a pair of dimension objects as `[object Object],[object Object]`.
+Editing that input emitted `{ given: { pair: "Edited axis" } }`. The backend rejects that
+shape, so this does not demonstrate corrupted fixture storage; it demonstrates an unusable
+editor path for consolidation pairs, matching lists, and decomposition reports. Scalar lists
+also lose their type when edited.
+
+A second component probe typed from 60 to 61 characters. The editor replaced its `<input>`
+with `<textarea>`, and keyboard focus moved to the document body.
+
+**Recommendation:** explicitly render scalar, object, and array values using the existing
+recursive editor. Array entries must be edited at their indices and remain arrays; set/remove
+operations must understand those paths. Preserve nested lists and locked identity fields.
+Keep a string's control type stable while typing (a textarea styled for short/long content is
+one simple option). Remove the type assertion that hides unsupported arrays. Do not introduce
+a form-generation library or five separate large family editors.
+
+**Acceptance:** edit and save an existing case from every family through the actual editor;
+array-of-object, nested array, string array, any-of nested string array, empty array, number,
+boolean, and long string; preserve focus, shape, identity locks, newer typing, and save errors.
+Keep the server schema as the validation authority.
+
+**Complexity/latency:** a small amount of necessary array traversal replaces misleading scalar
+handling. No new network work; stable controls improve responsiveness directly.
+
+## W05 — Shrink the catalog contract and remove corpus reads with no consumer
+
+**Anchors:** `backend/app/api/evals/catalog.py:45–141`,
+`backend/app/schemas/evals.py:21–34`, `frontend/src/components/ai/AIWorkspaceView.tsx:114–115`,
+`frontend/src/components/evals/RunnableEval.tsx:113`.
+
+The browser reads catalog keys/repetition counts and `fixtureEditingEnabled`. It owns its own
+labels/descriptions and computes confirmation totals from the visible cases times repetitions.
+The server still reads and validates every golden file, builds 13 detailed descriptors, and
+returns `label`, `description`, `spends`, and `estimatedCalls`. Repository searches found these
+extra fields in definitions and fixtures/tests, but no current browser consumer. A direct
+catalog probe counted **five file reads and approximately 3.3 KB of serialized data**.
+
+**Recommendation:** retain the existing endpoint with a narrow mode/repetition/editability
+contract. Remove unused descriptive/estimated fields from both schemas and catalog construction;
+keep copy in its existing UI owner. Catalog availability should not depend on unrelated corpus
+contents. No registry framework or process-wide cache is needed. Update stale API/eval docs that
+still attribute total confirmation counts to the catalog.
+
+**Acceptance:** zero fixture reads for catalog; existing mode repetition defaults preserved;
+local/hosted editing policy retained; displayed totals change after adding a case; catalog
+failure/retry still gates paid controls. Replace tests of unused fields with these contract checks.
+
+**Complexity/latency:** deletes substantial descriptor boilerplate and five unnecessary reads
+per catalog load, without adding a cache or moving model-run policy into the browser.
+
+## W06 — Let SQL answer whether an overdue opening has participants
+
+**Anchor:** `backend/app/services/openings/selection.py:102–113`; caller
+`backend/app/api/dashboard.py:105–112`.
+
+The function selects overdue undecided openings, then calls `active_opening_participants` for
+each merely to test list truthiness. That hydrates full application answers and participation
+entities on a routine admin dashboard read. An isolated database with twenty qualifying
+openings produced **21 SELECTs, including twenty answer-blob projections**.
+
+A proposed correlated `EXISTS` query returned the same ordered IDs in **one SELECT**, without
+projecting applicant answers. This is measured query behavior, not a production timing claim.
+
+**Recommendation:** use the same active/retained/submitted predicates inside `EXISTS` and keep
+the current ordering. Leave the full participant loader on actual decision paths, where those
+records are needed. No shared cache or new service layer is warranted.
+
+**Acceptance:** no participants, withdrawn participation, withdrawn application, unsubmitted,
+expired, future move-in, decided opening, multiple matching participants, and stable ordering.
+Check that query count does not grow with opening count and no answer blobs are projected.
+The everyday benefit is modest when there is only one overdue opening, but the implementation
+is simpler and removes avoidable work from a repeatedly read surface.
+
+## What I would keep / not tackle now
+
+- Keep request scopes, queued writes, exact save acknowledgements, run leases, authority checks,
+  deletion receipts, and recovery guards. They protect different boundaries. Similar-looking
+  `try/finally` blocks do not justify a general mutation engine.
+- Keep retained imported-answer readers. The form is retired; its stored records remain supported.
+- Keep the applicant persistence orchestrator and its cohesive helper flows. Its size reflects
+  several real access/recovery states. I found no evidence supporting a state-machine rewrite.
+- Do not split the 1,139-line ORM model file solely to satisfy a line-count target. It is a
+  coherent schema map; no concrete correctness or navigation benefit was established here.
+- Keep production-pass-specific prompts and graders. Consolidate actual shared expectations,
+  not superficially similar model requests with different meaning.
+- Do not delete CSS based on text-search misses. Most candidates were generated class names
+  (tier badges, column counts, fit bands, shortlist sizes); callers were present.
+- Do not prune concurrency tests because they are numerous. Prune catalog/metric tests when
+  their contracts are removed; replace them with consumer-path checks rather than adding
+  another layer of mock-only tests. Symbol-reference triage found no clear orphan module
+  deserving a deletion campaign.
+- Do not add broad caches, dependencies, generalized registries, or new persistent identities.
+
+## Why this pass found more, and how to reduce misses
+
+Earlier passes emphasized lifetime, ordering, acknowledgement, and storage. This pass compared
+**the same input and output through every consumer**, then exercised the real editor with every
+shape its type admits. That exposed defects direct helper tests and scalar-only editor tests
+could not see. The new probes passed assertions for defective behavior while the existing
+related suites remained green.
+
+For each future change, add a short consumer/shape matrix to the implementation review:
+
+1. Trace each retained field to its actual consumers; remove work for fields with no consumer.
+2. For shared rules, run the same synthetic case through all consumer entrypoints and compare
+   the relevant grade/meaning. Do not only feed invented intermediate booleans into a helper.
+3. For repeated work, account for every attempted item, including failures; inspect numerator,
+   denominator, and the claim made by the summary. A failed item must not disappear from evidence.
+4. For editors, exercise every supported value shape through the rendered controls and save
+   boundary. Type assertions are not proof that a shape is supported.
+5. Retain the adverse-state/both-completion-orders method from V01–V03. These methods complement
+   each other; neither is replaced by another broad source reread.
+
+This is a review discipline, not a proposal for a new testing framework. It can reduce misses
+without accumulating more synchronization code. It cannot guarantee a single audit finds every bug.
+
+## Verification, implementation order, and limits
+
+- Existing affected backend suites: **115 passed** across two runs (92 + 23).
+- Existing eval/workspace frontend suites: **50 passed across five files**.
+- Two temporary real-component probes reproduced array coercion and focus loss. Removed after
+  recording the results; no application or permanent test files changed.
+- In-memory/function probes reproduced stability, grading, and metric problems and measured
+  catalog reads and overdue-opening queries. Only mock providers and synthetic data were used.
+- No full-suite rerun was needed for this documentation-only audit. The just-pushed baseline's
+  previous implementation checks were 1,081 backend passes / one skip, 356 frontend passes,
+  build and linters passing; those are prior-turn results, not new audit verification.
+- No real model call, provider email call, production access, database reset, server start,
+  applicant-data export, or browser reload occurred.
+
+Suggested commits: W06 (small query simplification), W05 (catalog removal), W04 (editor),
+W02 (shared grading policy), W01 (complete outcome handling), W03 (metric simplification).
+W01–W03 need one joint final review of fingerprints, retained history, and summaries so that
+fixing the grader does not leave its consumers using an obsolete success definition.
+Run relevant suites/build/lint for each package, then the full suites and a final consumer-matrix
+review. Keep the document open for any implementation finding inside those boundaries.
+Application changes await authorization; only the audit document is changed by this pass.
