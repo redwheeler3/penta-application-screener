@@ -715,18 +715,24 @@ retention rule may remain in the live database.
 
 Integer record IDs use persistent, monotonic SQLite allocation. Existing IDs remain unchanged;
 future allocation skips the legacy range and remains representable by browser numbers. Local
-restore prepares a separate candidate database, reapplies the newest deletion bounds, upgrades
-its schema and preserves live allocation high-water marks before replacing data through SQLite's
+restore prepares a separate candidate database, upgrades its schema, reapplies the newest deletion
+bounds and preserves live allocation high-water marks before replacing data through SQLite's
 journal protocol. A later record generation is not deleted by an older fact; an ambiguous legacy
 match stops the restore before live replacement. Integrity and foreign-key checks cover the result.
+Local application snapshots must identify their Alembic revision. Preparation upgrades them
+before using the normal aggregate-erasure mechanics; unversioned application schemas are rejected.
+Restored browser sessions, one-time credentials, and credential-issuing email retries are invalidated.
+Orphaned run/maintenance ownership is released; ordinary queued notifications remain subject to
+the outbox's lifecycle checks. Fresh sign-in is required. This does not preserve every access-list,
+consent, note, or business-data change across rollback, and does not change the Fly restore policy.
 
 Retention is enforced automatically and opportunistically at most once per Pacific calendar day
 when the deployed service receives ordinary browser or API traffic. Health checks, static assets,
 and CORS preflight requests do not wake the sweep, and no external scheduler exists solely to wake
 a suspended Fly Machine. A durable lease prevents concurrent requests from running the
-same sweep. The ordered pass queues due unsuccessful notices, retries queued email, and then
-processes due retention deletion. A record may remain somewhat past its scheduled date while the
-service is unused; the first subsequent real use starts the due work in the background.
+same sweep. The ordered pass purges due applicant data, queues due unsuccessful notices, retries
+queued email, and deletes expired list-only delivery failures. A record may remain somewhat past its
+scheduled date while the service is unused; the first subsequent real use starts the due work in the background.
 
 Scheduled purge physically removes each due aggregate without depending on email delivery. Explicit
 deletion of a never-submitted draft likewise removes the draft and its email address immediately.
@@ -1837,9 +1843,8 @@ committee workflow.
    application-intake Opening exists, it is the only possible owner: assign all existing Analyses,
    their MemberRanking children, and run-cost history to it unconditionally so the production
    committee's current ranking, tiers, and results do not change at deployment. When several
-   openings exist, assign an existing analysis only when its complete stored rank-input fingerprint
-   exactly matches one opening's AI pool. An unmatched or ambiguous multi-opening analysis stays
-   unscoped audit history and the first opening-specific Rank creates that opening's active analysis.
+   openings exist, a global fingerprint does not prove opening ownership; preserve those analyses
+   as unscoped audit history. The first opening-specific Rank creates that opening's active analysis.
    This preservation logic lives only in the migration; do not retain a runtime compatibility path or
    delete paid historical runs and eval evidence.
 6. Produce a PII-safe before/after reconciliation: opening pool counts, per-member eligibility counts,

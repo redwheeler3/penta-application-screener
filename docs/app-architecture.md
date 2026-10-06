@@ -107,13 +107,19 @@ keeps mode and payload correlated in both streamed summaries and saved runs. Cas
 receive outcomes derived from those whole-run contracts without a mode/payload type assertion.
 Saved-run history reads use `useRequestScope`; starting a new eval invalidates earlier history
 requests so a late initial response cannot overwrite the new run's results.
+`evalResultState.ts` derives displayed case outcomes from current metadata, stored case provenance,
+and delivered receipts. There is no independently maintained experiment/result cache. Current
+metadata exists even before the first saved run; recorded receipts yield to that case's source
+run, while unrecorded receipts remain view-local until replaced, invalidated or unmounted.
 Each eval family has its own mounted workspace. The case editor owns its draft, pending save,
 and inline error; it closes only when the current draft still matches the acknowledged submission.
 Fixture saves are ordered because responses contain the full case list. Accepted saves invalidate
 earlier fixture reads, and an earlier editor's completion cannot close a newer case editor.
 
 Evals and Observability endpoints require admin authority, including ranking's four trace
-endpoints. Ordinary member current/board responses omit the operator discovery narrative.
+endpoints. All current/board responses omit operator narratives. Trace endpoints take an explicit analysis ID
+and verify its opening; panels scope reads to the accepted criteria snapshot, including same-analysis
+refreshes. New traces cannot be silently substituted for the analysis the operator is reviewing.
 The eval catalog reports whether versioned fixture editing is enabled locally;
 hosted runs still read the committed corpus, with editing/re-baselining controls omitted.
 Short local file mutations recheck admin authority under the existing SQLite writer guard.
@@ -124,9 +130,10 @@ Missing scoring results and all-missing ranges are nullable through live/saved c
 
 `useRanking.refreshRankingView` reconciles displayed boards within the same analysis, preserving
 pending edits. The workspace's intake/focus refresh owns its scheduling and suppresses it while
-this member's AI run owns the board. Hidden boards use an ID-only focus check; another analysis
-still requires the member to Reload. Settings changes request cache adoption and refresh views
-in the background without delaying the save acknowledgement.
+this member's AI run owns the board. Hidden boards observe the analysis ID returned by the existing
+dashboard read; observations retain the board context captured when that read began. Another
+analysis requires Reload, which makes one coherent board request. Settings changes request cache
+adoption and refresh views in the background without delaying the save acknowledgement.
 
 `hooks/useSharedSettings.ts` keeps the accepted server configuration separate from its editable
 draft. Save completion acknowledges the submitted snapshot and preserves edits made while the
@@ -134,7 +141,7 @@ request was in flight. Older settings reads cannot roll back a completed save.
 `hooks/useEligibilityRules.ts` applies the same acknowledgement rule to both eligibility editors.
 Each draft belongs to its opening and rule kind; save and reset share one busy state, and a late
 response from an opening the member has left cannot change the current editor. Private-note
-autosaves run through a serial queue in `CandidateNotes.tsx`; even a revert waits for earlier
+autosaves run through the account-owned queue in `usePrivateNotes.ts`; even a revert waits for earlier
 writes before comparing against the last acknowledged server value.
 Superseded drafts waiting in that queue are skipped; a save already sent must finish before the
 latest draft is sent. Committee-note saves preserve any newer text typed while saving.
@@ -302,8 +309,8 @@ failures are deleted after 30 days. The report excludes expected cancellations a
 rendered bodies or credentials.
 
 Ordinary application traffic claims a durable once-per-Pacific-day maintenance lease in a response
-background task. The pass queues due unsuccessful notices, retries queued mail, performs due
-application-retention deletion, and deletes expired list-only vacancy failures. Health checks, static
+background task. The pass purges due applicant data, queues due unsuccessful notices, retries queued
+mail, and deletes expired list-only vacancy failures. Health checks, static
 assets, and CORS preflight requests do not trigger it.
 Administrators see queued, provider-quota-blocked, and recent unexpected failure counts in the
 action banner. SocketLabs, not the application, owns bounce, complaint, suppression, plan
@@ -633,7 +640,11 @@ The root backup/restore scripts delegate to `python -m app.services.backup`. The
 handles labels, backup selection, and restore confirmation; arguments are passed as data,
 including quoted paths. Restore still requires stopping the backend, snapshots the current
 state, stages and validates the replacement, and preserves deletion bounds and record identity.
-Windows wrappers stop on failed native commands instead of reporting success.
+Application snapshots require an Alembic revision. The upgraded candidate uses the same aggregate
+erasure mechanics as operational purges. It invalidates restored credentials and credential-issuing
+retry intents, resets abandoned worker ownership, and requires fresh sign-in after publication.
+Ordinary durable notifications retain their outbox lifecycle checks. These local safeguards do not
+change the documented Fly snapshot policy. Windows wrappers stop on failed native commands.
 
 `analyze_convergence`, `decompose_drift`, and `harvest_golden_cases` read current `Analysis`
 and `AnalysisAudit` owners. Each requires `--opening-id OPENING_ID`; they do not combine

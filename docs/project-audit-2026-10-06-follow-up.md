@@ -1,8 +1,9 @@
 # Consolidation and correctness audit — 2026-10-06
 
-**Status: audit complete; recommendations awaiting implementation authorization.**
-Audited `main` at `b4df0b7`. This document replaces the earlier October 6 follow-up
-and includes its unresolved findings. Application code is unchanged.
+**Status: U01–U06 implemented and verified; post-push review pending.**
+Audit baseline: `b4df0b7`; implementation baseline: `440061a`. The recommendations
+below retain their original audit evidence. Implementation outcomes are recorded at
+the end; they supersede statements describing the unchanged audited baseline.
 
 ## Recommendation and assessment
 
@@ -509,3 +510,56 @@ the defined implementation and cleanup, and return to Astra once for closure. So
 suitable for most implementation; the remaining uncertain recovery/eval decisions
 are the places where stronger reasoning is worth concentrating. This is a task-based
 recommendation, not a guarantee about which model will find or prevent a defect.
+
+
+## Implementation outcomes — 2026-10-06
+
+All six packages are implemented in this campaign:
+
+| Package | Commit | Outcome |
+| --- | --- | --- |
+| U04 | `68b6644` | Reject older-revision browser writes under the existing consent lock; retain leaving warnings and explicit recovery paths. |
+| U05 | `ad71429` | Eliminate live-app imports from migrations. Preserve historical provenance instead of rewriting fingerprints; keep ambiguous multi-opening history unscoped. Freeze evidence identities. |
+| U06 | `1c5a88f` | Share aggregate erasure via current-schema cascades. Upgrade candidates, invalidate restored credentials/credential retries, release abandoned work, and reject unversioned snapshots before publication. |
+| U03 | `bb4c5bf` | Share cache-key grids, bounded projected lookups, and selected-reference reads; skip admin-only email queue work for members. |
+| U01 | `2524ec2` | Derive displayed outcomes from explicit receipts, per-case historical provenance, and independent current metadata. Remove duplicate result/experiment state and reuse fixture loading/error handling. |
+| U02 | `6eca0db` | Remove duplicate/unused ranking fields and the unused kept-key helper. Pin admin traces to viewed analyses/openings and accepted snapshots. Reuse dashboard identity observations and reload with one board request. |
+
+The U02 review also covered a newly introduced ordering risk: a dashboard read started beside
+board A must not mark a subsequently accepted board B stale. The observation captures its board
+context, and a sequence regression covers this. No numeric-ID ordering assumption was added.
+
+Test pruning removed the migration hash-length test, the unused-option navigation test, and
+redundant kept-key assertions already covered by actual tier inheritance. Eval hook tests were
+rewritten around complete sequences rather than retaining every superseded merge-branch test.
+Recovery tests now use the real schema, and applicant fixtures enforce foreign keys like runtime.
+The schema declaration file remains large by design; its only U02 edit corrects a trace-route comment.
+
+Through `6eca0db`, relative to `440061a`, runtime code is **293 lines smaller** (528 added,
+821 removed); tests are **102 lines larger** (518 added, 416 removed). These numbers include
+migrations in runtime and exclude documentation. No dependencies, persistent IDs, new database
+columns, global state library, or general workflow framework were added.
+
+Verified implementation checks:
+
+- Backend: **1,081 passed, one Windows/POSIX runtime skip**.
+- Frontend: **338 passed across 49 files**; production/type build and ESLint passed.
+- Ruff passed across application, migrations, tests and scripts.
+- Static Python import check found no cycles. The API map matches OpenAPI methods/paths exactly.
+- Same warmed synthetic pool: current=4, board=19, dashboard=21, unchanged cache adoption=19
+  SELECTs. Dashboard was 23 before. The board's only duplicate field is now `analysisId`.
+  Unchanged query counts are reported honestly; code reuse itself is not a speed measurement.
+- Hidden-board focus checks no longer make the extra current-criteria request, and explicit
+  board reload no longer waits for a preceding criteria request. Ordinary saves remain responsive.
+- No prompt/model judgment changed; verification used synthetic fixtures and mock providers.
+  No production operation, real paid run, real email, or local application-database mutation occurred.
+
+The local recovery policy remains bounded: application snapshots require a migration revision,
+fresh sign-in follows restoration, ordinary durable mail still uses existing lifecycle checks,
+and Fly recovery remains the previously accepted snapshot policy.
+
+### Post-push review
+
+Pending the initial push: review the complete implementation diff, then make separate lifecycle
+and simplification/latency passes. Record any valuable omissions and their resolution here before
+closing the campaign.

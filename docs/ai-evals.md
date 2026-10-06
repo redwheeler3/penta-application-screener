@@ -82,15 +82,19 @@ the latest result per current scoped case in SQLite and excludes unused narratio
 expression index narrows the query to the eval, prompt, and experiment; work within one
 experiment still grows with its run history, without a fixed row window or a second results store.
 
-Confirmed summaries identify their existing `EvalRun` row. The client takes ordinary case
-outcomes from newest compatible history, protecting only its exact delivered receipt when
-the write failed or the history response predates that row. Scoped family/key identities
-serialize Unicode consistently across Python, SQLite and JavaScript.
+Confirmed summaries identify their existing `EvalRun` row. Current model/prompt/reasoning and
+case fingerprints are returned independently of historical runs, including for an empty history.
+Each reconstructed case identifies its source run through `caseRunIds`. The client derives one
+outcome per case/mode from these inputs: a recorded receipt yields to that case's same/newer stored
+source; an unrecorded receipt survives repeated refreshes until the case runs again, its metadata
+changes, or the view unmounts. Historical markers are omitted while a live override would make
+their aggregate misleading. Scoped family/key identities serialize Unicode consistently across
+Python, SQLite and JavaScript.
 
 The catalog supplies the repetition count: one for live evals and the default K for stability.
 Confirmations multiply it by the current case count, and requests send that same K. Metadata
 loading failure leaves paid controls unavailable with Retry. Judge brief text/counts come
-from one captured file snapshot; history reads only requested families with stored runs.
+from one captured file snapshot; history metadata reads each requested family once, even before its first stored run.
 No input/label/model/prompt edit triggers paid work automatically.
 
 ### Software tests
@@ -125,7 +129,7 @@ It is intentionally **manual and non-gating**:
 
 - it never runs during Rank, pytest, or normal CI;
 - it makes paid Bedrock calls only when someone confirms a run in the tab;
-- it cannot modify criteria, scores, rankings, or the database;
+- it cannot modify production criteria, scores, or rankings; it stores its own eval telemetry;
 - a disagreement is a review signal, not an automated correction.
 
 ## Grader architecture — match the grader to the output shape

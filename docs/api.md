@@ -18,8 +18,15 @@ Screen, full Rank, score-current, and Evals stream NDJSON progress and a termina
 Full Rank discovers criteria, scores, and consolidates them under one run lease. Score-current
 fills missing scores against captured criteria without discovery. Board reads return criteria,
 this member's applicants, and tiers together; without chosen priorities rank/fit/band are null.
+Current criteria metadata carries dimensions and proposals; the ranked-list response owns badges
+and scores. Operator narratives are read only through analysis-specific trace endpoints, which
+validate opening ownership. Dashboard responses include `analysisId` for passive identity checks.
 Tier changes use cached scores without model calls. The eval catalog exposes `fixtureEditingEnabled`; hosted corpus writes return
 `eval_fixtures_read_only`. Eval runs have no spending cap and read the committed image corpus.
+
+`/evals/last-run` returns `runs` and independent `current` configuration/fingerprint metadata for
+every requested mode, including modes without stored history. Each saved aggregate supplies
+`caseRunIds` so clients compare receipts with a case's actual source, not the aggregate run ID.
 
 Spending reports describe known returned
 usage from completed or failed attempts rather than promising an exact provider bill.
@@ -208,10 +215,10 @@ consolidation audits expose captured configuration where it was recorded.
 | --- | --- | --- | --- |
 | GET | `/ranking/board` | Criteria, scores, and tiers from the same captured member view. | Committee session |
 | GET | `/ranking/current` | The current analysis's dimensions + this member's view, or null if none discovered yet. | Committee session |
-| GET | `/ranking/current/consolidate-audit` | The current analysis's consolidation audit — the post-score duplicate-merge pass: which correlated pairs were nominated and, per pair, whether the confirm call merged them (with its reasoning). Null when no audit exists. | Admin |
-| GET | `/ranking/current/decompose-audit` | Current Decompose Audit | Admin |
-| GET | `/ranking/current/fan-out-audit` | The current analysis's fan-out audit — each of the K parallel discoverers' dimensions + reasoning, so the discovery panel can show every discoverer, not just the one that streamed live. Null when no audit exists. | Admin |
-| GET | `/ranking/current/match-audit` | The current analysis's carry-forward audit — what discovery emitted, how the match pass mapped it onto prior dimensions, and the derived carry-forward rate. Null when no analysis or audit exists. | Admin |
+| GET | `/ranking/analyses/{analysis_id}/consolidate-audit` | The viewed analysis's consolidation audit — the post-score duplicate-merge pass: which correlated pairs were nominated and, per pair, whether the confirm call merged them (with its reasoning). Null when no audit exists. | Admin |
+| GET | `/ranking/analyses/{analysis_id}/decompose-audit` | Viewed analysis decomposition audit | Admin |
+| GET | `/ranking/analyses/{analysis_id}/fan-out-audit` | The viewed analysis's fan-out audit — each of the K parallel discoverers' dimensions + reasoning, so the discovery panel can show every discoverer, not just the one that streamed live. Null when no audit exists. | Admin |
+| GET | `/ranking/analyses/{analysis_id}/match-audit` | The viewed analysis's carry-forward audit — what discovery emitted, how the match pass mapped it onto prior dimensions, and the derived carry-forward rate. Null when no analysis or audit exists. | Admin |
 | POST | `/ranking/run` | Run the full ranking chain — find criteria → score → consolidate — streaming NDJSON. The combined cost is checked against the cap once before any model call, so an over-cap run fails fast with a 402 and spends nothing. | Committee session |
 | GET | `/ranking/run/estimate` | Rank Estimate | Committee session |
 | POST | `/ranking/score-current` | Fill missing scores without changing the current dimensions or tier layout. | Committee session |
