@@ -1,14 +1,14 @@
 # General audit: correctness and simplification — 2026-10-06
 
-**Status: five review passes complete; W01–W06 recommended, not implemented.**
+**Status: coverage-driven extension complete; W01–W07 recommended, not implemented.**
 Baseline: clean `main` at `c4c2ffc`, verified equal to `origin/main` after the authorized push.
 The completed V01–V03 audit and implementation evidence remain in
 `c4c2ffc:docs/project-audit-2026-10-06-follow-up.md`.
 
 ## Recommendation
 
-Implement these six bounded changes. Four address incorrect or unusable eval behavior;
-two remove unnecessary work. The most useful simplifications are removing misleading
+Implement these seven bounded changes. Four address incorrect or unusable eval behavior;
+three remove unnecessary work. The most useful simplifications are removing misleading
 Judge metrics, shrinking the unused eval catalog contract, sharing grading rules, and
 replacing the dashboard's participant-loading loop with an existence query.
 
@@ -25,6 +25,7 @@ without covering these older semantic gaps. Keep the existing ownership boundari
 | W04 | P2 / P3 focus issue | Make the fixture editor preserve and edit nested lists; keep text controls stable | Object arrays render as `[object Object]`; editing converts them into strings; crossing 60 characters loses focus |
 | W05 | P3 | Reduce the eval catalog to the configuration actually consumed | Five fixture reads and 13 verbose descriptors; browser consumes only keys, repetitions, and editing availability |
 | W06 | P3 | Check overdue-opening participation with `EXISTS` | Twenty overdue openings cause 21 queries and 20 answer-blob reads; a one-query probe returns the same IDs |
+| W07 | P3 | Project email administration reads without hydrating applicant records | Twenty delivery issues cause 21 queries and twenty answer-blob reads; a narrow projection preserves recipients in one query |
 
 No production action or paid AI work is part of this recommendation. Preserve submission-time
 age, automatic cache reuse, coverage-based Screen/Rank readiness, committee authority,
@@ -153,15 +154,24 @@ prove arithmetic for those fabricated fields, not the semantics supplied by the 
 A full saved Judge run retains this aggregate for its UI history marker.
 
 **Recommendation:** remove pooled kappa and the current cross-family failure-recall/precision
-contract, including unused fields, UI text, and tests that preserve those definitions. Retain
-plain overall and per-family graded agreement with an explicit decisive-case denominator and
-separate contested counts. Keep explanatory per-case output. Do not just rename the current
+contract, including unused fields, UI text, and tests that preserve those definitions. Derive
+plain graded agreement with an explicit decisive-case denominator and separate contested counts
+from the case results already sent to the browser. Keep explanatory per-case output and existing
+family grouping. Do not add a new per-family reporting surface. Do not just rename the current
 number or invert one boolean: clean cases, negative guards, score bands, and matching labels
 do not share one established failure-detection taxonomy here.
 
 This is a visible operator-report simplification worth approving as part of implementation.
 If a future decision actually needs a categorical statistic, define its population and labels
 for that particular family first. Do not build that hypothetical statistics layer now.
+
+**Coverage-driven refinement:** the current frontend summary also counts a contested
+disagreement as agreement: one decisive agreement plus one contested disagreement renders
+`2/2 agree`. A real `runSummary` probe reproduced this. Correct the numerator/denominator
+together. Consumer search found no browser/script use of the backend's separate per-category
+counts or the two problem-classification booleans outside this calibration pipeline. Remove
+the abandoned aggregate producer and its scaffolding instead of preserving unused fields.
+This makes W03 a smaller result contract, not a replacement statistics subsystem.
 
 **Acceptance:** real adapters feeding aggregates; all-right/all-wrong/mixed cases; contested
 exclusion; zero decisive cases; full vs accumulated partial history. Summary text must agree
@@ -191,6 +201,12 @@ operations must understand those paths. Preserve nested lists and locked identit
 Keep a string's control type stable while typing (a textarea styled for short/long content is
 one simple option). Remove the type assertion that hides unsupported arrays. Do not introduce
 a form-generation library or five separate large family editors.
+
+**Coverage-driven refinement:** additional real-component probes reproduce the same coercion
+for string lists, nested any-of lists, and empty lists. Another probe shows that although
+`metadata.pass` cannot be removed directly, its entire `metadata` parent can be removed.
+Honor locked descendants when offering ancestor removal. This is a UI contract defect;
+the probe does not establish a valid unauthorized server write.
 
 **Acceptance:** edit and save an existing case from every family through the actual editor;
 array-of-object, nested array, string array, any-of nested string array, empty array, number,
@@ -249,6 +265,42 @@ Check that query count does not grow with opening count and no answer blobs are 
 The everyday benefit is modest when there is only one overdue opening, but the implementation
 is simpler and removes avoidable work from a repeatedly read surface.
 
+## W07 — Use narrow read models for email administration
+
+**Anchors:** `backend/app/services/email/outbox.py:email_delivery_issues`,
+`email_queue_status`, `_delivery_recipient`; lazy relationships on `EmailDelivery` in
+`backend/app/db/models.py`; dashboard/email-delivery API consumers.
+
+The issue list loads full delivery entities and resolves each address through lazy
+application/draft/user relationships. A synthetic twenty-recipient probe recorded **21
+SELECTs and twenty application answer-blob projections**. The response needs delivery metadata
+and an email address, not the applicant's answers or a mutable application entity.
+
+A narrow outer-join projection returned the same ordered IDs and recipients in **one query**
+without answer blobs. A second probe covered six recipient variants: application, draft,
+committee user, explicit targetless address, explicit address overriding an application,
+and the unavailable-recipient fallback. All matched the existing presentation.
+
+The sibling `email_queue_status` reader fetches every queued delivery, including retry-intent
+JSON, to calculate count, quota-blocked count, and min/max timestamps. This is two queries
+already, but it unnecessarily hydrates all queued rows. Calculate those summaries in SQL,
+retaining the existing unexpected-failure predicate and its independent count if that keeps
+the query clearer. These are internal materialization costs, not a demonstrated data leak.
+
+**Recommendation:** keep read projections in the current outbox owner. Preserve recipient
+precedence, filters, date fallback, limits and ordering. Leave full entities on the actual
+retry/send path, which needs them. No cache, new service, or change to delivery semantics.
+
+**Acceptance:** six recipient variants; queued versus expected/unexpected failures; limits;
+empty queue; quota flags; timestamp bounds and fallback; query count independent of distinct
+recipients; no answer/retry-intent projection for the summary views. Preserve existing
+attempt/cancellation/lifecycle tests. The first mixed-recipient probe had an incomplete draft
+fixture (`created_at` omitted); after fixing that probe setup all six cases matched.
+
+**Complexity/latency:** remove per-recipient lazy reads and Python row aggregation. No extra
+request, synchronization, model work, or production operation. This follows the same review
+question as W06 but belongs to the separate email read owner.
+
 ## What I would keep / not tackle now
 
 - Keep request scopes, queued writes, exact save acknowledgements, run leases, authority checks,
@@ -292,7 +344,7 @@ For each future change, add a short consumer/shape matrix to the implementation 
 This is a review discipline, not a proposal for a new testing framework. It can reduce misses
 without accumulating more synchronization code. It cannot guarantee a single audit finds every bug.
 
-## Verification, implementation order, and limits
+## Initial audit verification and implementation order
 
 - Existing affected backend suites: **115 passed** across two runs (92 + 23).
 - Existing eval/workspace frontend suites: **50 passed across five files**.
@@ -306,10 +358,120 @@ without accumulating more synchronization code. It cannot guarantee a single aud
 - No real model call, provider email call, production access, database reset, server start,
   applicant-data export, or browser reload occurred.
 
-Suggested commits: W06 (small query simplification), W05 (catalog removal), W04 (editor),
+Suggested commits: W06/W07 (separate read-owner simplifications), W05 (catalog removal), W04 (editor),
 W02 (shared grading policy), W01 (complete outcome handling), W03 (metric simplification).
 W01–W03 need one joint final review of fingerprints, retained history, and summaries so that
 fixing the grader does not leave its consumers using an obsolete success definition.
 Run relevant suites/build/lint for each package, then the full suites and a final consumer-matrix
 review. Keep the document open for any implementation finding inside those boundaries.
-Application changes await authorization; only the audit document is changed by this pass.
+Application changes await authorization. This extension changes the audit and the agreed
+repository audit procedure only.
+
+## Coverage-driven extension
+
+Starting revision: `0a98582`. The agreed audit procedure is now in `.clinerules`.
+This extension began with the matrix below marked pending, then recorded evidence and
+a final challenge. W01–W06 remain open; repeating their reproductions is not new coverage.
+It added W07 and refined W03/W04 within this same audit, without an intervening handoff.
+
+| Subsystem | Correctness / consumer meaning | Failure / concurrency | Shapes / lifecycle | Redundancy / readability / cost |
+| --- | --- | --- | --- | --- |
+| Applicant answers and browser persistence | S/T: submitted vs working projection, age/cache facts | S/T: exact acknowledgements and newer browser drafts | S/T: native/retained answers, opening selection, save vs submit | S: keep distinct persistence owners; no proposed generic state machine |
+| Identity and administrative authority | S/T: captured identity vs current cookie, admin-only writes | S/T: sign-in replacement and demotion while waiting | S/T: applicant/committee sessions, revoked links/copies | S: admission and commit-time checks serve different purposes |
+| Committee actions and details | S/T: private/shared notes and narrow field receipts | S/T: uncertain saves, deletion replay, pending detail reads | S/T: author restrictions, blocked drafts, retained review | S: queues stay by existing owner/field; no shared mutation engine |
+| Opening publication and decisions | S/T: phase, participation, publication facts, finality | S/T: stale edits, selection/withdrawal, uncertain decisions | S/T: withdrawn/expired/unsubmitted, direct vs ordinary | S/P: W06; retain full participant loader for decisions |
+| Screen/Rank and cached output | S/T: coverage/selection/cache identity, unranked behavior | S/T: leases, cancellation, partial model failures, stale boards | S/T: incomplete score vectors, human overrides, frozen age | S: keep shared cache/read owners and separate member/shared pools |
+| Eval runners, grading and histories | S/P: W01–W03; contested-summary probe expands W03 | S/T: receipt/history ordering and failed refreshes; W01 remains open | S: common envelope and family-specific grading; W02 remains open | S: W05; remove W03 aggregate rather than replace it |
+| Fixture and settings editors | S/P: W04 strings/lists/locked ancestors | S/T: save/reset ordering and newer typing | P: strings, nested/empty lists, ancestor removal; T: settings/date controls | S: array support in existing editor; D: browser visual/gesture checks |
+| Email delivery and maintenance | S/T: recipient intent, notice eligibility and summary meaning | S/T: attempt ownership, cancellation, daily lease replacement | S/T/P: targetless/applicant/draft/member recipients; expired notices | S/P: W07; preserve richer entities on actual send paths |
+| Retention, recovery and migrations | S/T: entitlement and deletion ledger, schema preparation | S/T: renewed retention, replaced work, failed restore preparation | S/T: producer/consumer deletion orders, old/new IDs, WAL snapshots | S: shared erasure justified; D: actual production restore and POSIX-only check |
+
+Evidence labels: **S** = source/caller review, **T** = executed existing behavior test,
+**P** = controlled new probe, **D** = explicit deferred verification. These labels describe
+the evidence, not a guarantee that a subsystem has no bugs.
+
+### Evidence behind the matrix
+
+All test files named here ran in the full suites during this extension; their relevant
+scenarios were inspected rather than treating the suite count as proof of the claims.
+
+- **Applicant:** `applicantSaveFlow.ts`, `draftStorage.ts`, backend `applications/intake.py`,
+  `answers.py`, and `openings/participation.py` keep private drafts separate from published
+  answers and validate participation. `test_intake.py`, `test_application_answers.py`,
+  `applicant/test_save_acknowledgement.py`, `test_applicant_copy_concurrency.py`,
+  `applicantSaveFlow.test.ts`, and remembered-draft suites exercise those boundaries.
+  `test_ai_analysis.py:test_cache_identity_uses_only_frozen_submission_facts_consumed_by_the_pass`
+  verifies the deliberate age/cache policy; no calendar-driven invalidation is proposed.
+- **Identity:** `api/dependencies.py`, `auth/authority.py`, `api/identity.tsx`, and
+  `useRequestScope.ts`; `test_request_identity.py` drives real cookie-switch/write/read/logout
+  paths. `test_identity_concurrency.py` and `test_admin_write_authority.py` cover preloaded
+  identities and revoked authority, while frontend identity/session suites cover client scope.
+- **Committee:** `api/applications/routes.py` preserves minimal creation/deletion receipts;
+  `useCandidateActions.ts`, `usePrivateNotes.ts`, and `useNavigation.ts` separate write receipts
+  from navigation. Their suites plus application API/lifecycle tests exercise replay, newer
+  typing, blocked edits, and an overlapping detail response. No evidence supports merging them.
+- **Openings:** `openings/catalog.py`, `participation.py`, `selection.py` and the three opening
+  editors; `test_opening_edit_concurrency.py`, `test_lifecycle_concurrency.py`, ordinary/direct
+  opening suites, and editor/decision tests cover stale facts, finalization and uncertainty.
+  W06 retains the predicates of the existing participant reader; its query probe is documented
+  above. The optimization must not move decision locks onto ordinary reads.
+- **Screen/Rank:** `ai/analysis.py`, `dimension_scoring.py`, `dimension_discovery.py`,
+  `services/cached_results.py`, `eligibility/status.py`, `domain/ranking.py`, and ranking view
+  consumers were traced. Relevant tests include score-current selection, cache reuse,
+  committee union, ranking scores/provenance, run leases/HTTP disconnects and frontend workflow
+  and ranking hooks. The production discovery path deliberately permits surviving workers
+  while recording failures; it is not a K-repetition stability claim and should not inherit
+  W01's completeness rule indiscriminately.
+- **Evals/editors:** `evalResultState.ts`, `evalResultPresentation.ts`, `EvalResults.tsx`,
+  `EvalCaseList.tsx`, `StructuredFields.tsx`, `fixture_files.py`, `case_store.py`, and the
+  live/Judge/summary consumers. Five new component/presentation probes checked the additional
+  W03/W04 cases; all reproduced the defects. Existing runner/editor/history tests remain green.
+  `useEligibilityRules.ts` and `NumberInput.tsx` were reviewed as sibling editors; their state
+  ownership does not require the recursive fixture editor's array machinery.
+- **Email:** `email/delivery.py`, `outbox.py`, `openings/notifications.py`, and `maintenance.py`.
+  `test_email_outbox.py` covers overlapping workers, cancelled intents, and late attempts;
+  `test_notice_eligibility.py` covers lifecycle changes after audience capture;
+  `test_maintenance.py` covers obsolete attempts finishing after replacement. New W07 query
+  probes use the real read functions. Rich write models stay on the retry path; only display
+  projections change.
+- **Retention/recovery:** `applications/retention.py`, `purge.py`, `result_retention.py`, and
+  `services/backup.py`; `test_retention_purge.py`, `test_result_retention.py`, `test_backup.py`,
+  and `test_migrations.py` cover extended lifetimes, both owner-deletion orders, failed isolated
+  preparation, identity high-water marks, and historical migration independence. No production
+  recovery or retention-policy change is inferred from those tests.
+
+### Final challenge and stopping decision
+
+The final review worked backward from user-visible claims and narrow response fields, instead
+of following recent commits again. It asked whether every claim has appropriate evidence and
+whether each proposed fix can remove code rather than add another representation.
+
+- Followed the new email issue-list finding into recipient variants and queue summary reads.
+  Both are captured in W07; no separate unexamined email-read finding is left for another pass.
+- Followed W03 into UI summary counts and actual aggregate consumers. This found the contested
+  numerator error and eliminated the need for a replacement aggregate layer from the plan.
+- Followed W04 into nested/string/empty arrays and ancestor removal. These are acceptance cases
+  in the same editor fix, not new independent feature proposals.
+- Challenged W01 against the production fan-out policy and ordinary failed-but-complete evals.
+  Preserve that distinction; do not make all partial production progress unusable.
+- Rechecked W02's historical-output implications and W05's call-estimate consumer. Fix grading
+  through eval validity boundaries without changing production cache versions; keep confirmation
+  totals derived from the visible case set and catalog repetitions.
+
+The planned rows now have source/test/probe evidence or explicit verification limits. After
+these sibling expansions, the closing challenge identified no further unexamined material issue.
+Stop discovery here and use W01–W07 as one implementation plan. This conclusion is narrower than
+claiming every project defect has been found.
+
+**Fresh checks:** full backend **1,081 passed, 1 skipped**; full frontend **356 passed in 49
+files**; five temporary frontend probes reproduced their expected defects and were removed.
+Email probes used isolated in-memory databases. The only remaining edits are this document and
+`.clinerules`; no application, fixture, migration, or permanent test was changed.
+
+**Explicit limits:** no real-provider judgment/billing validation, actual production restore,
+browser layout/drag/mobile-accessibility verification, or production latency measurement.
+The existing POSIX-only test remains skipped on Windows. These checks require different
+environments or actions and do not block the documented deterministic recommendations.
+Before implementing a materially changed editor workflow, include browser interaction review;
+before changing prompts, apply the project's real-output verification rule. No such application
+or prompt change was made here.

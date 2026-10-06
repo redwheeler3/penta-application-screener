@@ -54,6 +54,14 @@ Work as a **principal developer on Jeff's team**: pragmatic, biased toward prove
   - **Body (default yes, blank line first):** explain *why* / the tradeoff / the bug's cause — not a restatement of the diff. A sentence is fine. Skip only for a genuinely self-explanatory subject.
   - **No AI-attribution trailers.**
 
+## Audit completion
+
+- **Start broad audits with a coverage map.** List the relevant subsystems against correctness, failure/concurrency behavior, supported data shapes, consumer consistency, unnecessary work, and readability. Record source anchors, exercised scenarios, and explicit deferrals; distinguish source review from tests and from assumptions. A list of files or passing tests alone is not coverage evidence.
+- **Change perspective between passes.** Review user journeys, data transformations, adverse sequences, and deletion/simplification opportunities separately. Recent fixes must not determine the entire audit's scope. Trace each finding through sibling producers, consumers, persistence, and presentation during the same audit.
+- **Check the real boundaries.** Compare shared rules using identical synthetic inputs through each actual consumer. Exercise editors with every supported value shape. Account for every attempted item in repeated work, including failures, and verify summary numerators/denominators against the claim shown to the user. Preserve the adverse-state/completion-order checks below.
+- **Close by evidence, not finding count.** Revisit every coverage row and conduct a final challenge from a different perspective. Follow new material findings within scope before handing off another batch; state any remaining gap and why it is deferred. Stop when planned coverage has evidence or an explicit limitation and the final challenge adds no unexamined material issue. This is bounded coverage, not a guarantee of zero defects or a requirement to keep searching indefinitely.
+- **Keep the remedy proportional.** Every recommendation identifies the existing owner, acceptance checks, latency cost, and what can be deleted or consolidated. Keep rejected rewrites in the audit so a later pass does not repeatedly reopen them. Audit authorization alone does not authorize application changes.
+
 ## Engineering Defaults
 
 - **Simple, testable, boring code** — readability over cleverness, compactness, or premature abstraction; clear names, small functions, obvious modules, simple control flow. Add abstractions only for real duplication or a meaningful boundary, and avoid redundancy especially in business rules, thresholds, field mappings, prompts, and schemas.
