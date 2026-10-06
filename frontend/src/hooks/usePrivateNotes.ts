@@ -61,23 +61,22 @@ export function usePrivateNotes(options: {
     draft.snapshot = { body, status: "saving" };
     draft.listeners.forEach((listener) => listener());
     draft.queue = draft.queue.then(async () => {
-      if (!inAccount() || revision !== draft.revision) return;
-      // Compare after preceding writes: reverting during a save still needs a write.
-      const needsWrite = body !== draft.savedBody;
-      let saved = !needsWrite;
-      if (needsWrite) {
-        try {
-          const response = await savePrivateNote(applicationId, openingId, body);
-          saved = response.ok;
-          if (response.status === 404) draft.blocked = true;
-        } catch {
-          saved = false;
-        }
+      const beforeSave = draft.snapshot;
+      if (!inAccount() || revision !== draft.revision || draft.blocked || beforeSave.status === "saved") return;
+      // Dirty/retry drafts need an acknowledgement: an earlier uncertain write may
+      // have changed the server even when this text equals the last confirmed body.
+      let saved = false;
+      try {
+        const response = await savePrivateNote(applicationId, openingId, body);
+        saved = response.ok;
+        if (response.status === 404) draft.blocked = true;
+      } catch {
+        saved = false;
       }
       if (!inAccount()) return;
       if (saved) {
         draft.savedBody = body;
-        if (needsWrite) current.current.onSaved(applicationId, body);
+        current.current.onSaved(applicationId, body);
         if (revision !== draft.revision && draft.snapshot.status === "saved") {
           draft.snapshot = { body, status: "saved" };
           draft.listeners.forEach((listener) => listener());

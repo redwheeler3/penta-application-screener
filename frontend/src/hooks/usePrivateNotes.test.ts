@@ -64,6 +64,42 @@ it("retains a failed draft across openings and exposes a successful explicit ret
   expect(result.current.editor(7, 2, "Saved").getSnapshot().status).toBe("saved");
 });
 
+it.each([false, true])("acknowledges a reverted uncertain write only after the server saves it (retry succeeds=%s)", async (succeeds) => {
+  let serverBody = "Original";
+  api.savePrivateNote.mockImplementationOnce(async (_id, _opening, body) => {
+    serverBody = body;
+    return new Response(null, { status: 503 }); // Commit succeeded, acknowledgement was lost.
+  }).mockImplementationOnce(async (_id, _opening, body) => {
+    if (succeeds) serverBody = body;
+    return new Response(null, { status: succeeds ? 200 : 503 });
+  });
+  const { result, onSaved } = workspace();
+  const editor = result.current.editor(7, 1, "Original");
+  const unsubscribe = editor.subscribe(() => {});
+  await act(async () => { editor.change("Unconfirmed"); editor.flush(); });
+  expect(serverBody).toBe("Unconfirmed");
+  expect(editor.getSnapshot().status).toBe("error");
+  await act(async () => { editor.change("Original"); editor.flush(); });
+  expect(api.savePrivateNote).toHaveBeenCalledTimes(2);
+  expect(serverBody).toBe(succeeds ? "Original" : "Unconfirmed");
+  expect(editor.getSnapshot()).toEqual({ body: "Original", status: succeeds ? "saved" : "error" });
+  expect(result.current.hasUnconfirmed()).toBe(!succeeds);
+  expect(pageExit()).toBe(!succeeds);
+  expect(onSaved).toHaveBeenCalledTimes(succeeds ? 1 : 0);
+  unsubscribe();
+});
+
+it("coalesces repeated flushes once the same revision is acknowledged", async () => {
+  const pending = deferred<Response>();
+  api.savePrivateNote.mockReturnValueOnce(pending.promise);
+  const { result } = workspace();
+  const editor = result.current.editor(7, 1, "Original");
+  await act(async () => { editor.change("Updated"); editor.flush(); editor.flush(); });
+  await act(async () => pending.resolve(new Response(null)));
+  expect(api.savePrivateNote).toHaveBeenCalledOnce();
+  expect(result.current.hasUnconfirmed()).toBe(false);
+});
+
 it("orders writes across openings, skips middle drafts, and keeps the newest text on acknowledgement", async () => {
   const first = deferred<Response>();
   const last = deferred<Response>();
