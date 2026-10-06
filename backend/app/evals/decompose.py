@@ -57,10 +57,10 @@ class DecompositionCase:
         return {str(d["key"]) for report in self.reports for d in report}
 
 
-def load_cases(path: Path = DECOMPOSITION_GOLDEN_PATH) -> tuple[DecompositionCase, ...]:
+def load_cases(path: Path = DECOMPOSITION_GOLDEN_PATH, *, data: dict | None = None) -> tuple[DecompositionCase, ...]:
     """Load the golden decomposition cases, flattening the by-consumer blocks (metadata /
     given — see docs/eval-case-schema.md) into the flat runner case."""
-    data = read_json(path)
+    data = read_json(path) if data is None else data
     cases = []
     for c in data["cases"]:
         validate_case("decomposition", c)
@@ -109,6 +109,19 @@ def _decompose_verdict(provider: AIProvider, case: DecompositionCase, *, decompo
     return KEEP, decisions or narrative or f"kept across {n} distinct axes ({names})"
 
 
+def judge_request(given: dict):
+    """The exact blind request and output contract, shared with prompt versioning."""
+    from app.ai.schemas import JudgeReport
+    from app.evals.reproduce import build_judge_prompt
+
+    return build_judge_prompt(
+        given,
+        'These definitions were each discovered separately, then folded into one settled axis. '
+        "Decide 'merge' (they are one concept, the fold is correct) or 'keep' (at least one is "
+        'a genuinely distinct axis), with a reason.',
+    ), JudgeReport
+
+
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, background: str, model: str):
     """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model decides whether the
     discovery carvings describe ONE concept (merge) or ≥2 distinct axes (keep) from the editable
@@ -116,16 +129,10 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, backgro
     against ``expected``. merge/keep has no single 'problem' side, so no failure-recall
     contribution."""
     from app.ai.pricing import cost_usd
-    from app.ai.schemas import JudgeReport
-    from app.evals.reproduce import Reproduced, build_judge_prompt
+    from app.evals.reproduce import Reproduced
 
-    prompt = build_judge_prompt(
-        given,
-        "These definitions were each discovered separately, then folded into one settled axis. "
-        "Decide 'merge' (they are one concept, the fold is correct) or 'keep' (at least one is a "
-        "genuinely distinct axis), with a reason.",
-    )
-    result = provider.structured_output(model_id=model, schema=JudgeReport, prompt=prompt, system_prompt=background)
+    prompt, schema = judge_request(given)
+    result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     verdict = result.output.verdict.value
     cost = cost_usd(result.model_id, result.usage)
     return Reproduced(verdict, expected, verdict == expected, False, False, result.output.reason, cost)

@@ -24,7 +24,8 @@ it("retains edits typed while saving and tracks independent pending passes", asy
   const scoring = deferred<Response>();
   const screening = deferred<Response>();
   vi.mocked(api.saveJudgeBackground).mockReturnValueOnce(scoring.promise).mockReturnValueOnce(screening.promise);
-  render(<JudgeBackgrounds onToast={vi.fn()} onError={vi.fn()} />);
+  const onSaved = vi.fn();
+  render(<JudgeBackgrounds onToast={vi.fn()} onError={vi.fn()} onSaved={onSaved} />);
   const editor = await screen.findByRole("textbox", { name: "scoring judge brief", hidden: true });
   fireEvent.click(screen.getByText(/Judge briefs/));
   fireEvent.change(editor, { target: { value: "Submitted scoring" } });
@@ -35,6 +36,7 @@ it("retains edits typed while saving and tracks independent pending passes", asy
   await act(async () => { screening.resolve(Response.json({ passName: "screening", background: "Submitted screening", caseCount: 2 })); });
   expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
   await act(async () => { scoring.resolve(Response.json({ passName: "scoring", background: "Submitted scoring", caseCount: 1 })); });
+  expect(onSaved).toHaveBeenCalledTimes(2);
   expect(editor).toHaveValue("Newer scoring draft");
   expect(screen.getAllByRole("button", { name: "Save brief" })[0]).toBeEnabled();
   expect(screen.getAllByRole("button", { name: "Save brief" })[1]).toBeDisabled();

@@ -177,7 +177,7 @@ export function AIWorkspaceView(props: {
             runKeys={["judge", "stability"]}
             groupBy="pass"
             addable={false}
-            header={<JudgeBackgrounds {...toast} editable={fixtureEditingEnabled === true} />}
+            header={(refreshHistory) => <JudgeBackgrounds {...toast} onSaved={refreshHistory} editable={fixtureEditingEnabled === true} />}
             description="A blind label audit: for every pass's golden cases, an independent model reproduces that pass's output from the pass's brief + the case input (NOT the human label), then the harness compares to the label. A judge run reports judge-vs-human agreement (κ); a stability run repeats each case K times to see if the judge's verdict flips. Cases are grouped by the pass they exercise."
             modes={
               [

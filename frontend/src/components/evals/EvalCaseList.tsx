@@ -1,3 +1,4 @@
+import { fixtureCaseIdentity } from "../../api/evals";
 import type { ReactNode } from "react";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
 import type { EvalCaseOutcomesByMode, EvalRunOption } from "../../types";
@@ -7,6 +8,7 @@ import { evalCaseStatus } from "./evalResultPresentation";
 export function EvalCaseList(props: {
   cases: Record<string, unknown>[] | null;
   groupBy?: string;
+  scopedByFamily?: boolean;
   selected: string | null;
   caseResults: Record<string, EvalCaseOutcomesByMode>;
   // The tab's run modes, in button order — one dot per mode so live + stability read as two
@@ -54,7 +56,7 @@ export function EvalCaseList(props: {
         <div key={g.heading ?? "all"} className="eval-case-group">
           {g.heading ? <div className="eval-case-group-head">{g.heading}</div> : null}
           {g.items.map((c) => {
-            const key = String(c.key);
+            const key = fixtureCaseIdentity(c, props.scopedByFamily);
             const modeMap = props.caseResults[key] ?? {};
             // ALWAYS one dot per mode, in button order (left = first mode, e.g. live; right =
             // stability). A mode not yet run shows grey, so position tells you which ran: e.g.
@@ -83,7 +85,7 @@ export function EvalCaseList(props: {
                     })}
                   </span>
                 ) : null}
-                <span className="eval-case-item-key">{key}</span>
+                <span className="eval-case-item-key">{String(c.key)}</span>
                 {meta(c).expected !== undefined ? (
                   <span className="eval-case-item-expected">{expectedLabel(meta(c).expected)}</span>
                 ) : null}

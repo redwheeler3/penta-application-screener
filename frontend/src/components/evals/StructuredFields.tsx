@@ -104,7 +104,7 @@ function ObjectSection(props: {
       {Object.entries(obj).map(([k, v]) => {
         const childPath = [...path, k];
         const isObj = v !== null && typeof v === "object" && !Array.isArray(v);
-        const locked = props.depth === 0 && props.readOnlyKeys.has(k);
+        const locked = props.readOnlyKeys.has(childPath.join("."));
         return (
           <div key={k} className={`eval-field-row${isObj ? " is-object" : ""}`}>
             <div className="eval-field-labelrow">

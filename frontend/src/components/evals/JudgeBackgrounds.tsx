@@ -13,6 +13,7 @@ import type { JudgeBackground } from "../../types";
 // own tab (the judge owns no case files).
 export function JudgeBackgrounds(props: {
   editable?: boolean;
+  onSaved?: () => void;
   // Save outcomes surface as the app's standard toasts, same as Settings — not inline text.
   onToast: (message: string) => void;
   onError: (message: string) => void;
@@ -58,6 +59,7 @@ export function JudgeBackgrounds(props: {
         const { [passName]: _drop, ...rest } = prev;
         return rest;
       });
+      props.onSaved?.();
       props.onToast(`${passName} brief saved — commit the golden file to keep it.`);
     } catch {
       if (isCurrent()) props.onError(`Could not save ${passName} brief.`);

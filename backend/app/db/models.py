@@ -1126,3 +1126,12 @@ class EvalRun(TimestampMixin, Base):
     prompt_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     result: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     thinking: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# Narrow history restoration to one eval/prompt/experiment before expanding its case JSON.
+# The partial index excludes invalid historical JSON without rewriting operational evidence.
+Index(
+    "ix_eval_runs_experiment", EvalRun.eval_key, func.coalesce(EvalRun.prompt_version, ""),
+    func.coalesce(func.json_extract(EvalRun.result, "$.experimentId"), ""),
+    EvalRun.created_at.desc(), EvalRun.id.desc(), sqlite_where=func.json_valid(EvalRun.result),
+)

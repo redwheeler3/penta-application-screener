@@ -18,6 +18,7 @@ from app.api.evals._shared import (
     select,
     stream,
 )
+from app.evals.dataset import load_dataset
 from app.schemas.settings import effective_reasoning_effort
 from app.services.settings import get_app_settings
 
@@ -25,7 +26,7 @@ from app.services.settings import get_app_settings
 @dataclass(frozen=True)
 class CategoricalPass:
     key: str
-    load_cases: Callable[[], object]
+    load_cases: Callable
     model_attr: str
     reasoning_attr: str
     prompt_version: Callable[[], str]
@@ -54,7 +55,9 @@ def run_categorical(
     )
     configured_provider = ReasoningProvider(provider, reasoning_effort)
     version = spec.prompt_version()
-    cases = select(list(spec.load_cases()), case, lambda item: item.key)
+    dataset = load_dataset(spec.key)
+    fingerprints = dataset.case_fingerprints(spec.key)
+    cases = select(list(spec.load_cases(data=dataset.families[spec.key])), case, lambda item: item.key)
 
     if mode == "stability":
         k = max(2, min(k, 10))
@@ -91,7 +94,7 @@ def run_categorical(
                 cases=output,
             )
 
-        return stream(db, f"{spec.key}_stability", version, work)
+        return stream(db, f"{spec.key}_stability", version, work, case_fingerprints=fingerprints)
 
     def one(item, case_delta):
         case_delta(f"\n\n### {item.key}\n")
@@ -121,4 +124,4 @@ def run_categorical(
             ],
         )
 
-    return stream(db, spec.key, version, work)
+    return stream(db, spec.key, version, work, case_fingerprints=fingerprints)

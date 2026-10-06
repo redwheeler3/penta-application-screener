@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ from app.api.evals._shared import (
     select,
     stream,
 )
+from app.core.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
 from app.evals import stability
@@ -34,6 +35,7 @@ from app.evals.agreement import score_agreement
 from app.evals.consolidate import load_cases as load_consolidation_cases
 from app.evals.consolidate import run_case as run_consolidation_case
 from app.evals.consolidate import stability_run as consolidation_stability_run
+from app.evals.dataset import load_dataset
 from app.evals.decompose import load_cases as load_decomposition_cases
 from app.evals.decompose import run_case as run_decomposition_case
 from app.evals.decompose import stability_run as decomposition_stability_run
@@ -107,7 +109,9 @@ def run_scoring(
         scoring_model, settings.ai.dimension_scoring_reasoning_effort
     )
     configured_provider = ReasoningProvider(provider, reasoning_effort)
-    golden = select(list(load_golden()), case, lambda c: c.key)
+    dataset = load_dataset("scoring")
+    fingerprints = dataset.case_fingerprints("scoring")
+    golden = select(list(load_golden(data=dataset.families["scoring"])), case, lambda c: c.key)
 
     if mode == "stability":
         k = max(2, min(k, 10))
@@ -133,7 +137,7 @@ def run_scoring(
                 k=k, cases=out,
             )
 
-        return stream(db, "scoring_stability", SCORING_PROMPT_VERSION, work_stability)
+        return stream(db, "scoring_stability", SCORING_PROMPT_VERSION, work_stability, case_fingerprints=fingerprints)
 
     def one(c, case_delta):
         case_delta(f"\n\n### {c.key}\n")
@@ -158,7 +162,7 @@ def run_scoring(
             ],
         )
 
-    return stream(db, "scoring", SCORING_PROMPT_VERSION, work)
+    return stream(db, "scoring", SCORING_PROMPT_VERSION, work, case_fingerprints=fingerprints)
 
 
 CONSOLIDATION_EVAL = CategoricalPass(
@@ -289,7 +293,9 @@ def run_screening(
     )
     configured_provider = ReasoningProvider(provider, reasoning_effort)
     version = screening_prompt_version()
-    cases = select(list(load_screening_cases()), case, lambda c: c.key)
+    dataset = load_dataset("screening")
+    fingerprints = dataset.case_fingerprints("screening")
+    cases = select(list(load_screening_cases(data=dataset.families["screening"])), case, lambda c: c.key)
 
     if mode == "stability":
         k = max(2, min(k, 10))
@@ -313,7 +319,7 @@ def run_screening(
                 reasoning_effort=reasoning_effort, k=k, cases=out,
             )
 
-        return stream(db, "screening_stability", version, work_stability)
+        return stream(db, "screening_stability", version, work_stability, case_fingerprints=fingerprints)
 
     def one(c, case_delta):
         case_delta(f"\n\n### {c.key}\n")
@@ -337,7 +343,7 @@ def run_screening(
             ],
         )
 
-    return stream(db, "screening", version, work)
+    return stream(db, "screening", version, work, case_fingerprints=fingerprints)
 
 
 @router.post("/judge")
@@ -345,6 +351,7 @@ def run_judge(
     mode: Literal["run", "stability"] = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
+    pass_name: str | None = Query(default=None, alias="passName"),
     user: User = Depends(require_admin),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
@@ -359,8 +366,13 @@ def run_judge(
     whether the judge's verdict held (persisted under eval_key ``stability``). ``k`` is clamped
     so a stray value can't blow up spend."""
     settings = get_app_settings(db)
-    cases = select(list(load_cases()), case, lambda c: c.key)
-    pv = judge_prompt_version()  # snapshot the briefs' hash for this run
+    dataset = load_dataset()
+    fingerprints = dataset.case_fingerprints("judge")
+    all_cases = list(load_cases(dataset))
+    if case is not None and pass_name is None:
+        raise Problem("validation_error", detail="A Judge case requires its passName as well as its key.")
+    cases = select([item for item in all_cases if pass_name is None or item.pass_name == pass_name], case, lambda c: c.key)
+    pv = judge_prompt_version(dataset)
 
     if mode == "stability":
         k = max(2, min(k, 10))
@@ -384,7 +396,7 @@ def run_judge(
                 judge_prompt_version=pv, judge_model=JUDGE_MODEL, k=k, cases=out,
             )
 
-        return stream(db, "stability", pv, work_stability)
+        return stream(db, "stability", pv, work_stability, case_fingerprints=fingerprints)
 
     def one(c, case_delta):
         case_delta(f"\n\n### [{c.pass_name}] {c.key}\n")
@@ -422,4 +434,4 @@ def run_judge(
             cases=case_out, agreement=agreement,
         )
 
-    return stream(db, "judge", pv, work)
+    return stream(db, "judge", pv, work, case_fingerprints=fingerprints)

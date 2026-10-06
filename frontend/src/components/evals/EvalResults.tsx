@@ -19,9 +19,10 @@ function restoredLabel(evalKey: string): string {
 export function EvalRunHistoryMarker(props: { run: LastEvalRun; totalCases: number }): ReactNode {
   const { run } = props;
   const summary = runSummary(savedRunSummary(run), props.totalCases);
-  const stale = run.promptStale || run.modelStale || run.reasoningStale;
+  const stale = run.promptStale || run.modelStale || run.reasoningStale || run.corpusStale;
   const changes = [
     run.promptStale ? `prompt is now ${run.currentPromptVersion}` : "",
+    run.corpusStale ? "case inputs or labels changed" : "",
     run.modelStale ? `model is now ${run.currentModelId}` : "",
     run.reasoningStale
       ? `reasoning is now ${run.currentReasoningEffort || "not applicable"}`

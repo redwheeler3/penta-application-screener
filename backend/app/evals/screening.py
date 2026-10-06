@@ -103,10 +103,10 @@ def _normalize_fires(fires: list[str | list[str]] | str) -> list[str | list[str]
     return normalized
 
 
-def load_cases(path: Path = SCREENING_GOLDEN_PATH) -> tuple[ScreeningCase, ...]:
+def load_cases(path: Path = SCREENING_GOLDEN_PATH, *, data: dict | None = None) -> tuple[ScreeningCase, ...]:
     """Load the golden screening cases, flattening the by-consumer blocks (metadata / given —
     see docs/eval-case-schema.md) into the flat runner case."""
-    data = read_json(path)
+    data = read_json(path) if data is None else data
     cases = []
     for c in data["cases"]:
         validate_case("screening", c)
@@ -214,6 +214,19 @@ def _check_pets(case: ScreeningCase, pets: PetFacts | None) -> list[str]:
     return failures
 
 
+def judge_request(given: dict):
+    """The exact blind request and output contract, shared with prompt versioning."""
+    from app.ai.schemas import ScreeningReport
+    from app.evals.reproduce import build_judge_prompt
+
+    return build_judge_prompt(
+        given,
+        "Review the applicant's fields and essays for integrity concerns. Return a list of "
+        'flags; each flag has a category, one-sentence summary, and cited evidence. Flag only '
+        'genuine concerns — a benign detail must not be flagged.',
+    ), ScreeningReport
+
+
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, background: str, model: str):
     """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model re-screens the
     applicant from the editable ``background`` (which carries the policy context the production
@@ -222,15 +235,10 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     HAS a defect notion: a missed required flag or an over-reach is the failure, so it feeds
     failure-recall (human_is_problem = the case guards something; judge_is_problem = it failed)."""
     from app.ai.pricing import cost_usd
-    from app.evals.reproduce import Reproduced, build_judge_prompt
+    from app.evals.reproduce import Reproduced
 
-    prompt = build_judge_prompt(
-        given,
-        "Review the applicant's fields and essays for integrity concerns. Return a list of "
-        "flags; each flag has a category, one-sentence summary, and cited evidence. "
-        "Flag only genuine concerns — a benign detail must not be flagged.",
-    )
-    result = provider.structured_output(model_id=model, schema=ScreeningReport, prompt=prompt, system_prompt=background)
+    prompt, schema = judge_request(given)
+    result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     categories = [f.category.value for f in result.output.flags]
     probe = ScreeningCase(
         key="judge", fields={}, essays={},

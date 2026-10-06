@@ -19,7 +19,7 @@ from app.core.config import get_settings
 from app.core.problems import Problem
 from app.core.work_cancellation import WorkCancelled, check_cancelled
 from app.db.models import EvalRun
-from app.evals.case_store import UnknownEvalError, list_cases
+from app.evals.dataset import case_identity, fingerprint
 from app.schemas.base import ResponseModel
 from app.schemas.evals import StabilityRun
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
@@ -62,7 +62,7 @@ def runs_out(report) -> list[StabilityRun]:
     return [StabilityRun(outcome=r.outcome, detail=r.detail) for r in report.runs]
 
 
-def stream(db: Session, eval_key: str, prompt_version: str, work) -> StreamingResponse:
+def stream(db: Session, eval_key: str, prompt_version: str, work, *, case_fingerprints: dict[str, str] | None = None) -> StreamingResponse:
     """Shared streaming scaffold (mirrors the Rank job): run ``work(on_delta)`` on a worker
     thread, drain its reasoning deltas to NDJSON ``thinking`` lines, then emit the terminal
     ``EvalSummaryEvent`` with the structured result, persisting the run to an EvalRun row.
@@ -90,6 +90,15 @@ def stream(db: Session, eval_key: str, prompt_version: str, work) -> StreamingRe
             return
         check_cancelled()
         result = worker.result
+        if case_fingerprints is not None:
+            wire = result.model_dump(by_alias=True)
+            experiment = fingerprint({"prompt": prompt_version, "model": result_model(wire),
+                                      "reasoning": result_reasoning_effort(wire), "k": wire.get("k", 1)})
+            result = result.model_copy(update={
+                "experiment_id": experiment,
+                "cases": [case.model_copy(update={"input_fingerprint": case_fingerprints[
+                    case_identity(case.key, getattr(case, "pass_name", ""))]}) for case in result.cases],
+            })
         persist(db, eval_key, prompt_version, result, "".join(thinking_parts))
         yield emit(EvalSummaryEvent(eval=eval_key, result=result.model_dump(by_alias=True)))
 
@@ -153,7 +162,7 @@ def over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list:
     return [slots[i] for i in range(len(cases))]
 
 
-def current_prompt_version(eval_key: str) -> str:
+def current_prompt_version(eval_key: str, dataset=None) -> str:
     """The prompt version a fresh run of ``eval_key`` would exercise right now — so a
     rehydrated last run can be flagged stale when the prompt has since changed. Judge and
     stability share the judge prompt; scoring uses the scoring prompt."""
@@ -184,7 +193,7 @@ def current_prompt_version(eval_key: str) -> str:
     if eval_key in ("judge", "stability"):
         from app.evals.judge import prompt_version as judge_prompt_version
 
-        return judge_prompt_version()
+        return judge_prompt_version(dataset)
     return ""
 
 
@@ -253,17 +262,6 @@ def current_model(eval_key: str, db: Session) -> str:
     spec = ai_pass(base)
     return getattr(get_app_settings(db).ai, spec.model_attr) if spec else ""
 
-
-def live_case_keys(run_key: str) -> set[str] | None:
-    """Current case keys for filtering a merged last-run result. ``run_key`` may be a live
-    eval or its ``_stability`` sibling (same golden set), or judge/stability (the aggregated
-    set). None means no editable case set for this key, so no filtering is needed."""
-    base = run_key.removesuffix("_stability")
-    case_key = "judge" if base in ("judge", "stability") else base
-    try:
-        return {c["key"] for c in list_cases(case_key) if "key" in c}
-    except UnknownEvalError:
-        return None
 
 
 def seed_str(expected: object) -> str:

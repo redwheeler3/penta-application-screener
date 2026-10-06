@@ -51,10 +51,10 @@ class ConsolidationCase:
     note: str = ""
 
 
-def load_cases(path: Path = CONSOLIDATION_GOLDEN_PATH) -> tuple[ConsolidationCase, ...]:
+def load_cases(path: Path = CONSOLIDATION_GOLDEN_PATH, *, data: dict | None = None) -> tuple[ConsolidationCase, ...]:
     """Load the golden consolidation cases, flattening the by-consumer blocks (metadata /
     given — see docs/eval-case-schema.md) into the flat runner case."""
-    data = read_json(path)
+    data = read_json(path) if data is None else data
     cases = []
     for c in data["cases"]:
         validate_case("consolidation", c)
@@ -101,21 +101,28 @@ def _confirm_verdict(
     return (MERGE if verdict_obj.same_concept else KEEP), verdict_obj.reason
 
 
+def judge_request(given: dict):
+    """The exact blind request and output contract, shared with prompt versioning."""
+    from app.ai.schemas import JudgeReport
+    from app.evals.reproduce import build_judge_prompt
+
+    return build_judge_prompt(
+        given,
+        'Decide whether the two dimension definitions measure the SAME underlying concept: '
+        "return verdict 'merge' (same concept) or 'keep' (genuinely distinct), with a reason.",
+    ), JudgeReport
+
+
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, background: str, model: str):
     """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model decides merge/keep
     for the pair from the editable ``background`` + the two definitions (never the human label),
     then we exact-match its verdict against ``expected``. merge/keep has no single 'problem'
     side, so it does not contribute to failure-recall."""
     from app.ai.pricing import cost_usd
-    from app.ai.schemas import JudgeReport
-    from app.evals.reproduce import Reproduced, build_judge_prompt
+    from app.evals.reproduce import Reproduced
 
-    prompt = build_judge_prompt(
-        given,
-        "Decide whether the two dimension definitions measure the SAME underlying concept: "
-        "return verdict 'merge' (same concept) or 'keep' (genuinely distinct), with a reason.",
-    )
-    result = provider.structured_output(model_id=model, schema=JudgeReport, prompt=prompt, system_prompt=background)
+    prompt, schema = judge_request(given)
+    result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     verdict = result.output.verdict.value
     cost = cost_usd(result.model_id, result.usage)
     return Reproduced(verdict, expected, verdict == expected, False, False, result.output.reason, cost)

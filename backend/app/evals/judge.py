@@ -25,18 +25,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.ai.analysis import derive_prompt_version
 from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
 from app.evals import stability
 from app.evals.case_schema import validate_case
-from app.evals.fixture_files import read_json
-from app.evals.paths import (
-    CONSOLIDATION_GOLDEN_PATH,
-    DECOMPOSITION_GOLDEN_PATH,
-    GOLDEN_PATH,
-    MATCHING_GOLDEN_PATH,
-    SCREENING_GOLDEN_PATH,
-)
+from app.evals.paths import GOLDEN_FILES
 from app.evals.reproduce import Reproduced
 
 DEFAULT_MODEL = MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"]
@@ -44,24 +36,27 @@ DEFAULT_MODEL = MODEL_IDS_BY_ROUTE["bedrock"]["sonnet"]
 # Each pass's golden file + the reproduce adapter that re-runs that pass blind (see
 # app/evals/reproduce.py). Kept as lazy imports inside the dispatcher so judge.py has no
 # import cycle with the live modules (they don't import judge). One entry per pass.
-_PASS_FILES = {
-    "scoring": GOLDEN_PATH,
-    "consolidation": CONSOLIDATION_GOLDEN_PATH,
-    "matching": MATCHING_GOLDEN_PATH,
-    "decomposition": DECOMPOSITION_GOLDEN_PATH,
-    "screening": SCREENING_GOLDEN_PATH,
-}
+_PASS_FILES = GOLDEN_FILES
 
 
-def prompt_version() -> str:
-    """The judge's version, derived from the five editable ``judge_background`` briefs (in a
-    fixed pass order) — the ONLY thing that changes what the blind judge is told. Computed per
-    call, not at import: the briefs are UI-editable and live on disk, so a run must be stamped
-    with the briefs it actually used. Editing and saving any brief changes this hash, which is
-    what marks a prior judge run stale (the ``blind-audit`` constant never did). Uses the same
-    ``derive_prompt_version`` sha the production passes use, so the two read alike."""
-    briefs = [read_json(path).get("judge_background", "") for path in _PASS_FILES.values()]
-    return derive_prompt_version(*briefs)
+def _pass_module(pass_name: str):
+    """One lazy adapter binding for both reproduction and request versioning."""
+    from app.evals import consolidate, decompose, matching, scoring, screening
+    return {"scoring": scoring, "consolidation": consolidate, "matching": matching,
+            "decomposition": decompose, "screening": screening}[pass_name]
+
+
+def prompt_version(dataset=None) -> str:
+    """Hash captured briefs and the exact blind USER prompts/output contracts."""
+    from app.evals.dataset import fingerprint, load_dataset
+
+    captured = dataset or load_dataset()
+    parts = []
+    for name in _PASS_FILES:
+        prompt, schema = _pass_module(name).judge_request({})
+        parts.extend((captured.families[name].get("judge_background", ""), prompt,
+                      schema.model_json_schema()))
+    return fingerprint(parts)
 
 
 @dataclass(frozen=True)
@@ -88,14 +83,15 @@ class JudgeCase:
     label_rationale: str = ""
 
 
-def load_cases() -> tuple[JudgeCase, ...]:
+def load_cases(dataset=None) -> tuple[JudgeCase, ...]:
     """Every golden case across all five passes, as audit targets. Each file carries a
     top-level ``judge_background`` (what the pass does, editable in the UI) attached to each of
     its cases; ``metadata``/``given`` are read straight from the uniform envelope
     (docs/eval-case-schema.md). Order: the definition order of _PASS_FILES."""
     cases: list[JudgeCase] = []
-    for pass_name, path in _PASS_FILES.items():
-        data = read_json(path)
+    from app.evals.dataset import load_dataset
+    captured = dataset or load_dataset()
+    for pass_name, data in captured.families.items():
         background = data.get("judge_background", "")
         for c in data["cases"]:
             validate_case(pass_name, c)
@@ -117,19 +113,7 @@ def load_cases() -> tuple[JudgeCase, ...]:
 def _reproduce(provider, case: JudgeCase, *, model_id: str) -> Reproduced:
     """Dispatch to the pass's blind reproduce adapter. Lazy imports avoid an import cycle
     (the live modules don't import judge; judge imports them here, at call time)."""
-    if case.pass_name == "scoring":
-        from app.evals.scoring import judge_reproduce
-    elif case.pass_name == "consolidation":
-        from app.evals.consolidate import judge_reproduce
-    elif case.pass_name == "matching":
-        from app.evals.matching import judge_reproduce
-    elif case.pass_name == "decomposition":
-        from app.evals.decompose import judge_reproduce
-    elif case.pass_name == "screening":
-        from app.evals.screening import judge_reproduce
-    else:  # pragma: no cover - _PASS_FILES is the closed set
-        raise ValueError(f"no reproduce adapter for pass {case.pass_name!r}")
-    return judge_reproduce(
+    return _pass_module(case.pass_name).judge_reproduce(
         provider, given=case.given, expected=case.expected, background=case.background, model=model_id
     )
 

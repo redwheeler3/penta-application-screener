@@ -27,7 +27,7 @@ export type EvalFixtureKey =
   | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
 
 // Each mode owns its required case fields. UI outcomes carry the mode beside the payload.
-type EvalCaseBase = { key: string };
+type EvalCaseBase = { key: string; passName?: string; inputFingerprint?: string };
 
 export type ScoringEvalCaseResult = EvalCaseBase & {
   passed: boolean;
@@ -102,6 +102,7 @@ export type EvalCaseOutcomesByMode = Partial<Record<EvalRunMode, EvalCaseOutcome
 // before results reach case renderers. `agreement` is the judge's calibration block
 // (Cohen's κ + failure-recall); `model`/`scoringModel`/`judgeModel` name the model that mode used.
 export type EvalRunResult<Mode extends EvalRunMode = EvalRunMode> = {
+  experimentId?: string;
   cases?: EvalCaseResultByMode[Mode][];
   agreement?: {
     kappa: number | null;
@@ -150,6 +151,8 @@ export type LastEvalRun = {
   promptStale: boolean;
   modelStale: boolean;
   reasoningStale: boolean;
+  corpusStale?: boolean;
+  currentCaseFingerprints?: Record<string, string>;
 } & {
   [Mode in EvalRunMode]: { evalKey: Mode; result: EvalRunResult<Mode> }
 }[EvalRunMode];

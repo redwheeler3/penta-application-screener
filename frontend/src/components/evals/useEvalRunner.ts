@@ -2,11 +2,12 @@ import { useCommitteeApi } from "../../api/identity";
 import { type SetStateAction, useEffect, useRef, useState } from "react";
 
 import * as evalsApi from "../../api/evals";
-import { caseOutcomes, savedRunSummary } from "../../api/evals";
+import { caseOutcomes, evalCaseIdentity, savedRunSummary } from "../../api/evals";
 import { streamNdjson } from "../../api/client";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import type {
   EvalCaseOutcomesByMode,
+  EvalCaseOutcome,
   EvalFixtureKey,
   EvalRunMode,
   EvalRunOption,
@@ -37,6 +38,7 @@ export function useEvalRunner(options: {
   const [restored, setRestored] = useState<Record<string, LastEvalRun>>({});
   const historyKey = options.runKeys.join(",");
   const historyReads = useRequestScope(historyKey);
+  const experiments = useRef<Record<string, string | undefined>>({});
   const activeRun = useRef<AbortController | null>(null);
   const runScope = useRequestScope(options.caseEvalKey);
   useEffect(() => () => { activeRun.current?.abort(); }, []);
@@ -51,6 +53,7 @@ export function useEvalRunner(options: {
   function setCases(next: SetStateAction<Record<string, unknown>[] | null>) {
     caseReads.invalidate();
     setStoredCases(next);
+    void loadLastRuns(true);
   }
 
   // The fixture key owns the read; render-local setters must not replay it on save.
@@ -63,19 +66,44 @@ export function useEvalRunner(options: {
     try {
       const data = await fetchLastEvalRun(options.runKeys);
       if (!isCurrent() || !data.runs.length) return;
+      const relevant = data.runs.filter((last) => seedResults
+        || experiments.current[last.evalKey] === last.result.experimentId);
       const byMode: Record<string, LastEvalRun> = {};
-      for (const lastRun of data.runs) byMode[lastRun.evalKey] = lastRun;
+      for (const lastRun of relevant) byMode[lastRun.evalKey] = lastRun;
       setRestored(byMode);
-      if (!seedResults) return;
 
       const seeded: Record<string, EvalCaseOutcomesByMode> = {};
-      for (const lastRun of data.runs) {
+      function matchesCurrent(last: LastEvalRun, outcome: EvalCaseOutcome): boolean {
+        if (last.promptStale || last.modelStale || last.reasoningStale) return false;
+        const identity = evalCaseIdentity(outcome.result.key, outcome.result.passName);
+        return !last.currentCaseFingerprints
+          || outcome.result.inputFingerprint === last.currentCaseFingerprints[identity];
+      }
+      for (const lastRun of relevant) {
         const mode = lastRun.evalKey;
+        experiments.current[mode] = lastRun.result.experimentId;
         for (const outcome of caseOutcomes(savedRunSummary(lastRun))) {
-          (seeded[outcome.result.key] ??= {})[mode] = outcome;
+          const identity = evalCaseIdentity(outcome.result.key, outcome.result.passName);
+          if (!matchesCurrent(lastRun, outcome)) continue;
+          (seeded[identity] ??= {})[mode] = outcome;
         }
       }
-      setCaseResults(seeded);
+      setCaseResults((current) => {
+        if (seedResults) return seeded;
+        const next = Object.fromEntries(Object.entries(current).map(([key, modes]) => [key, { ...modes }]));
+        for (const last of relevant) {
+          for (const modes of Object.values(next)) {
+            const outcome = modes[last.evalKey];
+            if (outcome && !matchesCurrent(last, outcome)) delete modes[last.evalKey];
+          }
+        }
+        // A telemetry write can fail after a summary was delivered. Preserve that
+        // fresh receipt while filling other current coverage from stored history.
+        for (const [key, modes] of Object.entries(seeded)) {
+          next[key] = { ...modes, ...next[key] };
+        }
+        return next;
+      });
     } catch {
       // History is optional; a failed refresh must preserve displayed run results.
     }
@@ -87,7 +115,7 @@ export function useEvalRunner(options: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyKey]);
 
-  async function runMode(mode: EvalRunOption, caseKey?: string) {
+  async function runMode(mode: EvalRunOption, caseKey?: string, passName?: string) {
     if (activeRun.current) return;
     const controller = new AbortController();
     activeRun.current = controller;
@@ -99,7 +127,7 @@ export function useEvalRunner(options: {
     });
     setRun({ running: true, thinking: "", error: null });
     try {
-      const response = await runEval(mode.evalKey, { caseKey, signal: controller.signal });
+      const response = await runEval(mode.evalKey, { caseKey, passName, signal: controller.signal });
       if (!isCurrent()) { controller.abort(); return; }
       if (!response.ok || !response.body) {
         setRun((current) => ({
@@ -126,15 +154,17 @@ export function useEvalRunner(options: {
         finished = true;
         setRun((current) => ({ ...current, running: false }));
         const runCases = caseOutcomes(event);
+        const sameExperiment = experiments.current[event.eval] === event.result.experimentId;
+        experiments.current[event.eval] = event.result.experimentId;
         setCaseResults((current) => {
           const next: Record<string, EvalCaseOutcomesByMode> = {};
           for (const [key, results] of Object.entries(current)) {
-            next[key] = caseKey
+            next[key] = caseKey && sameExperiment
               ? { ...results }
               : { ...results, [event.eval]: undefined };
           }
           for (const outcome of runCases) {
-            (next[outcome.result.key] ??= {})[outcome.mode] = outcome;
+            (next[evalCaseIdentity(outcome.result.key, outcome.result.passName)] ??= {})[outcome.mode] = outcome;
           }
           return next;
         });
@@ -159,5 +189,5 @@ export function useEvalRunner(options: {
     }
   }
 
-  return { cases, setCases, run, caseResults, restored, runMode };
+  return { cases, setCases, run, caseResults, restored, runMode, refreshHistory: () => loadLastRuns(true) };
 }

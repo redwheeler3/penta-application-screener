@@ -67,7 +67,7 @@ export function createApi(client: ApiClient) {
   // (its base pass is `judge`), matching the persisted eval keys.
   function runEval(
     key: EvalRunMode,
-    opts?: { k?: number; caseKey?: string; signal?: AbortSignal },
+    opts?: { k?: number; caseKey?: string; passName?: string; signal?: AbortSignal },
   ): Promise<Response> {
     const stabilityMode = key === "stability" || key.endsWith("_stability");
     // The base pass owns the route; the judge's stability variant ("stability") maps to /judge.
@@ -76,6 +76,7 @@ export function createApi(client: ApiClient) {
     if (stabilityMode) params.set("mode", "stability");
     if (stabilityMode && opts?.k) params.set("k", String(opts.k));
     if (opts?.caseKey) params.set("case", opts.caseKey);
+    if (opts?.passName) params.set("passName", opts.passName);
     const q = params.toString() ? `?${params}` : "";
     return streamRequest(`/evals/${basePass}${q}`, opts?.signal);
   }
@@ -135,4 +136,15 @@ export function savedRunSummary(run: LastEvalRun): EvalRunSummary {
     case "decomposition_stability":
       return { eval: run.evalKey, result: run.result };
   }
+}
+
+
+/** Judge cases use their existing family/key pair; individual pass tabs use the key. */
+export function evalCaseIdentity(key: string, passName?: string): string {
+  return passName ? JSON.stringify([passName, key]) : key;
+}
+
+export function fixtureCaseIdentity(evalCase: Record<string, unknown>, scopedByFamily = false): string {
+  const metadata = evalCase.metadata as Record<string, unknown> | undefined;
+  return evalCaseIdentity(String(evalCase.key), scopedByFamily ? metadata?.pass as string | undefined : undefined);
 }

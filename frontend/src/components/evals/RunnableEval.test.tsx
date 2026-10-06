@@ -6,6 +6,7 @@ import { RunnableEval } from "./RunnableEval";
 const api = vi.hoisted(() => ({
   fetchEvalCases: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchEvalCases"]>(),
   fetchLastEvalRun: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchLastEvalRun"]>(),
+  runEval: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["runEval"]>(),
   saveEvalCase: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["saveEvalCase"]>(),
 }));
 
@@ -110,4 +111,25 @@ it("orders fixture saves without replacing the active editor with an older ackno
   expect(screen.getByText("Edit case: b")).toBeInTheDocument();
   await act(async () => { second.resolve(Response.json({ cases })); });
   expect(screen.queryByText("Edit case: b")).not.toBeInTheDocument();
+});
+
+
+it("selects, edits and runs a Judge case by family and key", async () => {
+  const shared = ["matching", "consolidation"].map((pass) => ({ key: "same", metadata: { pass, expected: "keep", note: `Note for ${pass}` }, given: {} }));
+  api.fetchEvalCases.mockResolvedValue({ cases: shared });
+  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "judge", savedPath: null,
+    result: { experimentId: "same", cases: [{ key: "same", passName: "consolidation", marker: "[ok]", humanLabel: "keep", judgeLabel: "keep", contested: false, detail: "Synthetic", labelRationale: "" }] } })));
+  api.saveEvalCase.mockResolvedValue(Response.json({ cases: shared }));
+  const mode = { evalKey: "judge" as const, label: "Judge", rowLabel: "Run case", calls: 2 };
+  render(<RunnableEval caseEvalKey="judge" runKeys={["judge"]} description="Synthetic" groupBy="pass" addable={false} modes={[mode]} onToast={vi.fn()} onError={vi.fn()} />);
+  const buttons = await screen.findAllByRole("button", { name: /same\s*keep/ });
+  // Pipeline order puts matching before consolidation.
+  fireEvent.click(buttons[1]);
+  fireEvent.click(screen.getByRole("button", { name: "Run case" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm & run" }));
+  await waitFor(() => expect(api.runEval).toHaveBeenCalledWith("judge", expect.objectContaining({ caseKey: "same", passName: "consolidation" })));
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  expect(screen.getByDisplayValue("Note for consolidation")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Save case" }));
+  await waitFor(() => expect(api.saveEvalCase).toHaveBeenCalledWith("judge", shared[1]));
 });

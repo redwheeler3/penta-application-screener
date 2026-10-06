@@ -25,7 +25,7 @@ import { useEvalRunner } from "./useEvalRunner";
 // streams as rendered markdown; results merge back onto each case row + into the detail.
 
 export type RunMode = EvalRunOption;
-type Confirm = { mode: RunMode; caseKey?: string; calls: number } | null;
+type Confirm = { mode: RunMode; caseKey?: string; passName?: string; calls: number } | null;
 
 export function RunnableEval(props: {
   // The fixture whose cases we read/edit (a pass's stability mode shares its golden set).
@@ -47,7 +47,7 @@ export function RunnableEval(props: {
   // carries metadata.pass.)
   addable?: boolean;
   // Extra content rendered above the run controls (the Judge tab's per-pass background editors).
-  header?: ReactNode;
+  header?: (refreshHistory: () => void) => ReactNode;
   // Save outcomes surface as the app's standard toasts (success auto-dismisses, error persists),
   // matching Settings/Rank — not inline text.
   onToast: (message: string) => void;
@@ -63,7 +63,7 @@ export function RunnableEval(props: {
   const saves = useRef<Promise<void>>(Promise.resolve());
   const saveScope = useRequestScope(caseEvalKey);
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const { cases, setCases, run, caseResults, restored, runMode } = useEvalRunner({
+  const { cases, setCases, run, caseResults, restored, runMode, refreshHistory } = useEvalRunner({
     caseEvalKey,
     runKeys: props.runKeys,
   });
@@ -103,7 +103,7 @@ export function RunnableEval(props: {
     return result;
   }
 
-  const selectedCase = cases?.find((c) => c.key === selected) ?? null;
+  const selectedCase = cases?.find((c) => evalsApi.fixtureCaseIdentity(c, caseEvalKey === "judge") === selected) ?? null;
   const selectedResult = selected ? caseResults[selected] : undefined;
   const perCaseCalls = (m: RunMode) => (cases?.length ? Math.max(1, Math.round(m.calls / cases.length)) : 1);
 
@@ -117,7 +117,7 @@ export function RunnableEval(props: {
       onConfirm={() => {
         const t = confirm!;
         setConfirm(null);
-        void runMode(t.mode, t.caseKey);
+        void runMode(t.mode, t.caseKey, t.passName);
       }}
       onCancel={() => setConfirm(null)}
     />
@@ -127,7 +127,7 @@ export function RunnableEval(props: {
     <div className="eval-section">
       <p className="eval-card-desc">{props.description}</p>
 
-      {props.header}
+      {props.header?.(() => { void refreshHistory(); })}
 
       {confirm && !confirm.caseKey ? renderConfirm() : null}
 
@@ -182,6 +182,7 @@ export function RunnableEval(props: {
           <EvalCaseList
             cases={cases}
             groupBy={props.groupBy}
+            scopedByFamily={caseEvalKey === "judge"}
             selected={selected}
             caseResults={caseResults}
             modes={modes}
@@ -194,12 +195,16 @@ export function RunnableEval(props: {
         <div className="eval-detail-pane">
           {editable && editing ? (
             <EvalCaseEditor
-              key={editing.existing === null ? `${caseEvalKey}:add` : `${caseEvalKey}:edit:${editing.existing.key}`}
+              key={editing.existing === null ? `${caseEvalKey}:add` : `${caseEvalKey}:edit:${evalsApi.fixtureCaseIdentity(editing.existing, caseEvalKey === "judge")}`}
               evalKey={caseEvalKey}
               existing={editing.existing}
               onCancel={() => setEditing(null)}
               onSave={persistCase}
-              onSaved={(key) => { setSelected(key); setEditing(null); }}
+              onSaved={(key) => {
+                const metadata = editing.existing?.metadata as Record<string, unknown> | undefined;
+                setSelected(evalsApi.evalCaseIdentity(key, caseEvalKey === "judge" ? metadata?.pass as string | undefined : undefined));
+                setEditing(null);
+              }}
             />
           ) : selectedCase ? (
             <div>
@@ -210,7 +215,7 @@ export function RunnableEval(props: {
                     type="button"
                     className="primary-button"
                     disabled={run.running}
-                    onClick={() => setConfirm({ mode: m, caseKey: String(selectedCase.key), calls: perCaseCalls(m) })}
+                    onClick={() => setConfirm({ mode: m, caseKey: String(selectedCase.key), passName: caseEvalKey === "judge" ? (selectedCase.metadata as Record<string, unknown> | undefined)?.pass as string | undefined : undefined, calls: perCaseCalls(m) })}
                   >
                     {run.running ? "Running…" : m.rowLabel}
                   </button>
@@ -228,7 +233,7 @@ export function RunnableEval(props: {
                   </button>
                 ) : null}
               </div>
-              {confirm?.caseKey === String(selectedCase.key) ? renderConfirm() : null}
+              {confirm?.caseKey === String(selectedCase.key) && confirm.passName === (caseEvalKey === "judge" ? (selectedCase.metadata as Record<string, unknown> | undefined)?.pass : undefined) ? renderConfirm() : null}
               {selectedResult
                 ? modes
                     .map((m) => ({ m, result: selectedResult[m.evalKey] }))

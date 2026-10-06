@@ -15,27 +15,12 @@ partially written.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from app.evals.case_schema import CaseValidationError, validate_case
 from app.evals.fixture_files import fixture_lock, read_json, write_json
-from app.evals.paths import (
-    CONSOLIDATION_GOLDEN_PATH,
-    DECOMPOSITION_GOLDEN_PATH,
-    GOLDEN_PATH,
-    MATCHING_GOLDEN_PATH,
-    SCREENING_GOLDEN_PATH,
-)
+from app.evals.paths import GOLDEN_FILES
 
-# Only these versioned files are writable. Their consumer contracts live in case_schema.
-_FIXTURES: dict[str, Path] = {
-    "scoring": GOLDEN_PATH,
-    "consolidation": CONSOLIDATION_GOLDEN_PATH,
-    "matching": MATCHING_GOLDEN_PATH,
-    "decomposition": DECOMPOSITION_GOLDEN_PATH,
-    "screening": SCREENING_GOLDEN_PATH,
-}
-
+# The allowlisted dataset files share one registry with their readers.
+_FIXTURES = GOLDEN_FILES
 
 class UnknownEvalError(ValueError):
     """The eval key has no editable case fixture (e.g. invariants; or judge/stability, which

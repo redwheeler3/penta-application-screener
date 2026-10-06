@@ -82,7 +82,7 @@ export function EvalCaseEditor(props: {
 
   const isNew = props.existing === null;
   // `key` is read-only when editing an existing case; editable (required) for a new one.
-  const readOnlyKeys = isNew ? [] : ["key"];
+  const readOnlyKeys = isNew ? [] : ["key", "metadata.pass"];
 
   async function save() {
     if (pending.current) return;

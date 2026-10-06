@@ -14,24 +14,19 @@ from app.api.evals._shared import (
     current_model,
     current_prompt_version,
     current_reasoning_effort,
-    live_case_keys,
     require_local_fixture_write,
     result_model,
     result_reasoning_effort,
 )
+from app.api.evals.history import latest_case_results
 from app.core.config import get_settings
 from app.core.problems import Problem
 from app.core.time import utc_isoformat
 from app.db.models import EvalRun, User
 from app.db.session import get_db
-from app.evals.consolidate import load_cases as load_consolidation_cases
-from app.evals.decompose import load_cases as load_decomposition_cases
+from app.evals.dataset import case_identity, load_dataset
 from app.evals.fixture import FIXTURE_PATH, load, record
 from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invariants
-from app.evals.judge import load_cases
-from app.evals.matching import load_cases as load_matching_cases
-from app.evals.scoring import load_golden
-from app.evals.screening import load_cases as load_screening_cases
 from app.schemas.evals import (
     EvalCatalogResponse,
     EvalDescriptor,
@@ -48,16 +43,17 @@ router = APIRouter()
 def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
     """List the runnable evals + how many model calls each run costs (for the UI's
     spend-confirm). Free — computed from the committed fixtures, no model calls."""
-    golden = load_golden()
+    dataset = load_dataset()
+    golden = dataset.families["scoring"]["cases"]
     scoring_calls = len(golden)  # one score call per case; the per-pass evals are judge-free
-    n_judge = len(load_cases())
-    consolidation = load_consolidation_cases()
+    n_judge = sum(len(data["cases"]) for data in dataset.families.values())
+    consolidation = dataset.families["consolidation"]["cases"]
     consolidation_calls = len(consolidation)  # one confirm call per case
-    matching = load_matching_cases()
+    matching = dataset.families["matching"]["cases"]
     matching_calls = len(matching)
-    decomposition = load_decomposition_cases()
+    decomposition = dataset.families["decomposition"]["cases"]
     decomposition_calls = len(decomposition)
-    n_screening = len(load_screening_cases())  # one screening call per applicant
+    n_screening = len(dataset.families["screening"]["cases"])  # one screening call per applicant
     return EvalCatalogResponse(fixture_editing_enabled=get_settings().eval_fixture_editing_enabled, evals=[
         EvalDescriptor(
             key="invariants", label="Invariants",
@@ -201,45 +197,36 @@ def last_run(
     just whichever ran last. Result JSON as the UI reads it, WITHOUT the thinking narration;
     each identifies prompt/model drift so an old result is never presented as current."""
     wanted = [k.strip() for k in keys.split(",") if k.strip()]
+    dataset = load_dataset()
     runs: list[LastRun] = []
     for key in wanted:
-        # Recent rows newest-first. A per-case run persists a row holding only THAT case, so the
-        # newest row alone would show just one case; we merge recent rows (newest-wins per case
-        # key) to reconstruct the accumulated per-case view the tab showed before a refresh —
-        # exactly matching the dots. Bounded to a small window; only rows sharing the newest
-        # row's prompt AND model are merged, so either change starts a fresh accumulation.
-        rows = (
-            db.query(EvalRun)
-            .filter(EvalRun.eval_key == key)
-            .order_by(EvalRun.created_at.desc(), EvalRun.id.desc())
-            .limit(30)
-            .all()
-        )
-        if not rows:
+        newest = (db.query(EvalRun.eval_key, EvalRun.created_at, EvalRun.prompt_version, EvalRun.result)
+                  .filter(EvalRun.eval_key == key)
+                  .order_by(EvalRun.created_at.desc(), EvalRun.id.desc()).first())
+        if newest is None:
             continue
-        newest = rows[0]
         result = dict(newest.result or {})
         model = result_model(result)
         reasoning_effort = result_reasoning_effort(result)
-        # Only merge cases still present in the current golden set. None means this key has
-        # no editable case set, so retain every stored case.
-        keys_now = live_case_keys(key)
-        merged: dict[str, dict] = {}
-        for row in rows:
-            if (row.prompt_version or "") != (newest.prompt_version or ""):
-                break  # a different prompt version is a different system
-            if result_model(row.result) != model:
-                break  # a different model is a different system
-            if result_reasoning_effort(row.result) != reasoning_effort:
-                break  # a different reasoning configuration is a different system
-            for case in (row.result or {}).get("cases", []):
-                if not (isinstance(case, dict) and "key" in case) or case["key"] in merged:
-                    continue
-                if keys_now is None or case["key"] in keys_now:
-                    merged[case["key"]] = case  # newest-wins (rows iterate newest→oldest)
+        family = "judge" if key in ("judge", "stability") else key.removesuffix("_stability")
+        fingerprints = dataset.case_fingerprints(family) if family in (*dataset.families, "judge") else {}
         if "cases" in result:
-            result["cases"] = list(merged.values())
-        current_prompt = current_prompt_version(newest.eval_key)
+            cases = latest_case_results(db, key, newest.prompt_version or "", result, set(fingerprints))
+            # Aggregate counts describe the reconstructed cases. Judge agreement belongs
+            # to its original full run, so don't attach it to an accumulated partial set.
+            def by_identity(items):
+                return {case_identity(item["key"], item.get("passName", "")): item for item in items}
+            if by_identity(cases) != by_identity(result["cases"]):
+                result["agreement"] = None
+            result["cases"] = cases
+            if "total" in result:
+                result["total"] = len(cases)
+                result["passed"] = sum(bool(case.get("passed") or case.get("contested")) for case in cases)
+        corpus_stale = any(
+            case.get("inputFingerprint") != fingerprints.get(case_identity(case["key"], case.get("passName", "")))
+            for case in result.get("cases", [])
+        )
+        current_prompt = current_prompt_version(newest.eval_key, dataset)
         current_model_id = current_model(newest.eval_key, db)
         current_effort = current_reasoning_effort(newest.eval_key, db)
         runs.append(LastRun(
@@ -259,6 +246,7 @@ def last_run(
             ),
             model_stale=bool(model and current_model_id and model != current_model_id),
             reasoning_stale=reasoning_effort != current_effort,
+            corpus_stale=corpus_stale, current_case_fingerprints=fingerprints,
             result=result,
         ))
     return LastRunResponse(runs=runs)

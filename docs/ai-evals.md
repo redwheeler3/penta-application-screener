@@ -68,6 +68,20 @@ built and why.
 
 ## Layers
 
+Paid runs capture their dataset before model work starts. Their existing result JSON records
+an experiment fingerprint for the prompt, model, effective reasoning, and stability K, plus
+a fingerprint of each case's input, expected label, and contested policy. Editorial notes and
+label rationales do not expire coverage. A Judge case is identified by its family and key;
+an equal key in another family is a separate case.
+
+The live view and restored history accumulate only compatible experiments. Changed case
+inputs or labels stop contributing to current dots; the stored results remain historical
+evidence. Results without a captured input fingerprint cannot prove current coverage. Saving
+cases or Judge briefs refreshes these checks without running a model. Restoration selects
+the latest result per current scoped case in SQLite and excludes unused narration. An
+expression index narrows the query to the eval, prompt, and experiment; work within one
+experiment still grows with its run history, without a fixed row window or a second results store.
+
 ### Software tests
 
 Unit and API tests prove the plumbing: schemas, caching, persistence, cost
@@ -164,13 +178,13 @@ The production identity tells us what generated the output; the judge identity t
 it was evaluated. A mature eval record needs both, or a change in the judge can be mistaken
 for a change in production quality.
 
-The judge's prompt version is **derived from the five editable `judge_background` briefs** —
-the only knob that changes what the blind judge is told. `judge.prompt_version()` hashes the
-briefs (fixed pass order, via the same `derive_prompt_version` sha the production passes use),
-so editing and saving any brief moves the hash and a prior judge run rehydrates as **stale**
-until re-run — exactly as a production prompt edit stales its pass. The per-pass reproduce
-*instructions* are static code (change only on deploy) and are deliberately out of the hash;
-the briefs are the runtime surface. Each committed case additionally carries the **production**
+The judge's prompt version is **derived from the captured `judge_background` briefs,
+the exact blind request templates (including the injection guard), and output schemas** —
+the inputs that determine what the blind judge is told. `judge.prompt_version()` hashes this
+captured request contract in fixed family order. Editing a brief or deploying a changed
+request template/schema moves the hash, so a prior judge run rehydrates as **stale** until
+re-run. The model calls and version stamp use the same captured briefs. Each committed case
+additionally carries the **production**
 provenance (`pass_models` + `pass_prompt_versions`) of its source run, so a verdict is
 attributable to both identities.
 

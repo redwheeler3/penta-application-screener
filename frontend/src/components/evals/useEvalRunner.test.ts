@@ -150,3 +150,34 @@ it("keeps accepted case data when the initial fixture read arrives late", async 
   await act(async () => { pending.resolve({ cases: [{ key: "old-case" }] }); });
   expect(result.current.cases).toEqual([{ key: "saved-case" }]);
 });
+
+
+it("clears other current dots when a partial run changes experiment", async () => {
+  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [
+    { ...history, evalKey: "scoring", result: { experimentId: "old", cases: [scored("a", 0.2), scored("b", 0.2)] } },
+  ] });
+  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring", savedPath: null,
+    result: { experimentId: "new", cases: [scored("a", 0.8)] } })));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }, "a"));
+  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(result.current.caseResults.b?.scoring).toBeUndefined();
+});
+
+it("keeps same-experiment partial coverage and expires changed labels on fixture save", async () => {
+  const saved: LastEvalRun = { ...history, evalKey: "scoring", currentCaseFingerprints: { a: "a1", b: "b1" },
+    result: { experimentId: "same", cases: [{ ...scored("a", 0.2), inputFingerprint: "a1" }, { ...scored("b", 0.2), inputFingerprint: "b1" }] } };
+  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [saved] }).mockResolvedValueOnce({ runs: [saved] }).mockResolvedValue({ runs: [{ ...saved, corpusStale: true,
+    currentCaseFingerprints: { a: "a2", b: "b1" } }] });
+  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring", savedPath: null,
+    result: { experimentId: "same", cases: [{ ...scored("b", 0.8), inputFingerprint: "b1" }] } })));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await waitFor(() => expect(result.current.caseResults.a?.scoring).toBeDefined());
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }, "b"));
+  expect(result.current.caseResults.a?.scoring).toBeDefined();
+  act(() => result.current.setCases([{ key: "a" }, { key: "b" }]));
+  await waitFor(() => expect(result.current.caseResults.a?.scoring).toBeUndefined());
+  expect(result.current.caseResults.b?.scoring).toBeDefined();
+  expect(result.current.restored.scoring.corpusStale).toBe(true);
+});

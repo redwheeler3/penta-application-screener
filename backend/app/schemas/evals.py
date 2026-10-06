@@ -33,6 +33,15 @@ class EvalCatalogResponse(ResponseModel):
     evals: list[EvalDescriptor] = []
 
 
+class EvalResult(ResponseModel):
+    """Experiment identity accompanies both streamed and persisted results."""
+    experiment_id: str = ""
+
+
+class EvalCaseResult(ResponseModel):
+    input_fingerprint: str = ""
+
+
 # --- shared stability shapes ------------------------------------------------
 
 
@@ -52,7 +61,7 @@ class StabilityRun(ResponseModel):
 # concrete class below adds only what's specific (its typed `cases`, or nothing).
 
 
-class _CategoricalCaseOut(ResponseModel):
+class _CategoricalCaseOut(EvalCaseResult):
     """One exact-match categorical case: the model's ``verdict`` vs. the human ``expected``
     label, with ``contested`` (both directions defensible ⇒ passes either way) and any
     deterministic ``failures``. The verdict vocabulary is per-pass (see each subclass)."""
@@ -66,7 +75,7 @@ class _CategoricalCaseOut(ResponseModel):
     failures: list[str] = []
 
 
-class _CategoricalResponse(ResponseModel):
+class _CategoricalResponse(EvalResult):
     """A categorical live run's header: the prompt identity it exercised plus pass/total
     (a contested case counts as passed by running, not by matching). Subclasses add ``cases``."""
 
@@ -77,7 +86,7 @@ class _CategoricalResponse(ResponseModel):
     total: int
 
 
-class _CategoricalStabilityCaseOut(ResponseModel):
+class _CategoricalStabilityCaseOut(EvalCaseResult):
     """One case across K stability runs: modal ``majority`` verdict, its ``agreement`` share,
     whether it ``flipped``, the full ``tally``, and per-run outcome+reasoning. ``marker`` is
     "[stable]" | "[UNSTABLE]" | "[contested-split]"."""
@@ -93,7 +102,7 @@ class _CategoricalStabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []
 
 
-class _CategoricalStabilityResponse(ResponseModel):
+class _CategoricalStabilityResponse(EvalResult):
     """A categorical stability run's header (prompt identity + K). Subclasses add ``cases``."""
 
     prompt_version: str
@@ -105,7 +114,7 @@ class _CategoricalStabilityResponse(ResponseModel):
 # --- live scoring -----------------------------------------------------------
 
 
-class ScoringCaseOut(ResponseModel):
+class ScoringCaseOut(EvalCaseResult):
     key: str
     passed: bool
     score: FiniteFloat | None
@@ -114,7 +123,7 @@ class ScoringCaseOut(ResponseModel):
     failures: list[str] = []  # deterministic band/confidence breaches
 
 
-class ScoringResponse(ResponseModel):
+class ScoringResponse(EvalResult):
     scoring_prompt_version: str
     scoring_model: str
     reasoning_effort: str | None = None
@@ -123,7 +132,7 @@ class ScoringResponse(ResponseModel):
     cases: list[ScoringCaseOut] = []
 
 
-class ScoringStabilityCaseOut(ResponseModel):
+class ScoringStabilityCaseOut(EvalCaseResult):
     key: str
     marker: str  # "[stable]" | "[UNSTABLE]" (scoring cases are never contested)
     agreement: float  # modal pass/fail outcome's share of K
@@ -134,7 +143,7 @@ class ScoringStabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 
-class ScoringStabilityResponse(ResponseModel):
+class ScoringStabilityResponse(EvalResult):
     scoring_prompt_version: str
     scoring_model: str
     reasoning_effort: str | None = None
@@ -204,7 +213,7 @@ class DecompositionStabilityResponse(_CategoricalStabilityResponse):
 # --- live screening (per-category over a produced flag list) -----------------
 
 
-class ScreeningCaseOut(ResponseModel):
+class ScreeningCaseOut(EvalCaseResult):
     key: str
     passed: bool
     categories: list[str] = []  # the flag categories the model produced
@@ -219,7 +228,7 @@ class ScreeningResponse(_CategoricalResponse):
     cases: list[ScreeningCaseOut] = []
 
 
-class ScreeningStabilityCaseOut(ResponseModel):
+class ScreeningStabilityCaseOut(EvalCaseResult):
     key: str
     marker: str
     majority: str  # the modal flag-set token (e.g. "fake_contact" or "none")
@@ -236,7 +245,7 @@ class ScreeningStabilityResponse(_CategoricalStabilityResponse):
 # --- judge + agreement ------------------------------------------------------
 
 
-class JudgeCaseOut(ResponseModel):
+class JudgeCaseOut(EvalCaseResult):
     key: str
     pass_name: str
     marker: str  # "[ok]" | "[review]" | "[contested]"
@@ -260,7 +269,7 @@ class AgreementOut(ResponseModel):
     failure_precision: float | None
 
 
-class JudgeRunResponse(ResponseModel):
+class JudgeRunResponse(EvalResult):
     judge_prompt_version: str
     judge_model: str
     cases: list[JudgeCaseOut] = []
@@ -270,7 +279,7 @@ class JudgeRunResponse(ResponseModel):
 # --- stability --------------------------------------------------------------
 
 
-class StabilityCaseOut(ResponseModel):
+class StabilityCaseOut(EvalCaseResult):
     key: str
     pass_name: str
     marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
@@ -282,7 +291,7 @@ class StabilityCaseOut(ResponseModel):
     runs: list[StabilityRun] = []  # per-run label + the judge's reasoning (explains a flip)
 
 
-class StabilityRunResponse(ResponseModel):
+class StabilityRunResponse(EvalResult):
     judge_prompt_version: str
     judge_model: str
     k: int
@@ -369,6 +378,8 @@ class LastRun(ResponseModel):
     prompt_stale: bool = False
     model_stale: bool = False
     reasoning_stale: bool = False
+    corpus_stale: bool = False
+    current_case_fingerprints: dict[str, str] = {}
     result: dict = {}
 
 

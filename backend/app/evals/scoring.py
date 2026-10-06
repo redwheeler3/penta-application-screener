@@ -62,11 +62,11 @@ class CaseResult:
         return not self.failures
 
 
-def load_golden(path: Path = GOLDEN_PATH) -> tuple[GoldenCase, ...]:
+def load_golden(path: Path = GOLDEN_PATH, *, data: dict | None = None) -> tuple[GoldenCase, ...]:
     """Load the golden cases, flattening the by-consumer blocks (metadata / given — see the
     fixture's `_comment`) into the flat GoldenCase the runner uses. The on-disk grouping
     documents WHO sees each field; the runner doesn't care, so it's flattened here."""
-    data = read_json(path)
+    data = read_json(path) if data is None else data
     for case in data["cases"]:
         validate_case("scoring", case)
     return tuple(
@@ -181,21 +181,29 @@ def band_str(expected: dict[str, object]) -> str:
     return f"[{lo}, {hi}]{conf}"
 
 
+def judge_request(given: dict):
+    """The exact blind request and output contract, shared with prompt versioning."""
+    from app.ai.schemas import DimensionScoringReport
+    from app.evals.reproduce import build_judge_prompt
+
+    return build_judge_prompt(
+        given,
+        'Score the applicant against the dimension on a signed -1..+1 scale and cite your '
+        'evidence. Return score, confidence, rationale, evidence.',
+    ), DimensionScoringReport
+
+
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, background: str, model: str):
     """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model re-scores the case
     from the editable ``background`` + ``given`` (never the human label), then we grade its score
     against the expected band with the SAME check the live eval uses. 'Agrees' = the blind score
     landed in the band the human specified. Scoring has no single 'problem' side, so it does not
     contribute to failure-recall (both is_problem False)."""
-    from app.evals.reproduce import Reproduced, build_judge_prompt
+    from app.evals.reproduce import Reproduced
 
     dim = given["dimension"]
-    prompt = build_judge_prompt(
-        given,
-        "Score the applicant against the dimension on a signed -1..+1 scale and cite your "
-        "evidence. Return score, confidence, rationale, evidence.",
-    )
-    result = provider.structured_output(model_id=model, schema=DimensionScoringReport, prompt=prompt, system_prompt=background)
+    prompt, schema = judge_request(given)
+    result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     produced = {s.dimension_key: s for s in result.output.scores}
     score = produced.get(dim["key"]) or (result.output.scores[0] if result.output.scores else None)
     from app.ai.pricing import cost_usd

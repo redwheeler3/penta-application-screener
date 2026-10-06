@@ -26,3 +26,12 @@ CONSOLIDATION_GOLDEN_PATH = EVAL_DATA_DIR / "consolidation_golden.json"
 MATCHING_GOLDEN_PATH = EVAL_DATA_DIR / "matching_golden.json"
 DECOMPOSITION_GOLDEN_PATH = EVAL_DATA_DIR / "decomposition_golden.json"
 SCREENING_GOLDEN_PATH = EVAL_DATA_DIR / "screening_golden.json"
+
+
+GOLDEN_FILES: dict[str, Path] = {
+    "scoring": GOLDEN_PATH,
+    "consolidation": CONSOLIDATION_GOLDEN_PATH,
+    "matching": MATCHING_GOLDEN_PATH,
+    "decomposition": DECOMPOSITION_GOLDEN_PATH,
+    "screening": SCREENING_GOLDEN_PATH,
+}

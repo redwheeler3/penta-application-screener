@@ -52,10 +52,10 @@ class MatchingCase:
     note: str = ""
 
 
-def load_cases(path: Path = MATCHING_GOLDEN_PATH) -> tuple[MatchingCase, ...]:
+def load_cases(path: Path = MATCHING_GOLDEN_PATH, *, data: dict | None = None) -> tuple[MatchingCase, ...]:
     """Load the golden matching cases, flattening the by-consumer blocks (metadata / given —
     see docs/eval-case-schema.md) into the flat runner case."""
-    data = read_json(path)
+    data = read_json(path) if data is None else data
     cases = []
     for c in data["cases"]:
         validate_case("matching", c)
@@ -104,6 +104,18 @@ def _match_verdict(provider: AIProvider, case: MatchingCase, *, match_model: str
     return verdict, detail
 
 
+def judge_request(given: dict):
+    """The exact blind request and output contract, shared with prompt versioning."""
+    from app.ai.schemas import JudgeReport
+    from app.evals.reproduce import build_judge_prompt
+
+    return build_judge_prompt(
+        given,
+        'Decide whether the NEW dimension means the same underlying concept as the PRIOR one: '
+        "return verdict 'matches' (same concept) or 'mismatches' (different), with a reason.",
+    ), JudgeReport
+
+
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, background: str, model: str):
     """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model decides whether
     the new dimension is the same concept as the prior one from the editable ``background`` +
@@ -111,15 +123,10 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, backgro
     verdict against ``expected``. A wrong MATCH corrupts a carried-forward score, so 'mismatches'
     is the problem side (feeds failure-recall)."""
     from app.ai.pricing import cost_usd
-    from app.ai.schemas import JudgeReport
-    from app.evals.reproduce import Reproduced, build_judge_prompt
+    from app.evals.reproduce import Reproduced
 
-    prompt = build_judge_prompt(
-        given,
-        "Decide whether the NEW dimension means the same underlying concept as the PRIOR one: "
-        "return verdict 'matches' (same concept) or 'mismatches' (different), with a reason.",
-    )
-    result = provider.structured_output(model_id=model, schema=JudgeReport, prompt=prompt, system_prompt=background)
+    prompt, schema = judge_request(given)
+    result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     verdict = result.output.verdict.value
     cost = cost_usd(result.model_id, result.usage)
     return Reproduced(
