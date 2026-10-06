@@ -218,3 +218,19 @@ def test_short_consolidation_pair_and_malformed_judge_metadata_are_rejected() ->
         case_store.save_case("consolidation", case)
     with pytest.raises(case_store.CaseValidationError, match=r"metadata\.pass"):
         case_store.save_case("judge", {"key": "synthetic", "metadata": [], "given": {}})
+
+
+@pytest.mark.parametrize(("family", "field"), [("matching", "prior"), ("matching", "new"), ("consolidation", "pair")])
+def test_live_named_descriptors_cannot_omit_names(family, field):
+    case = case_store.list_cases(family)[0]
+    del case["given"][field][0]["name"]
+    with pytest.raises(case_store.CaseValidationError, match="name"):
+        case_store.save_case(family, case)
+
+
+@pytest.mark.parametrize("field", ["prior", "new"])
+def test_matching_needs_both_sides(field):
+    case = case_store.list_cases("matching")[0]
+    case["given"][field] = []
+    with pytest.raises(case_store.CaseValidationError, match=field):
+        case_store.save_case("matching", case)

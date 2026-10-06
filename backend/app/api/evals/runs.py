@@ -5,6 +5,7 @@ terminal summary, and persists an EvalRun row (see ``_shared.stream``)."""
 from __future__ import annotations
 
 from collections import Counter
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -83,7 +84,7 @@ router = APIRouter()
 
 @router.post("/scoring")
 def run_scoring(
-    mode: str = "run",
+    mode: Literal["run", "stability"] = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_admin),
@@ -230,7 +231,7 @@ def _run_categorical_endpoint(
 
 @router.post("/consolidation")
 def run_consolidation(
-    mode: str = "run",
+    mode: Literal["run", "stability"] = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     _user: User = Depends(require_admin),
@@ -242,7 +243,7 @@ def run_consolidation(
 
 @router.post("/matching")
 def run_matching(
-    mode: str = "run",
+    mode: Literal["run", "stability"] = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     _user: User = Depends(require_admin),
@@ -254,7 +255,7 @@ def run_matching(
 
 @router.post("/decomposition")
 def run_decomposition(
-    mode: str = "run",
+    mode: Literal["run", "stability"] = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     _user: User = Depends(require_admin),
@@ -266,7 +267,7 @@ def run_decomposition(
 
 @router.post("/screening")
 def run_screening(
-    mode: str = "run",
+    mode: Literal["run", "stability"] = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_admin),
@@ -341,7 +342,7 @@ def run_screening(
 
 @router.post("/judge")
 def run_judge(
-    mode: str = "run",
+    mode: Literal["run", "stability"] = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
     user: User = Depends(require_admin),

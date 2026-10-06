@@ -34,8 +34,11 @@ class _Descriptor(_StoredModel):
     low_end: str = ""
 
 
-class _ScoringDimension(_Descriptor):
+class _NamedDescriptor(_Descriptor):
     name: str
+
+
+class _ScoringDimension(_NamedDescriptor):
     high_end: str
     low_end: str
 
@@ -66,8 +69,8 @@ class _ScoringExpected(_StoredModel):
 
 
 class _MatchingGiven(_StoredModel):
-    prior: list[_Descriptor]
-    new: list[_Descriptor]
+    prior: Annotated[list[_NamedDescriptor], Field(min_length=1)]
+    new: Annotated[list[_NamedDescriptor], Field(min_length=1)]
 
 
 class _DecompositionGiven(_StoredModel):
@@ -75,7 +78,7 @@ class _DecompositionGiven(_StoredModel):
 
 
 class _ConsolidationGiven(_StoredModel):
-    pair: Annotated[list[_Descriptor], Field(min_length=2, max_length=2)]
+    pair: Annotated[list[_NamedDescriptor], Field(min_length=2, max_length=2)]
 
 
 class _ScreeningGiven(_StoredModel):

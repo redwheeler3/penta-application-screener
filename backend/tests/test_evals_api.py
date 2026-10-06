@@ -552,3 +552,12 @@ async def test_missing_scores_stay_nullable_in_live_and_saved_json(mode):
     assert restored == summary["result"]
     assert db.execute(text("SELECT json_valid(result) FROM eval_runs")).scalar_one() == 1
     json.dumps(restored, allow_nan=False)
+
+
+@pytest.mark.parametrize("family", ["scoring", "matching", "consolidation", "decomposition", "screening", "judge"])
+async def test_unknown_run_mode_is_rejected_before_model_work(family):
+    app, db, _provider = setup_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(f"/evals/{family}?mode=stabilty")
+    assert response.status_code == 422
+    assert db.scalar(select(EvalRun)) is None
