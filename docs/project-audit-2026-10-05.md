@@ -1,8 +1,8 @@
 # General project audit — 2026-10-05, follow-up review
 
-**Status: complete.** Clean `main` baseline at `2ce157b`, ten commits ahead of the
+**Status: implemented and verified; all B01–B10 closed.** Audit baseline at `2ce157b`, ten commits ahead of the
 locally recorded `origin/main`. This report replaces the implemented audit; that report
-and its decisions remain in Git. This phase investigates and recommends, without runtime fixes.
+and its decisions remain in Git. Implementation outcomes and final validation are recorded below.
 
 ## Scope and established decisions
 
@@ -374,3 +374,60 @@ percentiles were not measured, so this report does not claim a measured user-fac
   approximate cost estimates do not justify tightening ordinary request synchronization.
 - `ensure_lock_row` is referenced by schema-only test constructors and lease tests, with an
   explicit purpose. It is not unreferenced runtime tombstone code worth deleting.
+
+## Implementation outcomes
+
+All approved findings are implemented. Follow-up review covered the actual run lifecycle,
+lost/incomplete acknowledgements, fixture edits during capture, scoped duplicate keys,
+historical JSON validity, whole-run agreement and contested-case aggregation.
+
+| Finding | Outcome | Commit |
+| --- | --- | --- |
+| B01 | AI work explicitly fences pending board/current reads even with no proposals. Screening reconciles a displayed ranking in the background. | `b646be9` |
+| B02 | Persisted and streamed results capture prompt/model/effective reasoning/K identity and per-case input/label fingerprints. Live and restored coverage reject incompatible results; editorial notes do not expire coverage. Saving cases or Judge briefs refreshes freshness without model work. | `32ebe71` |
+| B03 | Judge cases and prompt version use the same captured briefs. The version includes the actual request template, injection guard and output schema, with one family/adapter binding. Existing prompt content is unchanged. | `32ebe71` |
+| B04 | Judge selection, row results, editor identity, request parameters and restored results use the existing family/key pair. Equal keys in two families remain separate. | `32ebe71` |
+| B05 | Same-second backups follow completion order; pruning explicitly preserves its new snapshot. Invalid recovery retention fails before creating a snapshot. | `de0b80c` |
+| B06 | Matching inputs require nonempty named sets; consolidation requires named pair members. Unknown HTTP run modes fail validation before model calls. | `88047a3` |
+| B07 | Note creation retains one exact attempt across an uncertain response, with a scoped unique database key. Definite refusals remain correctable; successful and incomplete acknowledgements are distinguished. Intentional repeated text still creates a new note. | `3909217`, `66220a9` |
+| B08 | Ordinary permanent decisions reconcile 5xx, lost and incomplete acknowledgements in the background and require Review openings before another choice. Definite refusals remain editable. | `3909217` |
+| B09 | An indexed SQLite query restores the latest result per current scoped case in the latest experiment, without a row-count window or unused narration. Whole-run agreement survives case reordering, and contested pass counts retain their meaning. | `32ebe71` |
+| B10 | One request-local dataset and one family-file registry replace repeated reads. The catalog reads each of the five files once. Family graders remain separate. | `32ebe71` |
+
+### Final verification
+
+- Backend: **1,061 passed, one existing platform skip**; Ruff passed.
+- Frontend: **319 passed across 48 files**; ESLint, TypeScript and production build passed.
+- Both additive migrations applied to the existing local database; Alembic is at
+  `d70b8f42e536`. No reset, restore, applicant-data export or production change occurred.
+- Query-plan regression confirms `ix_eval_runs_experiment` is used. The history regression
+  restores all forty current Judge cases after many repeats of one case, filters removed
+  cases and separates K/model/reasoning changes without loading `thinking`.
+- Final isolated in-memory SQLite benchmark: **forty cases restored from 2,040 stored runs
+  in 7.11 ms median** over ten measurements. This measures the coverage query, not hosted
+  latency. Indexing excludes unrelated experiments; work within one experiment still grows
+  with that experiment's history. No duplicate current-results store was introduced.
+- Exact-content comparison confirms all five blind request templates retain their original
+  content. Tests use synthetic data/mock providers; no real model calls or email were sent.
+- `git diff --check` passed. Build/cache directory inheritance remains enabled.
+
+### Complexity and responsiveness
+
+The added state represents confirmed distinctions: a note creation attempt whose server ID
+is not yet known, a rejected versus uncertain receipt, and the experiment/input identity of
+an eval result. Request-local dataset capture and an indexed history reader are small owners;
+they do not introduce an event bus, global cache, generic eval engine or duplicate results
+table. Existing request scopes, write ordering, fixture locks and family graders are reused.
+The ORM registry remains cohesive; adding table identity and an index does not justify a
+cosmetic split.
+
+Successful committee actions do not wait for derived refreshes. Note replay checking adds
+one indexed lookup within the existing short writer transaction. The extra ranking read
+after Screen runs in the background. Dataset/version/history work stays on the admin eval
+surface. Results without captured input fingerprints remain historical evidence and cannot
+prove current coverage; this does not invalidate application Screen/Rank caches or launch
+paid reruns.
+
+The final review found no additional in-scope item worth deferring to another iteration.
+Previous A04 remains deliberately deferred, and the established product decisions above
+remain in force. Commits were created on `main`; this task did not authorize a push or deploy.
