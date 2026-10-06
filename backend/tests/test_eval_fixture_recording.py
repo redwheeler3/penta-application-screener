@@ -117,7 +117,7 @@ def test_fixture_reader_closes_its_handle_before_replacement(tmp_path, monkeypat
     path = tmp_path / "shared.json"
     fixture_files.write_json(path, {"version": 1})
     held, release, waiting = Event(), Event(), Event()
-    lock = fixture_files._file_lock(path)
+    lock = fixture_files.fixture_lock(path)
     read_text = Path.read_text
 
     class ReportWaiting:
@@ -137,7 +137,7 @@ def test_fixture_reader_closes_its_handle_before_replacement(tmp_path, monkeypat
                 return handle.read()
         return read_text(target, *args, **kwargs)
 
-    monkeypatch.setattr(fixture_files, "_file_lock", lambda _path: ReportWaiting())
+    monkeypatch.setattr(fixture_files, "fixture_lock", lambda _path: ReportWaiting())
     monkeypatch.setattr(Path, "read_text", hold_reader)
     with ThreadPoolExecutor(max_workers=2) as pool:
         reader = pool.submit(fixture_files.read_json, path)

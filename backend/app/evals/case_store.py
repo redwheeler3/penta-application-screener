@@ -16,10 +16,9 @@ partially written.
 from __future__ import annotations
 
 from pathlib import Path
-from threading import Lock
 
 from app.evals.case_schema import CaseValidationError, validate_case
-from app.evals.fixture_files import read_json, write_json
+from app.evals.fixture_files import fixture_lock, read_json, write_json
 from app.evals.paths import (
     CONSOLIDATION_GOLDEN_PATH,
     DECOMPOSITION_GOLDEN_PATH,
@@ -38,19 +37,13 @@ _FIXTURES: dict[str, Path] = {
 }
 
 
-_FIXTURE_LOCKS = {key: Lock() for key in _FIXTURES}
-
-
 class UnknownEvalError(ValueError):
     """The eval key has no editable case fixture (e.g. invariants; or judge/stability, which
     read every pass's golden set and own no case files of their own)."""
 
 
 def _read_fixture(eval_key: str) -> dict:
-    # Share the writer's short lock so Windows readers don't hold the target
-    # file open during replacement. Locks cover requests in this API process.
-    with _FIXTURE_LOCKS[eval_key]:
-        return read_json(_FIXTURES[eval_key])
+    return read_json(_FIXTURES[eval_key])
 
 
 def list_cases(eval_key: str) -> list[dict]:
@@ -95,7 +88,7 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
     validate_case(eval_key, case)
     path, key = _FIXTURES[eval_key], case["key"]
 
-    with _FIXTURE_LOCKS[eval_key]:
+    with fixture_lock(path):
         data = read_json(path)
         cases = data.get("cases", [])
         replaced = False
@@ -139,7 +132,7 @@ def save_background(pass_name: str, background: str) -> str:
     if not isinstance(background, str) or not background.strip():
         raise CaseValidationError("judge_background must be a non-empty string")
     path = _FIXTURES[pass_name]
-    with _FIXTURE_LOCKS[pass_name]:
+    with fixture_lock(path):
         data = read_json(path)
         data["judge_background"] = background
         write_json(path, data)

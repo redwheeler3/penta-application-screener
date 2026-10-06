@@ -10,8 +10,8 @@ _LOCKS: dict[Path, RLock] = {}
 _LOCKS_GUARD = Lock()
 
 
-def _file_lock(path: Path) -> RLock:
-    """Readers must close their Windows handles before complete-file replacement."""
+def fixture_lock(path: Path) -> RLock:
+    """One file owns its read/modify/write fence and Windows handle lifetime."""
     resolved = path.resolve()
     with _LOCKS_GUARD:
         if resolved not in _LOCKS:
@@ -21,7 +21,7 @@ def _file_lock(path: Path) -> RLock:
 
 def read_json(path: Path) -> dict:
     """Read a complete UTF-8 snapshot; parsing can happen after releasing the handle."""
-    with _file_lock(path):
+    with fixture_lock(path):
         content = path.read_text(encoding="utf-8")
     return json.loads(content)
 
@@ -29,7 +29,7 @@ def read_json(path: Path) -> dict:
 def write_json(path: Path, data: dict, *, sort_keys: bool = False) -> None:
     """Keep the prior file intact on failure; no reader can see a partial rewrite."""
     content = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=sort_keys, allow_nan=False) + "\n"
-    with _file_lock(path):
+    with fixture_lock(path):
         _replace(path, content)
 
 
