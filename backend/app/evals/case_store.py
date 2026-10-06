@@ -15,12 +15,11 @@ partially written.
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from threading import Lock
 
+from app.evals.case_schema import CaseValidationError, validate_case
+from app.evals.fixture_files import read_json, write_json
 from app.evals.paths import (
     CONSOLIDATION_GOLDEN_PATH,
     DECOMPOSITION_GOLDEN_PATH,
@@ -29,16 +28,13 @@ from app.evals.paths import (
     SCREENING_GOLDEN_PATH,
 )
 
-# eval_key -> (fixture path, required per-case fields). Fields are grouped into by-consumer
-# blocks (see each fixture's `_comment` and docs/eval-case-schema.md): a top-level `key`
-# plus block objects (`given` = prompt input; `metadata` = harness-only). Only these files
-# are writable.
-_FIXTURES: dict[str, tuple[Path, tuple[str, ...]]] = {
-    "scoring": (GOLDEN_PATH, ("key", "metadata", "given")),
-    "consolidation": (CONSOLIDATION_GOLDEN_PATH, ("key", "metadata", "given")),
-    "matching": (MATCHING_GOLDEN_PATH, ("key", "metadata", "given")),
-    "decomposition": (DECOMPOSITION_GOLDEN_PATH, ("key", "metadata", "given")),
-    "screening": (SCREENING_GOLDEN_PATH, ("key", "metadata", "given")),
+# Only these versioned files are writable. Their consumer contracts live in case_schema.
+_FIXTURES: dict[str, Path] = {
+    "scoring": GOLDEN_PATH,
+    "consolidation": CONSOLIDATION_GOLDEN_PATH,
+    "matching": MATCHING_GOLDEN_PATH,
+    "decomposition": DECOMPOSITION_GOLDEN_PATH,
+    "screening": SCREENING_GOLDEN_PATH,
 }
 
 
@@ -50,36 +46,11 @@ class UnknownEvalError(ValueError):
     read every pass's golden set and own no case files of their own)."""
 
 
-class CaseValidationError(ValueError):
-    """A case payload is missing required fields or an invalid key."""
-
-
-def _load(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def _read_fixture(eval_key: str) -> dict:
     # Share the writer's short lock so Windows readers don't hold the target
     # file open during replacement. Locks cover requests in this API process.
     with _FIXTURE_LOCKS[eval_key]:
-        path, _ = _FIXTURES[eval_key]
-        return _load(path)
-
-
-def _write(path: Path, data: dict) -> None:
-    """Publish complete UTF-8 JSON atomically; readers never see a partial rewrite."""
-    temporary: Path | None = None
-    try:
-        with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                prefix=path.name + ".", suffix=".tmp", delete=False) as file:
-            temporary = Path(file.name)
-            file.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary, path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+        return read_json(_FIXTURES[eval_key])
 
 
 def list_cases(eval_key: str) -> list[dict]:
@@ -111,7 +82,8 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
     pass file (by ``metadata.pass``) and the re-aggregated judge list is returned — so a case
     edited from the Judge tab lands in the same golden file its pass tab writes to."""
     if eval_key == "judge":
-        pass_name = (case.get("metadata") or {}).get("pass")
+        metadata = case.get("metadata")
+        pass_name = metadata.get("pass") if isinstance(metadata, dict) else None
         if pass_name not in _BACKGROUND_PASSES:
             raise CaseValidationError(
                 f"judge case metadata.pass must name a known pass ({', '.join(_BACKGROUND_PASSES)}), got {pass_name!r}"
@@ -120,16 +92,11 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
         return list_cases("judge")
     if eval_key not in _FIXTURES:
         raise UnknownEvalError(eval_key)
-    path, required = _FIXTURES[eval_key]
-    key = case.get("key")
-    if not key or not isinstance(key, str):
-        raise CaseValidationError("case must have a non-empty string 'key'")
-    missing = [f for f in required if f not in case or case[f] in (None, "")]
-    if missing:
-        raise CaseValidationError(f"case is missing required field(s): {', '.join(missing)}")
+    validate_case(eval_key, case)
+    path, key = _FIXTURES[eval_key], case["key"]
 
     with _FIXTURE_LOCKS[eval_key]:
-        data = _load(path)
+        data = read_json(path)
         cases = data.get("cases", [])
         replaced = False
         for i, existing in enumerate(cases):
@@ -143,7 +110,7 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
         # Match the on-disk formatting the fixtures already use (indent=2). Not sort_keys: the
         # golden file keeps ``_comment`` first by insertion order, and case field order is
         # meaningful for readability in the diff.
-        _write(path, data)
+        write_json(path, data)
         return [c for c in cases if isinstance(c, dict) and "key" in c]
 
 
@@ -171,9 +138,9 @@ def save_background(pass_name: str, background: str) -> str:
         raise UnknownEvalError(pass_name)
     if not isinstance(background, str) or not background.strip():
         raise CaseValidationError("judge_background must be a non-empty string")
-    path, _ = _FIXTURES[pass_name]
+    path = _FIXTURES[pass_name]
     with _FIXTURE_LOCKS[pass_name]:
-        data = _load(path)
+        data = read_json(path)
         data["judge_background"] = background
-        _write(path, data)
+        write_json(path, data)
         return background

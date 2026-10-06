@@ -4,7 +4,7 @@ from dataclasses import asdict
 
 from sqlalchemy.orm import Session
 
-from app.db.models import MemberRanking, User
+from app.db.models import MemberRanking, User, UserRole
 from app.domain.ranking import rank_candidates
 from app.schemas.applications import DimensionContributionOut
 from app.schemas.ranking import (
@@ -27,10 +27,10 @@ from app.services.ranking.member_state import (
 from app.services.ranking.view import candidate_scores
 
 
-def run_payload(db: Session, member_ranking: MemberRanking) -> CurrentRunResponse | None:
+def run_payload(db: Session, member_ranking: MemberRanking, user: User) -> CurrentRunResponse | None:
     """The captured analysis's discovered pattern report + the signed-in member's view of it,
-    shaped for the UI. The dimensions/narrative are shared; the badges, kept axes, and
-    proposals are read off this member's ranking."""
+    shaped for the UI. Dimensions are shared, historical operator reasoning is admin-only,
+    and badges, kept axes and proposals come from this member's ranking."""
     analysis = member_ranking.analysis
     report = current_dimension_report(analysis)
     if report is None:
@@ -49,7 +49,8 @@ def run_payload(db: Session, member_ranking: MemberRanking) -> CurrentRunRespons
             )
             for d in report.dimensions
         ],
-        discovery_narrative=analysis.audit.discovery_narrative if analysis.audit else None,
+        discovery_narrative=(analysis.audit.discovery_narrative
+            if user.role == UserRole.ADMIN and analysis.audit else None),
         # Dimensions absent from the immediately-prior analysis in this member's view —
         # parked/placed but flagged for triage. Empty on a first run.
         new_dimension_keys=(member_ranking.run_state or {}).get("new_dimension_keys", []),

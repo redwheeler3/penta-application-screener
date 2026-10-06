@@ -31,7 +31,7 @@ type EvalCaseBase = { key: string };
 
 export type ScoringEvalCaseResult = EvalCaseBase & {
   passed: boolean;
-  score: number;
+  score: number | null;
   confidence: string;
   evidence: string;
   failures: string[];
@@ -64,8 +64,8 @@ export type StabilityEvalCaseResult = EvalCaseBase & {
 };
 
 export type ScoringStabilityEvalCaseResult = StabilityEvalCaseResult & {
-  scoreMin: number;
-  scoreMax: number;
+  scoreMin: number | null;
+  scoreMax: number | null;
 };
 
 export type JudgeEvalCaseResult = EvalCaseBase & {

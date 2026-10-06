@@ -279,7 +279,7 @@ async def test_add_proposal_before_run_is_409() -> None:
 
 @pytest.mark.anyio
 async def test_match_audit_is_null_before_any_run() -> None:
-    app, db, _ = setup_app(role=UserRole.MEMBER)
+    app, db, _ = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -292,7 +292,7 @@ async def test_match_audit_is_null_before_any_run() -> None:
 async def test_match_audit_first_run_has_null_carry_forward_rate() -> None:
     # A first run has no prior dimensions to match against, so carry-forward is
     # undefined (null), not 0 — every dimension is genuinely new.
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -313,7 +313,7 @@ async def test_match_audit_first_run_has_null_carry_forward_rate() -> None:
 async def test_match_audit_reports_carry_forward_rate_on_rerun() -> None:
     # On a re-run the match pass maps one of two new dimensions onto a prior one,
     # so the carry-forward rate is 1/2 and the audit exposes the raw keys and match map.
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

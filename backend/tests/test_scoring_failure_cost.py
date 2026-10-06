@@ -25,7 +25,7 @@ from tests.ranking_support import (
 @pytest.mark.anyio
 @pytest.mark.parametrize("mixed", [False, True])
 async def test_incomplete_retries_keep_usage_and_only_successes_count_as_scored(mixed) -> None:
-    app, db, provider = setup_app(UserRole.MEMBER)
+    app, db, provider = setup_app(UserRole.ADMIN)
     failed_applicant = add_eligible(db, email="incomplete@example.com", raw_hash="incomplete")
     if mixed:
         add_eligible(db, email="complete@example.com", raw_hash="complete")

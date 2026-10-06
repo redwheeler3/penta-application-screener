@@ -14,7 +14,7 @@ from app.ai.dimension_consolidation import PROMPT_VERSION as CONSOLIDATE_PROMPT_
 from app.ai.dimension_decomposition import PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION
 from app.ai.dimension_matching import PROMPT_VERSION as MATCH_PROMPT_VERSION
 from app.ai.provider import AIProvider
-from app.api.dependencies import get_ai_provider, require_current_user
+from app.api.dependencies import get_ai_provider, require_admin
 from app.api.evals._categorical import CategoricalPass, run_categorical
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
@@ -86,7 +86,7 @@ def run_scoring(
     mode: str = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -233,7 +233,7 @@ def run_consolidation(
     mode: str = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
-    _user: User = Depends(require_current_user),
+    _user: User = Depends(require_admin),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -245,7 +245,7 @@ def run_matching(
     mode: str = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
-    _user: User = Depends(require_current_user),
+    _user: User = Depends(require_admin),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -257,7 +257,7 @@ def run_decomposition(
     mode: str = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
-    _user: User = Depends(require_current_user),
+    _user: User = Depends(require_admin),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -269,7 +269,7 @@ def run_screening(
     mode: str = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -344,7 +344,7 @@ def run_judge(
     mode: str = "run",
     k: int = DEFAULT_STABILITY_K,
     case: str | None = None,
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     provider: AIProvider = Depends(get_ai_provider),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:

@@ -28,7 +28,7 @@ from tests.ranking_support import (
 @pytest.mark.anyio
 @pytest.mark.parametrize("failure", ["decomposition", "validation", "matching", "criteria storage", "scoring storage", "consolidation"])
 async def test_known_pass_costs_survive_later_failures(monkeypatch, caplog, failure) -> None:
-    app, db, provider = setup_app(UserRole.MEMBER)
+    app, db, provider = setup_app(UserRole.ADMIN)
     add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
     opening_id = current_opening_id(db)
     route_criteria(provider, a_pattern_report())

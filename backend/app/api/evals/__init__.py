@@ -15,11 +15,12 @@ Evals are a consumer of the app, not part of its shipped runtime.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.dependencies import require_admin
 from app.api.evals import cases, catalog, runs
 
-router = APIRouter(prefix="/evals", tags=["evals"])
+router = APIRouter(prefix="/evals", tags=["evals"], dependencies=[Depends(require_admin)])
 router.include_router(catalog.router)
 router.include_router(cases.router)
 router.include_router(runs.router)

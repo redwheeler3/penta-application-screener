@@ -12,7 +12,7 @@ reads over the persisted analysis + member ranking.
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_current_user
+from app.api.dependencies import require_admin, require_current_user
 from app.api.ranking.presentation import run_payload
 from app.db.models import User
 from app.db.session import get_db
@@ -51,13 +51,13 @@ def current(
     analysis = get_current_analysis(db, resolve_visible_opening_id(db, opening_id))
     if analysis is None or current_dimension_report(analysis) is None:
         return None
-    return run_payload(db, get_or_reconcile_member_ranking(db, analysis, user))
+    return run_payload(db, get_or_reconcile_member_ranking(db, analysis, user), user)
 
 
 @router.get("/current/match-audit", response_model=MatchAuditResponse | None)
 def current_match_audit(
     opening_id: int | None = None,
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MatchAuditResponse | None:
     """The current analysis's carry-forward audit — what discovery emitted, how the match
@@ -76,7 +76,7 @@ def current_match_audit(
 @router.get("/current/decompose-audit", response_model=DecomposeAuditResponse | None)
 def current_decompose_audit(
     opening_id: int | None = None,
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> DecomposeAuditResponse | None:
     """The current analysis's decomposition audit — how the K fan-out discovery reports were
@@ -95,7 +95,7 @@ def current_decompose_audit(
 @router.get("/current/consolidate-audit", response_model=ConsolidateAuditResponse | None)
 def current_consolidate_audit(
     opening_id: int | None = None,
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ConsolidateAuditResponse | None:
     """The current analysis's consolidation audit — the post-score duplicate-merge pass:
@@ -114,7 +114,7 @@ def current_consolidate_audit(
 @router.get("/current/fan-out-audit", response_model=FanOutAuditResponse | None)
 def current_fan_out_audit(
     opening_id: int | None = None,
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> FanOutAuditResponse | None:
     """The current analysis's fan-out audit — each of the K parallel discoverers' dimensions

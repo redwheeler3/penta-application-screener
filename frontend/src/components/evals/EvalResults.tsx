@@ -100,7 +100,8 @@ function ResultBody({ mode, result }: EvalCaseOutcome): ReactNode {
     case "scoring":
       return (
         <div className="eval-case-result-body">
-          <span className="eval-mono">score {result.score}</span> · {result.confidence} confidence
+          <span className="eval-mono">{result.score === null ? "No score returned" : `score ${result.score}`}</span>
+          {result.score !== null ? ` · ${result.confidence} confidence` : null}
           {result.evidence ? <ModelText text={`“${result.evidence}”`} className="eval-case-result-ev" /> : null}
           {result.failures.map((f) => (
             <div key={f} className="eval-check-detail">
@@ -140,7 +141,9 @@ function ResultBody({ mode, result }: EvalCaseOutcome): ReactNode {
           <span className="eval-mono">{result.marker}</span> {Math.round(result.agreement * 100)}% agreement over K —{" "}
           {Object.entries(result.tally).map(([v, n]) => `${v}×${n}`).join(", ")}
           <span className="eval-verdict">
-            {" · "}score {result.scoreMin.toFixed(2)}..{result.scoreMax.toFixed(2)}
+            {" · "}{result.scoreMin === null || result.scoreMax === null
+              ? "No scores returned"
+              : `score ${result.scoreMin.toFixed(2)}..${result.scoreMax.toFixed(2)}`}
           </span>
           <StabilityRuns runs={result.runs} />
         </div>

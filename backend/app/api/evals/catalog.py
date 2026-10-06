@@ -8,16 +8,18 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import supports_reasoning_effort
-from app.api.dependencies import require_current_user
+from app.api.dependencies import require_admin
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
     current_model,
     current_prompt_version,
     current_reasoning_effort,
     live_case_keys,
+    require_local_fixture_write,
     result_model,
     result_reasoning_effort,
 )
+from app.core.config import get_settings
 from app.core.problems import Problem
 from app.core.time import utc_isoformat
 from app.db.models import EvalRun, User
@@ -43,7 +45,7 @@ router = APIRouter()
 
 
 @router.get("/catalog", response_model=EvalCatalogResponse)
-def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
+def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
     """List the runnable evals + how many model calls each run costs (for the UI's
     spend-confirm). Free — computed from the committed fixtures, no model calls."""
     golden = load_golden()
@@ -56,7 +58,7 @@ def catalog(user: User = Depends(require_current_user)) -> EvalCatalogResponse:
     decomposition = load_decomposition_cases()
     decomposition_calls = len(decomposition)
     n_screening = len(load_screening_cases())  # one screening call per applicant
-    return EvalCatalogResponse(evals=[
+    return EvalCatalogResponse(fixture_editing_enabled=get_settings().eval_fixture_editing_enabled, evals=[
         EvalDescriptor(
             key="invariants", label="Invariants",
             description="Deterministic checks on the committed baseline fixture (poles "
@@ -165,7 +167,7 @@ def _invariants_response() -> InvariantsResponse:
 
 
 @router.get("/invariants", response_model=InvariantsResponse)
-def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse:
+def invariants(user: User = Depends(require_admin)) -> InvariantsResponse:
     """Run the deterministic invariants over the committed fixture. Free (no model calls).
     (Judgement signals — overlap, carry-forward rate — live on the Observability tab over the
     live run, which shows them better; they aren't duplicated here.)"""
@@ -174,13 +176,14 @@ def invariants(user: User = Depends(require_current_user)) -> InvariantsResponse
 
 @router.post("/baseline", response_model=InvariantsResponse)
 def rebaseline(
-    user: User = Depends(require_current_user), db: Session = Depends(get_db)
+    user: User = Depends(require_admin), db: Session = Depends(get_db)
 ) -> InvariantsResponse:
     """Re-record the invariant baseline fixture from the CURRENT Rank. Writes the committed
     rank_baseline.json — a deliberate re-bless, committed to git afterward — then returns
     the invariants of the fresh fixture. Free (no model calls; reads the stored run).
     409 if there is no current Rank to record."""
     try:
+        require_local_fixture_write(db, user.id)
         record(db)
     except RuntimeError as exc:
         raise Problem("run_required", detail=str(exc)) from exc
@@ -189,7 +192,7 @@ def rebaseline(
 
 @router.get("/last-run", response_model=LastRunResponse)
 def last_run(
-    keys: str, user: User = Depends(require_current_user), db: Session = Depends(get_db)
+    keys: str, user: User = Depends(require_admin), db: Session = Depends(get_db)
 ) -> LastRunResponse:
     """The most recent persisted run for EACH of the comma-separated ``keys`` (a tab restores
     its last run(s) on remount — Live scoring passes ``scoring``; Judge passes

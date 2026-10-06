@@ -23,12 +23,13 @@ Costs real model calls, so it runs from the Evals tab (POST /evals/judge), never
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 
 from app.ai.analysis import derive_prompt_version
 from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
 from app.evals import stability
+from app.evals.case_schema import validate_case
+from app.evals.fixture_files import read_json
 from app.evals.paths import (
     CONSOLIDATION_GOLDEN_PATH,
     DECOMPOSITION_GOLDEN_PATH,
@@ -59,7 +60,7 @@ def prompt_version() -> str:
     with the briefs it actually used. Editing and saving any brief changes this hash, which is
     what marks a prior judge run stale (the ``blind-audit`` constant never did). Uses the same
     ``derive_prompt_version`` sha the production passes use, so the two read alike."""
-    briefs = [json.loads(path.read_text()).get("judge_background", "") for path in _PASS_FILES.values()]
+    briefs = [read_json(path).get("judge_background", "") for path in _PASS_FILES.values()]
     return derive_prompt_version(*briefs)
 
 
@@ -94,9 +95,10 @@ def load_cases() -> tuple[JudgeCase, ...]:
     (docs/eval-case-schema.md). Order: the definition order of _PASS_FILES."""
     cases: list[JudgeCase] = []
     for pass_name, path in _PASS_FILES.items():
-        data = json.loads(path.read_text())
+        data = read_json(path)
         background = data.get("judge_background", "")
         for c in data["cases"]:
+            validate_case(pass_name, c)
             meta = c["metadata"]
             cases.append(
                 JudgeCase(

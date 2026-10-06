@@ -33,7 +33,7 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     # and record the merge (source_keys + reasoning) in criteria.decompose_audit.
     from app.services.ranking.analysis import get_latest_analysis
 
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     a = add_eligible(db, email="a@x.com", raw_hash="h1")
 
     discovered = PoolDimensionReport(
@@ -125,7 +125,7 @@ async def test_post_score_consolidation_merges_correlated_duplicate() -> None:
     from app.db.models import DimensionAlias
     from app.services.ranking.analysis import get_latest_analysis
 
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     apps = [add_eligible(db, email=f"a{i}@x.com", raw_hash=f"h{i}") for i in range(4)]
 
     discovered = PoolDimensionReport(

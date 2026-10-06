@@ -21,13 +21,14 @@ from the AI Quality tab, never as part of pytest/CI.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.ai.provider import AIProvider
 from app.ai.schemas import PetFacts, ScreeningReport
 from app.ai.screening import SYSTEM_PROMPT, build_prompt
+from app.evals.case_schema import validate_case
+from app.evals.fixture_files import read_json
 from app.evals.paths import SCREENING_GOLDEN_PATH
 from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
@@ -105,9 +106,10 @@ def _normalize_fires(fires: list[str | list[str]] | str) -> list[str | list[str]
 def load_cases(path: Path = SCREENING_GOLDEN_PATH) -> tuple[ScreeningCase, ...]:
     """Load the golden screening cases, flattening the by-consumer blocks (metadata / given —
     see docs/eval-case-schema.md) into the flat runner case."""
-    data = json.loads(path.read_text())
+    data = read_json(path)
     cases = []
     for c in data["cases"]:
+        validate_case("screening", c)
         given, meta, expected = c["given"], c["metadata"], c["metadata"]["expected"]
         cases.append(
             ScreeningCase(

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -57,6 +58,11 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def eval_fixture_editing_enabled(self) -> bool:
+        """Versioned corpus edits belong to local development, not a hosted image."""
+        return not self.fly_app_name and urlparse(self.frontend_url).hostname in {"localhost", "127.0.0.1", "::1"}
 
     @property
     def oauth_state_cookie_secure(self) -> bool:

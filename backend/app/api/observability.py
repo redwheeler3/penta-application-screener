@@ -7,19 +7,19 @@ because these span every run kind — Screen, Rank, and score-current — not ra
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_current_user
+from app.api.dependencies import require_admin
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.observability import CostReport, LastRunsReport, MetricsReport
 from app.services.cost_report import cost_report, last_runs_report
 from app.services.metrics import metrics_report
 
-router = APIRouter(prefix="/observability", tags=["observability"])
+router = APIRouter(prefix="/observability", tags=["observability"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/cost", response_model=CostReport)
 def observability_cost(
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> CostReport:
     """Cumulative AI spend for the Observability tab, grouped by run."""
@@ -28,7 +28,7 @@ def observability_cost(
 
 @router.get("/last-runs", response_model=LastRunsReport)
 def observability_last_runs(
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> LastRunsReport:
     """The most recent Screen and Rank runs, each with fresh spend + cache savings."""
@@ -37,7 +37,7 @@ def observability_last_runs(
 
 @router.get("/metrics", response_model=MetricsReport)
 def observability_metrics(
-    user: User = Depends(require_current_user),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> MetricsReport:
     """Operational trends across all completed runs — cost/tokens/latency/cache-hit/

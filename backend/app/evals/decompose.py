@@ -24,7 +24,6 @@ from the AI Quality tab, never as part of pytest/CI.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +36,8 @@ from app.evals._categorical import (
     emit_stability_summary,
     grade_verdict,
 )
+from app.evals.case_schema import validate_case
+from app.evals.fixture_files import read_json
 from app.evals.paths import DECOMPOSITION_GOLDEN_PATH
 from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
@@ -59,9 +60,10 @@ class DecompositionCase:
 def load_cases(path: Path = DECOMPOSITION_GOLDEN_PATH) -> tuple[DecompositionCase, ...]:
     """Load the golden decomposition cases, flattening the by-consumer blocks (metadata /
     given — see docs/eval-case-schema.md) into the flat runner case."""
-    data = json.loads(path.read_text())
+    data = read_json(path)
     cases = []
     for c in data["cases"]:
+        validate_case("decomposition", c)
         meta = c["metadata"]
         cases.append(
             DecompositionCase(

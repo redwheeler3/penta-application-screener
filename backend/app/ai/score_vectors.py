@@ -1,7 +1,7 @@
 """Per-dimension score vectors + their pairwise correlation — the shared signal for
 detecting when two dimensions are the same axis re-carved.
 
-Every scored dimension has a vector of per-applicant 0..1 scores. Two carvings of one
+Every scored dimension has a vector of per-applicant -1..+1 scores. Two carvings of one
 concept move together candidate by candidate (high Pearson r); two genuinely distinct
 axes need not. High r is a *flag to inspect*, never an automatic verdict — a pair can
 correlate for a real reason (two distinct skills both tracking "high-agency applicant"),
@@ -49,7 +49,9 @@ def pearson(xs: list[float], ys: list[float]) -> float | None:
     return cov / sqrt(var_x * var_y)
 
 
-def load_score_vectors(db: Session) -> dict[str, dict[int, float]]:
+def load_score_vectors(
+    db: Session, *, application_ids: list[int] | None = None, dimension_keys: list[str] | None = None,
+) -> dict[str, dict[int, float]]:
     """Every selected dimension key → {consumer application_id: selected score}.
 
     Uses the same selected results as the ranker. First-seen criterion order is
@@ -71,10 +73,15 @@ def load_score_vectors(db: Session) -> dict[str, dict[int, float]]:
         .where(ApplicationAIResult.kind.like(f"{KIND_PREFIX}:%"))
         .subquery()
     )
-    rows = db.execute(select(history.c.kind, ApplicationAISelection.application_id, history.c.output)
+    query = (select(history.c.kind, ApplicationAISelection.application_id, history.c.output)
         .join(ApplicationAISelection, ApplicationAISelection.result_id == history.c.id)
         # Equal correlations retain criterion order in the nomination list and model prompt.
         .order_by(history.c.first_seen_at, history.c.first_seen_id, ApplicationAISelection.application_id))
+    if application_ids is not None:
+        query = query.where(ApplicationAISelection.application_id.in_(application_ids))
+    if dimension_keys is not None:
+        query = query.where(history.c.kind.in_([f"{KIND_PREFIX}:{key}" for key in dimension_keys]))
+    rows = db.execute(query)
     vectors: dict[str, dict[int, float]] = {}
     for kind, application_id, output in rows:
         key = kind.split(":", 1)[1]  # strip the "dimension_scoring:" prefix

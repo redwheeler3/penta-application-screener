@@ -57,7 +57,7 @@ export function RunnableEval(props: {
 
   const { caseEvalKey, modes } = props;
   const editable = props.editable ?? true;
-  const addable = props.addable ?? editable;
+  const addable = editable && (props.addable ?? true);
   const [selected, setSelected] = useState<string | null>(null); // selected case key
   const [editing, setEditing] = useState<{ existing: Record<string, unknown> | null } | null>(null);
   const saves = useRef<Promise<void>>(Promise.resolve());
@@ -192,7 +192,7 @@ export function RunnableEval(props: {
           />
         </div>
         <div className="eval-detail-pane">
-          {editing ? (
+          {editable && editing ? (
             <EvalCaseEditor
               key={editing.existing === null ? `${caseEvalKey}:add` : `${caseEvalKey}:edit:${editing.existing.key}`}
               evalKey={caseEvalKey}

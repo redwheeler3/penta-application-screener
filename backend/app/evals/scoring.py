@@ -32,6 +32,8 @@ from app.ai.schemas import (
     DimensionScoringReport,
     PoolDimension,
 )
+from app.evals.case_schema import validate_case
+from app.evals.fixture_files import read_json
 from app.evals.paths import GOLDEN_PATH
 from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
 
@@ -50,7 +52,7 @@ class GoldenCase:
 @dataclass(frozen=True)
 class CaseResult:
     case: GoldenCase
-    score: float
+    score: float | None
     confidence: str
     evidence: str
     failures: list[str] = field(default_factory=list)  # deterministic band/confidence breaches
@@ -64,7 +66,9 @@ def load_golden(path: Path = GOLDEN_PATH) -> tuple[GoldenCase, ...]:
     """Load the golden cases, flattening the by-consumer blocks (metadata / given — see the
     fixture's `_comment`) into the flat GoldenCase the runner uses. The on-disk grouping
     documents WHO sees each field; the runner doesn't care, so it's flattened here."""
-    data = json.loads(path.read_text())
+    data = read_json(path)
+    for case in data["cases"]:
+        validate_case("scoring", case)
     return tuple(
         GoldenCase(
             key=c["key"],
@@ -144,7 +148,7 @@ def run_case(
     if score is None:
         emit(on_delta, f"⚠️ Model returned no score for `{case.dimension.key}`.\n")
         return CaseResult(
-            case=case, score=float("nan"), confidence="?", evidence="",
+            case=case, score=None, confidence="?", evidence="",
             failures=[f"model returned no score for {case.dimension.key}"],
         )
 
@@ -214,12 +218,12 @@ class ScoringStabilityResult:
 
     case: GoldenCase
     stability: StabilityReport  # outcomes are "pass"/"fail" tokens
-    scores: list[float]
+    scores: list[float | None]
 
     @property
-    def score_spread(self) -> tuple[float, float]:
-        real = [s for s in self.scores if s == s]  # drop NaN (no-score runs)
-        return (min(real), max(real)) if real else (float("nan"), float("nan"))
+    def score_spread(self) -> tuple[float | None, float | None]:
+        real = [s for s in self.scores if s is not None]
+        return (min(real), max(real)) if real else (None, None)
 
 
 def stability_run(
@@ -236,12 +240,12 @@ def stability_run(
     token per run is 'pass'/'fail' on the band check; the shared core tallies the flip, and the
     score spread is surfaced as informational."""
     emit(on_delta, f"Scoring **{case.dimension.name}** x{k} on `{scoring_model}`…\n\n")
-    scores: list[float] = []  # appended from concurrent runs; order-free (only min/max is read)
+    scores: list[float | None] = []  # order-free: concurrent results only supply the range
 
     def run_once() -> tuple[str, str]:
         score = _score_once(provider, case, scoring_model=scoring_model)
         if score is None:
-            scores.append(float("nan"))
+            scores.append(None)
             return "fail", "model returned no score"
         scores.append(score.score)
         outcome = "fail" if _check_expectations(score, case.expected) else "pass"
@@ -254,7 +258,8 @@ def stability_run(
     out = ScoringStabilityResult(case=case, stability=report, scores=scores)
     lo, hi = out.score_spread
     tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally} · score {lo:+.2f}..{hi:+.2f}\n")
+    spread = f"score {lo:+.2f}..{hi:+.2f}" if lo is not None and hi is not None else "no scores returned"
+    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally} · {spread}\n")
     return out
 
 

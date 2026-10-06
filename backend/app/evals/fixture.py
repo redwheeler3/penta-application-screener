@@ -1,36 +1,30 @@
-"""Record / load an eval fixture: one Rank's model output, PII-safe and committable.
+"""Record current criteria and scoped selected scores for an eval baseline.
 
-WHAT'S IN IT (all model output ABOUT the criteria, never applicant PII):
-  - ``dimensions``: each settled axis's key / name / definition / high_end / low_end /
-    why_it_differentiates / from_committee_request — the discovery+decompose output.
-  - ``decompose`` / ``match`` / ``consolidate``: the audit trails (merge decisions,
-    carry-forward map, nominated pairs) — reasoning about axes, not people.
-  - ``score_vectors``: per-dimension arrays of -1..+1 scores. Candidates are keyed by an
-    OPAQUE INDEX (0, 1, 2, …), not their real application_id — the fixture records the
-    SHAPE of how scores vary across the pool, which is what the properties check, with no
-    way to tie a column back to a person.
+The latest analysis supplies shared criteria/audits; its opening supplies the active
+consumer cohort. Opaque columns align scores without exposing application IDs. Capture
+uses persisted configuration and selected producer provenance, not live prompts or guessed
+ledger positions. Baseline recording is local; commit/deploy the versioned file to use it
+in hosted evals.
 
-WHAT'S NOT: no names, emails, essays, raw rows, or application_ids. The recorder maps
-every real id to a stable opaque index and drops the mapping. It also STRIPS every
-model narrative: free-text reasoning cites applicant specifics as examples ("care-home
-choir", income splits) while discussing axes, and no eval property reads a narrative
-anyway — so dropping them removes the only PII-leak surface at the source rather than
-scrubbing prose. The result is safe to commit under the "no applicant data in the repo"
-rule.
+Top-level narratives and settled-dimension justifications are excluded. Nested audit prose
+is retained, so this exporter does not guarantee that arbitrary real applicant data is safe
+to commit. Review provenance/content before committing a fixture.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.dimension_scoring import KIND_PREFIX
 from app.ai.score_vectors import load_score_vectors
-from app.db.models import Analysis, RunCostLedger
+from app.db.models import Analysis, ApplicationAIResult, ApplicationAISelection
+from app.evals.fixture_files import read_json, write_json
 from app.evals.paths import FIXTURE_PATH
+from app.services.applications.scope import opening_ai_applications
 from app.services.ranking.analysis import get_latest_analysis
 from app.services.ranking.audit import (
     consolidate_audit_view,
@@ -42,16 +36,13 @@ from app.services.ranking.dimensions import current_dimension_report
 
 @dataclass(frozen=True)
 class Provenance:
-    """What produced a recorded Rank — the metadata an honest eval needs to attribute a
-    verdict to the exact prompt and model that generated the output under review.
+    """Captured pool-pass configuration and the selected scores' producer provenance.
 
-    ``pass_models`` is EXACT: read from the run's rank ledger (`RunPassCost.model_id`), so
-    it's the model each pass actually ran on. ``pass_prompt_versions`` is
-    current-at-record: the pool passes are uncached, so their `PROMPT_VERSION` is not
-    persisted per-run — but the recorder is invoked deliberately right after blessing a
-    run, when the modules still hold the prompts that produced it, so reading them now is
-    faithful. (If a prompt is edited between the run and the record, the recorder is being
-    misused — record before editing, per the capture-to-fixture rule.)"""
+    Pool models are captured semantic identities, not proof that a call ran or a billing
+    receipt. Scoring uses the selected results' actual producer route and prompt. Missing
+    history or multiple scoring producers/versions leave that entry unknown (absent).
+    Neither live prompt modules nor unrelated ledger rows can reconstruct missing facts.
+    """
 
     pass_models: dict[str, str] = field(default_factory=dict)
     pass_prompt_versions: dict[str, str] = field(default_factory=dict)
@@ -59,7 +50,7 @@ class Provenance:
 
 @dataclass(frozen=True)
 class EvalFixture:
-    """A recorded Rank's output, the substrate every property scores."""
+    """Current criteria, audits and scoped scores for an eval snapshot."""
 
     dimensions: list[dict]
     decompose: dict | None
@@ -72,49 +63,44 @@ class EvalFixture:
     provenance: Provenance = field(default_factory=Provenance)
 
 
-# Pass label (the canonical RunPassCost/cost-report label) -> the AI module whose
-# PROMPT_VERSION drove it. The rank-chain passes only; screening is a separate step.
-# Kept beside the recorder so a new pass is added here when its label is added upstream.
-_PASS_PROMPT_MODULES = {
-    "Pattern discovery": "app.ai.dimension_discovery",
-    "Dimension decomposition": "app.ai.dimension_decomposition",
-    "Dimension matching": "app.ai.dimension_matching",
-    "Dimension scoring": "app.ai.dimension_scoring",
-    "Dimension consolidation": "app.ai.dimension_consolidation",
-}
-
-
-def _build_provenance(db: Session, analysis: Analysis) -> Provenance:
-    """The exact models + current prompt versions behind ``analysis``.
-
-    Models: the analysis's rank ledger, correlated by creation order — rank ledgers and
-    ``Analysis`` rows are created 1:1 per request, so the Nth rank ledger pairs with the Nth
-    analysis (the same no-FK correlation ``metrics.py`` uses). A pass that made no call
-    records "" for its model; dropped here so the map holds only passes that actually ran.
-    Prompt versions: imported live from each pass module (see ``Provenance``)."""
-    rank_ledgers = list(
-        db.scalars(select(RunCostLedger).where(RunCostLedger.kind == "rank").order_by(RunCostLedger.id.asc()))
-    )
-    analyses = list(db.scalars(select(Analysis).order_by(Analysis.id.asc())))
+def _build_provenance(
+    db: Session, analysis: Analysis, application_ids: list[int], dimension_keys: list[str],
+) -> Provenance:
+    """Read recorded sources; unknown history stays unknown."""
+    audit = analysis.audit
+    criteria_config = ((audit.fan_out or {}).get("configuration") or {}) if audit else {}
+    consolidate_config = ((audit.consolidate or {}).get("configuration") or {}) if audit else {}
     pass_models: dict[str, str] = {}
-    try:
-        nth = analyses.index(analysis)
-    except ValueError:
-        nth = -1
-    if 0 <= nth < len(rank_ledgers):
-        pass_models = {p.label: p.model_id for p in rank_ledgers[nth].passes if p.model_id}
+    pass_prompt_versions: dict[str, str] = {}
+    for label, name, config in (
+        ("Pattern discovery", "discovery", criteria_config),
+        ("Dimension decomposition", "decompose", criteria_config),
+        ("Dimension matching", "match", criteria_config),
+        ("Dimension consolidation", "consolidate", consolidate_config),
+    ):
+        captured = config.get("passes", {}).get(name, {})
+        if captured.get("model"):
+            pass_models[label] = captured["model"]
+        if captured.get("prompt_version"):
+            pass_prompt_versions[label] = captured["prompt_version"]
 
-    import importlib
-
-    pass_prompt_versions = {
-        label: importlib.import_module(module).PROMPT_VERSION
-        for label, module in _PASS_PROMPT_MODULES.items()
-    }
+    sources = db.execute(select(ApplicationAIResult.model_id, ApplicationAIResult.prompt_version)
+        .join(ApplicationAISelection, ApplicationAISelection.result_id == ApplicationAIResult.id)
+        .where(ApplicationAISelection.application_id.in_(application_ids),
+               ApplicationAISelection.kind.in_([f"{KIND_PREFIX}:{key}" for key in dimension_keys])))
+    models, versions = set(), set()
+    for model, version in sources:
+        models.add(model)
+        versions.add(version)
+    if len(models) == 1:
+        pass_models["Dimension scoring"] = models.pop()
+    if len(versions) == 1:
+        pass_prompt_versions["Dimension scoring"] = versions.pop()
     return Provenance(pass_models=pass_models, pass_prompt_versions=pass_prompt_versions)
 
 
 def build_fixture(db: Session, analysis: Analysis) -> EvalFixture:
-    """Assemble a PII-safe fixture from a persisted Rank (its shared ``Analysis``).
+    """Assemble current criteria, audits and scoped selected scores for an analysis.
 
     Score vectors are re-keyed from real application_id to an opaque, stable column
     index shared across dimensions (so a candidate is the same column in every axis, and
@@ -123,7 +109,9 @@ def build_fixture(db: Session, analysis: Analysis) -> EvalFixture:
     report = current_dimension_report(analysis)
     report_dims = [d.model_dump(mode="json") for d in report.dimensions] if report else []
 
-    raw_vectors = load_score_vectors(db)  # {key: {application_id: score}}
+    application_ids = [app.id for app in opening_ai_applications(db, analysis.opening_id)] if analysis.opening_id else []
+    dimension_keys = [d["key"] for d in report_dims]
+    raw_vectors = load_score_vectors(db, application_ids=application_ids, dimension_keys=dimension_keys)
     # One shared column order across ALL dimensions: sort the union of scored ids, and
     # emit a full-width vector per dimension with None where a candidate wasn't scored.
     # Shared columns keep the vectors alignable so a pair correlates over the slots both
@@ -148,7 +136,7 @@ def build_fixture(db: Session, analysis: Analysis) -> EvalFixture:
         match=_strip_narrative(match_audit_view(analysis)),
         consolidate=_strip_narrative(consolidate_audit_view(db, analysis)),
         score_vectors=score_vectors,
-        provenance=_build_provenance(db, analysis),
+        provenance=_build_provenance(db, analysis, application_ids, dimension_keys),
     )
 
 
@@ -157,7 +145,7 @@ _NARRATIVE_KEYS = ("narrative", "match_narrative")
 
 
 def _strip_narrative(audit: dict | None) -> dict | None:
-    """A copy of the audit with any free-text narrative removed (PII-leak surface)."""
+    """A copy without the top-level narrative fields."""
     if not audit:
         return audit
     return {k: v for k, v in audit.items() if k not in _NARRATIVE_KEYS}
@@ -178,7 +166,7 @@ def _to_json(fixture: EvalFixture) -> dict:
 
 
 def record(db: Session, path: Path = FIXTURE_PATH) -> EvalFixture:
-    """Record the current Rank to ``path`` (pretty JSON, git-committed). Deliberate:
+    """Record the latest analysis across openings and its scoped scores to ``path``. Deliberate:
     re-baseline after blessing a run's output — invoked from the Evals tab
     (POST /evals/baseline), then committed to git."""
     analysis = get_latest_analysis(db)
@@ -186,13 +174,13 @@ def record(db: Session, path: Path = FIXTURE_PATH) -> EvalFixture:
         raise RuntimeError("No ranking run to record — run a Rank first.")
     fixture = build_fixture(db, analysis)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_to_json(fixture), indent=2, sort_keys=True))
+    write_json(path, _to_json(fixture), sort_keys=True)
     return fixture
 
 
 def load(path: Path = FIXTURE_PATH) -> EvalFixture:
     """Load the committed fixture for the eval tests."""
-    data = json.loads(path.read_text())
+    data = read_json(path)
     prov = data.get("provenance") or {}
     return EvalFixture(
         dimensions=data["dimensions"],

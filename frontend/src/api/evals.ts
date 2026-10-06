@@ -14,7 +14,7 @@ export function createApi(client: ApiClient) {
   // --- Evals tab -------------------------------------------------------------
 
   // The runnable evals + their spend estimates (free; no model calls).
-  const fetchEvalCatalog = () => getJson<{ evals: EvalDescriptor[] }>("/evals/catalog");
+  const fetchEvalCatalog = () => getJson<{ evals: EvalDescriptor[]; fixtureEditingEnabled: boolean }>("/evals/catalog");
 
   // Deterministic invariants over the baseline fixture (free).
   const fetchEvalInvariants = () => getJson<InvariantsResult>("/evals/invariants");

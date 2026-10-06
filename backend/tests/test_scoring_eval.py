@@ -16,6 +16,37 @@ from app.ai.schemas import (
 )
 from app.evals.scoring import load_golden, run_case, stability_run
 
+
+def test_missing_scores_have_no_numeric_value_or_range_and_keep_failure_reason() -> None:
+    case = load_golden()[0]
+    provider = MockProvider()
+    for _ in range(3):
+        provider.queue(DimensionScoringReport(scores=[]))
+    result = run_case(provider, case, scoring_model="m")
+    assert result.score is None
+    assert not result.passed
+    assert result.failures
+    chunks = []
+    stable = stability_run(provider, case, scoring_model="m", k=2, on_delta=chunks.append)
+    assert stable.scores == [None, None]
+    assert stable.score_spread == (None, None)
+    assert stable.stability.tally == {"fail": 2}
+    assert all("no score" in run.detail for run in stable.stability.runs)
+    assert "no scores returned" in "".join(chunks)
+
+
+def test_score_spread_uses_only_returned_scores() -> None:
+    case = load_golden()[0]
+    provider = MockProvider()
+    provider.queue(DimensionScoringReport(scores=[]))
+    provider.queue(DimensionScoringReport(scores=[DimensionScore(
+        dimension_key=case.dimension.key, score=0.25, confidence=ScoreConfidence.LOW,
+        rationale="Synthetic rationale", evidence="Synthetic evidence",
+    )]))
+    result = stability_run(provider, case, scoring_model="m", k=2)
+    assert result.score_spread == (0.25, 0.25)
+    assert len(result.stability.runs) == 2
+
 _EXPECT_KEYS = {"score_min", "score_max", "confidence"}
 
 

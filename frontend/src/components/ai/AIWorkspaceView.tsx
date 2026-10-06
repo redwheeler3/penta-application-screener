@@ -60,11 +60,12 @@ export function AIWorkspaceView(props: {
   const { family, onToast, onError } = props;
   const toast = { onToast, onError };
   const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
+  const [fixtureEditingEnabled, setFixtureEditingEnabled] = useState<boolean | null>(null);
   useEffect(() => {
     if (family !== "eval") return;
     let active = true;
     fetchEvalCatalog()
-      .then((data) => { if (active) setCatalog(data.evals); })
+      .then((data) => { if (active) { setCatalog(data.evals); setFixtureEditingEnabled(data.fixtureEditingEnabled); } })
       .catch(() => { if (active) setCatalog([]); });
     return () => { active = false; };
   }, [family, fetchEvalCatalog]);
@@ -137,6 +138,9 @@ export function AIWorkspaceView(props: {
         })}
       </div>
 
+      {family === "eval" && fixtureEditingEnabled === false ? (
+        <p className="panel-hint">Edit fixtures locally, then deploy the committed files to use them here.</p>
+      ) : null}
       <div className="observability-subtab-body">
         {activeTab === "discovery" && props.run ? (
           // Key by analysisId so an analysis change remounts the panel (its fetch is mount-once).
@@ -150,12 +154,13 @@ export function AIWorkspaceView(props: {
         ) : activeTab === "metrics" ? (
           <MetricsPanel />
         ) : activeTab === "invariants" ? (
-          <InvariantsEval />
+          <InvariantsEval editable={fixtureEditingEnabled === true} />
         ) : passTab && passConfig ? (
           <RunnableEval
             key={passTab}
             {...toast}
             caseEvalKey={passTab}
+            editable={fixtureEditingEnabled === true}
             runKeys={[passTab, passConfig.stability]}
             description={passConfig.description}
             modes={[
@@ -168,11 +173,12 @@ export function AIWorkspaceView(props: {
             key="judge"
             {...toast}
             caseEvalKey="judge"
+            editable={fixtureEditingEnabled === true}
             runKeys={["judge", "stability"]}
             groupBy="pass"
             addable={false}
-            header={<JudgeBackgrounds {...toast} />}
-            description="A blind label audit: for every pass's golden cases, an independent model reproduces that pass's output from the pass's brief + the case input (NOT the human label), then the harness compares to the label. A judge run reports judge-vs-human agreement (κ); a stability run repeats each case K times to see if the judge's verdict flips. Cases are grouped by the pass they exercise; editing one here writes to that pass's own golden file. Add new cases from the pass's own tab."
+            header={<JudgeBackgrounds {...toast} editable={fixtureEditingEnabled === true} />}
+            description="A blind label audit: for every pass's golden cases, an independent model reproduces that pass's output from the pass's brief + the case input (NOT the human label), then the harness compares to the label. A judge run reports judge-vs-human agreement (κ); a stability run repeats each case K times to see if the judge's verdict flips. Cases are grouped by the pass they exercise."
             modes={
               [
                 { evalKey: "judge", label: "Run judge + agreement", rowLabel: "Run judge", calls: calls("judge") },

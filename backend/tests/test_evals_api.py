@@ -39,13 +39,13 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-def setup_app():
+def setup_app(role=UserRole.ADMIN):
     engine = create_engine(
         "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
-    user = User(email="m@x.com", display_name="M", role=UserRole.MEMBER, is_active=True)
+    user = User(email="m@x.com", display_name="M", role=role, is_active=True)
     db.add(user)
     db.commit()
     app = shared_test_app()
@@ -525,3 +525,30 @@ async def test_put_case_rejects_invalid_payload_without_writing() -> None:
     async with AsyncClient(transport=transport, base_url="http://t") as client:
         resp = await client.put("/evals/cases/scoring", json={"case": {"key": "x"}})
     assert resp.status_code == 422
+
+
+@pytest.mark.parametrize("mode", ["run", "stability"])
+async def test_missing_scores_stay_nullable_in_live_and_saved_json(mode):
+    from sqlalchemy import text
+
+    from app.evals.scoring import load_golden
+
+    app, db, provider = setup_app()
+    case = load_golden()[0]
+    for _ in range(2 if mode == "stability" else 1):
+        provider.queue(DimensionScoringReport(scores=[]))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        events = await _stream_events(client, f"/evals/scoring?mode={mode}&k=2&case={case.key}")
+        summary = next(event for event in events if event["type"] == "summary")
+        restored = (await client.get(f"/evals/last-run?keys={summary['eval']}")).json()["runs"][0]["result"]
+    result = summary["result"]["cases"][0]
+    if mode == "stability":
+        assert result["scoreMin"] is None
+        assert result["scoreMax"] is None
+        assert result["tally"] == {"fail": 2}
+    else:
+        assert result["score"] is None
+        assert not result["passed"]
+    assert restored == summary["result"]
+    assert db.execute(text("SELECT json_valid(result) FROM eval_runs")).scalar_one() == 1
+    json.dumps(restored, allow_nan=False)

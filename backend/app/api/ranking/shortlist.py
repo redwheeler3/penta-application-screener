@@ -97,7 +97,7 @@ def ranking_board(
     """Criteria, scores, and tiers from the same captured member view."""
     resolved = resolve_visible_opening_id(db, opening_id)
     member_ranking = _current_member_view(db, user, resolved, "ranking")
-    run = run_payload(db, member_ranking)
+    run = run_payload(db, member_ranking, user)
     if run is None:
         raise Problem("run_required", detail="Discover patterns before ranking.")
     return RankingBoardResponse(

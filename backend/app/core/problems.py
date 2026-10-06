@@ -42,6 +42,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "session_changed": (409, "Your session changed"),
     "session_switch_required": (409, "Choose a committee account"),
     "forbidden": (403, "Admin access required"),
+    "eval_fixtures_read_only": (403, "Eval fixtures are read-only"),
     "not_found": (404, "Resource not found"),
     "validation_error": (422, "Request validation failed"),
     "rate_limited": (429, "Too many requests"),

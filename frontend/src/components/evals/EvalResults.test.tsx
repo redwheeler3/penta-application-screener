@@ -11,6 +11,24 @@ const contested: CategoricalEvalCaseResult = {
 };
 
 describe("eval result presentation", () => {
+  it("renders a missing score without inventing zero or confidence", () => {
+    render(<EvalCaseResultView outcome={{ mode: "scoring", result: {
+      key: "missing", passed: false, score: null, confidence: "?", evidence: "",
+      failures: ["model returned no score"],
+    } }} />);
+    expect(screen.getByText("No score returned")).toBeInTheDocument();
+    expect(screen.getByText("model returned no score")).toBeInTheDocument();
+    expect(screen.queryByText(/confidence/)).toBeNull();
+  });
+
+  it("renders the live and saved all-missing stability shape without crashing", () => {
+    const result = { key: "missing", marker: "[stable]", agreement: 1, tally: { fail: 2 },
+      scoreMin: null, scoreMax: null, runs: [{ outcome: "fail", detail: "model returned no score" }] };
+    const saved = JSON.parse(JSON.stringify(result)) as typeof result;
+    render(<EvalCaseResultView outcome={{ mode: "scoring_stability", result: saved }} />);
+    expect(screen.getByText(/No scores returned/)).toBeInTheDocument();
+    expect(screen.getByText("model returned no score")).toBeInTheDocument();
+  });
   it("rejects mismatched modes and payloads in both live and saved run contracts", () => {
     type CategoricalPayload = { cases: CategoricalEvalCaseResult[] };
     expectTypeOf<{ eval: "matching"; result: CategoricalPayload }>().toMatchTypeOf<EvalRunSummary>();

@@ -125,7 +125,7 @@ async def test_full_flow_rank_then_detail() -> None:
 
 @pytest.mark.anyio
 async def test_score_current_fills_only_missing_scores_without_replacing_run() -> None:
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -192,7 +192,7 @@ async def test_score_current_requires_existing_criteria() -> None:
 async def test_observability_cost_aggregates_by_pass() -> None:
     # After a rank, the cost report sums stored spend by pass: scoring from
     # ApplicationAIResult, discovery from the run. (Screening isn't run in this flow.)
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -236,7 +236,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
     # scoring caches, so its ledger shows cached counts and a saved estimate.
     from app.schemas.settings import AISettings
 
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -280,7 +280,7 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
 @pytest.mark.anyio
 async def test_cost_surfaces_agree_on_rank_passes() -> None:
     # Both cost surfaces must cover the same pass labels despite reading different stores.
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -302,7 +302,7 @@ async def test_cost_surfaces_agree_on_rank_passes() -> None:
 @pytest.mark.anyio
 async def test_observability_metrics_trends_after_a_rank() -> None:
     # Metrics include run latency, the final dimension count, and a per-pass breakdown.
-    app, db, provider = setup_app(role=UserRole.MEMBER)
+    app, db, provider = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

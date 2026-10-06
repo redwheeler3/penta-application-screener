@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.model_catalog import ReasoningEffort
 from app.ai.provider import AIProvider
+from app.core.config import get_settings
 from app.core.problems import Problem
 from app.core.work_cancellation import WorkCancelled, check_cancelled
 from app.db.models import EvalRun
@@ -23,6 +24,7 @@ from app.schemas.base import ResponseModel
 from app.schemas.evals import StabilityRun
 from app.schemas.events import EvalSummaryEvent, ThinkingEvent, emit
 from app.schemas.settings import effective_reasoning_effort
+from app.services.auth.authority import require_admin_write
 from app.services.settings import get_app_settings
 from app.services.stream_worker import StreamWorker
 from app.services.work_stream import WorkStreamingResponse
@@ -32,6 +34,13 @@ from app.services.work_stream import WorkStreamingResponse
 DEFAULT_STABILITY_K = 5
 
 
+def require_local_fixture_write(db: Session, actor_id: int) -> None:
+    """Fresh admin authority fences the short local file mutation, without model I/O."""
+    if not get_settings().eval_fixture_editing_enabled:
+        raise Problem("eval_fixtures_read_only", detail="Edit fixtures locally, then commit and deploy them to update hosted evals.")
+    require_admin_write(db, actor_id)
+
+
 def persist(db: Session, eval_key: str, prompt_version: str, result: ResponseModel, thinking: str) -> None:
     """Record one run as an EvalRun row. Best-effort — a persistence failure must not fail
     the run (the result already streamed to the user)."""
@@ -39,7 +48,7 @@ def persist(db: Session, eval_key: str, prompt_version: str, result: ResponseMod
         db.add(EvalRun(
             eval_key=eval_key,
             prompt_version=prompt_version,
-            result=result.model_dump(by_alias=True),
+            result=result.model_dump(mode="json", by_alias=True),
             thinking=thinking or None,
         ))
         db.commit()

@@ -11,6 +11,8 @@ prompt version(s) it exercised, so a result is always attributable to the exact 
 
 from __future__ import annotations
 
+from pydantic import FiniteFloat
+
 from app.schemas.base import RequestModel, ResponseModel
 
 # --- catalog (free) ---------------------------------------------------------
@@ -27,6 +29,7 @@ class EvalDescriptor(ResponseModel):
 
 
 class EvalCatalogResponse(ResponseModel):
+    fixture_editing_enabled: bool
     evals: list[EvalDescriptor] = []
 
 
@@ -105,7 +108,7 @@ class _CategoricalStabilityResponse(ResponseModel):
 class ScoringCaseOut(ResponseModel):
     key: str
     passed: bool
-    score: float
+    score: FiniteFloat | None
     confidence: str
     evidence: str
     failures: list[str] = []  # deterministic band/confidence breaches
@@ -126,8 +129,8 @@ class ScoringStabilityCaseOut(ResponseModel):
     agreement: float  # modal pass/fail outcome's share of K
     flipped: bool  # the assertion pass/fail wandered across runs
     tally: dict[str, int]  # "pass"/"fail" -> count
-    score_min: float  # score spread across the K runs — informational (model noise)
-    score_max: float
+    score_min: FiniteFloat | None  # range of returned scores; null when every score is missing
+    score_max: FiniteFloat | None
     runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
 
 

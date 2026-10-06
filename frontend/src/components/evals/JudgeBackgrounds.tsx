@@ -12,6 +12,7 @@ import type { JudgeBackground } from "../../types";
 // case viewing lives in the RunnableEval below this; adding/editing cases happens in each pass's
 // own tab (the judge owns no case files).
 export function JudgeBackgrounds(props: {
+  editable?: boolean;
   // Save outcomes surface as the app's standard toasts, same as Settings — not inline text.
   onToast: (message: string) => void;
   onError: (message: string) => void;
@@ -80,8 +81,7 @@ export function JudgeBackgrounds(props: {
       <p className="eval-backgrounds-desc">
         The blind judge reproduces each pass's output from this plain-language brief plus the
         case's input (never the human label), then the harness compares to the label. Editing a
-        brief changes what the judge is told on the next run; save writes it to that pass's
-        golden file (commit to keep).
+        brief locally changes what the judge is told on the next run.
       </p>
       {items.map((b) => {
         const draft = drafts[b.passName];
@@ -93,13 +93,14 @@ export function JudgeBackgrounds(props: {
               <span className="eval-background-count">{b.caseCount} cases</span>
             </div>
             <textarea
+              readOnly={props.editable === false}
               aria-label={`${b.passName} judge brief`}
               className="eval-background-text"
               rows={4}
               value={draft ?? b.background}
               onChange={(e) => setDrafts((prev) => ({ ...prev, [b.passName]: e.target.value }))}
             />
-            <div className="eval-background-actions">
+            {props.editable !== false ? <div className="eval-background-actions">
               <button
                 type="button"
                 className="secondary-button"
@@ -108,7 +109,7 @@ export function JudgeBackgrounds(props: {
               >
                 {saving.has(b.passName) ? "Saving…" : "Save brief"}
               </button>
-            </div>
+            </div> : null}
           </div>
         );
       })}

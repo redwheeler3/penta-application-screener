@@ -12,7 +12,7 @@ from threading import Event
 
 import pytest
 
-from app.evals import case_store
+from app.evals import case_store, fixture_files
 
 
 @pytest.fixture
@@ -27,12 +27,12 @@ def golden_file(tmp_path, monkeypatch):
             {
                 "key": "a",
                 "metadata": {"expected": {"score_min": -0.1, "score_max": 0.1}},
-                "given": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
+                "given": {"applicant": {"facts": {}}, "dimension": {"key": "d", "name": "D", "definition": "Synthetic", "high_end": "High", "low_end": "Low"}},
             },
         ],
     }))
     reg = dict(case_store._FIXTURES)
-    reg["scoring"] = (path, reg["scoring"][1])
+    reg["scoring"] = path
     monkeypatch.setattr(case_store, "_FIXTURES", reg)
     return path
 
@@ -46,7 +46,7 @@ def test_save_new_case_appends(golden_file) -> None:
     new = {
         "key": "b",
         "metadata": {"expected": {"score_min": 0.5}},
-        "given": {"applicant": {"facts": {}}, "dimension": {"key": "d"}},
+        "given": {"applicant": {"facts": {}}, "dimension": {"key": "d", "name": "D", "definition": "Synthetic", "high_end": "High", "low_end": "Low"}},
     }
     cases = case_store.save_case("scoring", new)
     assert [c["key"] for c in cases] == ["a", "b"]
@@ -61,7 +61,7 @@ def test_save_existing_key_upserts_in_place(golden_file) -> None:
     edited = {
         "key": "a",
         "metadata": {"expected": {"score_min": -0.1, "score_max": 0.1}},
-        "given": {"applicant": {"facts": {"x": 1}}, "dimension": {"key": "d"}},
+        "given": {"applicant": {"facts": {"x": 1}}, "dimension": {"key": "d", "name": "D", "definition": "Synthetic", "high_end": "High", "low_end": "Low"}},
     }
     cases = case_store.save_case("scoring", edited)
     assert len(cases) == 1  # replaced, not appended
@@ -89,7 +89,7 @@ def test_save_judge_case_routes_to_its_pass_file(golden_file) -> None:
     edited = {
         "key": "a",
         "metadata": {"pass": "scoring", "expected": {"score_min": 0.9}},
-        "given": {"applicant": {"facts": {"y": 2}}, "dimension": {"key": "d"}},
+        "given": {"applicant": {"facts": {"y": 2}}, "dimension": {"key": "d", "name": "D", "definition": "Synthetic", "high_end": "High", "low_end": "Low"}},
     }
     result = case_store.save_case("judge", edited)
     # Written to the (temp) scoring file, upserted in place.
@@ -108,7 +108,7 @@ def test_save_judge_case_rejects_unknown_pass(golden_file) -> None:
 @pytest.mark.parametrize("second_edit", ["case", "background"])
 def test_overlapping_fixture_edits_preserve_both_changes(golden_file, monkeypatch, second_edit) -> None:
     held, release, competing = Event(), Event(), Event()
-    write = case_store._write
+    write = case_store.write_json
 
     def pause_first_write(path, data):
         if not held.is_set():
@@ -116,10 +116,12 @@ def test_overlapping_fixture_edits_preserve_both_changes(golden_file, monkeypatc
             assert release.wait(5)
         write(path, data)
 
-    monkeypatch.setattr(case_store, "_write", pause_first_write)
+    monkeypatch.setattr(case_store, "write_json", pause_first_write)
 
     def save_case(key):
-        return case_store.save_case("scoring", {"key": key, "metadata": {}, "given": {}})
+        case = json.loads(golden_file.read_text())["cases"][0]
+        case["key"] = key
+        return case_store.save_case("scoring", case)
 
     def save_second():
         competing.set()
@@ -150,8 +152,69 @@ def test_failed_publication_preserves_original_and_removes_temporary_file(golden
     def fail_replace(_source, _target):
         raise OSError("Synthetic replacement failure")
 
-    monkeypatch.setattr(case_store.os, "replace", fail_replace)
+    monkeypatch.setattr(fixture_files.os, "replace", fail_replace)
     with pytest.raises(OSError, match="Synthetic replacement failure"):
         case_store.save_background("scoring", "Changed brief")
     assert golden_file.read_bytes() == original
     assert list(golden_file.parent.glob("*.tmp")) == []
+
+
+@pytest.mark.parametrize(("family", "field"), [
+    ("scoring", "dimension"), ("matching", "prior"), ("decomposition", "reports"),
+    ("consolidation", "pair"), ("screening", "fields"),
+])
+@pytest.mark.parametrize("invalid", ["missing", "wrong-type"])
+def test_nested_validation_keeps_each_family_file_readable(tmp_path, monkeypatch, family, field, invalid) -> None:
+    source = case_store._FIXTURES[family]
+    path = tmp_path / source.name
+    path.write_bytes(source.read_bytes())
+    monkeypatch.setitem(case_store._FIXTURES, family, path)
+    original = path.read_bytes()
+    case = json.loads(original)["cases"][0]
+    if invalid == "missing":
+        del case["given"][field]
+    else:
+        case["given"][field] = 7
+    with pytest.raises(case_store.CaseValidationError, match=rf"given\.{field}"):
+        case_store.save_case(family, case)
+    assert path.read_bytes() == original
+
+
+def test_missing_scoring_pole_is_rejected_by_both_writer_and_reader(golden_file) -> None:
+    from app.evals.scoring import load_golden
+
+    data = json.loads(golden_file.read_text())
+    case = data["cases"][0]
+    del case["given"]["dimension"]["high_end"]
+    original = golden_file.read_bytes()
+    with pytest.raises(case_store.CaseValidationError, match=r"given\.dimension\.high_end"):
+        case_store.save_case("scoring", case)
+    assert golden_file.read_bytes() == original
+    golden_file.write_text(json.dumps(data))
+    with pytest.raises(case_store.CaseValidationError, match=r"given\.dimension\.high_end"):
+        load_golden(golden_file)
+
+
+@pytest.mark.parametrize("family", ["scoring", "matching", "decomposition", "consolidation", "screening"])
+def test_valid_family_case_preserves_captured_input_and_metadata(tmp_path, monkeypatch, family) -> None:
+    from app.evals.judge import _PASS_FILES, load_cases
+
+    source = case_store._FIXTURES[family]
+    path = tmp_path / source.name
+    path.write_bytes(source.read_bytes())
+    monkeypatch.setitem(case_store._FIXTURES, family, path)
+    monkeypatch.setitem(_PASS_FILES, family, path)
+    case = json.loads(path.read_text(encoding="utf-8"))["cases"][0]
+    case["metadata"]["note"] = "Changed synthetic note"
+    case["metadata"]["extra_capture"] = {"kept": True}
+    assert case_store.save_case(family, case)[0] == case
+    assert any(item.key == case["key"] and item.pass_name == family for item in load_cases())
+
+
+def test_short_consolidation_pair_and_malformed_judge_metadata_are_rejected() -> None:
+    case = case_store.list_cases("consolidation")[0]
+    case["given"]["pair"] = case["given"]["pair"][:1]
+    with pytest.raises(case_store.CaseValidationError, match=r"given\.pair"):
+        case_store.save_case("consolidation", case)
+    with pytest.raises(case_store.CaseValidationError, match=r"metadata\.pass"):
+        case_store.save_case("judge", {"key": "synthetic", "metadata": [], "given": {}})
