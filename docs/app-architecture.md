@@ -118,8 +118,10 @@ earlier fixture reads, and an earlier editor's completion cannot close a newer c
 
 Evals and Observability endpoints require admin authority, including ranking's four trace
 endpoints. All current/board responses omit operator narratives. Trace endpoints take an explicit analysis ID
-and verify its opening; panels scope reads to the accepted criteria snapshot, including same-analysis
-refreshes. New traces cannot be silently substituted for the analysis the operator is reviewing.
+and verify its opening. An immutable trace scope combines that analysis with the accepted dashboard
+observation, so the existing refresh cycle also exposes remote completion within the same analysis.
+Only the mounted trace reads its narrative. New traces cannot be silently substituted for the
+analysis the operator is reviewing.
 The eval catalog reports whether versioned fixture editing is enabled locally;
 hosted runs still read the committed corpus, with editing/re-baselining controls omitted.
 Short local file mutations recheck admin authority under the existing SQLite writer guard.

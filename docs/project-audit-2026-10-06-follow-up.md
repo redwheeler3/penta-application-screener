@@ -1,6 +1,6 @@
 # Consolidation and correctness audit — 2026-10-06
 
-**Status: U01–U06 implemented and verified; post-push review pending.**
+**Status: U01–U06 implemented; post-push review and follow-up passes complete.**
 Audit baseline: `b4df0b7`; implementation baseline: `440061a`. The recommendations
 below retain their original audit evidence. Implementation outcomes are recorded at
 the end; they supersede statements describing the unchanged audited baseline.
@@ -558,8 +558,56 @@ The local recovery policy remains bounded: application snapshots require a migra
 fresh sign-in follows restoration, ordinary durable mail still uses existing lifecycle checks,
 and Fly recovery remains the previously accepted snapshot policy.
 
-### Post-push review
+### Post-push review and additional passes
 
-Pending the initial push: review the complete implementation diff, then make separate lifecycle
-and simplification/latency passes. Record any valuable omissions and their resolution here before
-closing the campaign.
+The initial implementation/documentation was pushed at `c1b4b2b`. Review then covered
+three different questions:
+
+1. **Complete-diff correctness:** inspect the new result-source rules, captured callbacks,
+   historical migrations, shared erasure and isolated restore preparation together. Check
+   that the deleted code had no remaining runtime consumer or protection to carry forward.
+2. **Real trigger/lifecycle coverage:** follow refresh initiation through the workspace to
+   the mounted operator view, keeping the analysis identity unchanged. This exposed a
+   worthwhile omission: a remote run could finish within the same analysis while the
+   operator's accepted criteria object stayed unchanged. U02's panel tests had supplied a
+   fresh snapshot themselves without proving that the workspace would supply one.
+3. **Simplification and latency after the follow-up:** review retained state, callback scope,
+   query projections, data/credential lifetime and removed contracts. No further confirmed
+   worthwhile in-scope implementation was identified. The explicitly retained product and
+   recovery boundaries above remain limits, not a claim that future bugs are impossible.
+
+The U02 omission is fixed in `6689f92`: the existing workspace dashboard observation refreshes
+only the mounted trace, still pinned to its opening and analysis. It uses the existing refresh
+cycle and immutable observation; there is no extra poller, persistent ID, or new global state
+owner. Tests cover all four panels with the same criteria object and a new observation, plus
+rejection of a late old-analysis response. This adds a scoped background trace read while that
+trace is open; it does not load all four narratives or delay ordinary actions.
+
+Final source totals relative to `440061a`: **282 fewer runtime lines**, **103 more test lines**,
+with obsolete test branches/assertions removed rather than retained beside their replacements.
+Final frontend checks still pass: **338 tests**, type/production build and ESLint. Backend remains
+at the fully verified **1,081 passed / one platform skip**, with no subsequent backend changes.
+The modified scoring module's system/instruction bytes and derived prompt version match the
+implementation baseline exactly. No paid-model judgment check was needed for unchanged prompts.
+
+### How to reduce misses in the next campaign
+
+- For each asynchronous invariant, identify **trigger → authoritative state → consumer**.
+  Exercise the trigger itself in at least one wiring test; separately supplying a new prop
+  proves the consumer but can hide a missing caller. Reuse the workspace cadence tests and
+  the four-panel observation cases as that coverage chain here.
+- Include a **same identity, changed contents** case beside resource-switch tests. Analysis
+  IDs, account IDs and case keys can remain constant while the facts they expose change.
+- Use realistic shared fixtures: foreign keys enabled for aggregate deletion, populated
+  historical schemas for migrations, and real wire metadata for reconciliation. Avoid tests
+  that accidentally require compatibility scaffolding absent from production.
+- Keep a small contract/sequence matrix in this document through implementation and closure.
+  Replace tests of retired branches with behavior tests; require each new guard/state field
+  to name the invariant it protects. Review what can be removed in the same commit series.
+- Keep discovery, implementation and differently oriented closure reviews in one authorized
+  effort. A stronger model can challenge the design, but this evidence/trigger coverage is
+  what reduces repeated user-prompted rounds. Stop when remaining suggestions are marginal.
+
+This campaign did catch one worthwhile omission in its post-push review and resolved it before
+handoff. That is the intended use of the closure passes; it does not require the user to begin
+another audit to finish the same contracts.
