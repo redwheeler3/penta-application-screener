@@ -112,6 +112,22 @@ and inline error; it closes only when the current draft still matches the acknow
 Fixture saves are ordered because responses contain the full case list. Accepted saves invalidate
 earlier fixture reads, and an earlier editor's completion cannot close a newer case editor.
 
+Evals and Observability endpoints require admin authority, including ranking's four trace
+endpoints. Ordinary member current/board responses omit the operator discovery narrative.
+The eval catalog reports whether versioned fixture editing is enabled locally;
+hosted runs still read the committed corpus, with editing/re-baselining controls omitted.
+Short local file mutations recheck admin authority under the existing SQLite writer guard.
+`evals/case_schema.py` owns the nested stored-case contracts for both saves and readers;
+`evals/fixture_files.py` reads/publishes complete UTF-8 JSON for cases and baselines with
+short per-file locks and atomic replacement; readers close Windows handles before replacement.
+Missing scoring results and all-missing ranges are nullable through live/saved contracts.
+
+`useRanking.refreshRankingView` reconciles displayed boards within the same analysis, preserving
+pending edits. The workspace's intake/focus refresh owns its scheduling and suppresses it while
+this member's AI run owns the board. Hidden boards use an ID-only focus check; another analysis
+still requires the member to Reload. Settings changes request cache adoption and refresh views
+in the background without delaying the save acknowledgement.
+
 `hooks/useSharedSettings.ts` keeps the accepted server configuration separate from its editable
 draft. Save completion acknowledges the submitted snapshot and preserves edits made while the
 request was in flight. Older settings reads cannot roll back a completed save.

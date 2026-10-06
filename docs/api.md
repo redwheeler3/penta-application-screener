@@ -18,7 +18,10 @@ Screen, full Rank, score-current, and Evals stream NDJSON progress and a termina
 Full Rank discovers criteria, scores, and consolidates them under one run lease. Score-current
 fills missing scores against captured criteria without discovery. Board reads return criteria,
 this member's applicants, and tiers together; without chosen priorities rank/fit/band are null.
-Tier changes use cached scores without model calls. Spending reports describe known returned
+Tier changes use cached scores without model calls. The eval catalog exposes `fixtureEditingEnabled`; hosted corpus writes return
+`eval_fixtures_read_only`. Eval runs have no spending cap and read the committed image corpus.
+
+Spending reports describe known returned
 usage from completed or failed attempts rather than promising an exact provider bill.
 
 Application errors use RFC 9457 `application/problem+json`, with a stable `code`, HTTP `status`,
@@ -135,20 +138,20 @@ consolidation audits expose captured configuration where it was recorded.
 
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| POST | `/evals/baseline` | Rebaseline | Committee session |
-| GET | `/evals/cases/{eval_key}` | An eval's cases, straight from its committed fixture (free). 404 for an eval with no editable case set (invariants; stability reads the judge set). | Committee session |
-| PUT | `/evals/cases/{eval_key}` | Upsert one case (by key) into the eval's fixture FILE (the operator commits it to git deliberately). Validated server-side; a bad payload is refused (422). | Committee session |
-| GET | `/evals/catalog` | List the runnable evals + how many model calls each run costs (for the UI's spend-confirm). Free — computed from the committed fixtures, no model calls. | Committee session |
-| POST | `/evals/consolidation` | Run Consolidation | Committee session |
-| POST | `/evals/decomposition` | Run Decomposition | Committee session |
-| GET | `/evals/invariants` | Run the deterministic invariants over the committed fixture. Free (no model calls). (Judgement signals — overlap, carry-forward rate — live on the Observability tab over the live run, which shows them better; they aren't duplicated here.) | Committee session |
-| POST | `/evals/judge` | Run Judge | Committee session |
-| GET | `/evals/judge-backgrounds` | The per-pass `judge_background` briefs the Judge tab lists + edits, with how many golden cases each pass contributes to the blind audit. Free (reads the committed files). | Committee session |
-| PUT | `/evals/judge-backgrounds/{pass_name}` | Put Judge Background | Committee session |
-| GET | `/evals/last-run` | Last Run | Committee session |
-| POST | `/evals/matching` | Run Matching | Committee session |
-| POST | `/evals/scoring` | Run Scoring | Committee session |
-| POST | `/evals/screening` | Run Screening | Committee session |
+| POST | `/evals/baseline` | Rebaseline | Local admin |
+| GET | `/evals/cases/{eval_key}` | An eval's cases, straight from its committed fixture (free). 404 for an eval with no editable case set (invariants; stability reads the judge set). | Admin |
+| PUT | `/evals/cases/{eval_key}` | Upsert one case (by key) into the eval's fixture FILE (the operator commits it to git deliberately). Validated server-side; a bad payload is refused (422). | Local admin |
+| GET | `/evals/catalog` | List the runnable evals + how many model calls each run costs (for the UI's spend-confirm). Free — computed from the committed fixtures, no model calls. | Admin |
+| POST | `/evals/consolidation` | Run Consolidation | Admin |
+| POST | `/evals/decomposition` | Run Decomposition | Admin |
+| GET | `/evals/invariants` | Run the deterministic invariants over the committed fixture. Free (no model calls). (Judgement signals — overlap, carry-forward rate — live on the Observability tab over the live run, which shows them better; they aren't duplicated here.) | Admin |
+| POST | `/evals/judge` | Run Judge | Admin |
+| GET | `/evals/judge-backgrounds` | The per-pass `judge_background` briefs the Judge tab lists + edits, with how many golden cases each pass contributes to the blind audit. Free (reads the committed files). | Admin |
+| PUT | `/evals/judge-backgrounds/{pass_name}` | Put Judge Background | Local admin |
+| GET | `/evals/last-run` | Last Run | Admin |
+| POST | `/evals/matching` | Run Matching | Admin |
+| POST | `/evals/scoring` | Run Scoring | Admin |
+| POST | `/evals/screening` | Run Screening | Admin |
 
 ## Feedback
 
@@ -169,9 +172,9 @@ consolidation audits expose captured configuration where it was recorded.
 
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/observability/cost` | Cumulative AI spend for the Observability tab, grouped by run. | Committee session |
-| GET | `/observability/last-runs` | The most recent Screen and Rank runs, each with fresh spend + cache savings. | Committee session |
-| GET | `/observability/metrics` | Operational trends across all completed runs — cost/tokens/latency/cache-hit/ failures per run and per pass, plus dimension count over time. | Committee session |
+| GET | `/observability/cost` | Cumulative AI spend for the Observability tab, grouped by run. | Admin |
+| GET | `/observability/last-runs` | The most recent Screen and Rank runs, each with fresh spend + cache savings. | Admin |
+| GET | `/observability/metrics` | Operational trends across all completed runs — cost/tokens/latency/cache-hit/ failures per run and per pass, plus dimension count over time. | Admin |
 
 ## Openings
 
@@ -205,10 +208,10 @@ consolidation audits expose captured configuration where it was recorded.
 | --- | --- | --- | --- |
 | GET | `/ranking/board` | Criteria, scores, and tiers from the same captured member view. | Committee session |
 | GET | `/ranking/current` | The current analysis's dimensions + this member's view, or null if none discovered yet. | Committee session |
-| GET | `/ranking/current/consolidate-audit` | The current analysis's consolidation audit — the post-score duplicate-merge pass: which correlated pairs were nominated and, per pair, whether the confirm call merged them (with its reasoning). Null when no audit exists. | Committee session |
-| GET | `/ranking/current/decompose-audit` | Current Decompose Audit | Committee session |
-| GET | `/ranking/current/fan-out-audit` | The current analysis's fan-out audit — each of the K parallel discoverers' dimensions + reasoning, so the discovery panel can show every discoverer, not just the one that streamed live. Null when no audit exists. | Committee session |
-| GET | `/ranking/current/match-audit` | The current analysis's carry-forward audit — what discovery emitted, how the match pass mapped it onto prior dimensions, and the derived carry-forward rate. Null when no analysis or audit exists. | Committee session |
+| GET | `/ranking/current/consolidate-audit` | The current analysis's consolidation audit — the post-score duplicate-merge pass: which correlated pairs were nominated and, per pair, whether the confirm call merged them (with its reasoning). Null when no audit exists. | Admin |
+| GET | `/ranking/current/decompose-audit` | Current Decompose Audit | Admin |
+| GET | `/ranking/current/fan-out-audit` | The current analysis's fan-out audit — each of the K parallel discoverers' dimensions + reasoning, so the discovery panel can show every discoverer, not just the one that streamed live. Null when no audit exists. | Admin |
+| GET | `/ranking/current/match-audit` | The current analysis's carry-forward audit — what discovery emitted, how the match pass mapped it onto prior dimensions, and the derived carry-forward rate. Null when no analysis or audit exists. | Admin |
 | POST | `/ranking/run` | Run the full ranking chain — find criteria → score → consolidate — streaming NDJSON. The combined cost is checked against the cap once before any model call, so an over-cap run fails fast with a 402 and spends nothing. | Committee session |
 | GET | `/ranking/run/estimate` | Rank Estimate | Committee session |
 | POST | `/ranking/score-current` | Fill missing scores without changing the current dimensions or tier layout. | Committee session |

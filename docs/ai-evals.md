@@ -221,15 +221,18 @@ Application database
   -> offline deterministic evals and manual judge
 ```
 
-`backend/app/evals/fixture.py` records a safe subset of a completed Rank:
+`backend/app/evals/fixture.py` records current criteria and scoped selected scores for the latest analysis:
 
 - criterion definitions and poles;
 - structured decomposition, match, and consolidation audits;
 - score vectors whose application IDs are replaced by opaque positions.
 
-It excludes applicant names, contact data, raw rows, essays, and model narrative
-that can quote those sources. Evals consume this snapshot; they never feed a
-verdict back into the application.
+It omits application IDs, top-level narratives and settled-dimension justifications.
+Nested audit prose remains and may quote applicants; baseline capture is not a guarantee
+that arbitrary real applicant data is committable. Keep fixtures free of real applicant
+content. Vectors use the source analysis's current opening cohort and criteria. Provenance
+comes from captured configuration and selected score producers, with unknown/mixed history
+left unknown. Evals consume this snapshot; they never feed a verdict back into the application.
 
 Every case, for every pass, uses the one uniform envelope (`docs/eval-case-schema.md`):
 
@@ -444,6 +447,9 @@ a human labels `metadata.expected` (a band) + rationale before they land in
 `scoring_golden.json` (harvest never labels; the screening harvester mirrors it into
 `screening_golden.json`).
 
+That guard checks the historical analysis stamp; harvesters read current candidates.
+The stamp alone does not establish synthetic provenance for later arrivals or replacements.
+
 Seeded scoring cases span the basic spectrum — an unaddressed dimension against an
 absence-defined pole (neutral band straddling 0), a strongly-evidenced high case, and the
 absence-floor bug signature (see the absence-policy arc below). Note the deliberate boundary
@@ -635,13 +641,13 @@ deterministic even at temp 0).
 
 ## In-UI eval cockpit
 
-The evals run from the app under two developer/operator tabs (not committee-facing):
+The evals run from the app under two admin-only developer/operator tabs:
 **Observability** — Discovery/Decomposition/Matching/Consolidation/Cost/Trends, "what the AI
 did + cost" — and **Evals** — "is the AI any good". This is the only run surface. Case
 *harvesting* is a command-line step (`scripts/harvest_*.py`), co-authored then labelled by hand.
 The eval subtabs:
-- **Invariants** — free deterministic checks; a styled "Re-baseline from current Rank"
-  action re-records the committed fixture.
+- **Invariants** — free deterministic checks; a local "Re-baseline from latest Rank"
+  action records the latest analysis across openings in the versioned fixture.
 - **Live scoring** — the golden dataset through the real scoring prompt+model.
 - **Judge** — the golden cases across all five passes, run two ways over the *same* cases
   (one-pass agreement, K-repeat stability); cases **grouped by the production pass** each
@@ -672,7 +678,13 @@ Boundaries that keep this honest (dependency flows evals→app, never app→eval
 - **Runs persist** to an `EvalRun` DB row (result + streamed reasoning) — telemetry,
   queryable for trends, raw material to "eval the eval" later.
 - **Cases stay in the versioned JSON dataset**, NOT the DB. Git history, PR review, the
-  fidelity rule, and the CI structural guards all ride on the file. The tab edits the file
-  (`PUT /evals/cases/{key}`, validated), committed to git deliberately. (Results→DB,
+  fidelity rule, and the CI structural guards all ride on the file. The local admin tab edits the file
+  (`PUT /evals/cases/{key}`, nested family validation), committed to git deliberately. (Results→DB,
   dataset→version-control is the deliberate split.) A save reformats to `json.dumps(indent=2)`,
   so the first UI edit of a hand-authored fixture churns formatting once, then stays clean.
+
+Hosted evals read the committed corpus included in the image and retain their run controls.
+Case/brief editing and re-baselining stay local; commit/push the changes and manually deploy
+that revision to use them hosted. Eval runs deliberately have no spending cap; Screen/Rank
+caps do not apply. Missing scores and all-missing ranges are null, with the failure reasons
+retained rather than a fabricated zero. All corpus readers and atomic publishers use UTF-8.

@@ -2030,6 +2030,40 @@ bootstrap/email-delivery advisory calls are explicit exceptions; manual harnesse
 their own clients. Administrative writes recheck active admin authority under the SQLite writer
 before shared mutation or side-effect staging, with ordinary reads/provider I/O outside that guard.
 
+Applicant API modules export only the public/bootstrap calls as unbound functions. Protected
+operations require an explicitly constructed client for the captured applicant identity.
+
+**Displayed ranking refresh:** the workspace's visible-page intake interval and focus events
+reconcile a displayed ranking through the board endpoint, including scores and eligibility
+changes within the same analysis. A hidden ranking receives only the lightweight analysis
+check on focus. New analysis IDs keep the Reload notice; pending edits and this member's live
+AI work retain ownership of their displayed state. Refresh failures preserve the last board.
+Settings saves trigger free cache adoption and background application/dashboard refreshes.
+
+**Direct selection acknowledgement:** a timeout, server error or incomplete successful response
+does not prove that the permanent selection failed. Keep the submitted facts, refresh openings
+in the background and offer Review openings before another attempt. A definite validation
+refusal leaves the form editable.
+
+**Operator tools and versioned eval data:** Evals and Observability, including the four ranking
+audit endpoints, require an administrator. Ordinary member Screen/Rank/current-board access
+remains available, with historical operator narrative omitted from ordinary member responses.
+Eval runs deliberately have no spending cap; application AI caps do not
+apply to them. Existing call-count and real-spend confirmation remains visible.
+
+Case editing, judge-brief editing and baseline recording are local admin operations. The
+backend exposes this runtime capability and refuses hosted writes; the UI shows hosted cases,
+briefs, invariants and paid run controls without edit/re-baseline controls. Local fixture edits
+are committed/pushed in Git and included in the next manually deployed image. Git push alone
+does not update the hosted app. The versioned corpus stays out of the runtime database/volume.
+
+Eval fixture readers and writers share nested family contracts and UTF-8 encoding. File
+publication replaces a complete JSON file atomically. Missing scoring output is null, with
+its failure reason retained; an all-missing stability run has no numeric range. Stability
+measures consistency separately from correctness. Baseline vectors are scoped to the source
+analysis's current opening cohort and criteria. Provenance uses captured pool configuration
+and selected score producers; unavailable or mixed history is unknown rather than guessed.
+
 **Automatic cache reuse and workflow confirmations:** the account/opening-scoped committee
 workspace adopts valid saved screening findings and scores in the background on entry and
 intake/focus refresh. It does not delay initial reads, generate output, claim an AI run or

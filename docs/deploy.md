@@ -407,6 +407,16 @@ fly ssh sftp get /tmp/snap.db ./screener-$(date +%Y%m%d).db
 
 ## Routine operations
 
+Eval cases, judge briefs and the baseline are versioned files in `backend/eval-data`.
+Edit/re-baseline them locally as an admin, review and commit/push those files, then use the
+manual deployment procedure above to ship that revision. The Docker image contains the
+committed corpus, so hosted admins can run evals against it. Hosted fixture editing is
+disabled; corpus files are not a second database or volume-backed source of truth.
+`git push` alone does not update the hosted corpus or application.
+
+Evals and Observability are admin-only. Hosted eval runs remain uncapped; the application
+AI spending cap applies to Screen/Rank, not engineering evals.
+
 | Task | Command |
 |---|---|
 | Tail logs | `fly logs` |

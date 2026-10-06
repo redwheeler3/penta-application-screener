@@ -1,8 +1,53 @@
 # General project audit — 2026-10-05
 
-**Status: complete.** Baseline: clean `main` at `f20ff82`, two authorized implementation
+**Status: approved implementation complete.** Audit baseline: clean `main` at `f20ff82`, two authorized implementation
 commits ahead of `origin/main`. This audit replaces the completed report; its history remains
-in Git. Runtime fixes are not part of this audit phase.
+in Git. The findings below describe that baseline; the implementation record reflects
+the user's subsequent decisions and the current fixes.
+
+## Decisions and implementation record
+
+- **A04 deferred by the user.** No new synthetic-source gate or nested quote scrubber was
+  implemented. The privacy finding remains documented; unconditional safety claims were
+  corrected as documentation cleanup, without changing that export policy.
+- **A06 / D03:** local editing only. Hosted cases/briefs/invariants and eval run controls remain;
+  hosted mutation controls are omitted and the API refuses file writes. Committed local edits
+  reach hosted evals through a manual deployment. Git push alone does not deploy.
+- **D01:** Evals and Observability are admin-only, including the ranking audit endpoints.
+  Ordinary member screening/ranking remains available, without the operator discovery
+  narrative in current/board responses. Local fixture writes recheck admin
+  authority before touching files.
+- **D02:** evals remain deliberately uncapped. No engineering budget, spending cap or new
+  cost-tracking subsystem was added. The existing spend/call-count confirmation remains.
+
+| Item | Implementation status |
+| --- | --- |
+| A01 | Displayed boards refresh within the same analysis through the existing intake/focus owner; pending edits/live discovery retain ownership; settings trigger free adoption/background reads. |
+| A02 | Shared nested family contracts validate saves and readers; cases/baselines share UTF-8 I/O, short file locks and atomic publication. Regressions cover Unicode and Windows open-reader replacement. |
+| A03 | Missing scores/ranges are nullable in live and saved JSON, render without crashing, and retain failure reasons. |
+| A04 | Deferred; source/quote safeguards remain unchanged. |
+| A05 | Export vectors use the source opening cohort/criteria. Provenance uses captured configuration and selected producers; missing/mixed history remains unknown without new identifiers or migrations. |
+| A06 | Local-only corpus mutation capability is enforced and exposed in the catalog; deployment ships the committed corpus. |
+| A07 | Uncertain direct-selection acknowledgements preserve facts, refresh openings in the background and require review before retry; definite refusals remain editable. |
+| A08 | Approved motivation helper already committed in `2861ab0`. |
+| A09 | Unused unbound applicant interfaces removed, factory aliases clarified, manual-test clients explicit, obsolete CLI instructions and documentation corrected. |
+
+The new implementation adds no model calls, blanket synchronization layer, database IDs or
+migration. Normal saves do not wait for derived-view refreshes. A visible board gains one
+background board read on the existing intake interval, replacing its ID-only focus read;
+hidden boards keep the inexpensive focus check. Uncertain decisions reconcile in the
+background. Eval schema/export work stays on operator paths.
+
+Implementation commits:
+
+- `976bf5b` — eval contracts, fixture scope/provenance, local editing and admin boundaries.
+- `5fc28da` — same-analysis displayed-board refresh and live/pending-work ownership.
+- `0975b78` — truthful direct-selection acknowledgement recovery.
+- `f0e1308` — remove redundant unbound applicant API entrypoints.
+- `d59b857` — one fixture-file lock for mutation ordering and Windows handle lifetime.
+
+The file I/O consolidation also uses a single lock per existing fixture path for both
+read/modify/write and Windows handle lifetime; there is no separate family-lock registry.
 
 ## Scope and method
 
@@ -208,7 +253,7 @@ and the unconditional privacy/durability claims in `docs/ai-evals.md` as part of
 Keep historical ADRs and migration history; they are not runtime tombstone code.
 **Latency:** none; fewer misleading interfaces and instructions for the next maintainer.
 
-## Product decisions to settle before implementation
+## Recorded product decisions
 
 ### D01 — Operator capabilities
 
@@ -218,10 +263,10 @@ ambiguous permission contract rather than an assumed new authorization regressio
 
 **Evidence:** a member-role synthetic API probe successfully changed an allowlisted fixture.
 
-**Recommendation:** restrict corpus writes/baseline recording and paid engineering evals to
-administrators, while preserving ordinary committee screening, ranking and audit reads.
-Confirm that operator-only access is the desired API contract; the current tests deliberately
-encode member access. Reuse existing fresh admin authority checks for writes, not new roles.
+**Decision:** the user confirmed that Evals and Observability are admin-only. Admission now
+matches that policy for all eval routes, the three observability routes and the four ranking
+trace endpoints. Ordinary committee current/board/Screen/Rank access remains. Local file
+writes use existing fresh admin authority checks, with no new roles.
 
 ### D02 — Paid eval spending
 
@@ -230,28 +275,24 @@ provider. Eval streaming uses the shared work lifetime, but not the application 
 lease/budget/ledger; cost reporting differs by eval family. The project rule says AI calls
 should be observable, estimated and costed; current eval controls chiefly estimate call counts.
 
-**Recommendation:** explicitly define the eval spending boundary. Reuse shared cost
-primitives and show an estimate/receipt, with a clearly named engineering budget if it is
-intentionally separate. Preserve existing per-case outcomes and cancellation semantics.
-Do not silently apply the application cap to every engineering eval or serialize them all
-behind a blanket lock. Decide whether engineering runs share the application cap or have
-their own operator budget before implementation. This is a scope/contract ambiguity, not a
-claim that the application cap is currently documented to cover every engineering tool.
+**Decision:** the user confirmed that engineering evals have no spending cap. The proposed
+budget/cost expansion is not being pursued. Hosted admin runs retain existing call-count and
+real-spend confirmation, streaming/cancellation and per-case outcomes. A regression verifies
+that a zero application cap does not block a hosted admin eval.
 
 ### D03 — Hosted fixture editing
 
-For A06, the recommended policy is local corpus editing with hosted read-only controls.
-Confirm whether hosted editing is required before implementing an alternative export/commit
-workflow. Keeping the file on a runtime volume alone would create a second source of truth.
+**Decision:** hosted corpus editing is unsupported and unnecessary. Local edits should ship
+with the committed repository revision in the next manual deployment. The runtime database
+and volume do not become another corpus source.
 
 ## Recommended implementation packages
 
-1. Export source/privacy/provenance boundary: A04–A05, with A06's chosen hosting policy.
-2. Eval input/output contracts and atomic publication: A02–A03.
-3. Display refresh ownership: A01, including settings/cache/display agreement.
-4. Permanent decision acknowledgement: A07.
-5. Operator boundaries: D01–D02's agreed policy, using existing authority/cost primitives.
-6. Redundant interfaces and accurate documentation: A09; complete the docs alongside the
+1. Eval data contracts, truthful fixture scope/provenance and local/admin corpus boundaries:
+   A02–A03, A05–A06 and D01/D03. A04 is deferred; D02 needs no implementation.
+2. Display refresh ownership: A01, including settings/cache/display agreement.
+3. Permanent decision acknowledgement: A07.
+4. Redundant interfaces and accurate documentation: A09; complete the docs alongside the
    owner changes above so source and instructions agree. A08 is already committed separately.
 
 Each package should be a cohesive reviewed commit with targeted regressions and existing
@@ -296,7 +337,7 @@ network round trip from these recommendations. A01 adds or substitutes a backgro
 read only while relevant; A07 adds reconciliation only after an uncertain permanent action.
 Eval validation/export/role/cost work stays on explicit operator actions. There is no proposed
 extra AI generation, delay waiting for other members or cache invalidation on birthdays.
-Any D02 budget choice needs its own cost/latency explanation during implementation.
+Engineering evals remain uncapped by the user's decision.
 
 This audit measured request behavior and query scope through code and synthetic probes; it
 did not collect production response-time percentiles. Avoid claiming a measured speedup from
@@ -319,12 +360,22 @@ Baseline verification passed:
 - Watchdog: TypeScript check; **nine tests passed**.
 - `git diff --check`; generated build/cache directories inspected with inherited ACLs.
 
-Passing baseline tests do not negate the defects reproduced by the throwaway probes: the
-existing suite does not exercise those particular combinations. Add the listed regression
-cases with implementation rather than committing tests which simply assert the bugs exist.
+The baseline passed despite the defects reproduced by the throwaway probes. Implementation
+adds permanent regressions for the approved fixes, including nested family validation,
+Unicode/publication concurrency, nullable live/saved scores, scoped/unknown provenance,
+admin-only access and narrative projection, hosted read-only/uncapped evals, same-analysis
+updates, pending/live/disposed board reads and uncertain permanent acknowledgements.
+
+Implementation verification:
+
+- Backend: Ruff; **1,034 tests passed, one existing platform-dependent skip**.
+- Frontend: lint, TypeScript/Vite build; **304 tests passed**.
+- `git diff --check`; build/cache directories retain inherited ACLs.
+- No committed corpus or applicant data changed. No database migration was needed.
 
 No production operations, real model calls, outbound emails, local database reset,
 dev-server start or page reload took place. This is a repository-wide, multi-pass static
 review with targeted executions, not a load test or line-by-line certification of every
 module. Historical runtime findings have not been reimplemented; the previous completed
-audit is recoverable in Git. Commit this report separately from the approved helper change.
+audit is recoverable in Git. Implementation commits and this report are local; no push or
+production deployment took place during this implementation.

@@ -143,9 +143,15 @@ the audit is a whole-tab action, not a per-case switch: the Judge tab audits eve
 ## Validation
 
 `app/evals/case_store.py` gates writes: only the allowlisted `<pass>_golden.json` files are
-writable, and each write must carry `key` (non-empty string), `metadata`, and `given`. A bad
+writable. `case_schema.py` validates `key`, `metadata`, `given` and each family's nested
+consumer fields for saves and live/judge readers, including scoring poles/finite bands,
+categorical verdicts/descriptors and the two-element consolidation pair. A bad
 payload is refused whole, never partially written. The file's non-`cases` top-level keys
 (`_comment`, `judge_background`) are preserved across a write. `judge_background` itself is
 edited through `save_background` (Judge tab), which writes the same file. Loaders flatten the
 envelope into each pass's flat runner dataclass — the on-disk grouping documents *who sees
 what*; the runner is agnostic.
+
+Editing is local and admin-only. Hosted evals use the corpus in the deployed image; commit
+local edits and deploy that revision to update hosted cases. Saves and baseline recording
+publish complete UTF-8 JSON by atomic replacement. All readers use UTF-8 explicitly.
