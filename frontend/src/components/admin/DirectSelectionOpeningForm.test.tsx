@@ -14,8 +14,8 @@ vi.mock("../../api/openings", () => ({
   createApi: () => api,
 }));
 const applicant = { applicationId: 1, applicantName: "Synthetic Applicant", primaryEmail: "synthetic@example.com" };
-const props = { onCancel: vi.fn(), onCreated: vi.fn(), onError: vi.fn(), onReviewRetained: vi.fn(), onSavingChange: vi.fn() };
-beforeEach(() => vi.resetAllMocks());
+const props = { onCancel: vi.fn(), onCreated: vi.fn(), onUnconfirmed: vi.fn<() => Promise<void>>(), onError: vi.fn(), onReviewRetained: vi.fn(), onSavingChange: vi.fn() };
+beforeEach(() => { vi.resetAllMocks(); props.onUnconfirmed.mockResolvedValue(undefined); });
 
 async function beginCreate() {
   vi.mocked(api.searchPreviousApplicants).mockResolvedValue([applicant]);
@@ -41,6 +41,34 @@ it("freezes the confirmed facts and candidate during permanent selection", async
   await act(async () => pending.resolve(Response.json({ openings: [] })));
   expect(props.onCreated).toHaveBeenCalledWith([], applicant);
   expect(props.onSavingChange).toHaveBeenLastCalledWith(false);
+});
+
+it.each([new Response("{", { status: 200 }), new Response("", { status: 503 }), Response.json({})])(
+  "reconciles an uncertain decision in the background and prevents an immediate repeat", async (response) => {
+    const refresh = deferred<void>();
+    props.onUnconfirmed.mockReturnValue(refresh.promise);
+    api.createDirectSelectionOpening.mockResolvedValue(response);
+    await beginCreate();
+    expect(props.onError).toHaveBeenCalledWith(expect.stringContaining("may already be saved"));
+    expect(props.onUnconfirmed).toHaveBeenCalledOnce();
+    expect(props.onCreated).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Review direct selection" })).toBeNull();
+    expect(screen.getByLabelText("Move-in date")).toBeDisabled();
+    const review = screen.getByRole("button", { name: "Review openings" });
+    expect(review).toBeEnabled();
+    fireEvent.click(review);
+    expect(props.onCancel).toHaveBeenCalledOnce();
+    await act(async () => refresh.resolve());
+  },
+);
+
+it("keeps a definite validation refusal editable without reconciling a permanent decision", async () => {
+  api.createDirectSelectionOpening.mockResolvedValue(Response.json({ detail: "Invalid move-in date" }, { status: 422 }));
+  await beginCreate();
+  expect(props.onError).toHaveBeenCalledWith("Invalid move-in date");
+  expect(props.onUnconfirmed).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Move-in date")).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Review direct selection" })).toBeEnabled();
 });
 
 it("does not finish a selection into a closed workflow", async () => {

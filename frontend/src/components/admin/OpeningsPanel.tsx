@@ -113,6 +113,7 @@ export function OpeningsPanel(props: {
         <DirectSelectionOpeningForm
           onCancel={() => changeMode({ kind: "list" })}
           onSavingChange={setBusy}
+          onUnconfirmed={() => { props.onPoolChanged(); return openingsResource.reload(); }}
           onCreated={(items, applicant) => {
             setOpenings(items);
             changeMode({ kind: "list" });

@@ -23,6 +23,7 @@ const EMPTY_DRAFT: DirectDraft = {
 export function DirectSelectionOpeningForm(props: {
   onCancel: () => void;
   onCreated: (openings: Opening[], applicant: OpeningSelectionCandidate) => void;
+  onUnconfirmed: () => Promise<void>;
   onError: (message: string) => void;
   onReviewRetained: (applicationId: number) => void;
   onSavingChange?: (saving: boolean) => void;
@@ -35,15 +36,23 @@ export function DirectSelectionOpeningForm(props: {
   const [selected, setSelected] = useState<OpeningSelectionCandidate | null>(null);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [decisionState, setDecisionState] = useState<"editing" | "confirming" | "unconfirmed">("editing");
+  const unconfirmed = decisionState === "unconfirmed";
   const searches = useRequestScope(query);
   const requests = useRequestScope();
   const pending = useRef(false);
 
+  function reconcileUnconfirmed(): void {
+    setDecisionState("unconfirmed");
+    props.onError("Could not confirm the selection. It may already be saved. Review openings before trying again.");
+    // Reconcile in the background; the operator can immediately return to the list.
+    void props.onUnconfirmed().catch(() => { /* The list exposes its refresh error and retry. */ });
+  }
+
   async function search(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const trimmed = query.trim();
-    if (trimmed.length < 2 || searching) return;
+    if (trimmed.length < 2 || searching || unconfirmed) return;
     const isCurrent = searches.begin();
     setSearching(true);
     try {
@@ -57,7 +66,7 @@ export function DirectSelectionOpeningForm(props: {
   }
 
   async function create(): Promise<void> {
-    if (!selected || pending.current) return;
+    if (!selected || pending.current || unconfirmed) return;
     const isCurrent = requests.capture();
     pending.current = true;
     setSaving(true);
@@ -71,19 +80,20 @@ export function DirectSelectionOpeningForm(props: {
       });
       if (!isCurrent()) return;
       if (!response.ok) {
+        if (response.status >= 500) { reconcileUnconfirmed(); return; }
         const problem = await readProblem(response);
         if (!isCurrent()) return;
         props.onError(problem ?? "Could not fill that opening.");
-        setConfirming(false);
+        setDecisionState("editing");
         return;
       }
       const payload = (await response.json()) as { openings: Opening[] };
+      if (!Array.isArray(payload.openings)) throw new Error("Selection acknowledgement is incomplete.");
       if (!isCurrent()) return;
       props.onCreated(payload.openings, selected);
     } catch {
       if (isCurrent()) {
-        props.onError("Could not fill that opening.");
-        setConfirming(false);
+        reconcileUnconfirmed();
       }
     } finally {
       pending.current = false;
@@ -96,7 +106,7 @@ export function DirectSelectionOpeningForm(props: {
 
   const set = (patch: Partial<DirectDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
-    setConfirming(false);
+    setDecisionState("editing");
   };
 
   return (
@@ -111,7 +121,7 @@ export function DirectSelectionOpeningForm(props: {
       <div className="opening-form-grid">
         <label>
           <span>Unit size</span>
-          <select disabled={saving} value={draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
+          <select disabled={saving || unconfirmed} value={draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
             <option value={1}>1 bedroom</option>
             <option value={2}>2 bedrooms</option>
             <option value={3}>3 bedrooms</option>
@@ -121,12 +131,12 @@ export function DirectSelectionOpeningForm(props: {
           <span>Monthly housing charge</span>
           <div className="opening-money-input">
             <span>$</span>
-            <NumberInput disabled={saving} min="0" step="0.01" required value={draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
+            <NumberInput disabled={saving || unconfirmed} min="0" step="0.01" required value={draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
           </div>
         </label>
         <label>
           <span>Move-in date</span>
-          <input disabled={saving} type="date" required value={draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
+          <input disabled={saving || unconfirmed} type="date" required value={draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
         </label>
       </div>
 
@@ -136,7 +146,7 @@ export function DirectSelectionOpeningForm(props: {
           <div>
             <input
               type="search"
-              disabled={saving}
+              disabled={saving || unconfirmed}
               value={query}
               onChange={(event) => {
                 searches.invalidate();
@@ -150,7 +160,7 @@ export function DirectSelectionOpeningForm(props: {
               minLength={2}
               required
             />
-            <button className="secondary-button" type="submit" disabled={saving || searching || query.trim().length < 2}>
+            <button className="secondary-button" type="submit" disabled={saving || unconfirmed || searching || query.trim().length < 2}>
               <Search size={15} /> {searching ? "Searching…" : "Search"}
             </button>
           </div>
@@ -164,15 +174,15 @@ export function DirectSelectionOpeningForm(props: {
           <div className="opening-candidate-list direct-opening-results">
             {results.map((candidate) => (
               <div key={candidate.applicationId} className="opening-candidate-row">
-                <button disabled={saving} className="opening-candidate-name" type="button" onClick={() => props.onReviewRetained(candidate.applicationId)}>
+                <button disabled={saving || unconfirmed} className="opening-candidate-name" type="button" onClick={() => props.onReviewRetained(candidate.applicationId)}>
                   <strong>{candidate.applicantName ?? candidate.primaryEmail}</strong>
                   <span>{candidate.primaryEmail}</span>
                 </button>
                 <button
                   className={selected?.applicationId === candidate.applicationId ? "primary-button" : "secondary-button"}
                   type="button"
-                  disabled={saving}
-                  onClick={() => { setSelected(candidate); setConfirming(false); }}
+                  disabled={saving || unconfirmed}
+                  onClick={() => { setSelected(candidate); setDecisionState("editing"); }}
                 >
                   {selected?.applicationId === candidate.applicationId ? "Chosen" : "Choose"}
                 </button>
@@ -192,7 +202,11 @@ export function DirectSelectionOpeningForm(props: {
         </div>
       ) : null}
 
-      {confirming && selected ? (
+      {unconfirmed ? (
+        <div className="opening-form-actions">
+          <button className="secondary-button" type="button" onClick={props.onCancel}>Review openings</button>
+        </div>
+      ) : decisionState === "confirming" && selected ? (
         <div className="opening-launch-preview direct-opening-confirmation" role="alertdialog" aria-label="Confirm direct selection">
           <h5>Create this filled opening?</h5>
           <p>
@@ -201,20 +215,20 @@ export function DirectSelectionOpeningForm(props: {
           </p>
           <p>No vacancy or applicant email will be sent.</p>
           <div className="opening-form-actions">
-            <button className="secondary-button" type="button" onClick={() => setConfirming(false)} disabled={saving}>Back</button>
-            <button className="primary-button" type="button" onClick={() => void create()} disabled={saving}>
+            <button className="secondary-button" type="button" onClick={() => setDecisionState("editing")} disabled={saving || unconfirmed}>Back</button>
+            <button className="primary-button" type="button" onClick={() => void create()} disabled={saving || unconfirmed}>
               {saving ? "Saving…" : "Create opening and select applicant"}
             </button>
           </div>
         </div>
       ) : (
         <div className="opening-form-actions">
-          <button className="secondary-button" type="button" onClick={props.onCancel} disabled={saving}>Cancel</button>
+          <button className="secondary-button" type="button" onClick={props.onCancel} disabled={saving || unconfirmed}>Cancel</button>
           <button
             className="primary-button"
             type="button"
-            disabled={!selected || !draft.moveInDate || saving}
-            onClick={() => setConfirming(true)}
+            disabled={!selected || !draft.moveInDate || saving || unconfirmed}
+            onClick={() => setDecisionState("confirming")}
           >
             Review direct selection
           </button>
