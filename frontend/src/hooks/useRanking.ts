@@ -1,8 +1,8 @@
 import { useCommitteeApi } from "../api/identity";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as rankingApi from "../api/ranking";
 import { problemMessage, readProblemBody } from "../api/problems";
-import type { CurrentRunResponse, RankingResponse, Tier } from "../types";
+import type { CurrentRunResponse, RankingBoardResponse, RankingResponse, Tier } from "../types";
 import { type RequestIsCurrent, useRequestScope } from "./useRequestScope";
 
 export type RankingRunRead =
@@ -45,11 +45,9 @@ export interface RankingState {
    * save was rejected (409 stale_analysis) or a focus-time check saw the current analysis id
    * drift. Drives a global "reload" toast; cleared by ``reloadStaleRanking``. */
   staleAnalysis: boolean;
-  /** Cheaply check whether the loaded ranking is still current (compares the server's current
-   * analysis id to the loaded one) and set ``staleAnalysis`` on drift. Called on tab focus /
-   * visibility so a passively-viewing member learns another member re-ranked without a manual
-   * refresh. No-op when nothing is loaded yet. */
-  checkForStaleRanking: () => Promise<void>;
+  /** Reconcile a displayed board, or cheaply check a hidden board's analysis identity.
+   * Same-analysis score/eligibility changes update silently. New criteria require Reload. */
+  refreshRankingView: (displayed: boolean) => Promise<void>;
   /** Re-fetch the current analysis + ranking + tiers and clear the stale flag — the toast's
    * Reload action. Returns whether the reload succeeded. */
   reloadStaleRanking: () => Promise<boolean>;
@@ -106,6 +104,7 @@ export function useRanking(
     pendingMutations.current.add(isCurrent);
     currentReads.invalidate();
     boardReads.invalidate();
+    staleReads.invalidate();
     setRankingLoadState((state) => {
       if (state !== "loading") return state;
       return boardRef.current !== null ? "ready" : "idle";
@@ -123,9 +122,22 @@ export function useRanking(
     return result.finally(() => { pendingMutations.current.delete(isCurrent); });
   }
 
-  function hasPendingMutations() {
+  const hasPendingMutations = useCallback(() => {
     return [...pendingMutations.current].some((isCurrent) => isCurrent());
-  }
+  }, []);
+
+  const adoptBoard = useCallback((board: RankingBoardResponse) => {
+    currentReads.invalidate();
+    staleReads.invalidate();
+    runRef.current = board.run;
+    boardRef.current = board.ranking;
+    tiersRef.current = board.tiers;
+    setRankingRun(board.run);
+    setRanking(board.ranking);
+    setTiers(board.tiers);
+    setRankingLoadState("ready");
+    setStaleAnalysis(false);
+  }, [currentReads, staleReads]);
 
   function handleSaveFailure(body: Awaited<ReturnType<typeof readProblemBody>>, isCurrent: RequestIsCurrent) {
     if (!isCurrent()) return { handled: true, message: null };
@@ -146,16 +158,25 @@ export function useRanking(
     return ok;
   }
 
-  async function checkForStaleRanking(): Promise<void> {
-    if (openingId === null || !staleReads.isFor(openingId) || analysisId == null || staleAnalysis) return;
-    const isCurrent = staleReads.begin();
+  const refreshRankingView = useCallback(async (displayed: boolean): Promise<void> => {
+    const loadedId = boardRef.current?.analysisId ?? runRef.current?.analysisId;
+    if (openingId === null || !boardReads.isFor(openingId) || loadedId == null || hasPendingMutations()) return;
     try {
-      const current = await api.fetchRankingCurrent(openingId);
-      if (isCurrent() && current && current.analysisId !== analysisId) setStaleAnalysis(true);
+      if (displayed && boardRef.current !== null) {
+        const isCurrent = boardReads.begin();
+        const board = await api.fetchRankingBoard(openingId);
+        if (!isCurrent()) return;
+        if (board.run.analysisId !== loadedId) setStaleAnalysis(true);
+        else adoptBoard(board);
+      } else {
+        const isCurrent = staleReads.begin();
+        const current = await api.fetchRankingCurrent(openingId);
+        if (isCurrent() && current && current.analysisId !== loadedId) setStaleAnalysis(true);
+      }
     } catch {
-      /* Retry on the next focus. */
+      /* Keep the displayed board; focus/intake refresh retries. */
     }
-  }
+  }, [adoptBoard, api, boardReads, hasPendingMutations, openingId, staleReads]);
 
   async function refreshRankingRun(): Promise<RankingRunRead> {
     if (openingId === null || !currentReads.isFor(openingId) || hasPendingMutations()) {
@@ -182,18 +203,12 @@ export function useRanking(
     if (openingId === null || !boardReads.isFor(openingId) || hasPendingMutations()) return false;
     const isCurrent = boardReads.begin();
     currentReads.invalidate();
+    staleReads.invalidate();
     setRankingLoadState("loading");
     try {
       const board = await api.fetchRankingBoard(openingId);
       if (!isCurrent()) return false;
-      currentReads.invalidate();
-      runRef.current = board.run;
-      boardRef.current = board.ranking;
-      tiersRef.current = board.tiers;
-      setRankingRun(board.run);
-      setRanking(board.ranking);
-      setTiers(board.tiers);
-      setRankingLoadState("ready");
+      adoptBoard(board);
       return true;
     } catch {
       if (!isCurrent()) return false;
@@ -315,7 +330,11 @@ export function useRanking(
 
   function setDisplayedProposals(proposedDimensions: string[]) {
     proposalSaveVersion.current += 1;
+    // Discovery owns the next board. Earlier passive reads cannot revive its draft
+    // or mistake its new analysis for another member's completed run.
     currentReads.invalidate();
+    boardReads.invalidate();
+    staleReads.invalidate();
     const run = runRef.current;
     if (!run) return;
     const updated = { ...run, proposedDimensions };
@@ -337,7 +356,7 @@ export function useRanking(
     removeProposal,
     setDisplayedProposals,
     staleAnalysis,
-    checkForStaleRanking,
+    refreshRankingView,
     reloadStaleRanking,
   };
 }

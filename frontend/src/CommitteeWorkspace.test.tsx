@@ -4,7 +4,7 @@ import type { ComponentProps } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CommitteeWorkspace } from "./CommitteeWorkspace";
 import type { CandidateDetail } from "./components/applications/CandidateDetail";
-import type { CurrentUser, SettingsResponse } from "./types";
+import type { CurrentRunResponse, CurrentUser, SettingsResponse } from "./types";
 
 const applicationApi = vi.hoisted(() => ({
   fetchApplication: vi.fn<ReturnType<typeof import("./api/applications").createApi>["fetchApplication"]>(),
@@ -13,6 +13,11 @@ const applicationApi = vi.hoisted(() => ({
 const settingsApi = vi.hoisted(() => ({
   fetchSettings: vi.fn<ReturnType<typeof import("./api/settings").createApi>["fetchSettings"]>(),
   saveSettings: vi.fn<ReturnType<typeof import("./api/settings").createApi>["saveSettings"]>(),
+}));
+const intake = vi.hoisted(() => ({
+  refreshDashboard: vi.fn<() => Promise<void>>(), reloadApplications: vi.fn<() => Promise<void>>(),
+  refreshRankingView: vi.fn<(displayed: boolean) => Promise<void>>(), loadRanking: vi.fn<() => Promise<boolean>>(),
+  rankingRun: null as CurrentRunResponse | null, rankRunning: false,
 }));
 
 vi.mock("./api/cachedResults", () => ({ createApi: () => ({ refreshCachedResults: vi.fn().mockResolvedValue(false) }) }));
@@ -27,15 +32,17 @@ vi.mock("./api/applications", () => ({
 }));
 vi.mock("./hooks/useApplications", () => ({ useApplications: () => ({
   applications: [], openings: [], selectedOpeningId: 1, applicationsLoadState: "ready",
-  reloadApplications: vi.fn().mockResolvedValue(undefined), loadInitialApplications: vi.fn(), selectOpening: vi.fn(),
+  reloadApplications: intake.reloadApplications, loadInitialApplications: vi.fn(), selectOpening: vi.fn(),
 }) }));
 vi.mock("./hooks/useDashboard", () => ({ useDashboard: () => ({
-  loadState: "ready", refresh: vi.fn().mockResolvedValue(undefined), loadInitial: vi.fn(),
+  loadState: "ready", refresh: intake.refreshDashboard, loadInitial: vi.fn(),
 }) }));
 vi.mock("./hooks/useRanking", () => ({ useRanking: () => ({
-  rankingRun: null, ranking: null, refreshRankingRun: vi.fn().mockResolvedValue({ status: "loaded", run: null }), checkForStaleRanking: vi.fn(),
+  rankingRun: intake.rankingRun, ranking: null, rankingLoadState: "ready", tiers: null,
+  refreshRankingRun: vi.fn().mockResolvedValue({ status: "loaded", run: intake.rankingRun }),
+  refreshRankingView: intake.refreshRankingView, loadRanking: intake.loadRanking,
 }) }));
-vi.mock("./hooks/useAiRuns", () => ({ useAiRuns: () => ({ resetEstimates: vi.fn() }) }));
+vi.mock("./hooks/useAiRuns", () => ({ useAiRuns: () => ({ resetEstimates: vi.fn(), rankRunning: intake.rankRunning }) }));
 vi.mock("./components/workflow/WorkflowBar", () => ({ WorkflowBar: () => null }));
 vi.mock("./components/applications/ApplicationsList", () => ({
   ApplicationsList: ({ onSelectApplication }: { onSelectApplication: (id: number) => void }) =>
@@ -69,11 +76,45 @@ const configuration: SettingsResponse = { settings: { ai: {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
+  intake.rankingRun = null;
+  intake.rankRunning = false;
+  intake.refreshDashboard.mockResolvedValue(undefined);
+  intake.reloadApplications.mockResolvedValue(undefined);
+  intake.refreshRankingView.mockResolvedValue(undefined);
+  intake.loadRanking.mockResolvedValue(true);
   vi.mocked(settingsApi.fetchSettings).mockReturnValue(deferred<SettingsResponse>().promise);
   vi.mocked(applicationApi.fetchApplication).mockResolvedValue({ id: 7, privateNote: "Saved" } as Awaited<ReturnType<typeof applicationApi.fetchApplication>>);
   vi.mocked(applicationApi.savePrivateNote).mockResolvedValue(new Response(null));
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+it("uses the intake interval for the displayed board and a cheap hidden check only on focus", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  intake.rankingRun = { analysisId: 1, dimensions: [], discoveryNarrative: null, newDimensionKeys: [],
+    revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [] };
+  render(<CommitteeWorkspace user={user} logout={vi.fn()} />);
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  expect(intake.refreshDashboard).toHaveBeenCalledOnce();
+  expect(intake.refreshRankingView).not.toHaveBeenCalled();
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(intake.refreshRankingView).toHaveBeenLastCalledWith(false);
+  await act(async () => fireEvent.click(screen.getByRole("tab", { name: "Ranking" })));
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  expect(intake.refreshRankingView).toHaveBeenLastCalledWith(true);
+});
+
+it("leaves a live run's board alone and stops intake reads when the session is paused", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  intake.rankRunning = true;
+  const { rerender } = render(<CommitteeWorkspace user={user} logout={vi.fn()} />);
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(intake.refreshRankingView).not.toHaveBeenCalled();
+  const reads = intake.refreshDashboard.mock.calls.length;
+  rerender(<CommitteeWorkspace user={user} logout={vi.fn()} sessionChanged />);
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  expect(intake.refreshDashboard).toHaveBeenCalledTimes(reads);
+});
 
 it.each(["pending", "failed"])("keeps every independent admin section available when configuration is %s", async (state) => {
   if (state === "failed") vi.mocked(settingsApi.fetchSettings).mockRejectedValue(new Error("offline"));

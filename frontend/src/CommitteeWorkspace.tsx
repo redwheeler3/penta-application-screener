@@ -107,7 +107,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     removeProposal,
     setDisplayedProposals,
     staleAnalysis,
-    checkForStaleRanking,
+    refreshRankingView,
     reloadStaleRanking,
   } = useRanking(selectedOpeningId, showError);
 
@@ -190,7 +190,8 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     loadRanking,
   });
 
-  const refreshCachedResults = useCachedResults(selectedOpeningId, sessionChanged, refreshEligibilityViews);
+  const refreshCachedResults = useCachedResults(selectedOpeningId,
+    sessionChanged || rankRunning || rankRefreshing || screeningRunning, refreshEligibilityViews);
 
   const privateNotes = usePrivateNotes({
     onSaved: (id, privateNote) => updateSelectedApplication({ id, privateNote }),
@@ -235,27 +236,37 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOpeningId]);
 
-  // Refresh the lightweight list/dashboard reads while this page is visible and whenever
-  // the member returns to it, so new or edited applications appear without a reload.
+  // One owner refreshes intake and the displayed board. Refs keep the interval steady
+  // while renders update callbacks, navigation and live-run ownership.
+  const intakeViews = useRef({ refreshDashboard, reloadApplications, refreshCachedResults, refreshRankingView,
+    displayed: activeTab === "ranking" && selectedApp === null,
+    running: rankRunning || rankRefreshing || screeningRunning });
+  intakeViews.current = { refreshDashboard, reloadApplications, refreshCachedResults, refreshRankingView,
+    displayed: activeTab === "ranking" && selectedApp === null,
+    running: rankRunning || rankRefreshing || screeningRunning };
   useEffect(() => {
     if (sessionChanged) return;
     let refreshInFlight = false;
-    const refreshIntake = () => {
+    const refreshIntake = (checkHiddenRanking = false) => {
       if (document.visibilityState !== "visible" || refreshInFlight) return;
+      const views = intakeViews.current;
       refreshInFlight = true;
-      void Promise.all([refreshDashboard(), reloadApplications(), refreshCachedResults()]).finally(() => {
-        refreshInFlight = false;
-      });
+      const reads = [views.refreshDashboard(), views.reloadApplications(), views.refreshCachedResults()];
+      if (!views.running && (views.displayed || checkHiddenRanking)) {
+        reads.push(views.refreshRankingView(views.displayed));
+      }
+      void Promise.all(reads).finally(() => { refreshInFlight = false; });
     };
-    const interval = window.setInterval(refreshIntake, 60_000);
-    window.addEventListener("focus", refreshIntake);
-    document.addEventListener("visibilitychange", refreshIntake);
+    const onFocus = () => refreshIntake(true);
+    const interval = window.setInterval(() => refreshIntake(), 60_000);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener("focus", refreshIntake);
-      document.removeEventListener("visibilitychange", refreshIntake);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [sessionChanged, refreshDashboard, reloadApplications, refreshCachedResults]);
+  }, [sessionChanged, selectedOpeningId]);
 
   // A ranking became stale (another member re-ranked) — surface it as a global toast with a
   // Reload action, so it reaches the member wherever they are on the page (not only on the
@@ -273,33 +284,6 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     }
   }, [staleAnalysis, showWarning, reloadStaleRanking]);
 
-  // Detect staleness passively: when the member returns to the tab/window, cheaply re-check
-  // whether the loaded ranking is still current. There's no server push, so this catches the
-  // "switched away, another member re-ranked, came back" case without a manual refresh (and
-  // without a standing background poll). A save onto a stale board is already caught by the
-  // 409 path; this covers passive viewing.
-  //
-  // Suppressed while THIS member's own rank is in flight: their run creates the new analysis,
-  // so mid-completion the loaded id (old) differs from the server's (new) — a focus event then
-  // would misread that as "another member re-ranked" and fire the stale toast alongside their
-  // own green "complete" toast. Suppress the check while our run's coherent board
-  // refresh catches up. A ref avoids re-subscribing the listener on each transition.
-  const rankRunningRef = useRef(false);
-  rankRunningRef.current = rankRunning || rankRefreshing;
-  useEffect(() => {
-    const onFocus = () => {
-      if (document.visibilityState === "visible" && !rankRunningRef.current) {
-        void checkForStaleRanking();
-      }
-    };
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
-    };
-  }, [checkForStaleRanking]);
-
   async function saveSettings(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (await saveSettingsDraft()) {
@@ -308,7 +292,9 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
       // over-cap warning and disabled confirmation button on screen.
       resetEstimates();
       clearSelectedApplication();
-      refreshDashboard();
+      void refreshDashboard();
+      void reloadApplications();
+      void refreshCachedResults();
       requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
     } else {
       showError("Settings could not be saved.");

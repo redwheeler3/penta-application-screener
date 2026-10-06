@@ -5,9 +5,11 @@ from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import event, select
 from sqlalchemy.orm import sessionmaker
 
+from app.ai.dimension_scoring import score_dimensions
 from app.api.ranking import shortlist
 from app.db.models import Analysis, ApplicationAIResult, User, UserRole
 from app.schemas.settings import AppSettings
+from app.services.cached_results import refresh_cached_results
 from app.services.ranking.analysis import create_analysis
 from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.member_state import get_or_reconcile_member_ranking
@@ -16,6 +18,7 @@ from tests.db_support import add_selected_result
 from tests.ranking_support import (
     a_pattern_report,
     a_pattern_report_v2,
+    a_scoring_report,
     add_eligible,
     setup_app,
 )
@@ -27,6 +30,26 @@ def seed_analysis(db, user, report):
         db, user=user, opening_id=opening_id, report=report, narrative=None,
         inputs_fingerprint=rank_inputs_fingerprint(db, opening_id, AppSettings()),
     )
+
+
+@pytest.mark.anyio
+async def test_completed_shared_scoring_changes_the_board_without_analysis_or_adoption_change():
+    app, db, provider = setup_app(UserRole.MEMBER)
+    first = add_eligible(db, email="first@example.com", raw_hash="first")
+    report, settings = a_pattern_report(), AppSettings()
+    analysis = seed_analysis(db, db.scalar(select(User)), report)
+    provider.queue(a_scoring_report())
+    list(score_dimensions(db, provider, applications=[first], report=report, settings=settings, max_workers=1))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        before = (await client.get("/ranking/board")).json()
+        second = add_eligible(db, email="second@example.com", raw_hash="second")
+        provider.queue(a_scoring_report())
+        list(score_dimensions(db, provider, applications=[second], report=report, settings=settings, max_workers=1))
+        assert not refresh_cached_results(db, current_opening_id(db))
+        after = (await client.get("/ranking/board")).json()
+    assert before["ranking"]["scoredCount"] == 1
+    assert after["ranking"]["scoredCount"] == 2
+    assert before["run"]["analysisId"] == after["run"]["analysisId"] == analysis.id
 
 
 @pytest.mark.anyio
