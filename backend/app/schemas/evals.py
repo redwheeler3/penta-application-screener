@@ -325,6 +325,7 @@ class CasesResponse(ResponseModel):
 
     eval_key: str
     cases: list[dict] = []
+    case_fingerprints: dict[str, str]
 
 
 class SaveCaseRequest(RequestModel):

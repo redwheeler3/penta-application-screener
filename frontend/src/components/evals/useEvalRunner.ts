@@ -5,9 +5,10 @@ import * as evalsApi from "../../api/evals";
 import { streamNdjson } from "../../api/client";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import { useFetchResource } from "../../hooks/useFetchResource";
-import { acceptEvalHistory, acceptEvalReceipt, displayedEvalResults, EMPTY_EVAL_RESULTS } from "./evalResultState";
+import { acceptEvalHistory, acceptEvalReceipt, acknowledgeEvalCases, invalidateEvalConfiguration, displayedEvalResults, EMPTY_EVAL_RESULTS } from "./evalResultState";
 import type {
   EvalFixtureKey,
+  EvalCasesResponse,
   EvalRunMode,
   EvalRunOption,
   EvalStreamEvent,
@@ -38,8 +39,16 @@ export function useEvalRunner(options: {
   const runScope = useRequestScope(options.caseEvalKey);
   useEffect(() => () => { activeRun.current?.abort(); }, []);
 
-  function setCases(cases: Record<string, unknown>[]) {
-    fixture.setData({ cases });
+  function setCases(saved: EvalCasesResponse) {
+    historyReads.invalidate();
+    fixture.setData(saved);
+    setResults((current) => acknowledgeEvalCases(current, options.runKeys, saved.caseFingerprints));
+    void loadLastRuns();
+  }
+
+  function acknowledgeBrief() {
+    historyReads.invalidate();
+    setResults((current) => invalidateEvalConfiguration(current, options.runKeys));
     void loadLastRuns();
   }
 
@@ -118,6 +127,6 @@ export function useEvalRunner(options: {
   }
 
   return { cases: fixture.data?.cases ?? null, casesLoadState: fixture.state, retryCases: fixture.reload,
-    setCases, run, ...displayedEvalResults(results), currentConfigurations: results.history.current,
-    runMode, refreshHistory: loadLastRuns };
+    setCases, run, ...displayedEvalResults(results, fixture.data?.caseFingerprints), currentConfigurations: results.history.current,
+    runMode, refreshHistory: loadLastRuns, acknowledgeBrief };
 }

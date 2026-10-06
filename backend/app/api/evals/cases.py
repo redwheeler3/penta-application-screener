@@ -18,7 +18,7 @@ from app.evals.case_store import (
     save_background,
     save_case,
 )
-from app.evals.dataset import load_dataset
+from app.evals.dataset import case_identity, case_input_fingerprint, load_dataset
 from app.schemas.evals import (
     CasesResponse,
     JudgeBackground,
@@ -33,12 +33,19 @@ router = APIRouter()
 _JUDGE_PASSES = ("screening", "decomposition", "matching", "scoring", "consolidation")
 
 
+def _case_response(eval_key: str, cases: list[dict]) -> CasesResponse:
+    return CasesResponse(eval_key=eval_key, cases=cases, case_fingerprints={
+        case_identity(case["key"], case["metadata"]["pass"] if eval_key == "judge" else ""): case_input_fingerprint(case)
+        for case in cases
+    })
+
+
 @router.get("/cases/{eval_key}", response_model=CasesResponse)
 def get_cases(eval_key: str, user: User = Depends(require_admin)) -> CasesResponse:
     """An eval's cases, straight from its committed fixture (free). 404 for an eval with
     no editable case set (invariants; stability reads the judge set)."""
     try:
-        return CasesResponse(eval_key=eval_key, cases=list_cases(eval_key))
+        return _case_response(eval_key, list_cases(eval_key))
     except UnknownEvalError as exc:
         raise Problem("not_found", detail=f"No editable cases for eval {eval_key!r}.") from exc
 
@@ -56,7 +63,7 @@ def put_case(
         raise Problem("not_found", detail=f"No editable cases for eval {eval_key!r}.") from exc
     except CaseValidationError as exc:
         raise Problem("invalid_case", detail=str(exc)) from exc
-    return CasesResponse(eval_key=eval_key, cases=cases)
+    return _case_response(eval_key, cases)
 
 
 @router.get("/judge-backgrounds", response_model=JudgeBackgroundsResponse)

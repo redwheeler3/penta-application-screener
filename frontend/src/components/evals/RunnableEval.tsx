@@ -6,6 +6,7 @@ import { readProblem } from "../../api/problems";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import type {
   EvalCaseOutcome,
+  EvalCasesResponse,
   EvalFixtureKey,
   EvalRunMode,
   EvalRunOption,
@@ -48,7 +49,7 @@ export function RunnableEval(props: {
   // carries metadata.pass.)
   addable?: boolean;
   // Extra content rendered above the run controls (the Judge tab's per-pass background editors).
-  header?: (refreshHistory: () => void) => ReactNode;
+  header?: (acknowledgeBrief: () => void) => ReactNode;
   // Save outcomes surface as the app's standard toasts (success auto-dismisses, error persists),
   // matching Settings/Rank — not inline text.
   onToast: (message: string) => void;
@@ -64,7 +65,7 @@ export function RunnableEval(props: {
   const saves = useRef<Promise<void>>(Promise.resolve());
   const saveScope = useRequestScope(caseEvalKey);
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const { cases, casesLoadState, retryCases, setCases, run, caseResults, restored, currentConfigurations, runMode, refreshHistory } = useEvalRunner({
+  const { cases, casesLoadState, retryCases, setCases, run, caseResults, retainedResults, restored, currentConfigurations, runMode, acknowledgeBrief } = useEvalRunner({
     caseEvalKey,
     runKeys: props.runKeys,
   });
@@ -91,9 +92,9 @@ export function RunnableEval(props: {
           if (isCurrent()) props.onError(`Could not save case “${String(evalCase.key)}”: ${problem}`);
           return problem;
         }
-        const body = await response.json();
+        const body: EvalCasesResponse = await response.json();
         if (!isCurrent()) return "This case tab is no longer active.";
-        setCases(body.cases);
+        setCases(body);
         setConfirm(null);
         props.onToast(`Case “${String(evalCase.key)}” saved — commit the golden file to keep it.`);
         return null;
@@ -108,7 +109,7 @@ export function RunnableEval(props: {
   }
 
   const selectedCase = cases?.find((c) => evalsApi.fixtureCaseIdentity(c, caseEvalKey === "judge") === selected) ?? null;
-  const selectedResult = selected ? caseResults[selected] : undefined;
+  const selectedResult = selected ? retainedResults[selected] : undefined;
   const totalCalls = (mode: RunMode) => (cases?.length ?? 0) * mode.repetitions;
   const modeLabel = (mode: RunMode) => mode.repetitions > 0 && (mode.evalKey === "stability" || mode.evalKey.endsWith("_stability"))
     ? `${mode.label} (K=${mode.repetitions})` : mode.label;
@@ -133,7 +134,7 @@ export function RunnableEval(props: {
     <div className="eval-section">
       <p className="eval-card-desc">{props.description}</p>
 
-      {props.header?.(() => { void refreshHistory(); })}
+      {props.header?.(acknowledgeBrief)}
 
       {confirm && !confirm.caseKey ? renderConfirm() : null}
 
@@ -245,7 +246,7 @@ export function RunnableEval(props: {
                     .map((m) => ({ m, result: selectedResult[m.evalKey] }))
                     .filter((x): x is { m: RunMode; result: EvalCaseOutcome } => !!x.result)
                     .map(({ m, result }) => (
-                      <EvalCaseResultView key={m.evalKey} outcome={result} />
+                      <EvalCaseResultView key={m.evalKey} outcome={result} current={!!(selected && caseResults[selected]?.[m.evalKey])} />
                     ))
                 : null}
               <EvalCaseDetail evalCase={selectedCase} />

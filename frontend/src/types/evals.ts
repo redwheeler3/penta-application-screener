@@ -131,6 +131,7 @@ export type EvalStreamEvent =
   | ({ type: "summary"; savedPath: string | null; storedRunId?: number | null } & EvalRunSummary);
 
 export type JudgeBackground = { passName: string; background: string; caseCount: number };
+export type EvalCasesResponse = { cases: Record<string, unknown>[]; caseFingerprints: Record<string, string> };
 
 export type EvalDescriptor = {
   key: EvalKey;

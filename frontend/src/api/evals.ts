@@ -1,6 +1,7 @@
 import { type ApiClient } from "./client";
 import type {
   EvalCaseOutcome,
+  EvalCasesResponse,
   EvalDescriptor,
   EvalHistory,
   EvalRunSummary,
@@ -28,7 +29,7 @@ export function createApi(client: ApiClient) {
 
   // The eval's cases, straight from its committed JSON fixture (free).
   const fetchEvalCases = (evalKey: string) =>
-    getJson<{ cases: Record<string, unknown>[] }>(`/evals/cases/${evalKey}`);
+    getJson<EvalCasesResponse>(`/evals/cases/${evalKey}`);
 
   // The per-pass judge_background briefs (what each pass does) the Judge tab lists + edits,
   // with each pass's golden case count. Free (reads the committed golden files).

@@ -76,13 +76,18 @@ async def test_label_changes_expire_coverage_but_editorial_notes_do_not(tmp_path
         original = result["cases"][0]["inputFingerprint"]
         data["cases"][0]["metadata"]["note"] = "Editorial explanation"
         data["cases"][0]["metadata"]["label_rationale"] = "Editorial rationale"
-        path.write_text(json.dumps(data), encoding="utf-8")
+        acknowledged = await client.put("/evals/cases/scoring", json={"case": data["cases"][0]})
+        assert acknowledged.status_code == 200
+        assert acknowledged.json()["caseFingerprints"][key] == original
         restored = (await client.get("/evals/last-run?keys=scoring")).json()
         assert restored["current"]["scoring"]["caseFingerprints"][key] == original
         data["cases"][0]["metadata"]["expected"] = {"score_min": 0.7, "score_max": 1}
-        path.write_text(json.dumps(data), encoding="utf-8")
+        acknowledged = await client.put("/evals/cases/scoring", json={"case": data["cases"][0]})
+        assert acknowledged.status_code == 200
+        assert acknowledged.json()["caseFingerprints"][key] != original
         restored = (await client.get("/evals/last-run?keys=scoring")).json()
         assert restored["current"]["scoring"]["caseFingerprints"][key] != original
+        assert restored["current"]["scoring"]["caseFingerprints"] == acknowledged.json()["caseFingerprints"]
         assert restored["runs"][0]["result"]["cases"][0]["inputFingerprint"] == original
 
 
@@ -259,10 +264,12 @@ async def test_unicode_scoped_identity_round_trips(tmp_path, monkeypatch, mode, 
         family = "stability" if mode == "stability" else "judge"
         restored = (await client.get(f"/evals/last-run?keys={family}")).json()
         run = restored["runs"][0]
+        visible = (await client.get("/evals/cases/judge")).json()
     assert summary["storedRunId"] == run["runId"]
     assert [case["key"] for case in run["result"]["cases"]] == [key]
     identity = json.dumps(["matching", key], separators=(",", ":"), ensure_ascii=False)
     assert run["result"]["cases"][0]["inputFingerprint"] == restored["current"][family]["caseFingerprints"][identity]
+    assert visible["caseFingerprints"][identity] == run["result"]["cases"][0]["inputFingerprint"]
 
 
 async def test_metadata_reads_only_its_scope_and_returns_captured_brief(tmp_path, monkeypatch):

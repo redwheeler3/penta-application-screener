@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   fetchLastEvalRun: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchLastEvalRun"]>(),
   fetchJudgeBackgrounds: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchJudgeBackgrounds"]>(),
   fetchEvalInvariants: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["fetchEvalInvariants"]>(),
+  saveJudgeBackground: vi.fn<ReturnType<typeof import("../../api/evals").createApi>["saveJudgeBackground"]>(),
 }));
 vi.mock("../../api/evals", async (original) => ({
   ...await original<typeof import("../../api/evals")>(), createApi: () => api,
@@ -21,7 +22,7 @@ vi.mock("../../api/ranking", () => ({ createApi: () => traces }));
 beforeEach(() => {
   vi.resetAllMocks();
   for (const read of Object.values(traces)) read.mockResolvedValue(null);
-  api.fetchEvalCases.mockResolvedValue({ cases: [{ key: "synthetic", metadata: {
+  api.fetchEvalCases.mockResolvedValue({ caseFingerprints: {}, cases: [{ key: "synthetic", metadata: {
     pass: "screening", expected: { fires: [], absent: [] }, note: "Synthetic case",
   }, given: { fields: {}, essays: {} } }] });
   api.fetchLastEvalRun.mockResolvedValue({ runs: [], current: {} });
@@ -73,6 +74,32 @@ function setup(editable: boolean) {
   ] });
   return render(<AIWorkspaceView family="eval" refreshKey={null} run={null} openingId={1} onToast={vi.fn()} onError={vi.fn()} />);
 }
+
+it("invalidates Judge results through the real brief-save callback even when history is offline", async () => {
+  const key = '["screening","synthetic"]';
+  api.fetchEvalCases.mockResolvedValue({ cases: [{ key: "synthetic", given: {}, metadata: { pass: "screening", expected: "keep" } }],
+    caseFingerprints: { [key]: "input-1" } });
+  api.fetchLastEvalRun.mockImplementation(async (keys) => ({
+    current: keys.includes("judge") ? { judge: { modelId: "synthetic", promptVersion: "v1", reasoningEffort: "", caseFingerprints: { [key]: "input-1" } } } : {},
+    runs: keys.includes("judge") ? [{ evalKey: "judge", runId: 1, ranAt: "2026-10-01T12:00:00Z", modelId: "synthetic",
+      promptVersion: "v1", reasoningEffort: "", supportsReasoningEffort: false, caseRunIds: { [key]: 1 }, result: { cases: [{
+        key: "synthetic", passName: "screening", inputFingerprint: "input-1", marker: "[ok]", humanLabel: "keep", judgeLabel: "keep",
+        contested: false, detail: "Retained synthetic finding", labelRationale: "",
+      }] } }] : [],
+  }));
+  api.saveJudgeBackground.mockResolvedValue(Response.json({ passName: "scoring", background: "Changed brief", caseCount: 1 }));
+  setup(true);
+  fireEvent.click(screen.getByRole("tab", { name: "Judge" }));
+  fireEvent.click(await screen.findByRole("button", { name: /synthetic/ }));
+  await screen.findByText("passed");
+  fireEvent.click(screen.getByText(/Judge briefs/));
+  fireEvent.change(screen.getByRole("textbox", { name: "scoring judge brief" }), { target: { value: "Changed brief" } });
+  api.fetchLastEvalRun.mockRejectedValue(new Error("Offline"));
+  fireEvent.click(screen.getByRole("button", { name: "Save brief" }));
+  await screen.findByText("not current");
+  expect(screen.getByText("Retained synthetic finding")).toBeInTheDocument();
+  expect(screen.getByText(/current configuration unconfirmed/)).toBeInTheDocument();
+});
 
 it("keeps hosted cases and run controls while hiding every corpus write control", async () => {
   setup(false);

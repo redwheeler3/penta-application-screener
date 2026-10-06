@@ -29,10 +29,10 @@ export function configurationChanges(source: Configuration, current: EvalConfigu
 }
 
 function matchesCurrent(source: ResultSource, current: EvalConfiguration | undefined): boolean {
-  // A just-delivered receipt is visible while its fresh metadata request is pending.
-  if (!current) return true;
+  if (!current) return false;
   const key = evalCaseIdentity(source.outcome.result.key, source.outcome.result.passName);
   return !Object.values(configurationChanges(source.configuration, current)).some(Boolean)
+    && source.outcome.result.inputFingerprint !== undefined
     && source.outcome.result.inputFingerprint === current.caseFingerprints[key];
 }
 
@@ -55,7 +55,7 @@ export function acceptEvalHistory(state: EvalResultState, history: EvalHistory):
   for (const mode of Object.keys(state.delivered) as EvalRunMode[]) {
     for (const [key, receipt] of Object.entries(state.delivered[mode]!)) {
       const current = history.current[mode];
-      if (!matchesCurrent(receipt, current)) continue;
+      if (current && !matchesCurrent(receipt, current)) continue;
       const saved = stored[mode]?.[key];
       if (receipt.runId !== null && saved?.runId != null && saved.runId >= receipt.runId
         && matchesCurrent(saved, current)) continue;
@@ -78,15 +78,30 @@ export function acceptEvalReceipt(
       runId: receipt.storedRunId ?? null,
     };
   }
+  return { ...state, delivered: { ...state.delivered, [mode]: cases } };
+}
+
+/** A successful edit acknowledges validation inputs even if the later history read fails. */
+export function acknowledgeEvalCases(state: EvalResultState, modes: EvalRunMode[],
+  caseFingerprints: Record<string, string>): EvalResultState {
   const current = { ...state.history.current };
-  delete current[mode];
-  return { history: { ...state.history, current }, delivered: { ...state.delivered, [mode]: cases } };
+  for (const mode of modes) {
+    if (current[mode]) current[mode] = { ...current[mode], caseFingerprints };
+  }
+  return acceptEvalHistory(state, { ...state.history, current });
+}
+
+export function invalidateEvalConfiguration(state: EvalResultState, modes: EvalRunMode[]): EvalResultState {
+  const current = { ...state.history.current };
+  for (const mode of modes) delete current[mode];
+  return { ...state, history: { ...state.history, current } };
 }
 
 /** Derive one displayed result per case/mode; delivered receipts never become history. */
-export function displayedEvalResults(state: EvalResultState) {
+export function displayedEvalResults(state: EvalResultState, visibleFingerprints: Record<string, string> | undefined) {
   const stored = storedSources(state.history);
   const caseResults: Record<string, EvalCaseOutcomesByMode> = {};
+  const retainedResults: Record<string, EvalCaseOutcomesByMode> = {};
   const restored: Record<string, LastEvalRun> = {};
   const modes = new Set([...Object.keys(stored), ...Object.keys(state.delivered)] as EvalRunMode[]);
   for (const mode of modes) {
@@ -100,11 +115,15 @@ export function displayedEvalResults(state: EvalResultState) {
     }
     Object.assign(sources, receipts);
     for (const [key, source] of Object.entries(sources)) {
-      if (matchesCurrent(source, state.history.current[mode])) (caseResults[key] ??= {})[mode] = source.outcome;
+      (retainedResults[key] ??= {})[mode] = source.outcome;
+      if (matchesCurrent(source, state.history.current[mode])
+        && source.outcome.result.inputFingerprint === visibleFingerprints?.[key]) {
+        (caseResults[key] ??= {})[mode] = source.outcome;
+      }
     }
     const historical = state.history.runs.find((run) => run.evalKey === mode);
     // A historical summary cannot describe overlaid, unrecorded outcomes truthfully.
     if (historical && !Object.keys(receipts).length) restored[mode] = historical;
   }
-  return { caseResults, restored };
+  return { caseResults, retainedResults, restored };
 }

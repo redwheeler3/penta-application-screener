@@ -23,6 +23,12 @@ def fingerprint(value: object) -> str:
                                     ensure_ascii=False, allow_nan=False).encode()).hexdigest()
 
 
+def case_input_fingerprint(case: dict) -> str:
+    """Only model inputs and grading policy determine a case result's validity."""
+    return fingerprint({"given": case["given"], "expected": case["metadata"]["expected"],
+                        "contested": case["metadata"].get("contested", False)})
+
+
 @dataclass(frozen=True)
 class DatasetSnapshot:
     families: dict[str, dict]
@@ -31,10 +37,7 @@ class DatasetSnapshot:
         judge = family in ("judge", "stability")
         selected = self.families if judge else {family: self.families[family]}
         return {
-            case_identity(case["key"], name if judge else ""): fingerprint({
-                "given": case["given"], "expected": case["metadata"]["expected"],
-                "contested": case["metadata"].get("contested", False),
-            })
+            case_identity(case["key"], name if judge else ""): case_input_fingerprint(case)
             for name, data in selected.items() for case in data["cases"]
         }
 

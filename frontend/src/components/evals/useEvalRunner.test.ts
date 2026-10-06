@@ -1,7 +1,7 @@
 import { act, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { deferred, renderCommitteeHook as renderHook } from "../../testSupport";
-import type { EvalHistory, EvalRunOption, LastEvalRun, ScoringEvalCaseResult } from "../../types";
+import type { EvalCasesResponse, EvalHistory, EvalRunOption, LastEvalRun, ScoringEvalCaseResult } from "../../types";
 import { useEvalRunner } from "./useEvalRunner";
 
 const api = vi.hoisted(() => ({ fetchEvalCases: vi.fn(), fetchLastEvalRun: vi.fn(), runEval: vi.fn() }));
@@ -23,7 +23,7 @@ function completion(score = 0.8, storedRunId: number | null = null, experimentId
 }
 beforeEach(() => {
   vi.resetAllMocks();
-  api.fetchEvalCases.mockResolvedValue({ cases: [{ key: "a" }, { key: "b" }] });
+  api.fetchEvalCases.mockResolvedValue({ cases: [{ key: "a" }, { key: "b" }], caseFingerprints: config.caseFingerprints });
   api.fetchLastEvalRun.mockResolvedValue(history());
   api.runEval.mockImplementation(() => Promise.resolve(completion()));
 });
@@ -35,10 +35,27 @@ it.each([null, 3])("keeps delivered output through repeated older history and fi
   await waitFor(() => expect(result.current.caseResults.a).toBeDefined());
   await act(() => result.current.runMode(mode, "a"));
   await act(() => result.current.refreshHistory());
-  await act(async () => result.current.setCases([{ key: "a" }, { key: "b" }]));
+  await act(async () => result.current.setCases({ cases: [{ key: "a" }, { key: "b" }], caseFingerprints: config.caseFingerprints }));
   expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.8 } });
   expect(result.current.caseResults.b.scoring).toMatchObject({ result: { score: 0.9 } });
   expect(result.current.restored.scoring).toBeUndefined();
+});
+
+it.each([null, 3])("does not revive a known-stale other case when a partial run refresh fails (receipt %s)", async (runId) => {
+  const known = history([saved(1, [scored("a", 0.8), scored("b", 0.9)])]);
+  known.current.scoring = { ...config, caseFingerprints: { a: "a1", b: "b2" } };
+  api.fetchLastEvalRun.mockResolvedValueOnce(known).mockRejectedValue(new Error("Offline"));
+  api.runEval.mockResolvedValue(completion(0.8, runId));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await waitFor(() => expect(result.current.caseResults.a).toBeDefined());
+  expect(result.current.caseResults.b?.scoring).toBeUndefined();
+  await act(() => result.current.runMode(mode, "a"));
+  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(result.current.caseResults.b?.scoring).toBeUndefined();
+  expect(result.current.currentConfigurations.scoring?.caseFingerprints.b).toBe("b2");
+  api.fetchLastEvalRun.mockResolvedValue(known);
+  await act(() => result.current.refreshHistory());
+  expect(result.current.caseResults.b?.scoring).toBeUndefined();
 });
 
 it("uses each historical case's source run when a newer partial aggregate arrives", async () => {
@@ -60,7 +77,7 @@ it.each(["labels", "prompt", "model", "reasoning"])("expires unrecorded output a
   const next = { ...config, ...(change === "labels" ? { caseFingerprints: { a: "a2", b: "b1" } }
     : change === "prompt" ? { promptVersion: "v2" } : change === "model" ? { modelId: "another" } : { reasoningEffort: "high" }) };
   api.fetchLastEvalRun.mockResolvedValue({ runs: [], current: { scoring: next } });
-  await act(async () => result.current.setCases([{ key: "a" }]));
+  await act(async () => result.current.setCases({ cases: [{ key: "a" }], caseFingerprints: config.caseFingerprints }));
   expect(result.current.caseResults.a?.scoring).toBeUndefined();
   api.fetchLastEvalRun.mockResolvedValue(history());
   await act(() => result.current.refreshHistory());
@@ -78,6 +95,39 @@ it("keeps compatible partial receipts and clears them for a new experiment", asy
   await act(() => result.current.runMode(mode, "a"));
   expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.7 } });
   expect(result.current.caseResults.b?.scoring).toBeUndefined();
+});
+
+it.each(["label", "input", "editorial"])("applies %s edit evidence before a failed history refresh", async (change) => {
+  api.fetchLastEvalRun.mockResolvedValue(history([saved(1, [scored("a", 0.8), scored("b", 0.9)])]));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await waitFor(() => expect(result.current.caseResults.a).toBeDefined());
+  api.fetchLastEvalRun.mockRejectedValue(new Error("Offline"));
+  const fingerprint = change === "editorial" ? "a1" : "a2";
+  await act(async () => result.current.setCases({ cases: [{ key: "a" }, { key: "b" }],
+    caseFingerprints: { a: fingerprint, b: "b1" } }));
+  expect(!!result.current.caseResults.a?.scoring).toBe(change === "editorial");
+  expect(result.current.caseResults.b?.scoring).toBeDefined();
+  expect(result.current.retainedResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
+});
+
+it.each(["receipt-first", "edit-first"])("keeps an acknowledged label change ahead of a pending run (%s)", async (order) => {
+  const request = deferred<Response>();
+  api.fetchLastEvalRun.mockResolvedValueOnce(history([saved(1, [scored("a", 0.5)])]))
+    .mockRejectedValue(new Error("Offline"));
+  api.runEval.mockReturnValue(request.promise);
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await waitFor(() => expect(result.current.caseResults.a).toBeDefined());
+  let running!: Promise<void>;
+  act(() => { running = result.current.runMode(mode, "a"); });
+  const edit = () => result.current.setCases({ cases: [{ key: "a" }], caseFingerprints: { a: "a2" } });
+  await act(async () => {
+    if (order === "edit-first") edit();
+    request.resolve(completion());
+    await running;
+    if (order === "receipt-first") edit();
+  });
+  expect(result.current.caseResults.a?.scoring).toBeUndefined();
+  expect(result.current.currentConfigurations.scoring?.caseFingerprints.a).toBe("a2");
 });
 
 it("keeps other modes when a receipt completes and disposes unrecorded output on remount", async () => {
@@ -103,7 +153,27 @@ it("rejects initial history arriving after a new run and preserves output when t
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   await act(() => result.current.runMode(mode, "a"));
   await act(async () => pending.resolve(history([saved(1, [scored("a", 0.1)])])));
-  expect(result.current.caseResults.a.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(result.current.retainedResults.a.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(result.current.caseResults.a?.scoring).toBeUndefined();
+  api.fetchLastEvalRun.mockResolvedValue(history());
+  await act(() => result.current.refreshHistory());
+  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(api.runEval).toHaveBeenCalledOnce();
+});
+
+it.each(["history-first", "cases-first"])("does not certify results against different visible inputs (%s)", async (order) => {
+  const input = deferred<EvalCasesResponse>();
+  const stored = deferred<EvalHistory>();
+  api.fetchEvalCases.mockReturnValue(input.promise);
+  api.fetchLastEvalRun.mockReturnValue(stored.promise);
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  const casesReady = () => input.resolve({ cases: [{ key: "a" }], caseFingerprints: { a: "a2" } });
+  const historyReady = () => stored.resolve(history([saved(1, [scored("a", 0.8)])]));
+  await act(async () => { if (order === "history-first") historyReady(); else casesReady(); });
+  expect(result.current.caseResults.a?.scoring).toBeUndefined();
+  await act(async () => { if (order === "history-first") casesReady(); else historyReady(); });
+  expect(result.current.caseResults.a?.scoring).toBeUndefined();
+  expect(result.current.retainedResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
 });
 
 it("discards old-family reads and cancels work when its view closes", async () => {
@@ -138,12 +208,12 @@ it("distinguishes a failed fixture read from an empty corpus and keeps accepted 
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   await waitFor(() => expect(result.current.casesLoadState).toBe("error"));
   expect(result.current.cases).toBeNull();
-  const pending = deferred<{ cases: Record<string, unknown>[] }>();
+  const pending = deferred<EvalCasesResponse>();
   api.fetchEvalCases.mockReturnValueOnce(pending.promise);
   let retry!: Promise<void>;
   act(() => { retry = result.current.retryCases(); });
-  act(() => result.current.setCases([{ key: "saved" }]));
-  await act(async () => { pending.resolve({ cases: [] }); await retry; });
+  act(() => result.current.setCases({ cases: [{ key: "saved" }], caseFingerprints: {} }));
+  await act(async () => { pending.resolve({ cases: [], caseFingerprints: {} }); await retry; });
   expect(result.current.cases).toEqual([{ key: "saved" }]);
   expect(result.current.casesLoadState).toBe("ready");
 });

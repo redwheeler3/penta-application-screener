@@ -29,7 +29,7 @@ export function EvalRunHistoryMarker(props: { run: LastEvalRun; current?: EvalCo
     corpusStale ? "case inputs or labels changed" : "",
     drift.modelStale ? `model is now ${current.modelId}` : "",
     drift.reasoningStale ? `reasoning is now ${current.reasoningEffort || "not applicable"}` : "",
-  ].filter(Boolean).join(" · ") : "";
+  ].filter(Boolean).join(" · ") : "current configuration unconfirmed";
   const stale = Boolean(changes);
   return (
     <div className={`eval-restored${stale ? " stale" : ""}`}>
@@ -37,7 +37,7 @@ export function EvalRunHistoryMarker(props: { run: LastEvalRun; current?: EvalCo
       {summary ? ` · ${summary}` : ""} · last run {relativeTime(run.ranAt)} · prompt {run.promptVersion || "—"}
       {run.modelId ? ` · ${run.modelId}` : ""}
       {run.modelId ? ` · reasoning ${reasoningEffortLabel(run.supportsReasoningEffort, run.reasoningEffort || null)}` : ""}
-      {stale ? ` · ${changes} — re-run to refresh` : ""}
+      {stale ? ` · ${changes}${current ? " — re-run to refresh" : ""}` : ""}
     </div>
   );
 }
@@ -85,9 +85,9 @@ function StabilityRuns({ runs }: { runs?: { outcome: string; detail: string }[] 
   );
 }
 
-export function EvalCaseResultView({ outcome }: { outcome: EvalCaseOutcome }): ReactNode {
-  const status = evalCaseStatus(outcome);
-  const heading = status === "contested" ? "contested" : status === "ok" ? "passed" : "failed";
+export function EvalCaseResultView({ outcome, current = true }: { outcome: EvalCaseOutcome; current?: boolean }): ReactNode {
+  const status = current ? evalCaseStatus(outcome) : "empty";
+  const heading = !current ? "not current" : status === "contested" ? "contested" : status === "ok" ? "passed" : "failed";
   return (
     <div className={`eval-case-result ${status}`}>
       <span className="eval-case-result-head">
