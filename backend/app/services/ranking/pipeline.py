@@ -49,13 +49,13 @@ from app.services.ranking.criteria import (
     run_criteria_passes,
 )
 from app.services.ranking.dimensions import current_dimension_report
-from app.services.ranking.freshness import rank_configuration, rank_inputs_fingerprint
 from app.services.ranking.identity import adopt_matched_keys
 from app.services.ranking.member_state import (
     carry_forward_layout,
     get_or_reconcile_member_ranking,
     tier_history,
 )
+from app.services.ranking.provenance import rank_configuration, rank_inputs_fingerprint
 from app.services.run_lock import RunLeaseLost
 from app.services.stream_worker import StreamWorker
 

@@ -1,4 +1,4 @@
-"""A run's freshness describes its starting inputs, including edits made during AI work."""
+"""A run's provenance records its starting inputs, including edits made during AI work."""
 
 import json
 from threading import Event
@@ -14,8 +14,8 @@ from app.db.models import User, UserRole
 from app.schemas.settings import AppSettings
 from app.services.ranking.analysis import create_analysis
 from app.services.ranking.criteria import CriteriaPassResult, CriteriaStageChange
-from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.pipeline import _stream_criteria
+from app.services.ranking.provenance import rank_inputs_fingerprint
 from tests.application_support import current_opening_id
 from tests.ranking_support import a_pattern_report, add_eligible, setup_app
 
@@ -107,7 +107,7 @@ def test_semantic_strategy_controls_are_part_of_captured_inputs(field, value):
     user = db.scalar(select(User))
     opening_id = current_opening_id(db)
     settings = AppSettings()
-    from app.services.ranking.freshness import rank_configuration
+    from app.services.ranking.provenance import rank_configuration
     captured = rank_configuration(settings)
     analysis = create_analysis(db, user=user, opening_id=opening_id, report=a_pattern_report(),
                                inputs_fingerprint=rank_inputs_fingerprint(db, opening_id, settings),

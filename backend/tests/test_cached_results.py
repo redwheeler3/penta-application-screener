@@ -27,7 +27,7 @@ from app.db.models import (
 from app.schemas.settings import AppSettings
 from app.services.cached_results import refresh_cached_results
 from app.services.ranking.analysis import create_analysis
-from app.services.ranking.freshness import rank_configuration, rank_inputs_fingerprint
+from app.services.ranking.provenance import rank_configuration, rank_inputs_fingerprint
 from app.services.ranking.view import candidate_scores
 from app.services.run_lock import acquire_run_lock
 from tests.ranking_support import (

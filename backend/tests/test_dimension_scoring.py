@@ -42,7 +42,7 @@ from app.db.models import (
     UserRole,
 )
 from app.schemas.settings import AppSettings
-from app.services.ranking.freshness import rank_inputs_fingerprint
+from app.services.ranking.provenance import rank_inputs_fingerprint
 from app.services.ranking.view import candidate_scores, selected_application_scores
 from tests.application_support import activate_application, current_opening_id
 
@@ -585,3 +585,14 @@ def test_run_cost_survives_a_removed_triggering_member() -> None:
     assert rank.fresh_usd == 0.12
     assert rank.triggered_by is None  # stamp reads blank
     assert db.scalar(select(RunCostLedger)) is not None
+
+
+def test_assembly_requires_complete_scores_but_keeps_legitimate_zero():
+    from app.ai.dimension_scoring import IncompleteScoringError, _assemble
+    dimension = PoolDimension(key="synthetic", name="Synthetic", definition="Synthetic",
+                              high_end="More", low_end="Less", why_it_differentiates="Synthetic")
+    report = PoolDimensionReport(dimensions=[dimension])
+    with pytest.raises(IncompleteScoringError, match="synthetic"):
+        _assemble(report, {}, {})
+    zero = DimensionScore(dimension_key="synthetic", score=0, rationale="Not addressed", evidence="", confidence=ScoreConfidence.LOW)
+    assert _assemble(report, {"synthetic": zero}, {}).scores == [zero]

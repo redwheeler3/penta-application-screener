@@ -305,7 +305,7 @@ def _assign_unambiguous_analyses(connection, opening_ids: list[int]) -> None:
     from sqlalchemy.orm import Session
 
     from app.schemas.settings import AppSettings
-    from app.services.ranking.freshness import rank_inputs_fingerprint
+    from app.services.ranking.provenance import rank_inputs_fingerprint
     from app.services.settings import get_app_settings
 
     db = Session(bind=connection)

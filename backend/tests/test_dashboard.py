@@ -382,7 +382,7 @@ async def test_rank_readiness_uses_current_score_coverage_instead_of_discovery_f
 
 def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
     from app.schemas.settings import AppSettings
-    from app.services.ranking.freshness import rank_inputs_fingerprint
+    from app.services.ranking.provenance import rank_inputs_fingerprint
 
     _app, db = _logged_in_app()
     settings = AppSettings()
@@ -398,7 +398,7 @@ def test_rank_fingerprint_tracks_only_effective_reasoning() -> None:
 
 def test_rank_fingerprint_can_reuse_an_already_loaded_pool() -> None:
     from app.schemas.settings import AppSettings
-    from app.services.ranking.freshness import rank_inputs_fingerprint
+    from app.services.ranking.provenance import rank_inputs_fingerprint
 
     _app, db = _logged_in_app()
     activate_application(db, Application(
@@ -422,7 +422,7 @@ def test_rank_fingerprint_can_reuse_an_already_loaded_pool() -> None:
 def test_rank_fingerprint_ignores_provider_but_tracks_the_actual_model() -> None:
     from app.ai.model_catalog import MODEL_IDS_BY_ROUTE
     from app.schemas.settings import AppSettings
-    from app.services.ranking.freshness import rank_inputs_fingerprint
+    from app.services.ranking.provenance import rank_inputs_fingerprint
 
     _app, db = _logged_in_app()
     settings = AppSettings()
@@ -504,7 +504,7 @@ async def test_scoring_coverage_requires_every_dimension_key() -> None:
     from app.ai.dimension_scoring import PROMPT_VERSION as SCORING_VERSION
     from app.ai.dimension_scoring import kind_for_dimension
     from app.schemas.settings import AppSettings
-    from app.services.ranking.freshness import rank_inputs_fingerprint
+    from app.services.ranking.provenance import rank_inputs_fingerprint
 
     app, db = _logged_in_app()
     settings = AppSettings()

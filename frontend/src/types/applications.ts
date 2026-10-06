@@ -11,8 +11,8 @@ export type WorkflowState = {
   screened: boolean;
   patternsDiscovered: boolean;
   candidatesScored: boolean;
-  // Same truth the Rank no-op gate uses; the "needs re-run" badge reads this (not
-  // score coverage), so a pool change still flags re-rank with full coverage.
+  // Current scores cover the eligible pool and criteria, with no pending proposals.
+  // Captured discovery provenance does not determine readiness.
   rankingCurrent: boolean;
 };
 

@@ -84,7 +84,7 @@ For each settled axis: `key` (reuse an input key when it's essentially that axis
 - Do NOT assign importance or weight — discovering the settled axes is your job; weighting is the committee's, done later. Treat every axis as equally important here.
 - Do not score or name individual applicants. Describe the axes."""
 
-# Prompt identity is derived from the static prompt text and included in rank freshness.
+# Prompt identity is derived from the static prompt text and captured in ranking provenance.
 PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
 
 

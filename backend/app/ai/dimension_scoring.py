@@ -48,7 +48,6 @@ from app.ai.schemas import (
     DimensionScoringReport,
     PoolDimension,
     PoolDimensionReport,
-    ScoreConfidence,
 )
 from app.core.work_cancellation import WorkCancelled
 from app.db.models import Application, ApplicationAIResult, ApplicationAISelection
@@ -230,21 +229,16 @@ def _assemble(
     cached: dict[str, DimensionScore],
     fresh: dict[str, DimensionScore],
 ) -> DimensionScoringReport:
-    """Merge cached + fresh scores into the candidate's full report, one entry per
-    dimension (fresh wins on overlap). A dimension with no score at all (the model
-    omitted it despite the retry logic — normally that raises IncompleteScoringError
-    before reaching here) gets a NEUTRAL placeholder (0, the signed-scale midpoint): we
-    have no evidence, so fabricating a low score would sink the candidate on a model
-    glitch (the same silence-is-not-a-weakness rule the prompt applies to an unaddressed
-    dimension)."""
+    """Assemble the complete captured plan, with fresh scores winning on overlap.
+
+    Validated cache entries and complete model output must cover every dimension;
+    missing data is an invariant failure, never a fabricated neutral score.
+    """
     scores: list[DimensionScore] = []
     for dim in report.dimensions:
         score = fresh.get(dim.key) or cached.get(dim.key)
         if score is None:
-            score = DimensionScore(
-                dimension_key=dim.key, score=0.0, rationale="", evidence="",
-                confidence=ScoreConfidence.LOW,
-            )
+            raise IncompleteScoringError(f"No score for captured dimension {dim.key!r}.")
         scores.append(score)
     return DimensionScoringReport(scores=scores)
 

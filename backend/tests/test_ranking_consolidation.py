@@ -15,7 +15,7 @@ from app.ai.schemas import (
     ScoreConfidence,
 )
 from app.db.models import User, UserRole
-from app.services.ranking.freshness import rank_inputs_fingerprint
+from app.services.ranking.provenance import rank_inputs_fingerprint
 from tests.application_support import current_opening_id
 from tests.ranking_support import (
     _decomposition_of,

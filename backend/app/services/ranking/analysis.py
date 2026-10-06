@@ -1,4 +1,4 @@
-"""Persistence and freshness for committee-wide ranking analyses."""
+"""Persistence and input provenance for committee-wide ranking analyses."""
 
 from __future__ import annotations
 

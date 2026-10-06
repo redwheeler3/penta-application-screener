@@ -11,8 +11,8 @@ from app.db.models import Analysis, ApplicationAIResult, User, UserRole
 from app.schemas.settings import AppSettings
 from app.services.cached_results import refresh_cached_results
 from app.services.ranking.analysis import create_analysis
-from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.member_state import get_or_reconcile_member_ranking
+from app.services.ranking.provenance import rank_inputs_fingerprint
 from tests.application_support import current_opening_id
 from tests.db_support import add_selected_result
 from tests.ranking_support import (

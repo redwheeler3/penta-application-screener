@@ -31,8 +31,8 @@ from app.services.cost_report import (
 from app.services.openings.selection import require_ai_actions_available
 from app.services.ranking.analysis import get_current_analysis, record_rank_inputs
 from app.services.ranking.dimensions import current_dimension_report
-from app.services.ranking.freshness import rank_inputs_fingerprint
 from app.services.ranking.pipeline import SCORES, ScoreTally
+from app.services.ranking.provenance import rank_inputs_fingerprint
 from app.services.run_lock import RunLeaseLost, acquire_run_lock, release_run_lock
 from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings

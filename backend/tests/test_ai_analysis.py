@@ -538,7 +538,7 @@ def test_derive_prompt_version_changes_when_prompt_text_changes() -> None:
 
 
 def test_cache_identity_uses_only_frozen_submission_facts_consumed_by_the_pass() -> None:
-    from app.services.ranking.freshness import pool_fingerprint
+    from app.services.ranking.provenance import pool_fingerprint
     from tests.application_support import activate_application, current_opening_id
 
     db = make_session()

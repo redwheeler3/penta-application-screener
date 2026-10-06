@@ -1,4 +1,4 @@
-"""Fingerprint the inputs that determine whether a shared ranking is current."""
+"""Capture ranking inputs and configuration as audit provenance."""
 
 from __future__ import annotations
 
