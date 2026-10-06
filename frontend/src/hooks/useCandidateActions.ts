@@ -2,7 +2,7 @@ import { useCommitteeApi } from "../api/identity";
 import { useRef } from "react";
 
 import * as applicationsApi from "../api/applications";
-import type { ApplicationDetail, ApplicationUpdate, AppStatus } from "../types";
+import type { ApplicationDetail, ApplicationUpdate, AppStatus, CommitteeActionResult } from "../types";
 import { useRequestScope } from "./useRequestScope";
 
 type CandidateActionsOptions = {
@@ -31,29 +31,32 @@ export function useCandidateActions(options: CandidateActionsOptions) {
     field: "status" | "committeeNotes" | "starredByMe" | "shortlisted",
     send: (openingId: number) => Promise<Response>,
     failureMessage: string,
-  ): Promise<ApplicationUpdate | null> {
-    if (openingId === null || !requests.isFor(openingId)) return null;
+  ): Promise<CommitteeActionResult> {
+    if (openingId === null || !requests.isFor(openingId)) return "rejected";
     const isCurrent = requests.capture();
     // Same-field edits stay ordered. Narrow acknowledgements let independent fields
     // save concurrently without replacing unrelated detail data.
     const queueKey = `${applicationId}:${field}`;
-    const result = (writeQueues.current.get(queueKey) ?? Promise.resolve()).then(async () => {
-      if (!isCurrent()) return null;
+    const result = (writeQueues.current.get(queueKey) ?? Promise.resolve()).then(async (): Promise<CommitteeActionResult> => {
+      if (!isCurrent()) return "rejected";
       try {
         const response = await send(openingId);
-        if (!isCurrent()) return null;
+        if (!isCurrent()) return "rejected";
         if (!response.ok) {
           current.current.onError(failureMessage);
-          return null;
+          return response.status >= 500 ? "unconfirmed" : "rejected";
         }
         const payload: { application: ApplicationUpdate } = await response.json();
-        if (!isCurrent()) return null;
+        if (!isCurrent()) return "rejected";
+        if (payload.application?.id !== applicationId || !(field in payload.application)) {
+          throw new Error("Save acknowledgement is incomplete.");
+        }
         // Navigation reconciles this receipt with matching displayed or pending detail.
         current.current.onApplicationUpdated(payload.application, openingId);
-        return payload.application;
+        return "saved";
       } catch {
         if (isCurrent()) current.current.onError(failureMessage);
-        return null;
+        return "unconfirmed";
       }
     });
     const tail = result.then(() => {}, () => {});
@@ -79,49 +82,49 @@ export function useCandidateActions(options: CandidateActionsOptions) {
   }
 
   async function overrideStatus(id: number, status: AppStatus): Promise<void> {
-    if (await mutate(id, "status", (opening) => api.overrideStatus(id, opening, status), "Could not update eligibility.")) {
+    if ((await mutate(id, "status", (opening) => api.overrideStatus(id, opening, status), "Could not update eligibility.")) === "saved") {
       refreshEligibilityViews();
     }
   }
 
   async function clearStatusOverride(id: number): Promise<void> {
-    if (await mutate(id, "status", (opening) => api.clearStatusOverride(id, opening), "Could not clear the eligibility override.")) {
+    if ((await mutate(id, "status", (opening) => api.clearStatusOverride(id, opening), "Could not clear the eligibility override.")) === "saved") {
       refreshEligibilityViews();
     }
   }
 
-  async function addCommitteeNote(id: number, body: string, creationKey: string): Promise<boolean> {
-    return Boolean(await mutate(
+  async function addCommitteeNote(id: number, body: string, creationKey: string): Promise<CommitteeActionResult> {
+    return mutate(
       id, "committeeNotes", (opening) => api.addCommitteeNote(id, opening, body, creationKey), "Could not add the committee note.",
-    ));
+    );
   }
 
   async function updateCommitteeNote(id: number, noteId: number, body: string): Promise<boolean> {
-    return Boolean(await mutate(
+    return (await mutate(
       id, "committeeNotes", (opening) => api.updateCommitteeNote(id, opening, noteId, body), "Could not update the committee note.",
-    ));
+    )) === "saved";
   }
 
   async function deleteCommitteeNote(id: number, noteId: number): Promise<boolean> {
-    return Boolean(await mutate(
+    return (await mutate(
       id, "committeeNotes", (opening) => api.deleteCommitteeNote(id, opening, noteId), "Could not delete the committee note.",
-    ));
+    )) === "saved";
   }
 
   async function toggleStar(id: number, starred: boolean): Promise<void> {
-    const application = await mutate(
+    const outcome = await mutate(
       id, "starredByMe", (opening) => api.setStar(id, opening, starred),
       starred ? "Could not add to favourites." : "Could not remove from favourites.",
     );
-    if (application) refreshSavedViews();
+    if (outcome === "saved") refreshSavedViews();
   }
 
   async function toggleShortlist(id: number, shortlisted: boolean): Promise<void> {
-    const application = await mutate(
+    const outcome = await mutate(
       id, "shortlisted", (opening) => api.setShortlist(id, opening, shortlisted),
       shortlisted ? "Could not add to the shared shortlist." : "Could not remove from the shared shortlist.",
     );
-    if (application) refreshSavedViews();
+    if (outcome === "saved") refreshSavedViews();
   }
 
   return {

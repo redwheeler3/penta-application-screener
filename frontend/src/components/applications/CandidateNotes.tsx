@@ -1,7 +1,7 @@
 import { LockKeyhole, Plus, UsersRound } from "lucide-react";
 import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { formatPacificDateTime } from "../../format";
-import type { CommitteeNote } from "../../types";
+import type { CommitteeNote, CommitteeActionResult } from "../../types";
 import type { PrivateNoteEditor } from "../../hooks/usePrivateNotes";
 
 const MAX_PRIVATE_NOTE_HEIGHT_PX = 150;
@@ -14,7 +14,7 @@ export function CandidateNotes(props: {
   privateNote: string;
   committeeNotes: CommitteeNote[];
   privateNoteEditor: PrivateNoteEditor | null;
-  onAddCommitteeNote: (id: number, body: string, creationKey: string) => Promise<boolean>;
+  onAddCommitteeNote: (id: number, body: string, creationKey: string) => Promise<CommitteeActionResult>;
   onUpdateCommitteeNote: (id: number, noteId: number, body: string) => Promise<boolean>;
   onDeleteCommitteeNote: (id: number, noteId: number) => Promise<boolean>;
   readOnly?: boolean;
@@ -69,14 +69,17 @@ export function CandidateNotes(props: {
     const submitted = attempt.draft;
     setCommitteeBusy(true);
     setCommitteeError(null);
-    const saved = await props.onAddCommitteeNote(props.applicationId, attempt.body, attempt.key);
+    const outcome = await props.onAddCommitteeNote(props.applicationId, attempt.body, attempt.key);
     setCommitteeBusy(false);
-    if (saved) creationAttempt.current = null;
+    const saved = outcome === "saved";
+    if (outcome !== "unconfirmed") creationAttempt.current = null;
     if (saved && editorRef.current.adding && editorRef.current.newNote === submitted) {
       setNewNote("");
       setAdding(false);
     } else if (!saved) {
-      setCommitteeError("The note is unconfirmed. Retry to confirm it before adding another.");
+      setCommitteeError(outcome === "unconfirmed"
+        ? "The note is unconfirmed. Retry to confirm it before adding another."
+        : "Could not add the note. Review the draft and try again.");
     }
   }
 

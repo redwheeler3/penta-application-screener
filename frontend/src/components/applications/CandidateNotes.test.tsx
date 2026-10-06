@@ -30,7 +30,7 @@ function renderNotes(overrides: Partial<ComponentProps<typeof CandidateNotes>> &
 } = {}) {
   const callbacks = {
     onSavePrivateNote: vi.fn().mockResolvedValue(true),
-    onAddCommitteeNote: vi.fn().mockResolvedValue(true),
+    onAddCommitteeNote: vi.fn().mockResolvedValue("saved"),
     onUpdateCommitteeNote: vi.fn().mockResolvedValue(true),
     onDeleteCommitteeNote: vi.fn().mockResolvedValue(true),
   };
@@ -164,7 +164,7 @@ describe("CandidateNotes", () => {
 
   it.each(["add", "edit"])("retains a newer committee draft after a pending %s", async (mode) => {
     const pending = deferred<boolean>();
-    renderNotes({ onAddCommitteeNote: () => pending.promise, onUpdateCommitteeNote: () => pending.promise });
+    renderNotes({ onAddCommitteeNote: async () => await pending.promise ? "saved" : "unconfirmed", onUpdateCommitteeNote: () => pending.promise });
     fireEvent.click(screen.getByRole("tab", { name: /Committee notes/ }));
     fireEvent.click(screen.getByRole("button", { name: mode === "add" ? "Add committee note" : "Edit" }));
     const editor = screen.getByRole("textbox", { name: mode === "add" ? "New committee note" : "Edit note by Committee Member" });
@@ -231,7 +231,7 @@ describe("CandidateNotes", () => {
 
 
 it("retries the exact unconfirmed creation before publishing a newer draft", async () => {
-  const add = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+  const add = vi.fn().mockResolvedValueOnce("unconfirmed").mockResolvedValue("saved");
   renderNotes({ onAddCommitteeNote: add });
   fireEvent.click(screen.getByRole("tab", { name: /Committee notes/ }));
   fireEvent.click(screen.getByRole("button", { name: "Add committee note" }));
@@ -248,4 +248,21 @@ it("retries the exact unconfirmed creation before publishing a newer draft", asy
   await waitFor(() => expect(add).toHaveBeenCalledTimes(3));
   expect(add.mock.calls[2][1]).toBe("Next");
   expect(add.mock.calls[2][2]).not.toBe(add.mock.calls[0][2]);
+});
+
+
+it("lets a definite refusal be corrected without replaying the rejected body", async () => {
+  const add = vi.fn().mockResolvedValueOnce("rejected").mockResolvedValue("saved");
+  renderNotes({ onAddCommitteeNote: add });
+  fireEvent.click(screen.getByRole("tab", { name: /Committee notes/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Add committee note" }));
+  const editor = screen.getByRole("textbox", { name: "New committee note" });
+  fireEvent.change(editor, { target: { value: "Rejected draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+  await screen.findByText(/Review the draft/);
+  fireEvent.change(editor, { target: { value: "Corrected draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+  await waitFor(() => expect(add).toHaveBeenCalledTimes(2));
+  expect(add.mock.calls[1][1]).toBe("Corrected draft");
+  expect(add.mock.calls[1][2]).not.toBe(add.mock.calls[0][2]);
 });

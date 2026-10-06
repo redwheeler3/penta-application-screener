@@ -174,3 +174,5 @@ export type ApplicationUpdate = Pick<ApplicationDetail, "id"> & Partial<Pick<App
   "status" | "statusSource" | "stale" | "autoStatus" | "autoStatusSource" | "hardFilterReasons"
   | "privateNote" | "committeeNotes" | "starredByMe" | "shortlisted"
 >>;
+
+export type CommitteeActionResult = "saved" | "rejected" | "unconfirmed";
