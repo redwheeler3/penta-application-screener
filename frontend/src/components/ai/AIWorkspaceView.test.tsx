@@ -35,15 +35,16 @@ it.each([
   ["Matching", "fetchMatchAudit"], ["Decomposition", "fetchDecomposeAudit"],
   ["Consolidation", "fetchConsolidateAudit"], ["Pattern discovery", "fetchFanOutAudit"],
 ] as const)("refreshes %s for the accepted criteria snapshot and requests its exact analysis", async (tab, method) => {
-  const props = { family: "obs" as const, openingId: 1, onToast: vi.fn(), onError: vi.fn() };
+  const props = { family: "obs" as const, openingId: 1, refreshKey: null, onToast: vi.fn(), onError: vi.fn() };
   const first = criteria(1);
   const { rerender } = render(<AIWorkspaceView {...props} run={first} />);
   fireEvent.click(screen.getByRole("tab", { name: tab }));
   await waitFor(() => expect(traces[method]).toHaveBeenCalledExactlyOnceWith(1, 1));
   rerender(<AIWorkspaceView {...props} run={first} />);
   expect(traces[method]).toHaveBeenCalledTimes(1);
-  // A same-analysis completion installs a fresh accepted snapshot too.
-  rerender(<AIWorkspaceView {...props} run={criteria(1)} />);
+  // A remote run may finish with the same criteria object still mounted.
+  // The existing dashboard poll supplies a new accepted observation.
+  rerender(<AIWorkspaceView {...props} run={first} refreshKey={{}} />);
   await waitFor(() => expect(traces[method]).toHaveBeenCalledTimes(2));
   rerender(<AIWorkspaceView {...props} run={criteria(2)} />);
   await waitFor(() => expect(traces[method]).toHaveBeenLastCalledWith(1, 2));
@@ -54,7 +55,7 @@ it("does not display a late trace from an analysis the operator has left", async
   traces.fetchMatchAudit.mockReturnValueOnce(old.promise).mockResolvedValue({ analysisId: 2,
     rawDiscoveryDimensions: [{ key: "new", name: "Current criterion" }], newToOld: {},
     priorDimensionCount: 1, discoveredCount: 1, matchedCount: 0, newCount: 1, carryForwardRate: 0 });
-  const props = { family: "obs" as const, openingId: 1, onToast: vi.fn(), onError: vi.fn() };
+  const props = { family: "obs" as const, openingId: 1, refreshKey: null, onToast: vi.fn(), onError: vi.fn() };
   const { rerender } = render(<AIWorkspaceView {...props} run={criteria(1)} />);
   fireEvent.click(screen.getByRole("tab", { name: "Matching" }));
   rerender(<AIWorkspaceView {...props} run={criteria(2)} />);
@@ -70,7 +71,7 @@ function setup(editable: boolean) {
     { key: "judge", label: "Judge", description: "Synthetic", spends: true, estimatedCalls: 1, repetitions: 1 },
     { key: "stability", label: "Judge stability", description: "Synthetic", spends: true, estimatedCalls: 5, repetitions: 5 },
   ] });
-  return render(<AIWorkspaceView family="eval" run={null} openingId={1} onToast={vi.fn()} onError={vi.fn()} />);
+  return render(<AIWorkspaceView family="eval" refreshKey={null} run={null} openingId={1} onToast={vi.fn()} onError={vi.fn()} />);
 }
 
 it("keeps hosted cases and run controls while hiding every corpus write control", async () => {
@@ -108,7 +109,7 @@ it("preserves local case, brief and baseline editing", async () => {
 
 it("keeps paid controls unavailable when run details fail and offers Retry", async () => {
   api.fetchEvalCatalog.mockRejectedValueOnce(new Error("Synthetic failure"));
-  render(<AIWorkspaceView family="eval" run={null} openingId={null} onToast={vi.fn()} onError={vi.fn()} />);
+  render(<AIWorkspaceView family="eval" refreshKey={null} run={null} openingId={null} onToast={vi.fn()} onError={vi.fn()} />);
   await screen.findByText("Could not load eval run details.");
   expect(screen.getByRole("button", { name: /Run screening/ })).toBeDisabled();
   api.fetchEvalCatalog.mockResolvedValue({ fixtureEditingEnabled: false, evals: [

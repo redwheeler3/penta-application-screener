@@ -166,3 +166,6 @@ export type FanOutAuditResponse = {
     narrative: string | null;
   }[];
 };
+
+/** Immutable read scope for one analysis trace; a new accepted observation refreshes it. */
+export type AnalysisTraceScope = { openingId: number; analysisId: number; observation: object | null };

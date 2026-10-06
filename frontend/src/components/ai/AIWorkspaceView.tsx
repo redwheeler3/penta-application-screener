@@ -1,7 +1,7 @@
 import { useFetchResource } from "../../hooks/useFetchResource";
 import { RetryLoadError } from "../shared/RetryLoadError";
 import { useCommitteeApi } from "../../api/identity";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import * as evalsApi from "../../api/evals";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
 import type { CurrentRunResponse, EvalFixtureKey, EvalRunMode } from "../../types";
@@ -52,12 +52,19 @@ export function AIWorkspaceView(props: {
   family: AIWorkspaceFamily;
   run: CurrentRunResponse | null;
   openingId: number | null;
+  refreshKey: object | null;
   // Save outcomes (golden case, judge brief) surface as the app's standard toasts, same as
   // Settings and the Rank flows — not inline text.
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
   const { fetchEvalCatalog } = useCommitteeApi(evalsApi);
+
+  // The workspace's accepted dashboard read also observes remote completion.
+  // Reuse that cadence; only the mounted trace reads its own payload.
+  const traceScope = useMemo(() => props.run && props.openingId !== null
+    ? { openingId: props.openingId, analysisId: props.run.analysisId, observation: props.refreshKey } : null,
+  [props.run, props.openingId, props.refreshKey]);
 
   const { family, onToast, onError } = props;
   const toast = { onToast, onError };
@@ -139,14 +146,14 @@ export function AIWorkspaceView(props: {
         <p className="panel-hint">Edit fixtures locally, then deploy the committed files to use them here.</p>
       ) : null}
       <div className="observability-subtab-body">
-        {activeTab === "discovery" && props.run ? (
-          <DiscoveryPanel run={props.run} openingId={props.openingId!} />
+        {activeTab === "discovery" && traceScope ? (
+          <DiscoveryPanel scope={traceScope} />
         ) : activeTab === "decompose" ? (
-          <DecomposeAuditPanel run={props.run!} openingId={props.openingId!} />
+          <DecomposeAuditPanel scope={traceScope!} />
         ) : activeTab === "match" ? (
-          <MatchAuditPanel run={props.run!} openingId={props.openingId!} />
+          <MatchAuditPanel scope={traceScope!} />
         ) : activeTab === "consolidate" ? (
-          <ConsolidateAuditPanel run={props.run!} openingId={props.openingId!} />
+          <ConsolidateAuditPanel scope={traceScope!} />
         ) : activeTab === "metrics" ? (
           <MetricsPanel />
         ) : activeTab === "invariants" ? (

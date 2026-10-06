@@ -500,6 +500,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
           <Suspense fallback={aiQualityLoading}>
             <AIWorkspaceView
               family={activeTab === "observability" ? "obs" : "eval"}
+              refreshKey={workflow}
               run={rankingRun}
               openingId={selectedOpeningId}
               onToast={showToast}

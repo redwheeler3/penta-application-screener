@@ -3,17 +3,17 @@ import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import * as rankingApi from "../../api/ranking";
 import { useFetchResource } from "../../hooks/useFetchResource";
-import type { CurrentRunResponse } from "../../types";
+import type { AnalysisTraceScope } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Show each independent discovery pass and its reasoning. When per-pass data is absent,
 // fall back to the run-level narrative.
-export function DiscoveryPanel(props: { run: CurrentRunResponse; openingId: number }): ReactNode {
+export function DiscoveryPanel(props: { scope: AnalysisTraceScope }): ReactNode {
   const { fetchFanOutAudit } = useCommitteeApi(rankingApi);
 
   const { data: audit, state, reload } = useFetchResource(
-    () => fetchFanOutAudit(props.openingId, props.run.analysisId),
-    { reloadKey: props.run },
+    () => fetchFanOutAudit(props.scope.openingId, props.scope.analysisId),
+    { reloadKey: props.scope },
   );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;

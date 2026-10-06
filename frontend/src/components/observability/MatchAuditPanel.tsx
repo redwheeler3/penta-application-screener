@@ -3,17 +3,17 @@ import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import * as rankingApi from "../../api/ranking";
 import { useFetchResource } from "../../hooks/useFetchResource";
-import type { CurrentRunResponse, MatchAuditResponse } from "../../types";
+import type { AnalysisTraceScope, MatchAuditResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Show how settled dimensions map onto prior dimensions. A high reuse rate is expected;
 // individual incorrect mappings are the actionable signal.
-export function MatchAuditPanel(props: { openingId: number; run: CurrentRunResponse }): ReactNode {
+export function MatchAuditPanel(props: { scope: AnalysisTraceScope }): ReactNode {
   const { fetchMatchAudit } = useCommitteeApi(rankingApi);
 
   const { data: audit, state, reload } = useFetchResource(
-    () => fetchMatchAudit(props.openingId, props.run.analysisId),
-    { reloadKey: props.run },
+    () => fetchMatchAudit(props.scope.openingId, props.scope.analysisId),
+    { reloadKey: props.scope },
   );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;

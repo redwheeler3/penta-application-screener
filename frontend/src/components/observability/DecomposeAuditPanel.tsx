@@ -3,17 +3,17 @@ import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import * as rankingApi from "../../api/ranking";
 import { useFetchResource } from "../../hooks/useFetchResource";
-import type { CurrentRunResponse, DecomposeAuditResponse } from "../../types";
+import type { AnalysisTraceScope, DecomposeAuditResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Show how parallel discovery reports were settled into non-overlapping dimensions,
 // including merge reasoning and any committee request folded into another axis.
-export function DecomposeAuditPanel(props: { openingId: number; run: CurrentRunResponse }): ReactNode {
+export function DecomposeAuditPanel(props: { scope: AnalysisTraceScope }): ReactNode {
   const { fetchDecomposeAudit } = useCommitteeApi(rankingApi);
 
   const { data: audit, state, reload } = useFetchResource(
-    () => fetchDecomposeAudit(props.openingId, props.run.analysisId),
-    { reloadKey: props.run },
+    () => fetchDecomposeAudit(props.scope.openingId, props.scope.analysisId),
+    { reloadKey: props.scope },
   );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
