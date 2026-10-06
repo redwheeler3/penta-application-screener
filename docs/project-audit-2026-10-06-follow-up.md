@@ -1,9 +1,9 @@
 # Two-pass analysis: invalidation and uncertainty — 2026-10-06
 
-**Status: both requested analyses complete; three recommendations remain open.**
-Baseline: clean `main` at `b68e6a0`, matching the recorded `origin/main`.
-Application code and permanent tests are unchanged. This report replaces the active
-audit narrative; the completed U01–U06 campaign and its full evidence remain in
+**Status: V01–V03 implemented, reviewed, and verified locally.**
+Analysis baseline: clean `main` at `b68e6a0`, matching the recorded `origin/main` then.
+The analysis and original counterexamples below describe that baseline. Implementation
+results follow at the end. The completed U01–U06 campaign and its full evidence remain in
 `b68e6a0:docs/project-audit-2026-10-06-follow-up.md`.
 
 ## Result
@@ -238,7 +238,7 @@ to the prior value can now make one otherwise-skipped small save; there is no pr
 read or extra round trip per ordinary save. The correctness benefit warrants that bounded
 write, and the implementation should remove branching rather than add a new subsystem.
 
-## Verification and limits
+## Analysis verification and limits (before implementation)
 
 - **Four temporary counterexample probes passed assertions for the defective behavior.**
   They exercise real React hooks with controlled API completions and synthetic values.
@@ -255,7 +255,7 @@ write, and the implementation should remove branching rather than add a new subs
 - This was a targeted follow-up analysis of asynchronous truth/acknowledgement boundaries,
   not another line-by-line whole-repository certification or a production latency benchmark.
 
-## Recommended next work and stopping rule
+## Implementation plan and stopping rule
 
 Implement V03, V02 and V01 as cohesive changes in their existing owners, adding the
 counterexamples as expected-behavior regressions. Retain the useful test cases; replace
@@ -271,3 +271,56 @@ The method improved the second pass: it found two additional owners with the sam
 of mistaken confidence and one related eval edit case. It does not establish that every
 remaining defect has been found. At this point these three recommendations are the
 confirmed, worthwhile follow-up work; the other reviewed guards do not need a rewrite.
+
+## Implementation results — 2026-10-06
+
+| Finding | Commit | Result |
+| --- | --- | --- |
+| V03 | `2f760f9` | Dirty/retry note drafts require a real save acknowledgement; repeated flushes still coalesce after a confirmed save. |
+| V02 | `29b487c` | Stale observations invalidate older board/current reads and settle loading state; a fresh accepted reload restores the board. |
+| V01 | `83cd0da` | Retained eval output and verified coverage are separate projections; receipts preserve validation metadata, and case saves acknowledge semantic fingerprints. |
+
+Case GET/PUT responses reuse the dataset's input/label/contested-policy hash projection.
+Coverage matches both independent history metadata and the visible fixture, so different
+case/history read completion orders cannot certify output against the wrong visible inputs.
+Editorial-only saves retain valid coverage. Judge-brief saves clear configuration certainty
+until the existing free refresh succeeds. That simpler invalidation avoids extra fixture
+reads and ordering machinery for independently saved briefs. Retained details say **not
+current** when they cannot be verified; a free metadata recovery can restore coverage.
+
+### Final adverse-state review
+
+- **Private notes:** simulated server commit with lost acknowledgement, followed by revert;
+  both successful and failed retries preserve agreement between saved status and server state.
+  Duplicate flushes, newer typing, account scope, and blocked drafts retain their protections.
+- **Ranking:** passive and explicit board reads in both dashboard/board completion orders,
+  including batched completions; the warning survives, failed reload retains it, and a
+  successful fresh reload clears it. Existing mutation/opening-scope tests still pass.
+- **Evals:** a stale B sentinel remains stale while A completes with a failed refresh, for
+  both recorded and unrecorded receipts. Label/input/editorial edits, pending-run/edit orders,
+  case/history read orders, and actual label/brief editor callbacks exercise the full path.
+  A successful metadata retry restores compatible output without another model call.
+- **Shared boundaries:** reviewed the request-scope and resource-setter ownership used by
+  all three fixes. Existing queues and invalidation scopes carry the required ordering;
+  no additional cross-owner registry, lock, or persistent identity is needed. The review
+  found no further confirmed issue worth expanding this implementation to address.
+
+### Verification and complexity
+
+- Full frontend suite: **356 passed across 49 files**. The strengthened recovery assertion
+  was then checked with the affected hook suite: **23 passed**.
+- Full backend suite: **1081 passed, 1 skipped** (existing POSIX-only check on Windows).
+- Production frontend build, ESLint, Ruff, and `git diff --check` passed.
+- Across the three code commits: **44 net application-code lines and 200 net test lines**.
+  Tests extend existing suites; the backend label test now exercises the real save endpoint
+  instead of editing its fixture directly. No new module, state store, or framework was added.
+- No new ranking request or model call. Eval fingerprints add small CPU/response work to
+  existing reads/saves, with no extra serial network dependency. A reverted dirty note may
+  now require one previously skipped write; typing remains debounced and nonblocking.
+- No production action, real model/email call, database reset, or applicant-data change.
+  No browser gesture/visual or production-latency claim is made. This implementation was
+  committed locally; pushing was not requested for this turn.
+
+These changes strengthen the evidence behind existing state claims while retaining the
+existing ownership boundaries. The review method reduces a specific class of misses;
+neither its coverage nor the passing suites guarantee that all defects are eliminated.

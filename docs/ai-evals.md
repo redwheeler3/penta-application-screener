@@ -77,7 +77,9 @@ an equal key in another family is a separate case.
 The live view and restored history accumulate only compatible experiments. Changed case
 inputs or labels stop contributing to current dots; the stored results remain historical
 evidence. Results without a captured input fingerprint cannot prove current coverage. Saving
-cases or Judge briefs refreshes these checks without running a model. Restoration selects
+cases acknowledges their semantic fingerprints immediately; saving a Judge brief leaves its
+configuration unconfirmed until the free metadata refresh succeeds. Editorial-only saves keep
+coverage. Neither path runs a model. Restoration selects
 the latest result per current scoped case in SQLite and excludes unused narration. An
 expression index narrows the query to the eval, prompt, and experiment; work within one
 experiment still grows with its run history, without a fixed row window or a second results store.
@@ -90,6 +92,12 @@ source; an unrecorded receipt survives repeated refreshes until the case runs ag
 changes, or the view unmounts. Historical markers are omitted while a live override would make
 their aggregate misleading. Scoped family/key identities serialize Unicode consistently across
 Python, SQLite and JavaScript.
+
+Retained output and verified current coverage are separate projections of the same state.
+Coverage requires matching configuration, history fingerprints, and the visible case's fingerprint;
+missing metadata cannot certify a result. A delivered receipt preserves known validation metadata.
+When validation fails or is unavailable, retained details remain inspectable as **not current**.
+Recovering metadata can restore coverage without another paid run.
 
 The catalog supplies the repetition count: one for live evals and the default K for stability.
 Confirmations multiply it by the current case count, and requests send that same K. Metadata

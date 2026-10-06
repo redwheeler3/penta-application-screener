@@ -27,6 +27,9 @@ Tier changes use cached scores without model calls. The eval catalog exposes `fi
 `/evals/last-run` returns `runs` and independent `current` configuration/fingerprint metadata for
 every requested mode, including modes without stored history. Each saved aggregate supplies
 `caseRunIds` so clients compare receipts with a case's actual source, not the aggregate run ID.
+Case GET/PUT responses include `caseFingerprints` computed from the returned cases using the same
+input/label/contested-policy projection as paid runs. Clients can invalidate changed coverage on
+save acknowledgement even if the subsequent history refresh fails.
 
 Spending reports describe known returned
 usage from completed or failed attempts rather than promising an exact provider bill.

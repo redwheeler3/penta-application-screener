@@ -111,6 +111,10 @@ requests so a late initial response cannot overwrite the new run's results.
 and delivered receipts. There is no independently maintained experiment/result cache. Current
 metadata exists even before the first saved run; recorded receipts yield to that case's source
 run, while unrecorded receipts remain view-local until replaced, invalidated or unmounted.
+Retained details and current coverage are derived separately from that same state. Current coverage
+requires matching validation metadata and the visible case's fingerprint. Case-save acknowledgements
+carry those fingerprints; Judge-brief saves invalidate configuration until the free refresh succeeds.
+Missing metadata never makes historical output current, and a delivered receipt does not erase it.
 Each eval family has its own mounted workspace. The case editor owns its draft, pending save,
 and inline error; it closes only when the current draft still matches the acknowledged submission.
 Fixture saves are ordered because responses contain the full case list. Accepted saves invalidate
@@ -143,8 +147,9 @@ request was in flight. Older settings reads cannot roll back a completed save.
 `hooks/useEligibilityRules.ts` applies the same acknowledgement rule to both eligibility editors.
 Each draft belongs to its opening and rule kind; save and reset share one busy state, and a late
 response from an opening the member has left cannot change the current editor. Private-note
-autosaves run through the account-owned queue in `usePrivateNotes.ts`; even a revert waits for earlier
-writes before comparing against the last acknowledged server value.
+autosaves run through the account-owned queue in `usePrivateNotes.ts`. Dirty/retry drafts require a
+write acknowledgement even when reverted to the last confirmed value: an uncertain earlier write
+may have committed. Repeated flushes coalesce once that draft is confirmed saved.
 Superseded drafts waiting in that queue are skipped; a save already sent must finish before the
 latest draft is sent. Committee-note saves preserve any newer text typed while saving.
 
@@ -345,7 +350,8 @@ detail navigation use that boundary. Background refresh failures preserve the la
 data within the current workspace. Tier and proposal writes share a serial queue in `useRanking.ts`;
 queued writes retain their opening and analysis scope, and only the latest edit's response updates
 its optimistic display. A write for an opening the member has left cannot update the new workspace.
-Every ranking mutation invalidates older board reads. A failed save waits for already-queued
+Every ranking mutation and confirmed stale observation invalidates older board reads and settles
+their loading state. An older response cannot clear a newer stale warning. A failed save waits for already-queued
 edits to settle, then reloads the displayed board or the current-run metadata if no board is loaded.
 Backend edits hold the run-lease row from the policy check through commit, so Rank cannot start
 between checking the current analysis and saving a tier or proposal. Member JSON is reloaded
