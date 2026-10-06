@@ -91,6 +91,7 @@ export function RunnableEval(props: {
         const body = await response.json();
         if (!isCurrent()) return "This case tab is no longer active.";
         setCases(body.cases);
+        setConfirm(null);
         props.onToast(`Case “${String(evalCase.key)}” saved — commit the golden file to keep it.`);
         return null;
       } catch {
@@ -105,14 +106,16 @@ export function RunnableEval(props: {
 
   const selectedCase = cases?.find((c) => evalsApi.fixtureCaseIdentity(c, caseEvalKey === "judge") === selected) ?? null;
   const selectedResult = selected ? caseResults[selected] : undefined;
-  const perCaseCalls = (m: RunMode) => (cases?.length ? Math.max(1, Math.round(m.calls / cases.length)) : 1);
+  const totalCalls = (mode: RunMode) => (cases?.length ?? 0) * mode.repetitions;
+  const modeLabel = (mode: RunMode) => mode.repetitions > 0 && (mode.evalKey === "stability" || mode.evalKey.endsWith("_stability"))
+    ? `${mode.label} (K=${mode.repetitions})` : mode.label;
 
   // The spend-confirm renders INLINE next to the button that triggered it: the whole-set
   // buttons at the top, a per-case button down in the detail pane. Keyed by whether the
   // pending confirm carries a caseKey, so it never appears far from what launched it.
   const renderConfirm = () => (
     <InlineConfirm
-      title={confirm!.caseKey ? `Run case “${confirm!.caseKey}”?` : `${confirm!.mode.label}?`}
+      title={confirm!.caseKey ? `Run case “${confirm!.caseKey}”?` : `${modeLabel(confirm!.mode)}?`}
       body={`This makes ~${confirm!.calls} model call${confirm!.calls === 1 ? "" : "s"} and costs real money.`}
       onConfirm={() => {
         const t = confirm!;
@@ -137,10 +140,10 @@ export function RunnableEval(props: {
             key={m.evalKey}
             type="button"
             className="primary-button"
-            disabled={run.running}
-            onClick={() => setConfirm({ mode: m, calls: m.calls })}
+            disabled={run.running || cases === null || m.repetitions < 1}
+            onClick={() => setConfirm({ mode: m, calls: totalCalls(m) })}
           >
-            {run.running ? "Running…" : `${m.label} (~${m.calls})`}
+            {run.running ? "Running…" : `${modeLabel(m)} (~${totalCalls(m)})`}
           </button>
         ))}
         {addable ? (
@@ -214,8 +217,8 @@ export function RunnableEval(props: {
                     key={m.evalKey}
                     type="button"
                     className="primary-button"
-                    disabled={run.running}
-                    onClick={() => setConfirm({ mode: m, caseKey: String(selectedCase.key), passName: caseEvalKey === "judge" ? (selectedCase.metadata as Record<string, unknown> | undefined)?.pass as string | undefined : undefined, calls: perCaseCalls(m) })}
+                    disabled={run.running || m.repetitions < 1}
+                    onClick={() => setConfirm({ mode: m, caseKey: String(selectedCase.key), passName: caseEvalKey === "judge" ? (selectedCase.metadata as Record<string, unknown> | undefined)?.pass as string | undefined : undefined, calls: m.repetitions })}
                   >
                     {run.running ? "Running…" : m.rowLabel}
                   </button>

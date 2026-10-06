@@ -225,19 +225,14 @@ def current_reasoning_effort(eval_key: str, db: Session) -> str:
     if base in ("stability", "judge"):
         return ""
     settings = get_app_settings(db)
-    attrs = {
-        "screening": ("screening_model", "screening_reasoning_effort"),
-        "scoring": ("dimension_scoring_model", "dimension_scoring_reasoning_effort"),
-        "consolidation": ("consolidate_model", "consolidate_reasoning_effort"),
-        "matching": ("match_model", "match_reasoning_effort"),
-        "decomposition": ("decompose_model", "decompose_reasoning_effort"),
-    }
-    pair = attrs.get(base)
-    if pair is None:
+    from app.ai.pass_catalog import ai_pass
+    spec = ai_pass(base)
+    if spec is None:
         return ""
-    model = getattr(settings.ai, pair[0])
-    effort = getattr(settings.ai, pair[1])
+    model = getattr(settings.ai, spec.model_attr)
+    effort = getattr(settings.ai, spec.reasoning_attr)
     return effective_reasoning_effort(model, effort) or ""
+
 
 
 class ReasoningProvider:

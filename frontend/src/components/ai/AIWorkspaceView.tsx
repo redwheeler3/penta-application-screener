@@ -1,8 +1,10 @@
+import { useFetchResource } from "../../hooks/useFetchResource";
+import { RetryLoadError } from "../shared/RetryLoadError";
 import { useCommitteeApi } from "../../api/identity";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import * as evalsApi from "../../api/evals";
 import { AI_PASS_PIPELINE_ORDER } from "../../constants";
-import type { CurrentRunResponse, EvalDescriptor, EvalFixtureKey, EvalRunMode } from "../../types";
+import type { CurrentRunResponse, EvalFixtureKey, EvalRunMode } from "../../types";
 import { InvariantsEval } from "../evals/InvariantsEval";
 import { JudgeBackgrounds } from "../evals/JudgeBackgrounds";
 import { RunnableEval } from "../evals/RunnableEval";
@@ -59,16 +61,9 @@ export function AIWorkspaceView(props: {
 
   const { family, onToast, onError } = props;
   const toast = { onToast, onError };
-  const [catalog, setCatalog] = useState<EvalDescriptor[] | null>(null);
-  const [fixtureEditingEnabled, setFixtureEditingEnabled] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (family !== "eval") return;
-    let active = true;
-    fetchEvalCatalog()
-      .then((data) => { if (active) { setCatalog(data.evals); setFixtureEditingEnabled(data.fixtureEditingEnabled); } })
-      .catch(() => { if (active) setCatalog([]); });
-    return () => { active = false; };
-  }, [family, fetchEvalCatalog]);
+  const catalog = useFetchResource(() => family === "eval" ? fetchEvalCatalog()
+    : Promise.resolve({ evals: [], fixtureEditingEnabled: false }), { reloadKey: family });
+  const fixtureEditingEnabled = catalog.state === "ready" && catalog.data?.fixtureEditingEnabled === true;
 
   // Observability subtabs in pipeline order; the per-run trace tabs exist only once a run
   // does, then the cross-run aggregates (Cost, Trends) trail.
@@ -109,10 +104,12 @@ export function AIWorkspaceView(props: {
 
   const passTab = isPassTab(activeTab) ? activeTab : null;
   const passConfig = passTab ? PASS_EVALS[passTab] : null;
-  const calls = (k: EvalRunMode) => catalog?.find((e) => e.key === k)?.estimatedCalls ?? 0;
+  const repetitions = (k: EvalRunMode) => catalog.state === "ready"
+    ? catalog.data?.evals.find((entry) => entry.key === k)?.repetitions ?? 0 : 0;
 
   return (
     <div className="observability-view">
+      {family === "eval" && catalog.state === "error" ? <RetryLoadError message="Could not load eval run details." onRetry={catalog.reload} /> : null}
       <div className="observability-header">
         <h3>{family === "obs" ? "Observability" : "Evals"}</h3>
       </div>
@@ -164,8 +161,8 @@ export function AIWorkspaceView(props: {
             runKeys={[passTab, passConfig.stability]}
             description={passConfig.description}
             modes={[
-              { evalKey: passTab, label: `Run ${passTab}`, rowLabel: "Run", calls: calls(passTab) },
-              { evalKey: passConfig.stability, label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls(passConfig.stability) },
+              { evalKey: passTab, label: `Run ${passTab}`, rowLabel: "Run", repetitions: repetitions(passTab) },
+              { evalKey: passConfig.stability, label: "Run stability", rowLabel: "Run stability", repetitions: repetitions(passConfig.stability) },
             ]}
           />
         ) : activeTab === "judge" ? (
@@ -181,8 +178,8 @@ export function AIWorkspaceView(props: {
             description="A blind label audit: for every pass's golden cases, an independent model reproduces that pass's output from the pass's brief + the case input (NOT the human label), then the harness compares to the label. A judge run reports judge-vs-human agreement (κ); a stability run repeats each case K times to see if the judge's verdict flips. Cases are grouped by the pass they exercise."
             modes={
               [
-                { evalKey: "judge", label: "Run judge + agreement", rowLabel: "Run judge", calls: calls("judge") },
-                { evalKey: "stability", label: "Run stability (K=5)", rowLabel: "Run stability", calls: calls("stability") },
+                { evalKey: "judge", label: "Run judge + agreement", rowLabel: "Run judge", repetitions: repetitions("judge") },
+                { evalKey: "stability", label: "Run stability", rowLabel: "Run stability", repetitions: repetitions("stability") },
               ]
             }
           />

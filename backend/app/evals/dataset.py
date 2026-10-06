@@ -6,6 +6,7 @@ can hide local fixture edits. Editorial notes do not change an experiment's inpu
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from app.evals.case_schema import validate_case
@@ -38,8 +39,16 @@ class DatasetSnapshot:
         }
 
 
-def load_dataset(family: str | None = None) -> DatasetSnapshot:
-    paths = GOLDEN_FILES if family is None or family in ("judge", "stability") else {family: GOLDEN_FILES[family]}
+def load_dataset(families: str | Iterable[str] | None = None) -> DatasetSnapshot:
+    if families is None:
+        names = list(GOLDEN_FILES)
+    elif isinstance(families, str):
+        names = [families]
+    else:
+        names = list(dict.fromkeys(families))
+    if any(name in ("judge", "stability") for name in names):
+        names = list(GOLDEN_FILES)
+    paths = {name: GOLDEN_FILES[name] for name in names}
     data = {name: read_json(path) for name, path in paths.items()}
     for name, contents in data.items():
         for case in contents["cases"]:

@@ -17,7 +17,7 @@ export type EvalRunOption = {
   evalKey: EvalRunMode;
   label: string;
   rowLabel: string;
-  calls: number;
+  repetitions: number;
 };
 
 // The fixtures a RunnableEval tab can read/edit cases for (the writable golden sets + the
@@ -138,6 +138,7 @@ export type EvalDescriptor = {
   description: string;
   spends: boolean;
   estimatedCalls: number;
+  repetitions: number;
 };
 
 // One restored run (GET /evals/last-run): the newest persisted run for a single eval key.

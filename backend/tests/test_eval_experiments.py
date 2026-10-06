@@ -155,7 +155,7 @@ async def test_history_restores_all_cases_after_many_partial_runs_without_narrat
             assert not any("thinking" in query for query in queries)
             changed = copy.deepcopy(snapshot.families)
             changed["scoring"]["cases"].pop(0)
-            monkeypatch.setattr(catalog, "load_dataset", lambda: DatasetSnapshot(changed))
+            monkeypatch.setattr(catalog, "load_dataset", lambda *_: DatasetSnapshot(changed))
             run = (await client.get("/evals/last-run?keys=judge")).json()["runs"][0]
             assert len(run["result"]["cases"]) == len(fingerprints) - 1
     finally:
@@ -263,3 +263,36 @@ async def test_unicode_scoped_identity_round_trips(tmp_path, monkeypatch, mode, 
     assert [case["key"] for case in run["result"]["cases"]] == [key]
     identity = json.dumps(["matching", key], separators=(",", ":"), ensure_ascii=False)
     assert run["result"]["cases"][0]["inputFingerprint"] == run["currentCaseFingerprints"][identity]
+
+
+async def test_metadata_reads_only_its_scope_and_returns_captured_brief(tmp_path, monkeypatch):
+    from app.evals import case_store, dataset
+    from app.evals.fixture_files import read_json
+    local_corpus(tmp_path, monkeypatch)
+    app, _db, provider = setup_app()
+    reads = []
+    def counted(path):
+        reads.append(path)
+        return read_json(path)
+    monkeypatch.setattr(dataset, "read_json", counted)
+    monkeypatch.setattr(case_store, "read_json", counted)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        empty = await client.get("/evals/last-run?keys=scoring")
+        assert empty.json()["runs"] == []
+        assert reads == []
+        briefs = await client.get("/evals/judge-backgrounds")
+        assert len(briefs.json()["backgrounds"]) == 5
+        assert len(reads) == 5
+        reads.clear()
+        saved = await client.put("/evals/judge-backgrounds/matching", json={"background": "Changed synthetic brief"})
+        assert saved.status_code == 200
+        assert saved.json()["background"] == "Changed synthetic brief"
+        assert reads == [GOLDEN_FILES["matching"]]
+        provider.route("", DimensionScoringReport(scores=[]))
+        await _stream_events(client, "/evals/scoring?case=absence_scores_neutral")
+        reads.clear()
+        restored = await client.get("/evals/last-run?keys=scoring,scoring_stability")
+        assert len(restored.json()["runs"]) == 1
+        assert reads == [GOLDEN_FILES["scoring"]]
+        catalog = (await client.get("/evals/catalog")).json()["evals"]
+        assert all(item["repetitions"] == (5 if item["key"] == "stability" or item["key"].endswith("_stability") else 0 if item["key"] == "invariants" else 1) for item in catalog)

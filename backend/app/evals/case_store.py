@@ -100,18 +100,10 @@ _BACKGROUND_PASSES: tuple[str, ...] = (
 )
 
 
-def get_background(pass_name: str) -> str:
-    """The editable ``judge_background`` (what the pass does, shown to the blind judge) for one
-    pass, read from its golden file. Empty string if unset. Unknown pass → UnknownEvalError."""
-    if pass_name not in _BACKGROUND_PASSES:
-        raise UnknownEvalError(pass_name)
-    return _read_fixture(pass_name).get("judge_background", "")
-
-
-def save_background(pass_name: str, background: str) -> str:
+def save_background(pass_name: str, background: str) -> dict:
     """Write one pass's ``judge_background`` to its golden file (preserving cases + other
     top-level keys). The operator commits the file to git deliberately. Returns the saved
-    text. Unknown pass → UnknownEvalError."""
+    file snapshot. Unknown pass → UnknownEvalError."""
     if pass_name not in _BACKGROUND_PASSES:
         raise UnknownEvalError(pass_name)
     if not isinstance(background, str) or not background.strip():
@@ -119,6 +111,8 @@ def save_background(pass_name: str, background: str) -> str:
     path = _FIXTURES[pass_name]
     with fixture_lock(path):
         data = read_json(path)
+        for case in data["cases"]:
+            validate_case(pass_name, case)
         data["judge_background"] = background
         write_json(path, data)
-        return background
+        return data

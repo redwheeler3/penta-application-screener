@@ -27,6 +27,7 @@ from app.db.session import get_db
 from app.evals.dataset import case_identity, load_dataset
 from app.evals.fixture import FIXTURE_PATH, load, record
 from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invariants
+from app.evals.paths import GOLDEN_FILES
 from app.schemas.evals import (
     EvalCatalogResponse,
     EvalDescriptor,
@@ -59,7 +60,7 @@ def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
             key="invariants", label="Invariants",
             description="Deterministic checks on the committed baseline fixture (poles "
             "present, no protected attributes). Free, instant.",
-            spends=False, estimated_calls=0,
+            spends=False, estimated_calls=0, repetitions=0,
         ),
         EvalDescriptor(
             key="scoring", label="Scoring",
@@ -71,7 +72,7 @@ def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
             key="scoring_stability", label="Scoring — stability",
             description=f"Run the REAL scoring prompt K times (default K={DEFAULT_STABILITY_K}) per "
             "golden case on fixed input; flag when a case's pass/fail wanders across runs.",
-            spends=True, estimated_calls=len(golden) * DEFAULT_STABILITY_K,
+            spends=True, estimated_calls=len(golden) * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="consolidation", label="Consolidation",
@@ -83,7 +84,7 @@ def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
             key="consolidation_stability", label="Consolidation — stability",
             description=f"Run the REAL consolidation prompt K times (default K={DEFAULT_STABILITY_K}) "
             f"per pair on fixed input to measure verdict stability. Costs K times a run.",
-            spends=True, estimated_calls=len(consolidation) * DEFAULT_STABILITY_K,
+            spends=True, estimated_calls=len(consolidation) * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="matching", label="Matching",
@@ -95,7 +96,7 @@ def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
             key="matching_stability", label="Matching — stability",
             description=f"Run the REAL match prompt K times (default K={DEFAULT_STABILITY_K}) per "
             "pair on fixed input to measure verdict stability. Costs K times a run.",
-            spends=True, estimated_calls=len(matching) * DEFAULT_STABILITY_K,
+            spends=True, estimated_calls=len(matching) * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="decomposition", label="Decomposition",
@@ -108,7 +109,7 @@ def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
             key="decomposition_stability", label="Decomposition — stability",
             description=f"Run the REAL decompose prompt K times (default K={DEFAULT_STABILITY_K}) per "
             "set on fixed input to measure fold/keep stability. Costs K times a run.",
-            spends=True, estimated_calls=len(decomposition) * DEFAULT_STABILITY_K,
+            spends=True, estimated_calls=len(decomposition) * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="screening", label="Screening",
@@ -121,7 +122,7 @@ def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
             key="screening_stability", label="Screening — stability",
             description=f"Run the REAL screening prompt K times (default K={DEFAULT_STABILITY_K}) per "
             "applicant on fixed input to measure whether the flag set holds. Costs K times a run.",
-            spends=True, estimated_calls=n_screening * DEFAULT_STABILITY_K,
+            spends=True, estimated_calls=n_screening * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
         ),
         EvalDescriptor(
             key="judge", label="Judge + agreement",
@@ -133,7 +134,7 @@ def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
             key="stability", label="Stability",
             description=f"Judge each case K times on fixed inputs (default K={DEFAULT_STABILITY_K}) "
             "to measure verdict stability. Costs K times a judge run.",
-            spends=True, estimated_calls=n_judge * DEFAULT_STABILITY_K,
+            spends=True, estimated_calls=n_judge * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
         ),
     ])
 
@@ -197,14 +198,19 @@ def last_run(
     just whichever ran last. Result JSON as the UI reads it, WITHOUT the thinking narration;
     each identifies prompt/model drift so an old result is never presented as current."""
     wanted = [k.strip() for k in keys.split(",") if k.strip()]
-    dataset = load_dataset()
-    runs: list[LastRun] = []
-    for key in wanted:
+    newest_runs = []
+    for key in dict.fromkeys(wanted):
         newest = (db.query(EvalRun.id, EvalRun.eval_key, EvalRun.created_at, EvalRun.prompt_version, EvalRun.result)
                   .filter(EvalRun.eval_key == key)
                   .order_by(EvalRun.created_at.desc(), EvalRun.id.desc()).first())
-        if newest is None:
-            continue
+        if newest is not None:
+            newest_runs.append(newest)
+    families = {"judge" if row.eval_key in ("judge", "stability") else row.eval_key.removesuffix("_stability")
+                for row in newest_runs}
+    dataset = load_dataset(family for family in families if family in GOLDEN_FILES or family == "judge")
+    runs: list[LastRun] = []
+    for newest in newest_runs:
+        key = newest.eval_key
         result = dict(newest.result or {})
         model = result_model(result)
         reasoning_effort = result_reasoning_effort(result)

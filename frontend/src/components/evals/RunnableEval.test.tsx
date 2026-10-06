@@ -120,7 +120,7 @@ it("selects, edits and runs a Judge case by family and key", async () => {
   api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "judge", savedPath: null,
     result: { experimentId: "same", cases: [{ key: "same", passName: "consolidation", marker: "[ok]", humanLabel: "keep", judgeLabel: "keep", contested: false, detail: "Synthetic", labelRationale: "" }] } })));
   api.saveEvalCase.mockResolvedValue(Response.json({ cases: shared }));
-  const mode = { evalKey: "judge" as const, label: "Judge", rowLabel: "Run case", calls: 2 };
+  const mode = { evalKey: "judge" as const, label: "Judge", rowLabel: "Run case", repetitions: 2 };
   render(<RunnableEval caseEvalKey="judge" runKeys={["judge"]} description="Synthetic" groupBy="pass" addable={false} modes={[mode]} onToast={vi.fn()} onError={vi.fn()} />);
   const buttons = await screen.findAllByRole("button", { name: /same\s*keep/ });
   // Pipeline order puts matching before consolidation.
@@ -132,4 +132,22 @@ it("selects, edits and runs a Judge case by family and key", async () => {
   expect(screen.getByDisplayValue("Note for consolidation")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Save case" }));
   await waitFor(() => expect(api.saveEvalCase).toHaveBeenCalledWith("judge", shared[1]));
+});
+
+it("uses current fixture size for whole runs and the same K for a row request", async () => {
+  const six = Array.from({ length: 6 }, (_, index) => ({ key: `case-${index}`, metadata: { expected: "matches" }, given: {} }));
+  api.fetchEvalCases.mockResolvedValue({ cases: six });
+  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "matching_stability", storedRunId: 1,
+    result: { experimentId: "same", cases: [] } })));
+  render(<RunnableEval caseEvalKey="matching" runKeys={["matching_stability"]} description="Synthetic"
+    modes={[{ evalKey: "matching_stability", label: "Run stability", rowLabel: "Run one", repetitions: 5 }]}
+    onToast={vi.fn()} onError={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: /case-0/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Run one" }));
+  expect(screen.getByText(/This makes ~5 model calls/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm & run" }));
+  await waitFor(() => expect(api.runEval).toHaveBeenCalledWith("matching_stability", expect.objectContaining({ k: 5, caseKey: "case-0" })));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run stability (K=5) (~30)" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Run stability (K=5) (~30)" }));
+  expect(screen.getByText(/This makes ~30 model calls/)).toBeInTheDocument();
 });

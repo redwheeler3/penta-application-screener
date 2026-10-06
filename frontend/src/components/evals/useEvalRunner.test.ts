@@ -36,7 +36,7 @@ it("cancels an eval owned by a workspace that has closed", async () => {
   vi.mocked(api.runEval).mockReturnValue(pending.promise);
   const { result, unmount } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   let running!: Promise<void>;
-  act(() => { running = result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }); });
+  act(() => { running = result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }); });
   const signal = vi.mocked(api.runEval).mock.calls[0][1]!.signal!;
   unmount();
   expect(signal.aborted).toBe(true);
@@ -51,7 +51,7 @@ it("keeps newly completed results when initial history arrives late", async () =
   })}\n`));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   await act(async () => {
-    await result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 });
+    await result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 });
   });
   await act(async () => pending.resolve({ runs: [
     { ...history, evalKey: "scoring", result: { cases: [scored("a", 0.2)] } },
@@ -96,7 +96,7 @@ it("restores each mode and replaces only that mode's results after a whole-set r
   });
 
   await act(async () => {
-    await result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 2 });
+    await result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 2 });
   });
   expect(result.current.caseResults.a?.scoring).toMatchObject({
     mode: "scoring", result: { score: 0.8 },
@@ -117,7 +117,7 @@ it("reports incomplete eval progress and preserves the displayed results", async
   })}\n`));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   await waitFor(() => expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.2 } }));
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 2 }));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 2 }));
   expect(result.current.run.running).toBe(false);
   expect(result.current.run.error).toContain("interrupted before completion was confirmed");
   expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.2 } });
@@ -128,7 +128,7 @@ it("accepts a final eval summary without a newline", async () => {
     type: "summary", eval: "scoring", savedPath: null, result: { cases: [scored("a", 0.8)] },
   })));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }));
   expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
   expect(result.current.run).toMatchObject({ running: false, error: null });
 });
@@ -138,7 +138,7 @@ it("keeps the server's fatal eval error as the outcome", async () => {
     type: "error", phase: "scoring", message: "Synthetic model failure.",
   })));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }));
   expect(result.current.run).toMatchObject({ running: false, error: "Synthetic model failure." });
 });
 
@@ -160,7 +160,7 @@ it("clears other current dots when a partial run changes experiment", async () =
     result: { experimentId: "new", cases: [scored("a", 0.8)] } })));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }, "a"));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "a"));
   expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
   expect(result.current.caseResults.b?.scoring).toBeUndefined();
 });
@@ -174,7 +174,7 @@ it("keeps same-experiment partial coverage and expires changed labels on fixture
     result: { experimentId: "same", cases: [{ ...scored("b", 0.8), inputFingerprint: "b1" }] } })));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   await waitFor(() => expect(result.current.caseResults.a?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }, "b"));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "b"));
   expect(result.current.caseResults.a?.scoring).toBeDefined();
   act(() => result.current.setCases([{ key: "a" }, { key: "b" }]));
   await waitFor(() => expect(result.current.caseResults.a?.scoring).toBeUndefined());
@@ -192,7 +192,7 @@ it.each([false, true])("reconciles compatible stored coverage after a partial ru
     result: { experimentId: "same", cases: [scored("a", 0.8)] } })));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }, "a"));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "a"));
   await waitFor(() => expect(result.current.caseResults.b?.scoring).toMatchObject({ result: { score: 0.9 } }));
   expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
 });
@@ -206,7 +206,7 @@ it("protects only the delivered result when telemetry fails, updating other stor
     result: { experimentId: "same", cases: [scored("a", 0.8)] } })));
   const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
   await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
-  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", calls: 1 }, "a"));
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "a"));
   expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
   expect(result.current.caseResults.b?.scoring).toMatchObject({ result: { score: 0.9 } });
 });

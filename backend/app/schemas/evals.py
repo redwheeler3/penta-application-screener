@@ -25,7 +25,8 @@ class EvalDescriptor(ResponseModel):
     label: str
     description: str
     spends: bool  # True if a run makes model calls (UI shows a spend-confirm)
-    estimated_calls: int  # model calls one run makes (0 for invariants)
+    estimated_calls: int  # nominal model calls at the captured corpus size
+    repetitions: int = 1  # one live call, or the requested stability K
 
 
 class EvalCatalogResponse(ResponseModel):

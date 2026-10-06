@@ -139,7 +139,7 @@ export function useEvalRunner(options: {
     });
     setRun({ running: true, thinking: "", error: null });
     try {
-      const response = await runEval(mode.evalKey, { caseKey, passName, signal: controller.signal });
+      const response = await runEval(mode.evalKey, { caseKey, passName, k: mode.repetitions, signal: controller.signal });
       if (!isCurrent()) { controller.abort(); return; }
       if (!response.ok || !response.body) {
         setRun((current) => ({

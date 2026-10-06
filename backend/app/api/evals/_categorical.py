@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.ai.pass_catalog import ai_pass
 from app.ai.provider import AIProvider
 from app.api.evals._shared import (
     DEFAULT_STABILITY_K,
@@ -27,8 +28,6 @@ from app.services.settings import get_app_settings
 class CategoricalPass:
     key: str
     load_cases: Callable
-    model_attr: str
-    reasoning_attr: str
     prompt_version: Callable[[], str]
     run_case: Callable
     stability_run: Callable
@@ -49,9 +48,12 @@ def run_categorical(
 ) -> StreamingResponse:
     """Run one categorical pass in single-run or stability mode."""
     settings = get_app_settings(db)
-    model = getattr(settings.ai, spec.model_attr)
+    binding = ai_pass(spec.key)
+    if binding is None:
+        raise ValueError(f"No configurable AI pass for {spec.key!r}")
+    model = getattr(settings.ai, binding.model_attr)
     reasoning_effort = effective_reasoning_effort(
-        model, getattr(settings.ai, spec.reasoning_attr)
+        model, getattr(settings.ai, binding.reasoning_attr)
     )
     configured_provider = ReasoningProvider(provider, reasoning_effort)
     version = spec.prompt_version()

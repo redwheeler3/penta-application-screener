@@ -168,8 +168,6 @@ def run_scoring(
 CONSOLIDATION_EVAL = CategoricalPass(
     key="consolidation",
     load_cases=load_consolidation_cases,
-    model_attr="consolidate_model",
-    reasoning_attr="consolidate_reasoning_effort",
     prompt_version=lambda: CONSOLIDATE_PROMPT_VERSION,
     run_case=lambda provider, item, model, on_delta: run_consolidation_case(
         provider, item, consolidate_model=model, on_delta=on_delta
@@ -186,8 +184,6 @@ CONSOLIDATION_EVAL = CategoricalPass(
 MATCHING_EVAL = CategoricalPass(
     key="matching",
     load_cases=load_matching_cases,
-    model_attr="match_model",
-    reasoning_attr="match_reasoning_effort",
     prompt_version=lambda: MATCH_PROMPT_VERSION,
     run_case=lambda provider, item, model, on_delta: run_matching_case(
         provider, item, match_model=model, on_delta=on_delta
@@ -204,8 +200,6 @@ MATCHING_EVAL = CategoricalPass(
 DECOMPOSITION_EVAL = CategoricalPass(
     key="decomposition",
     load_cases=load_decomposition_cases,
-    model_attr="decompose_model",
-    reasoning_attr="decompose_reasoning_effort",
     prompt_version=lambda: DECOMPOSE_PROMPT_VERSION,
     run_case=lambda provider, item, model, on_delta: run_decomposition_case(
         provider, item, decompose_model=model, on_delta=on_delta

@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -16,12 +14,11 @@ from app.db.session import get_db
 from app.evals.case_store import (
     CaseValidationError,
     UnknownEvalError,
-    get_background,
     list_cases,
     save_background,
     save_case,
 )
-from app.evals.judge import load_cases
+from app.evals.dataset import load_dataset
 from app.schemas.evals import (
     CasesResponse,
     JudgeBackground,
@@ -66,9 +63,9 @@ def put_case(
 def judge_backgrounds(user: User = Depends(require_admin)) -> JudgeBackgroundsResponse:
     """The per-pass ``judge_background`` briefs the Judge tab lists + edits, with how many
     golden cases each pass contributes to the blind audit. Free (reads the committed files)."""
-    counts = Counter(c.pass_name for c in load_cases())
+    captured = load_dataset()
     return JudgeBackgroundsResponse(backgrounds=[
-        JudgeBackground(pass_name=p, background=get_background(p), case_count=counts.get(p, 0))
+        JudgeBackground(pass_name=p, background=captured.families[p].get("judge_background", ""), case_count=len(captured.families[p]["cases"]))
         for p in _JUDGE_PASSES
     ])
 
@@ -83,10 +80,9 @@ def put_judge_background(
     rehydrates as stale until re-run — see judge.py."""
     try:
         require_local_fixture_write(db, user.id)
-        saved = save_background(pass_name, body.background)
+        captured = save_background(pass_name, body.background)
     except UnknownEvalError as exc:
         raise Problem("not_found", detail=f"No judge background for pass {pass_name!r}.") from exc
     except CaseValidationError as exc:
         raise Problem("invalid_case", detail=str(exc)) from exc
-    counts = Counter(c.pass_name for c in load_cases())
-    return JudgeBackground(pass_name=pass_name, background=saved, case_count=counts.get(pass_name, 0))
+    return JudgeBackground(pass_name=pass_name, background=captured["judge_background"], case_count=len(captured["cases"]))

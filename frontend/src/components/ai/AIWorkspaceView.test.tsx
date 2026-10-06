@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { renderCommittee as render } from "../../testSupport";
 import { AIWorkspaceView } from "./AIWorkspaceView";
@@ -26,8 +26,10 @@ beforeEach(() => {
 
 function setup(editable: boolean) {
   api.fetchEvalCatalog.mockResolvedValue({ fixtureEditingEnabled: editable, evals: [
-    { key: "screening", label: "Screening", description: "Synthetic", spends: true, estimatedCalls: 1 },
-    { key: "screening_stability", label: "Screening stability", description: "Synthetic", spends: true, estimatedCalls: 5 },
+    { key: "screening", label: "Screening", description: "Synthetic", spends: true, estimatedCalls: 1, repetitions: 1 },
+    { key: "screening_stability", label: "Screening stability", description: "Synthetic", spends: true, estimatedCalls: 5, repetitions: 5 },
+    { key: "judge", label: "Judge", description: "Synthetic", spends: true, estimatedCalls: 1, repetitions: 1 },
+    { key: "stability", label: "Judge stability", description: "Synthetic", spends: true, estimatedCalls: 5, repetitions: 5 },
   ] });
   return render(<AIWorkspaceView family="eval" run={null} openingId={1} onToast={vi.fn()} onError={vi.fn()} />);
 }
@@ -63,4 +65,16 @@ it("preserves local case, brief and baseline editing", async () => {
   fireEvent.click(screen.getByRole("tab", { name: "Invariants" }));
   await screen.findByText(/dimensions in the baseline/);
   expect(screen.getByRole("button", { name: /Re-baseline/ })).toBeEnabled();
+});
+
+it("keeps paid controls unavailable when run details fail and offers Retry", async () => {
+  api.fetchEvalCatalog.mockRejectedValueOnce(new Error("Synthetic failure"));
+  render(<AIWorkspaceView family="eval" run={null} openingId={null} onToast={vi.fn()} onError={vi.fn()} />);
+  await screen.findByText("Could not load eval run details.");
+  expect(screen.getByRole("button", { name: /Run screening/ })).toBeDisabled();
+  api.fetchEvalCatalog.mockResolvedValue({ fixtureEditingEnabled: false, evals: [
+    { key: "screening", label: "Screening", description: "Synthetic", spends: true, estimatedCalls: 1, repetitions: 1 },
+  ] });
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run screening (~1)" })).toBeEnabled());
 });
