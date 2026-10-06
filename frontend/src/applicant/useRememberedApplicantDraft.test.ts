@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { deferred } from "../testSupport";
 import { emptyApplicantDraft } from "./applicationDraft";
-import { captureApplicantStorage, clearApplicantStorage, loadApplicationDraft, rememberedStorageScope, saveApplicationDraft, setRememberDevice } from "./draftStorage";
+import { captureApplicantStorage, clearApplicationDraft, clearApplicantStorage, loadApplicationDraft, rememberedStorageScope, saveApplicationDraft, setRememberDevice } from "./draftStorage";
 import { useRememberedApplicantDraft } from "./useRememberedApplicantDraft";
 
 const snapshot = {
@@ -26,6 +26,29 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+it("clears only the captured unchanged record and preserves other applicants", async () => {
+  const scope = (await setRememberDevice(true))!;
+  await saveApplicationDraft(1, snapshot.draft, [11], 3, scope);
+  await saveApplicationDraft(2, snapshot.draft, [12], 4, scope);
+  const acknowledged = captureApplicantStorage();
+  expect(await clearApplicationDraft(1, acknowledged)).toBe(true);
+  expect(loadApplicationDraft(1)).toBeNull();
+  expect(loadApplicationDraft(2)?.baseRevision).toBe(4);
+});
+
+it("invalid-date cleanup cannot delete a replacement queued ahead of its lock", async () => {
+  const scope = (await setRememberDevice(true))!;
+  await saveApplicationDraft(1, snapshot.draft, [11], 3, scope);
+  const raw = JSON.parse(localStorage.getItem("penta-application-drafts-v5")!);
+  raw["1"].savedAt = "invalid";
+  localStorage.setItem("penta-application-drafts-v5", JSON.stringify(raw));
+  const replacement = saveApplicationDraft(1, { ...snapshot.draft, pets: "Replacement" }, [11], 4, scope);
+  expect(loadApplicationDraft(1)).toBeNull();
+  await replacement;
+  await act(() => vi.runAllTimersAsync());
+  expect(loadApplicationDraft(1)?.draft.pets).toBe("Replacement");
 });
 
 it("rejects a queued save after consent is cleared, even before its storage event arrives", async () => {

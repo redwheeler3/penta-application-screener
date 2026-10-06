@@ -16,7 +16,7 @@ import type {
 import type * as applicantApi from "./api";
 import { requestReturnAccessLink as requestBootstrapAccessLink } from "./api";
 import { type DraftIntent } from "./api";
-import { BROWSER_STORAGE_CLEAR_MESSAGE, clearApplicationDraft } from "./draftStorage";
+import { applicationDraftIsStored, BROWSER_STORAGE_CLEAR_MESSAGE, captureApplicantStorage, clearApplicationDraft } from "./draftStorage";
 import {
   canonicalAnswers,
   residenceHistoryCutoff,
@@ -153,6 +153,9 @@ export function createApplicantSaveFlow({
       return false;
     }
     const snapshot = workingSnapshot(draftRef.current, openingIds);
+    const browserSnapshot = intent === "submit" ? captureApplicantStorage() : null;
+    const browserDraftSubmitted = applicationId != null && browserSnapshot !== null
+      && applicationDraftIsStored(applicationId, draftRef.current, openingIds, workingRevision, browserSnapshot);
     const response = intent === "submit"
       ? await submitApplication(
           canonicalAnswers(draftRef.current, residenceHistoryCutoff(openings)),
@@ -178,9 +181,9 @@ export function createApplicantSaveFlow({
       message: "",
       phase: intent === "submit" ? "submitted" : "saved",
     });
-    if (intent === "submit" && applicationId != null
+    if (browserDraftSubmitted && applicationId != null && browserSnapshot !== null
       && snapshot === workingSnapshot(draftRef.current, stateRef.current.openingIds)) {
-      if (!(await clearApplicationDraft(applicationId))) {
+      if (!(await clearApplicationDraft(applicationId, browserSnapshot))) {
         updatePersistence({ browserStorageMessage: BROWSER_STORAGE_CLEAR_MESSAGE });
       }
     }

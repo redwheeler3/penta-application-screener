@@ -65,12 +65,12 @@ export function observeRememberedStorage(onChange: () => void, onDraftChange: ()
 }
 
 export function loadApplicationDraft(applicationId: number): LoadedDraft | null {
-  const drafts = readDrafts();
-  const stored = drafts[String(applicationId)];
+  const snapshot = captureApplicantStorage();
+  const stored = snapshot.drafts[String(applicationId)];
   if (!stored) return null;
   const savedAt = new Date(stored.savedAt);
   if (!Number.isFinite(savedAt.getTime())) {
-    void clearApplicationDraft(applicationId);
+    void clearApplicationDraft(applicationId, snapshot);
     return null;
   }
   const defaults = emptyApplicantDraft();
@@ -115,19 +115,21 @@ export async function saveApplicationDraft(
 
 export function applicationDraftIsStored(
   applicationId: number, draft: ApplicantDraft, openingIds: number[], baseRevision: number,
+  snapshot = captureApplicantStorage(),
 ): boolean {
-  const stored = readDrafts()[String(applicationId)];
+  const stored = snapshot.drafts[String(applicationId)];
   return Boolean(stored && stored.baseRevision === baseRevision
     && JSON.stringify(stored.draft) === JSON.stringify(draft)
     && JSON.stringify(stored.openingIds) === JSON.stringify(openingIds));
 }
 
-export async function clearApplicationDraft(applicationId: number): Promise<boolean> {
-  const scope = rememberedStorageScope();
+export async function clearApplicationDraft(applicationId: number, snapshot = captureApplicantStorage()): Promise<boolean> {
   try {
     await withStorageLock(() => {
-      if (scope === null || rememberedStorageScope() !== scope) return;
+      if (snapshot.scope === null || rememberedStorageScope() !== snapshot.scope) return;
       const drafts = readDrafts();
+      const expected = snapshot.drafts[String(applicationId)];
+      if (!expected || JSON.stringify(drafts[String(applicationId)]) !== JSON.stringify(expected)) return;
       delete drafts[String(applicationId)];
       writeDrafts(drafts);
     });
