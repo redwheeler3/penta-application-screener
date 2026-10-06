@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.problems import Problem
 from app.core.time import pacific_today
@@ -21,6 +21,7 @@ from app.services.applications.retention import (
     current_retention_clause,
     refresh_application_retention,
 )
+from app.services.applications.scope import ApplicantIdentity
 from app.services.applications.selected import (
     revoke_selected_applicant_access,
     selected_opening_id,
@@ -50,14 +51,17 @@ def active_opening_participants(
     )
 
 
-def selectable_opening_candidates(
-    db: Session, opening: Opening
-) -> list[tuple[ApplicationParticipation, Application]]:
-    return [
-        (participation, application)
-        for participation, application in active_opening_participants(db, opening)
-        if selected_opening_id(db, application.id) is None
-    ]
+def opening_candidate_summaries(db: Session, opening: Opening) -> tuple[int, list[ApplicantIdentity]]:
+    """One coherent count/picker projection, including selection in any opening."""
+    selected = aliased(ApplicationParticipation)
+    is_selected = select(selected.id).where(selected.application_id == Application.id,
+        selected.outcome == OpeningOutcome.SELECTED).exists().correlate(Application)
+    rows = db.execute(select(Application.id, Application.applicant_name, Application.primary_email, is_selected)
+        .join(ApplicationParticipation, ApplicationParticipation.application_id == Application.id)
+        .where(ApplicationParticipation.opening_id == opening.id, ApplicationParticipation.withdrawn_at.is_(None),
+               Application.submitted_at.is_not(None), Application.withdrawn_at.is_(None), current_retention_clause())
+        .order_by(Application.applicant_name, Application.id)).all()
+    return len(rows), [ApplicantIdentity(identity, name, email) for identity, name, email, selected in rows if not selected]
 
 
 def selected_participation(
@@ -133,7 +137,7 @@ def confirm_opening_selection(
     selected_candidate = next(
         (
             participation
-            for participation, application in selectable_opening_candidates(db, opening)
+            for participation, application in participants
             if application.id == application_id
         ),
         None,
@@ -144,8 +148,7 @@ def confirm_opening_selection(
             detail="Choose an active applicant from this opening.",
         )
 
-    other_opening_id = selected_opening_id(db, application_id)
-    if other_opening_id is not None:
+    if selected_opening_id(db, application_id) is not None:
         raise Problem(
             "invalid_settings",
             detail="This applicant has already been selected for another opening.",

@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Select, exists, func, not_, or_, select
+from sqlalchemy import Select, exists, not_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.db.models import (
 from app.schemas.openings import DirectSelectionOpeningCreate
 from app.services.applications.locking import lock_application
 from app.services.applications.retention import refresh_application_retention
+from app.services.applications.scope import ApplicantIdentity
 from app.services.applications.selected import revoke_selected_applicant_access
 from app.services.auth.authority import require_admin_write
 
@@ -46,21 +47,21 @@ def available_previous_applicants_query() -> Select[tuple[Application]]:
 
 def search_previous_applicants(
     db: Session, query: str, *, limit: int = 25
-) -> list[Application]:
+) -> list[ApplicantIdentity]:
+    if limit < 1:
+        return []
     terms = query.casefold().split()
-    statement = available_previous_applicants_query()
-    for term in terms:
-        statement = statement.where(
-            or_(
-                func.lower(Application.applicant_name).contains(term, autoescape=True),
-                func.lower(Application.primary_email).contains(term, autoescape=True),
-            )
-        )
-    return list(
-        db.scalars(
-            statement.order_by(Application.applicant_name, Application.id).limit(limit)
-        ).all()
-    )
+    statement = available_previous_applicants_query().with_only_columns(
+        Application.id, Application.applicant_name, Application.primary_email,
+    ).order_by(Application.applicant_name, Application.id)
+    matches = []
+    for identity, name, email in db.execute(statement):
+        folded_name, folded_email = (name or "").casefold(), email.casefold()
+        if all(term in folded_name or term in folded_email for term in terms):
+            matches.append(ApplicantIdentity(identity, name, email))
+            if len(matches) == limit:
+                break
+    return matches
 
 
 def available_previous_applicant(

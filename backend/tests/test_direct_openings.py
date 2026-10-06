@@ -164,6 +164,23 @@ async def test_admin_can_search_retained_previous_applicants_without_listing_the
 
 
 @pytest.mark.anyio
+async def test_previous_applicant_search_matches_unicode_before_its_result_limit():
+    from app.services.openings.direct_selection import search_previous_applicants
+    _app, db, _sender = _app_and_db()
+    prior = _opening(db, move_in_offset=-30)
+    for index in range(30):
+        candidate = _application(db, f"other{index}@example.test", name=f"A Other {index}",
+                                 retention_due_on=pacific_today() + timedelta(days=200))
+        _participate(db, candidate, prior, outcome=OpeningOutcome.UNSUCCESSFUL)
+    target = _application(db, "unicode@example.test", name="Élodie Straße %_", retention_due_on=pacific_today() + timedelta(days=200))
+    _participate(db, target, prior, outcome=OpeningOutcome.UNSUCCESSFUL)
+    db.commit()
+    assert [row.application_id for row in search_previous_applicants(db, "ÉLODIE STRASSE", limit=1)] == [target.id]
+    assert [row.application_id for row in search_previous_applicants(db, "%_", limit=1)] == [target.id]
+    assert search_previous_applicants(db, "Élodie", limit=0) == []
+
+
+@pytest.mark.anyio
 async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
     app, db, sender = _app_and_db()
     today = pacific_today()

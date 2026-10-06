@@ -609,3 +609,31 @@ async def test_member_cannot_review_retained_selected_application() -> None:
         response = await client.get(f"/applications/{applications[0].id}/retained")
 
     assert response.status_code == 403
+
+
+def test_selection_picker_uses_bounded_projections_for_a_large_pool():
+    from sqlalchemy import event
+
+    from app.api.openings import _selection_response
+    from tests.application_support import current_opening_id
+    from tests.committee_app_support import (
+        add_eligible_application,
+        setup_committee_app,
+    )
+    _app, db, _provider = setup_committee_app(role=UserRole.ADMIN)
+    for index in range(40):
+        add_eligible_application(db, email=f"synthetic{index}@example.test", raw_hash=f"synthetic{index}")
+    opening = db.get(Opening, current_opening_id(db))
+    queries = []
+    def record(_connection, _cursor, statement, _params, _context, _many):
+        if statement.lstrip().startswith("SELECT"):
+            queries.append(statement)
+    event.listen(db.get_bind(), "before_cursor_execute", record)
+    try:
+        response = _selection_response(db, opening)
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", record)
+    assert len(response.candidates) == 40
+    assert response.active_participant_count == 40
+    assert len(queries) == 2
+    assert not any("applications.raw_row" in query or "applications.normalized" in query for query in queries)

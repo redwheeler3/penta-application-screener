@@ -1,5 +1,7 @@
 """Opening-scoped submitted application pools."""
 
+from dataclasses import dataclass
+
 from sqlalchemy import Select, exists, select
 from sqlalchemy.orm import Session, aliased
 
@@ -12,6 +14,14 @@ from app.db.models import (
     OpeningOutcome,
 )
 from app.services.applications.retention import current_retention_clause
+
+
+@dataclass(frozen=True)
+class ApplicantIdentity:
+    """Name/mailbox projection for committee candidate pickers, without answer blobs."""
+    application_id: int
+    applicant_name: str | None
+    primary_email: str
 
 
 def _retained_application() -> tuple:

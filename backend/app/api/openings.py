@@ -51,11 +51,10 @@ from app.services.openings.direct_selection import (
     search_previous_applicants,
 )
 from app.services.openings.selection import (
-    active_opening_participants,
     confirm_no_household_selected,
     confirm_opening_selection,
+    opening_candidate_summaries,
     retained_selected_households,
-    selectable_opening_candidates,
 )
 from app.services.openings.vacancy_notifications import (
     VacancyAudience,
@@ -123,7 +122,7 @@ def find_previous_applicants(
     return PreviousApplicantSearchOut(
         candidates=[
             OpeningSelectionCandidateOut(
-                application_id=application.id,
+                application_id=application.application_id,
                 applicant_name=application.applicant_name,
                 primary_email=application.primary_email,
             )
@@ -303,7 +302,7 @@ def select_no_household(
 def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:
     phase = opening_phase(opening)
     selected = retained_selected_households(db, [opening.id]).get(opening.id)
-    participants = active_opening_participants(db, opening)
+    participant_count, candidates = opening_candidate_summaries(db, opening)
     return OpeningSelectionOut(
         opening_id=opening.id,
         intake_mode=opening.intake_mode,
@@ -311,13 +310,13 @@ def _selection_response(db: Session, opening: Opening) -> OpeningSelectionOut:
         selected_application_id=selected[0] if selected is not None else None,
         selected_applicant_name=selected[1] if selected is not None else None,
         no_household_selected=opening.no_household_selected,
-        active_participant_count=len(participants),
+        active_participant_count=participant_count,
         candidates=[
             OpeningSelectionCandidateOut(
-                application_id=application.id,
+                application_id=application.application_id,
                 applicant_name=application.applicant_name,
                 primary_email=application.primary_email,
             )
-            for _, application in selectable_opening_candidates(db, opening)
+            for application in candidates
         ],
     )
