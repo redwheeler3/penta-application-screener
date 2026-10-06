@@ -1,8 +1,8 @@
 # General project audit — 2026-10-06
 
-**Status: complete.** Baseline: clean `main` at `99d9bbd`. This is a fresh audit
-following the completed B01–B10 implementation recorded in the October 5 report.
-Runtime changes are outside this audit phase.
+**Status: implemented and verified; all C01–C12 closed.** Audit baseline: clean `main` at `99d9bbd`.
+The audit followed the completed B01–B10 implementation recorded in the October 5 report.
+The baseline findings are retained below; implementation outcomes and final checks are recorded at the end.
 
 ## Scope and retained decisions
 
@@ -32,7 +32,7 @@ producers, consumers, sibling flows and tests, and reproduce meaningful failures
 
 ## Findings
 
-These recommendations are confirmed against the baseline. Implementation has not started.
+These findings describe the audited baseline. All recommendations are now implemented.
 
 | ID | Recommendation | Priority | Evidence |
 | --- | --- | --- | --- |
@@ -411,3 +411,51 @@ recommendations reduce conflicting definitions and unnecessary reads.
 I would implement these specific recommendations and stop at the resulting correctness/
 readability threshold. I would not use the number of findings to justify a generalized
 workflow engine, another results store, global caches, wider locks or a wholesale refactor.
+
+## Implementation outcomes
+
+| Finding | Result | Commit |
+| --- | --- | --- |
+| C01 | Recovery fixtures explicitly create the synthetic generation before its deletion timestamp; the production generation guard is unchanged. | `479003b` |
+| C09 | Submission captures the exact matching browser record before the request. Cleanup compares record and consent under the existing lock; newer or already-different drafts remain. Invalid-date cleanup uses the same snapshot rule. | `0a14c23` |
+| C02 | A deleted keyed note keeps its existing row/creation identity with body cleared and `deleted_at` set. It is hidden, cannot be edited or recreated by replay, and cascades with application purge. No second identifier or deleted text is retained. | `5a860ce` |
+| C03 | Summaries acknowledge the existing stored run ID. Ordinary local cases reconcile to newest compatible history; only the delivered receipt is protected when telemetry failed or returned history predates that run. Cleared modes are deleted, not assigned undefined. | `d1f688c`, `8bb62f4` |
+| C12 | Python emits the same Unicode family/key representation as JavaScript and SQLite. Both Judge modes round-trip accented, non-BMP, quoted and backslash keys. ASCII identities and input hashes remain unchanged. | `d1f688c` |
+| C04 | One count/candidate projection replaces duplicate answer-row reads and per-applicant selection lookups. Confirmation reuses its locked participants and still rechecks selected/finality state. | `1817a04` |
+| C10 | Previous-applicant names and queries use Python Unicode case folding over a lightweight projection, before applying the result limit. Literal wildcard characters and existing eligibility stay intact. | `1817a04` |
+| C05 | Categorical evals and history reasoning resolve model/reasoning attributes through the existing AI pass catalog. Family graders and Judge independence remain. | `f4a3759` |
+| C07 | The catalog repetition count determines both displayed nominal calls and requested K. Whole-run totals use the current fixture length; missing metadata has disabled paid controls and Retry. Accepted fixture changes dismiss stale confirmations. | `f4a3759` |
+| C11 | Judge GET captures five files once; brief PUT returns its captured saved file without rereading; empty history reads no fixtures, and pass history captures only families with stored runs. The unused individual brief getter was removed. | `f4a3759` |
+| C06 | Assembly raises on incomplete captured coverage while keeping genuine zero scores. Static prompt/version assignments are unchanged. | `e8e929a` |
+| C08 | The input/configuration helper and its tests are named provenance, including runtime and historical migration imports. Present documentation now describes coverage readiness correctly; stored fingerprint shapes are unchanged. | `e8e929a` |
+
+### Final verification
+
+- **Backend:** 1,072 tests passed, one existing platform skip; Ruff passed.
+- **Frontend:** 329 tests passed across 49 files; TypeScript, production build and ESLint passed.
+- The additive deletion-receipt migration applied in place to the existing local database;
+  Alembic is at `e81c9a53f647`. Existing data was not reset.
+- Forty-candidate selection now performs **two SELECTs instead of 43**, with no answer/
+  normalized JSON columns in the picker read. Regression tests preserve selection scopes.
+- Instrumented metadata tests confirm **five reads instead of ten** for Judge briefs,
+  **one** for brief saving, **zero** for empty scoring history, and **one** for stored
+  scoring/live-stability history sharing one family.
+- Regressions cover newer browser records before/during submission, invalid-date cleanup
+  queued behind replacement, scoped note creation/deletion/replay and author checks,
+  current stored coverage across experiment changes, telemetry failure, receipt ordering,
+  Unicode identity/search, actual requested K, and metadata load failure/retry.
+- Static top-level backend import graph has no cycles; stale runtime/migration imports
+  were checked after the provenance move. Static AI prompt/version assignments match
+  their pre-change versions. No real model calls or email were used.
+- `git diff --check` passed; normal build/cache directories retain inherited permissions.
+
+The additional state is limited to a content-free deletion receipt on the existing note
+row and confirmation of an existing eval run identity. Browser comparisons reuse the
+existing record, consent lifetime and lock. Query/fixture work was reduced without global
+caches or another result store. Routine application use has no new awaited refresh;
+candidate reads improve, and Unicode search reads only small identity projections over
+the existing co-op-sized pool. No significant latency tradeoff was identified.
+
+All twelve items are closed. Changes are committed on `main`; this implementation request
+authorized commits, not a push or production deployment. A04 and the retained product
+decisions above remain unchanged.

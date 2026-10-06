@@ -82,6 +82,17 @@ the latest result per current scoped case in SQLite and excludes unused narratio
 expression index narrows the query to the eval, prompt, and experiment; work within one
 experiment still grows with its run history, without a fixed row window or a second results store.
 
+Confirmed summaries identify their existing `EvalRun` row. The client takes ordinary case
+outcomes from newest compatible history, protecting only its exact delivered receipt when
+the write failed or the history response predates that row. Scoped family/key identities
+serialize Unicode consistently across Python, SQLite and JavaScript.
+
+The catalog supplies the repetition count: one for live evals and the default K for stability.
+Confirmations multiply it by the current case count, and requests send that same K. Metadata
+loading failure leaves paid controls unavailable with Retry. Judge brief text/counts come
+from one captured file snapshot; history reads only requested families with stored runs.
+No input/label/model/prompt edit triggers paid work automatically.
+
 ### Software tests
 
 Unit and API tests prove the plumbing: schemas, caching, persistence, cost

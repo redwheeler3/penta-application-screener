@@ -356,6 +356,8 @@ older queued saves. A tab receiving a storage reset stops browser persistence wh
 its in-memory answers. The leaving warning stays active until the exact current draft has
 been stored or saved to the server. Browser storage failures, or unavailable cross-tab locking,
 keep answers in memory and do not claim that browser recovery is available.
+Successful submission clears only the matching browser record captured before that request,
+comparing it under the same lock. Another tab's newer answers or base revision remain stored.
 
 Signing out revokes the current server-side session immediately. **Sign out all devices** revokes
 every session for that identity. Administrators can revoke a committee member's sessions, and
@@ -1412,7 +1414,7 @@ ideas that are explicitly optional, out of scope, or demand-driven rather than u
 
 The application supports Claude and GPT through either Bedrock or their direct provider APIs behind
 one provider-neutral boundary. The model catalog is the routing authority; settings store the exact
-route and reasoning effort for each pass, while caches and Rank freshness use a provider-neutral
+route and reasoning effort for each pass, while caches and captured Rank provenance use a provider-neutral
 model identity. Switching only between certified-equivalent routes preserves valid cached work;
 changing the underlying model or effective reasoning invalidates it.
 
