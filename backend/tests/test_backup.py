@@ -311,3 +311,30 @@ def test_restore_upgrades_producer_fk_before_replaying_deletions(tmp_path, monke
     finally:
         engine.dispose()
         get_settings.cache_clear()
+
+
+def test_same_second_backups_follow_creation_order(temp_engine):
+    stamp = datetime(2026, 10, 5, 12, 0, 0)
+    paths = [backup.create_backup(engine=temp_engine, tag="same", timestamp=stamp) for _ in range(12)]
+    paths.append(backup.create_backup(engine=temp_engine, tag="a-different-tag", timestamp=stamp))
+    assert backup.list_backups(temp_engine) == list(reversed(paths))
+
+
+def test_create_and_prune_preserves_its_recovery_point(temp_engine, monkeypatch):
+    stamp = datetime(2026, 10, 5, 12, 0, 0)
+    old = backup.create_backup(engine=temp_engine, timestamp=stamp)
+    fresh = backup.create_backup(engine=temp_engine, timestamp=stamp)
+    monkeypatch.setattr(backup, "create_backup", lambda **_kwargs: fresh)
+    # Explicit preservation also protects a freshly created snapshot if clock/file
+    # metadata ordering places it behind an older snapshot.
+    monkeypatch.setattr(backup, "list_backups", lambda _engine: [old, fresh])
+    assert backup.create_and_prune(engine=temp_engine, keep=1) == fresh
+    assert fresh.exists()
+    assert not old.exists()
+
+
+@pytest.mark.parametrize("keep", [0, -1])
+def test_invalid_recovery_retention_fails_before_creating_backup(temp_engine, keep):
+    with pytest.raises(ValueError, match="keep"):
+        backup.create_and_prune(engine=temp_engine, keep=keep)
+    assert backup.list_backups(temp_engine) == []

@@ -103,13 +103,25 @@ def create_backup(*, engine: Engine | None = None, tag: str = "manual",
 
 
 def list_backups(engine: Engine | None = None) -> list[Path]:
-    """All backup files, newest first (by filename, which sorts by timestamp)."""
-    return sorted(backups_dir(engine).glob("penta_*.db"), reverse=True)
+    """Newest timestamp first, with creation order resolving same-second snapshots.
+
+    Tags and collision suffixes are labels, not chronological sort keys. File mtime
+    records snapshot completion; the numeric suffix breaks ties on coarse filesystems.
+    """
+    def order(path: Path) -> tuple[str, int, int]:
+        suffix = re.search(r"-(\d+)\.db$", path.name)
+        return path.name[6:21], path.stat().st_mtime_ns, int(suffix[1]) if suffix else 0
+
+    return sorted(backups_dir(engine).glob("penta_*.db"), key=order, reverse=True)
 
 
-def prune(keep: int = DEFAULT_KEEP, *, engine: Engine | None = None) -> list[Path]:
+def prune(keep: int = DEFAULT_KEEP, *, engine: Engine | None = None,
+          preserve: Path | None = None) -> list[Path]:
     """Delete all but the newest ``keep`` backups. Returns the deleted paths."""
-    removed = list_backups(engine)[keep:]
+    if keep < 0 or (preserve is not None and keep < 1):
+        raise ValueError("Retention must keep the new recovery point and cannot be negative.")
+    candidates = [path for path in list_backups(engine) if path != preserve]
+    removed = candidates[keep - int(preserve is not None):]
     for p in removed:
         p.unlink()
     return removed
@@ -118,9 +130,11 @@ def prune(keep: int = DEFAULT_KEEP, *, engine: Engine | None = None) -> list[Pat
 def create_and_prune(*, engine: Engine | None = None, tag: str = "manual",
                      keep: int = DEFAULT_KEEP) -> Path:
     """Create an explicit recovery point, then prune older manual snapshots."""
+    if keep < 1:
+        raise ValueError("A recovery point requires keep >= 1.")
     eng = _resolve(engine)
     dest = create_backup(engine=eng, tag=tag)
-    prune(keep=keep, engine=eng)
+    prune(keep=keep, engine=eng, preserve=dest)
     return dest
 
 
