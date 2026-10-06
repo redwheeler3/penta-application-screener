@@ -291,7 +291,7 @@ def test_restore_upgrades_producer_fk_before_replaying_deletions(tmp_path, monke
         command.upgrade(config, "a47e5c19b203")
         with engine.begin() as conn:
             for identity in (producer, consumer):
-                conn.execute(text("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized) VALUES (:id, :email, '{}', 'same', '{}')"),
+                conn.execute(text("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized, created_at) VALUES (:id, :email, '{}', 'same', '{}', '2026-10-01 12:00:00')"),
                              {"id": identity, "email": f"synthetic{identity}@example.test"})
             conn.execute(text("INSERT INTO application_ai_results (id, application_id, kind, cache_key, model_id, prompt_version, output, input_tokens, output_tokens, cost_usd) VALUES (:id, :producer, 'screening', 'same', 'synthetic', 'v', '{\"flags\": []}', 100, 50, 0.123)"),
                          {"id": result, "producer": producer})
