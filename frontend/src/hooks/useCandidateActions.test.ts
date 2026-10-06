@@ -27,7 +27,7 @@ const detail = (id: number): ApplicationDetail => ({
 });
 function options(): Parameters<typeof useCandidateActions>[0] {
   return {
-    openingId: 1, selectedApplication: detail(7), rankingLoaded: true,
+    openingId: 1, rankingLoaded: true,
     onApplicationUpdated: vi.fn(), onError: vi.fn(),
     refreshDashboard: vi.fn().mockResolvedValue(undefined),
     reloadApplications: vi.fn().mockResolvedValue(undefined),
@@ -46,21 +46,6 @@ it("refreshes every eligibility surface after a successful override", async () =
   expect(initial.refreshDashboard).toHaveBeenCalledOnce();
   expect(initial.reloadApplications).toHaveBeenCalledOnce();
   expect(initial.loadRanking).toHaveBeenCalledOnce();
-});
-
-it("acknowledges a saved committee note without reopening a detail the member has left", async () => {
-  const pending = deferred<Response>();
-  vi.mocked(api.addCommitteeNote).mockReturnValue(pending.promise);
-  const initial = options();
-  const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
-  let save!: Promise<CommitteeActionResult>;
-  act(() => { save = result.current.addCommitteeNote(7, "Synthetic committee note", "synthetic-creation-key"); });
-  rerender({ ...initial, selectedApplication: detail(8) });
-  await act(async () => {
-    pending.resolve(Response.json({ application: detail(7) })); expect(await save).toBe("saved");
-  });
-  expect(initial.onApplicationUpdated).toHaveBeenCalledWith(detail(7), 1);
-  expect(initial.onError).not.toHaveBeenCalled();
 });
 
 it("ignores a completed write after switching openings", async () => {

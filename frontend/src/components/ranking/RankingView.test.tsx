@@ -20,7 +20,6 @@ const unranked: RankingResponse = {
     contributions: [], starredByMe: false, shortlisted: false,
   }],
   newDimensionKeys: [], revivedDimensionKeys: [], requestedDimensionKeys: [],
-  keptKeys: [], proposedDimensions: [],
 };
 
 describe("RankingView priorities", () => {
@@ -58,8 +57,7 @@ it.each([false, true])("retains draft edits while proposal acknowledgement is pe
   const acknowledgement = deferred<boolean>();
   const add = vi.fn().mockReturnValue(acknowledgement.promise);
   render(<RankingView {...props} ranking={unranked} tiers={[]} rankingRun={{
-    analysisId: 1, dimensions: [], discoveryNarrative: null, newDimensionKeys: [],
-    revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [],
+    analysisId: 1, dimensions: [], proposedDimensions: [],
   }} onAddProposal={add} />);
   fireEvent.click(screen.getByRole("button", { name: "Add criterion" }));
   const input = screen.getByPlaceholderText(/^e.g. Families/);
@@ -74,8 +72,7 @@ it.each([false, true])("retains draft edits while proposal acknowledgement is pe
 it("keeps a newer draft after an earlier proposal is acknowledged", async () => {
   const acknowledgement = deferred<boolean>();
   render(<RankingView {...props} ranking={unranked} tiers={[]} rankingRun={{
-    analysisId: 1, dimensions: [], discoveryNarrative: null, newDimensionKeys: [],
-    revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [],
+    analysisId: 1, dimensions: [], proposedDimensions: [],
   }} onAddProposal={() => acknowledgement.promise} />);
   fireEvent.click(screen.getByRole("button", { name: "Add criterion" }));
   const input = screen.getByPlaceholderText(/^e.g. Families/);

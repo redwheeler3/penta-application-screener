@@ -2,12 +2,11 @@ import { useCommitteeApi } from "../api/identity";
 import { useRef } from "react";
 
 import * as applicationsApi from "../api/applications";
-import type { ApplicationDetail, ApplicationUpdate, AppStatus, CommitteeActionResult } from "../types";
+import type { ApplicationUpdate, AppStatus, CommitteeActionResult } from "../types";
 import { useRequestScope } from "./useRequestScope";
 
 type CandidateActionsOptions = {
   openingId: number | null;
-  selectedApplication: ApplicationDetail | null;
   rankingLoaded: boolean;
   onApplicationUpdated: (application: ApplicationUpdate, openingId: number) => void;
   onError: (message: string) => void;

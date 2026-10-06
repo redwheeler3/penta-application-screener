@@ -82,14 +82,6 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     selectOpening,
     search: searchApplications,
   } = useApplications();
-  const {
-    workflow,
-    coverage,
-    adminActions,
-    loadState: dashboardLoadState,
-    refresh: refreshDashboard,
-    loadInitial: loadInitialDashboard,
-  } = useDashboard(selectedOpeningId);
   // The ranking cluster: the current run's dimensions, the ranked shortlist, the
   // committee's tiers, and the pure-persistence handlers that keep them in lockstep.
   // See useRanking. useAiRuns separately coordinates the model-run lifecycle.
@@ -110,7 +102,19 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     staleAnalysis,
     refreshRankingView,
     reloadStaleRanking,
+    observeCurrentAnalysis,
   } = useRanking(selectedOpeningId, showError);
+  const {
+    workflow,
+    coverage,
+    adminActions,
+    loadState: dashboardLoadState,
+    refresh: refreshDashboard,
+    loadInitial: loadInitialDashboard,
+  } = useDashboard(selectedOpeningId, (analysisId) => {
+    if (!intakeViews.current.running) observeCurrentAnalysis(analysisId);
+  });
+
 
   const {
     activeTab,
@@ -172,7 +176,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     clearSelectedApplication,
     refreshDisplayedRanking: () => {
       const views = intakeViews.current;
-      if (views.displayed) void views.refreshRankingView(true);
+      if (views.displayed) void views.refreshRankingView();
     },
   });
 
@@ -187,7 +191,6 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     refreshEligibilityViews,
   } = useCandidateActions({
     openingId: selectedOpeningId,
-    selectedApplication: selectedApp,
     rankingLoaded: ranking !== null,
     onApplicationUpdated: updateSelectedApplication,
     onError: showError,
@@ -253,17 +256,17 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
   useEffect(() => {
     if (sessionChanged) return;
     let refreshInFlight = false;
-    const refreshIntake = (checkHiddenRanking = false) => {
+    const refreshIntake = () => {
       if (document.visibilityState !== "visible" || refreshInFlight) return;
       const views = intakeViews.current;
       refreshInFlight = true;
       const reads = [views.refreshDashboard(), views.reloadApplications(), views.refreshCachedResults()];
-      if (!views.running && (views.displayed || checkHiddenRanking)) {
-        reads.push(views.refreshRankingView(views.displayed));
+      if (!views.running && views.displayed) {
+        reads.push(views.refreshRankingView());
       }
       void Promise.all(reads).finally(() => { refreshInFlight = false; });
     };
-    const onFocus = () => refreshIntake(true);
+    const onFocus = refreshIntake;
     const interval = window.setInterval(() => refreshIntake(), 60_000);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);

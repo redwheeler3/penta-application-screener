@@ -47,9 +47,10 @@ export interface RankingState {
    * save was rejected (409 stale_analysis) or a focus-time check saw the current analysis id
    * drift. Drives a global "reload" toast; cleared by ``reloadStaleRanking``. */
   staleAnalysis: boolean;
-  /** Reconcile a displayed board, or cheaply check a hidden board's analysis identity.
-   * Same-analysis score/eligibility changes update silently. New criteria require Reload. */
-  refreshRankingView: (displayed: boolean) => Promise<void>;
+  /** Reconcile a displayed board without replacing newer optimistic edits. */
+  refreshRankingView: () => Promise<void>;
+  /** Observe the analysis identity already returned by the scoped dashboard read. */
+  observeCurrentAnalysis: (analysisId: number | null) => void;
   /** Re-fetch the current analysis + ranking + tiers and clear the stale flag — the toast's
    * Reload action. Returns whether the reload succeeded. */
   reloadStaleRanking: () => Promise<boolean>;
@@ -74,7 +75,6 @@ export function useRanking(
 
   const currentReads = useRequestScope(openingId);
   const boardReads = useRequestScope(openingId);
-  const staleReads = useRequestScope(openingId);
   const analysisId = ranking?.analysisId ?? rankingRun?.analysisId;
   const mutationKey = `${openingId}:${analysisId ?? "none"}`;
   const mutations = useRequestScope(mutationKey);
@@ -106,7 +106,6 @@ export function useRanking(
     pendingMutations.current.add(isCurrent);
     currentReads.invalidate();
     boardReads.invalidate();
-    staleReads.invalidate();
     setRankingLoadState((state) => {
       if (state !== "loading") return state;
       return boardRef.current !== null ? "ready" : "idle";
@@ -130,7 +129,6 @@ export function useRanking(
 
   const adoptBoard = useCallback((board: RankingBoardResponse) => {
     currentReads.invalidate();
-    staleReads.invalidate();
     runRef.current = board.run;
     boardRef.current = board.ranking;
     tiersRef.current = board.tiers;
@@ -139,7 +137,7 @@ export function useRanking(
     setTiers(board.tiers);
     setRankingLoadState("ready");
     setStaleAnalysis(false);
-  }, [currentReads, staleReads]);
+  }, [currentReads]);
 
   function handleSaveFailure(body: Awaited<ReturnType<typeof readProblemBody>>, isCurrent: RequestIsCurrent) {
     if (!isCurrent()) return { handled: true, message: null };
@@ -150,35 +148,29 @@ export function useRanking(
     return { handled: false, message: problemMessage(body) };
   }
 
-  async function reloadStaleRanking(): Promise<boolean> {
-    if (!currentReads.isFor(openingId)) return false;
-    const isCurrent = currentReads.capture();
-    const run = await refreshRankingRun();
-    if (run.status !== "loaded" || !run.run || !isCurrent()) return false;
-    const ok = await loadRanking();
-    if (ok && isCurrent()) setStaleAnalysis(false);
-    return ok;
-  }
-
-  const refreshRankingView = useCallback(async (displayed: boolean): Promise<void> => {
+  const observeCurrentAnalysis = useCallback((currentId: number | null) => {
     const loadedId = boardRef.current?.analysisId ?? runRef.current?.analysisId;
+    // A dashboard read describes the board it started beside, not a newer board
+    // adopted while that request was waiting.
+    if (currentReads.isFor(openingId) && analysisId != null && loadedId === analysisId
+      && !hasPendingMutations() && currentId !== loadedId) {
+      setStaleAnalysis(true);
+    }
+  }, [analysisId, currentReads, hasPendingMutations, openingId]);
+
+  const refreshRankingView = useCallback(async (): Promise<void> => {
+    const loadedId = boardRef.current?.analysisId;
     if (openingId === null || !boardReads.isFor(openingId) || loadedId == null || hasPendingMutations()) return;
+    const isCurrent = boardReads.begin();
     try {
-      if (displayed && boardRef.current !== null) {
-        const isCurrent = boardReads.begin();
-        const board = await api.fetchRankingBoard(openingId);
-        if (!isCurrent()) return;
-        if (board.run.analysisId !== loadedId) setStaleAnalysis(true);
-        else adoptBoard(board);
-      } else {
-        const isCurrent = staleReads.begin();
-        const current = await api.fetchRankingCurrent(openingId);
-        if (isCurrent() && current && current.analysisId !== loadedId) setStaleAnalysis(true);
-      }
+      const board = await api.fetchRankingBoard(openingId);
+      if (!isCurrent()) return;
+      if (board.run.analysisId !== loadedId) setStaleAnalysis(true);
+      else adoptBoard(board);
     } catch {
       /* Keep the displayed board; focus/intake refresh retries. */
     }
-  }, [adoptBoard, api, boardReads, hasPendingMutations, openingId, staleReads]);
+  }, [adoptBoard, api, boardReads, hasPendingMutations, openingId]);
 
   async function refreshRankingRun(): Promise<RankingRunRead> {
     if (openingId === null || !currentReads.isFor(openingId) || hasPendingMutations()) {
@@ -205,7 +197,6 @@ export function useRanking(
     if (openingId === null || !boardReads.isFor(openingId) || hasPendingMutations()) return false;
     const isCurrent = boardReads.begin();
     currentReads.invalidate();
-    staleReads.invalidate();
     setRankingLoadState("loading");
     try {
       const board = await api.fetchRankingBoard(openingId);
@@ -249,12 +240,6 @@ export function useRanking(
         boardRef.current = updated;
         setRanking(updated);
         setRankingLoadState("ready");
-        setRankingRun((run) => {
-          if (!run) return run;
-          const updatedRun = { ...run, requestedDimensionKeys: updated.requestedDimensionKeys };
-          runRef.current = updatedRun;
-          return updatedRun;
-        });
       } else {
         const { handled, message } = handleSaveFailure(response.problem, isLatest);
         if (!handled && isLatest()) {
@@ -333,7 +318,6 @@ export function useRanking(
   function invalidateReads() {
     currentReads.invalidate();
     boardReads.invalidate();
-    staleReads.invalidate();
   }
 
   function setDisplayedProposals(proposedDimensions: string[]) {
@@ -362,6 +346,7 @@ export function useRanking(
     invalidateReads,
     staleAnalysis,
     refreshRankingView,
-    reloadStaleRanking,
+    reloadStaleRanking: loadRanking,
+    observeCurrentAnalysis,
   };
 }

@@ -190,14 +190,13 @@ async def test_proposed_dimension_seeds_discovery_then_clears() -> None:
         assert "school-age kids who'd use the playground" in discovery_prompt
 
         # After the run: proposal consumed (cleared). The new axis is present but NOT
-        # kept — it lands unplaced (Ignore) awaiting a tier, so kept_keys excludes it.
+        # weighted — it lands unplaced (Ignore) awaiting a tier.
         current = (await client.get("/ranking/current")).json()
         assert current["proposedDimensions"] == []
-        assert "playground_age_children" not in current["keptKeys"]
-        assert current["keptKeys"] == []
+        assert not any((await client.get("/ranking/board")).json()["ranking"]["weights"].values())
         # The realized axis carries the "Requested" provenance flag this run — it drives
         # the chip pill.
-        assert current["requestedDimensionKeys"] == ["playground_age_children"]
+        assert (await client.get("/ranking/board")).json()["ranking"]["requestedDimensionKeys"] == ["playground_age_children"]
 
         # Dismissing the pill (its ✕) via the tiers PUT clears it in the same round-trip,
         # without moving the chip (provenance, not triage). The keep set is unchanged.
@@ -212,7 +211,7 @@ async def test_proposed_dimension_seeds_discovery_then_clears() -> None:
         assert ranking["requestedDimensionKeys"] == []
         # And it stays cleared on a fresh read (persisted, not just echoed).
         current = (await client.get("/ranking/current")).json()
-        assert current["requestedDimensionKeys"] == []
+        assert (await client.get("/ranking/board")).json()["ranking"]["requestedDimensionKeys"] == []
 
 
 @pytest.mark.anyio
@@ -236,7 +235,7 @@ async def test_tiered_dimension_is_kept_and_injected_at_decomposition_not_discov
                   "tiers": [{"id": "tier-s", "label": "Critical",
                              "dimensionKeys": ["participation_commitment"], "ignore": False}]},
         )).json()
-        assert ranking["keptKeys"] == ["participation_commitment"]
+        assert ranking["weights"]["participation_commitment"] > 0
 
         # Re-run: the kept axis recurs (match pass maps it back to its prior key).
         provider.calls.clear()
@@ -259,8 +258,8 @@ async def test_tiered_dimension_is_kept_and_injected_at_decomposition_not_discov
         assert "Willingness to do shared work." in decompose_prompt
 
         # It is still kept (its Critical placement carried forward) after the re-run.
-        current = (await client.get("/ranking/current")).json()
-        assert "participation_commitment" in current["keptKeys"]
+        ranking = (await client.get("/ranking/board")).json()["ranking"]
+        assert ranking["weights"]["participation_commitment"] > 0
 
 
 @pytest.mark.anyio
@@ -278,14 +277,13 @@ async def test_add_proposal_before_run_is_409() -> None:
 
 
 @pytest.mark.anyio
-async def test_match_audit_is_null_before_any_run() -> None:
+async def test_match_audit_requires_an_existing_viewed_analysis() -> None:
     app, db, _ = setup_app(role=UserRole.ADMIN)
     add_eligible(db, email="a@x.com", raw_hash="h1")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        resp = await client.get("/ranking/current/match-audit")
-        assert resp.status_code == 200
-        assert resp.json() is None
+        resp = await client.get("/ranking/analyses/1/match-audit")
+        assert resp.status_code == 404
 
 
 @pytest.mark.anyio
@@ -300,7 +298,7 @@ async def test_match_audit_first_run_has_null_carry_forward_rate() -> None:
         provider.route("applicant_id", a_scoring_report())
         await stream_events(client, "/ranking/run")
 
-        audit = (await client.get("/ranking/current/match-audit")).json()
+        audit = (await client.get(f"/ranking/analyses/{await current_analysis_id(client)}/match-audit")).json()
         assert audit["priorDimensionCount"] == 0
         assert audit["discoveredCount"] == 2
         assert audit["matchedCount"] == 0
@@ -334,7 +332,7 @@ async def test_match_audit_reports_carry_forward_rate_on_rerun() -> None:
         provider.route("applicant_id", _scoring_report_v2())
         await stream_events(client, "/ranking/run")
 
-        audit = (await client.get("/ranking/current/match-audit")).json()
+        audit = (await client.get(f"/ranking/analyses/{await current_analysis_id(client)}/match-audit")).json()
         assert audit["priorDimensionCount"] == 2
         assert audit["discoveredCount"] == 2
         assert audit["matchedCount"] == 1

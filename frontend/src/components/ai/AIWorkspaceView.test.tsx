@@ -1,6 +1,7 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { renderCommittee as render } from "../../testSupport";
+import { deferred, renderCommittee as render } from "../../testSupport";
+import type { CurrentRunResponse } from "../../types";
 import { AIWorkspaceView } from "./AIWorkspaceView";
 
 const api = vi.hoisted(() => ({
@@ -13,15 +14,53 @@ const api = vi.hoisted(() => ({
 vi.mock("../../api/evals", async (original) => ({
   ...await original<typeof import("../../api/evals")>(), createApi: () => api,
 }));
+const traces = vi.hoisted(() => ({ fetchMatchAudit: vi.fn(), fetchDecomposeAudit: vi.fn(),
+  fetchConsolidateAudit: vi.fn(), fetchFanOutAudit: vi.fn() }));
+vi.mock("../../api/ranking", () => ({ createApi: () => traces }));
 
 beforeEach(() => {
   vi.resetAllMocks();
+  for (const read of Object.values(traces)) read.mockResolvedValue(null);
   api.fetchEvalCases.mockResolvedValue({ cases: [{ key: "synthetic", metadata: {
     pass: "screening", expected: { fires: [], absent: [] }, note: "Synthetic case",
   }, given: { fields: {}, essays: {} } }] });
   api.fetchLastEvalRun.mockResolvedValue({ runs: [], current: {} });
   api.fetchJudgeBackgrounds.mockResolvedValue({ backgrounds: [{ passName: "scoring", background: "Synthetic brief", caseCount: 1 }] });
   api.fetchEvalInvariants.mockResolvedValue({ hasFixture: true, dimensions: 1, invariants: [] });
+});
+
+const criteria = (analysisId: number): CurrentRunResponse => ({ analysisId, dimensions: [], proposedDimensions: [] });
+
+it.each([
+  ["Matching", "fetchMatchAudit"], ["Decomposition", "fetchDecomposeAudit"],
+  ["Consolidation", "fetchConsolidateAudit"], ["Pattern discovery", "fetchFanOutAudit"],
+] as const)("refreshes %s for the accepted criteria snapshot and requests its exact analysis", async (tab, method) => {
+  const props = { family: "obs" as const, openingId: 1, onToast: vi.fn(), onError: vi.fn() };
+  const first = criteria(1);
+  const { rerender } = render(<AIWorkspaceView {...props} run={first} />);
+  fireEvent.click(screen.getByRole("tab", { name: tab }));
+  await waitFor(() => expect(traces[method]).toHaveBeenCalledExactlyOnceWith(1, 1));
+  rerender(<AIWorkspaceView {...props} run={first} />);
+  expect(traces[method]).toHaveBeenCalledTimes(1);
+  // A same-analysis completion installs a fresh accepted snapshot too.
+  rerender(<AIWorkspaceView {...props} run={criteria(1)} />);
+  await waitFor(() => expect(traces[method]).toHaveBeenCalledTimes(2));
+  rerender(<AIWorkspaceView {...props} run={criteria(2)} />);
+  await waitFor(() => expect(traces[method]).toHaveBeenLastCalledWith(1, 2));
+});
+
+it("does not display a late trace from an analysis the operator has left", async () => {
+  const old = deferred<null>();
+  traces.fetchMatchAudit.mockReturnValueOnce(old.promise).mockResolvedValue({ analysisId: 2,
+    rawDiscoveryDimensions: [{ key: "new", name: "Current criterion" }], newToOld: {},
+    priorDimensionCount: 1, discoveredCount: 1, matchedCount: 0, newCount: 1, carryForwardRate: 0 });
+  const props = { family: "obs" as const, openingId: 1, onToast: vi.fn(), onError: vi.fn() };
+  const { rerender } = render(<AIWorkspaceView {...props} run={criteria(1)} />);
+  fireEvent.click(screen.getByRole("tab", { name: "Matching" }));
+  rerender(<AIWorkspaceView {...props} run={criteria(2)} />);
+  await screen.findByText("Current criterion");
+  await act(async () => old.resolve(null));
+  expect(screen.getByText("Current criterion")).toBeInTheDocument();
 });
 
 function setup(editable: boolean) {

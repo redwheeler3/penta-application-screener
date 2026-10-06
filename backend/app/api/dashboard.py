@@ -79,6 +79,7 @@ def read_dashboard(
     email_queue = email_queue_status(db) if user.role == UserRole.ADMIN else None
 
     return DashboardResponse(
+        analysis_id=current_analysis.id if current_analysis else None,
         # Whether each step has work available or has run, from persisted data so
         # workflow gating survives a reload.
         workflow=WorkflowState(

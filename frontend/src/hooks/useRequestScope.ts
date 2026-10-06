@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 
+export type RequestScopeKey = string | number | boolean | object | null;
 export type RequestIsCurrent = () => boolean;
 
 /** Owns async work for one resource. Reads also supersede earlier reads; writes can
  * capture the scope without cancelling other writes in the same resource. */
-export function useRequestScope(key: string | number | boolean | null = null) {
+export function useRequestScope(key: RequestScopeKey = null) {
   const scope = useRef({ key, generation: 0, request: 0, mounted: false });
   if (scope.current.key !== key) {
     scope.current.key = key;
@@ -23,7 +24,7 @@ export function useRequestScope(key: string | number | boolean | null = null) {
   }, [key]);
 
   return useMemo(() => ({
-    isFor(expectedKey: string | number | boolean | null): boolean {
+    isFor(expectedKey: RequestScopeKey): boolean {
       return scope.current.key === expectedKey;
     },
     capture(): RequestIsCurrent {

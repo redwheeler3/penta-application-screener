@@ -16,7 +16,7 @@ const settingsApi = vi.hoisted(() => ({
 }));
 const intake = vi.hoisted(() => ({
   refreshDashboard: vi.fn<() => Promise<void>>(), reloadApplications: vi.fn<() => Promise<void>>(),
-  refreshRankingView: vi.fn<(displayed: boolean) => Promise<void>>(), loadRanking: vi.fn<() => Promise<boolean>>(),
+  refreshRankingView: vi.fn<() => Promise<void>>(), loadRanking: vi.fn<() => Promise<boolean>>(),
   rankingRun: null as CurrentRunResponse | null, rankRunning: false,
 }));
 
@@ -88,19 +88,19 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-it("uses the intake interval for the displayed board and a cheap hidden check only on focus", async () => {
+it("uses intake dashboard reads for hidden identity and refreshes only the displayed board", async () => {
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-  intake.rankingRun = { analysisId: 1, dimensions: [], discoveryNarrative: null, newDimensionKeys: [],
-    revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [] };
+  intake.rankingRun = { analysisId: 1, dimensions: [], proposedDimensions: [] };
   render(<CommitteeWorkspace user={user} logout={vi.fn()} />);
   await act(() => vi.advanceTimersByTimeAsync(60_000));
   expect(intake.refreshDashboard).toHaveBeenCalledOnce();
   expect(intake.refreshRankingView).not.toHaveBeenCalled();
   await act(async () => window.dispatchEvent(new Event("focus")));
-  expect(intake.refreshRankingView).toHaveBeenLastCalledWith(false);
+  expect(intake.refreshRankingView).not.toHaveBeenCalled();
+  expect(intake.refreshDashboard).toHaveBeenCalledTimes(2);
   await act(async () => fireEvent.click(screen.getByRole("tab", { name: "Ranking" })));
   await act(() => vi.advanceTimersByTimeAsync(60_000));
-  expect(intake.refreshRankingView).toHaveBeenLastCalledWith(true);
+  expect(intake.refreshRankingView).toHaveBeenLastCalledWith();
 });
 
 it("leaves a live run's board alone and stops intake reads when the session is paused", async () => {

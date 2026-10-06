@@ -29,19 +29,6 @@ class CurrentRunResponse(ResponseModel):
 
     analysis_id: int
     dimensions: list[PoolDimensionOut]
-    # The model's streamed reasoning from the discovery pass (markdown), for the
-    # Observability trace. Null when no narrative was captured.
-    discovery_narrative: str | None = None
-    new_dimension_keys: list[str] = []
-    # Subset of new_dimension_keys that are "revived" (seen in an earlier run, dropped,
-    # now back) rather than genuinely new — derived from history at read time. The
-    # frontend colours these blue ("Revived") vs. amber ("New"); new = flagged − revived.
-    revived_dimension_keys: list[str] = []
-    # Keys a member proposed on THIS run (from_committee_request) not yet dismissed —
-    # drives the chip's "Requested" provenance pill. Cleared on the next Rank when the
-    # underlying flag clears; see requested_flag_keys.
-    requested_dimension_keys: list[str] = []
-    kept_keys: list[str] = []
     proposed_dimensions: list[str] = []
 
 
@@ -61,7 +48,7 @@ class PriorDimensionRef(ResponseModel):
 
 
 class MatchAuditResponse(ResponseModel):
-    """GET /ranking/current/match-audit — the carry-forward trace for the current run.
+    """GET /ranking/analyses/{analysis_id}/match-audit — the carry-forward trace for the current run.
     Null when no run or audit exists.
 
     ``carryForwardRate`` is null on a first run (no prior dimensions to match); a
@@ -111,7 +98,7 @@ class FoldedRequestOut(ResponseModel):
 
 
 class DecomposeAuditResponse(ResponseModel):
-    """GET /ranking/current/decompose-audit — how the K fan-out discovery reports were
+    """GET /ranking/analyses/{analysis_id}/decompose-audit — how the K fan-out discovery reports were
     settled into one non-overlapping set for the current run. Null when the run predates
     decomposition (single-discovery runs).
 
@@ -149,7 +136,7 @@ class ConsolidatedPairOut(ResponseModel):
 
 
 class ConsolidateAuditResponse(ResponseModel):
-    """GET /ranking/current/consolidate-audit — the post-score duplicate-merge pass:
+    """GET /ranking/analyses/{analysis_id}/consolidate-audit — the post-score duplicate-merge pass:
     which correlated pairs were nominated and how each was adjudicated. Null when the run
     predates the pass. ``merges`` is the applied drop→keep map; ``nominatedCount`` /
     ``mergedCount`` summarize the pass at a glance."""
@@ -174,7 +161,7 @@ class FanOutPassOut(ResponseModel):
 
 
 class FanOutAuditResponse(ResponseModel):
-    """GET /ranking/current/fan-out-audit — the K fresh-context discovery passes that
+    """GET /ranking/analyses/{analysis_id}/fan-out-audit — the K fresh-context discovery passes that
     fed decomposition, so the committee can see each discoverer (not just the one whose
     reasoning streamed live). Null when no audit exists."""
 
@@ -182,6 +169,7 @@ class FanOutAuditResponse(ResponseModel):
     k: int
     passes: list[FanOutPassOut]
     configuration: dict[str, Any] | None = None
+    narrative: str | None = None
 
 
 class RankEstimateBreakdown(ResponseModel):
@@ -245,8 +233,7 @@ class RankingResponse(ResponseModel):
     # Keys a member proposed on THIS run not yet dismissed — the "Requested" pill; kept
     # in sync after a tier/ack save so the badge clears in the same round-trip.
     requested_dimension_keys: list[str] = []
-    kept_keys: list[str] = []
-    proposed_dimensions: list[str] = []
+
 
 
 class TierOut(ResponseModel):
@@ -264,7 +251,7 @@ class RankingBoardResponse(ResponseModel):
     tiers: list[TierOut]
 
 
-class SeedsResponse(ResponseModel):
+class ProposalsResponse(ResponseModel):
     """PATCH /ranking/proposals — the current pending-proposal state."""
 
     proposed_dimensions: list[str] = []

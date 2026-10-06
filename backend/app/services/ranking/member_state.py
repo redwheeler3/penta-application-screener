@@ -113,25 +113,6 @@ def dimension_weights(member_ranking: MemberRanking, *, report: PoolDimensionRep
 
 
 
-def kept_keys(member_ranking: MemberRanking) -> list[str]:
-    """Dimension keys this member has KEPT — every key they placed in a working
-    (non-Ignore) tier. A kept axis is guaranteed to survive the next Rank (injected
-    at decomposition as MUST-survive); Ignore is the only "fair game to drop/re-carve"
-    bucket. There is no separate stored set: tier placement IS the keep signal, so
-    this derives from the member's tiers and can never drift out of sync with them
-    (``carry_forward_layout`` already carries placements across re-runs and merges).
-
-    Only keys still present in the shared report are returned (a stale tier entry
-    naming a dropped dimension is ignored). Ignore is synthesized from what's unplaced,
-    so it is never in ``stored_tiers`` — reading the stored working tiers already
-    excludes it.
-    """
-    report = current_dimension_report(member_ranking.analysis)
-    valid = {d.key for d in report.dimensions} if report is not None else set()
-    placed = {key for tier in stored_tiers(member_ranking) for key in tier.get("dimension_keys", [])}
-    return sorted(placed & valid)
-
-
 def proposed_dimensions(member_ranking: MemberRanking) -> list[str]:
     """Pending free-text axes this member proposed, awaiting the next Rank to realize
     them. Cleared once a run consumes them (they become real dimensions).

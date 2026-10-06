@@ -1,5 +1,5 @@
 import { useCommitteeApi } from "../api/identity";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import * as dashboardApi from "../api/dashboard";
 import { retryWithBackoff } from "../retry";
@@ -14,7 +14,9 @@ const EMPTY_WORKFLOW: WorkflowState = {
   rankingCurrent: false,
 };
 
-export function useDashboard(openingId: number | null) {
+export function useDashboard(openingId: number | null, onAnalysis?: (analysisId: number | null) => void) {
+  const observeAnalysis = useRef(onAnalysis);
+  observeAnalysis.current = onAnalysis;
   const api = useCommitteeApi(dashboardApi);
 
   const [workflow, setWorkflow] = useState<WorkflowState>(EMPTY_WORKFLOW);
@@ -24,10 +26,12 @@ export function useDashboard(openingId: number | null) {
   const requests = useRequestScope(openingId);
 
   const apply = useCallback((payload: {
+    analysisId: number | null;
     workflow: WorkflowState;
     coverage?: Coverage;
     adminActions?: AdminActions | null;
-  }) => {
+  }, observe: typeof onAnalysis) => {
+    observe?.(payload.analysisId);
     setWorkflow(payload.workflow);
     setCoverage(payload.coverage ?? {});
     setAdminActions(payload.adminActions ?? null);
@@ -37,8 +41,9 @@ export function useDashboard(openingId: number | null) {
   const refresh = useCallback(() => {
     if (openingId === null || !requests.isFor(openingId)) return Promise.resolve();
     const isCurrent = requests.begin();
+    const observe = observeAnalysis.current;
     return api.fetchDashboard(openingId).then((payload) => {
-      if (isCurrent()) apply(payload);
+      if (isCurrent()) apply(payload, observe);
     }).catch(() => {});
   }, [apply, openingId, requests, api]);
 
@@ -47,9 +52,10 @@ export function useDashboard(openingId: number | null) {
     setLoadState("loading");
     if (openingId === null) return;
     const isCurrent = requests.begin();
+    const observe = observeAnalysis.current;
     try {
       const payload = await retryWithBackoff(() => api.fetchDashboard(openingId), 5);
-      if (isCurrent()) apply(payload);
+      if (isCurrent()) apply(payload, observe);
     } catch {
       if (isCurrent()) setLoadState("error");
     }

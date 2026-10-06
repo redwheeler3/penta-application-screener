@@ -140,14 +140,13 @@ export function AIWorkspaceView(props: {
       ) : null}
       <div className="observability-subtab-body">
         {activeTab === "discovery" && props.run ? (
-          // Key by analysisId so an analysis change remounts the panel (its fetch is mount-once).
-          <DiscoveryPanel key={props.run.analysisId} run={props.run} openingId={props.openingId!} />
+          <DiscoveryPanel run={props.run} openingId={props.openingId!} />
         ) : activeTab === "decompose" ? (
-          <DecomposeAuditPanel openingId={props.openingId!} />
+          <DecomposeAuditPanel run={props.run!} openingId={props.openingId!} />
         ) : activeTab === "match" ? (
-          <MatchAuditPanel openingId={props.openingId!} />
+          <MatchAuditPanel run={props.run!} openingId={props.openingId!} />
         ) : activeTab === "consolidate" ? (
-          <ConsolidateAuditPanel openingId={props.openingId!} />
+          <ConsolidateAuditPanel run={props.run!} openingId={props.openingId!} />
         ) : activeTab === "metrics" ? (
           <MetricsPanel />
         ) : activeTab === "invariants" ? (

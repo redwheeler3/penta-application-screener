@@ -27,8 +27,8 @@ def anyio_backend():
     ("POST", "/evals/scoring"), ("POST", "/evals/judge"), ("POST", "/evals/baseline"),
     ("PUT", "/evals/cases/scoring"), ("PUT", "/evals/judge-backgrounds/scoring"),
     ("GET", "/observability/cost"), ("GET", "/observability/metrics"), ("GET", "/observability/last-runs"),
-    ("GET", "/ranking/current/fan-out-audit"), ("GET", "/ranking/current/match-audit"),
-    ("GET", "/ranking/current/decompose-audit"), ("GET", "/ranking/current/consolidate-audit"),
+    ("GET", "/ranking/analyses/1/fan-out-audit"), ("GET", "/ranking/analyses/1/match-audit"),
+    ("GET", "/ranking/analyses/1/decompose-audit"), ("GET", "/ranking/analyses/1/consolidate-audit"),
 ])
 async def test_member_cannot_use_operator_routes(method, path):
     app, _db, provider = setup_app(UserRole.MEMBER)
@@ -58,7 +58,7 @@ async def test_member_can_still_read_ordinary_ranking_views():
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("role", [UserRole.MEMBER, UserRole.ADMIN])
-async def test_ranking_views_only_include_operator_narrative_for_admins(role):
+async def test_ranking_views_omit_narrative_and_only_admins_can_read_its_trace(role):
     from sqlalchemy import select
 
     from app.db.models import User
@@ -70,13 +70,54 @@ async def test_ranking_views_only_include_operator_narrative_for_admins(role):
     add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
     create_analysis(db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
         report=a_pattern_report(), narrative="Synthetic operator reasoning", inputs_fingerprint="synthetic")
-    expected = "Synthetic operator reasoning" if role == UserRole.ADMIN else None
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         current = (await client.get("/ranking/current")).json()
         board = (await client.get("/ranking/board")).json()
-    assert current["discoveryNarrative"] == expected
-    assert board["run"]["discoveryNarrative"] == expected
+        trace = await client.get(f"/ranking/analyses/{current['analysisId']}/fan-out-audit")
+        if role == UserRole.ADMIN:
+            assert trace.json()["narrative"] == "Synthetic operator reasoning"
+        else:
+            assert trace.status_code == 403
+    assert "discoveryNarrative" not in current
+    assert "discoveryNarrative" not in board["run"]
     assert current["dimensions"]
+
+
+@pytest.mark.anyio
+async def test_trace_uses_the_viewed_analysis_and_checks_its_opening():
+    from datetime import UTC, date, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.db.models import ApplicationParticipation, Opening, User
+    from app.services.ranking.analysis import create_analysis
+    from tests.application_support import current_opening_id
+    from tests.ranking_support import a_pattern_report
+
+    app, db, _provider = setup_app(UserRole.ADMIN)
+    applicant = add_eligible(db, email="synthetic@example.test", raw_hash="synthetic")
+    opening_id = current_opening_id(db)
+    user = db.scalar(select(User))
+    old = create_analysis(db, user=user, opening_id=opening_id, report=a_pattern_report(),
+        narrative="Earlier synthetic trace", inputs_fingerprint="earlier")
+    latest = create_analysis(db, user=user, opening_id=opening_id, report=a_pattern_report(),
+        narrative="Latest synthetic trace", inputs_fingerprint="latest")
+    other = Opening(unit_size_bedrooms=1, housing_charge_cents=100000, application_open_date=date.today(),
+        application_close_date=date.today() + timedelta(days=10), move_in_date=date.today() + timedelta(days=20),
+        published_at=datetime.now(UTC))
+    db.add(other)
+    db.flush()
+    db.add(ApplicationParticipation(application_id=applicant.id, opening_id=other.id, applied_at=datetime.now(UTC)))
+    db.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        for analysis, narrative in [(old, "Earlier synthetic trace"), (latest, "Latest synthetic trace")]:
+            response = await client.get(f"/ranking/analyses/{analysis.id}/fan-out-audit?opening_id={opening_id}")
+            assert response.status_code == 200
+            assert response.json()["analysisId"] == analysis.id
+            assert response.json()["narrative"] == narrative
+        for audit in ("fan-out", "match", "decompose", "consolidate"):
+            response = await client.get(f"/ranking/analyses/{old.id}/{audit}-audit?opening_id={other.id}")
+            assert response.status_code == 404
 
 
 @pytest.mark.parametrize(("frontend", "fly", "editable"), [

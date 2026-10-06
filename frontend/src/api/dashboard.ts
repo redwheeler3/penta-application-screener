@@ -10,7 +10,7 @@ import type {
 export function createApi(client: ApiClient) {
   const { getJson, request } = client;
   const fetchDashboard = (openingId: number) =>
-    getJson<{ workflow: WorkflowState; coverage: Coverage; adminActions?: AdminActions | null }>(
+    getJson<{ analysisId: number | null; workflow: WorkflowState; coverage: Coverage; adminActions?: AdminActions | null }>(
       `/dashboard?opening_id=${openingId}`,
     );
 

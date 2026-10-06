@@ -3,7 +3,7 @@ import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import * as rankingApi from "../../api/ranking";
 import { useFetchResource } from "../../hooks/useFetchResource";
-import type { ConsolidateAuditResponse } from "../../types";
+import type { CurrentRunResponse, ConsolidateAuditResponse } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Post-score consolidation observability: how the run healed duplicate dimensions the
@@ -15,11 +15,12 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 //
 // This surfaces every nominated pair, correlation, verdict, and reason. Missing audit
 // data and a run with no nominations have distinct empty states.
-export function ConsolidateAuditPanel(props: { openingId: number }): ReactNode {
+export function ConsolidateAuditPanel(props: { openingId: number; run: CurrentRunResponse }): ReactNode {
   const { fetchConsolidateAudit } = useCommitteeApi(rankingApi);
 
   const { data: audit, state, reload } = useFetchResource(
-    () => fetchConsolidateAudit(props.openingId),
+    () => fetchConsolidateAudit(props.openingId, props.run.analysisId),
+    { reloadKey: props.run },
   );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;

@@ -19,22 +19,22 @@ export function createApi(client: ApiClient) {
     getJson<CurrentRunResponse | null>(`/ranking/current${openingQuery(openingId)}`);
 
   // The current run's carry-forward audit, or null when none is stored.
-  const fetchMatchAudit = (openingId: number) =>
-    getJson<MatchAuditResponse | null>(`/ranking/current/match-audit${openingQuery(openingId)}`);
+  const fetchMatchAudit = (openingId: number, analysisId: number) =>
+    getJson<MatchAuditResponse | null>(`/ranking/analyses/${analysisId}/match-audit${openingQuery(openingId)}`);
 
   // The current run's decomposition audit — how the K fan-out discovery reports were
   // settled into one set (settled axes + merge reasoning + folded-request trail).
   // Null when no decomposition audit is stored.
-  const fetchDecomposeAudit = (openingId: number) =>
-    getJson<DecomposeAuditResponse | null>(`/ranking/current/decompose-audit${openingQuery(openingId)}`);
+  const fetchDecomposeAudit = (openingId: number, analysisId: number) =>
+    getJson<DecomposeAuditResponse | null>(`/ranking/analyses/${analysisId}/decompose-audit${openingQuery(openingId)}`);
 
-  const fetchConsolidateAudit = (openingId: number) =>
-    getJson<ConsolidateAuditResponse | null>(`/ranking/current/consolidate-audit${openingQuery(openingId)}`);
+  const fetchConsolidateAudit = (openingId: number, analysisId: number) =>
+    getJson<ConsolidateAuditResponse | null>(`/ranking/analyses/${analysisId}/consolidate-audit${openingQuery(openingId)}`);
 
   // The current run's fan-out audit — each of the K parallel discoverers' dimensions +
   // reasoning. Null when no fan-out audit is stored.
-  const fetchFanOutAudit = (openingId: number) =>
-    getJson<FanOutAuditResponse | null>(`/ranking/current/fan-out-audit${openingQuery(openingId)}`);
+  const fetchFanOutAudit = (openingId: number, analysisId: number) =>
+    getJson<FanOutAuditResponse | null>(`/ranking/analyses/${analysisId}/fan-out-audit${openingQuery(openingId)}`);
 
   const fetchRankEstimate = (openingId: number, signal?: AbortSignal) =>
     getJson<RankEstimateResponse>(`/ranking/run/estimate${openingQuery(openingId)}`, signal);

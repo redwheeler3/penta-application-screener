@@ -58,6 +58,7 @@ class EmailDeliveryIssuesResponse(ResponseModel):
 
 
 class DashboardResponse(ResponseModel):
+    analysis_id: int | None = None
     workflow: WorkflowState
     # Per-AI-step coverage; keys absent for steps not yet computable.
     coverage: dict[str, CoverageEntry]

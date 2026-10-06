@@ -23,10 +23,10 @@ from app.core.problems import Problem
 from app.db.models import MemberRanking, User
 from app.db.session import get_db
 from app.schemas.ranking import (
+    ProposalsResponse,
     ProposalUpdate,
     RankingBoardResponse,
     RankingResponse,
-    SeedsResponse,
     TierLayoutUpdate,
     TierOut,
 )
@@ -97,7 +97,7 @@ def ranking_board(
     """Criteria, scores, and tiers from the same captured member view."""
     resolved = resolve_visible_opening_id(db, opening_id)
     member_ranking = _current_member_view(db, user, resolved, "ranking")
-    run = run_payload(db, member_ranking, user)
+    run = run_payload(member_ranking)
     if run is None:
         raise Problem("run_required", detail="Discover patterns before ranking.")
     return RankingBoardResponse(
@@ -146,13 +146,13 @@ def update_tiers(
 # No model call here — just persistence; the proposals take effect on the next /ranking/run.
 
 
-@router.patch("/proposals", response_model=SeedsResponse)
+@router.patch("/proposals", response_model=ProposalsResponse)
 def update_proposal(
     body: ProposalUpdate,
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> SeedsResponse:
+) -> ProposalsResponse:
     """Apply one Add/Remove intent to current pending proposals. Returns the
     current seed state. 409 before an analysis exists (nowhere to store yet) or if the viewed
     analysis was superseded (stale_analysis).
@@ -161,4 +161,4 @@ def update_proposal(
         db, resolve_visible_opening_id(db, opening_id), body.analysis_id, user
     )
     change_proposal(db, member_ranking, operation=body.operation, text=body.text)
-    return SeedsResponse(proposed_dimensions=proposed_dimensions(member_ranking))
+    return ProposalsResponse(proposed_dimensions=proposed_dimensions(member_ranking))

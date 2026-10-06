@@ -18,8 +18,9 @@ it("does not replace a new opening's dashboard with an old initial response", as
     applicationsAvailable: true, screened: true, patternsDiscovered: true,
     candidatesScored: true, rankingCurrent: true,
   };
-  vi.mocked(api.fetchDashboard).mockReturnValueOnce(old.promise).mockResolvedValueOnce({ workflow, coverage: {} });
-  const { result, rerender } = renderHook(({ openingId }) => useDashboard(openingId), {
+  vi.mocked(api.fetchDashboard).mockReturnValueOnce(old.promise).mockResolvedValueOnce({ analysisId: 2, workflow, coverage: {} });
+  const observed = vi.fn();
+  const { result, rerender } = renderHook(({ openingId }) => useDashboard(openingId, observed), {
     initialProps: { openingId: 1 },
   });
   let initial!: Promise<void>;
@@ -27,8 +28,9 @@ it("does not replace a new opening's dashboard with an old initial response", as
   rerender({ openingId: 2 });
   await act(() => result.current.loadInitial());
   await act(async () => {
-    old.resolve({ workflow: { ...workflow, rankingCurrent: false }, coverage: {} }); await initial;
+    old.resolve({ analysisId: 1, workflow: { ...workflow, rankingCurrent: false }, coverage: {} }); await initial;
   });
   expect(result.current.workflow.rankingCurrent).toBe(true);
   expect(result.current.loadState).toBe("ready");
+  expect(observed).toHaveBeenCalledExactlyOnceWith(2);
 });

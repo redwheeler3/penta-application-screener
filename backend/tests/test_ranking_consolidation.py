@@ -20,6 +20,7 @@ from tests.application_support import current_opening_id
 from tests.ranking_support import (
     _decomposition_of,
     add_eligible,
+    current_analysis_id,
     setup_app,
     stream_events,
 )
@@ -87,7 +88,7 @@ async def test_decomposition_merges_axes_and_records_the_merge() -> None:
         assert summary["dimensions"] == 2
 
         # The decompose-audit endpoint surfaces the merge (the Observability panel's source).
-        endpoint = (await client.get("/ranking/current/decompose-audit")).json()
+        endpoint = (await client.get(f"/ranking/analyses/{await current_analysis_id(client)}/decompose-audit")).json()
         assert endpoint["mergeCount"] == 1
         assert endpoint["settledCount"] == 2
         merged_out = next(d for d in endpoint["settled"] if d["key"] == "commitment")
@@ -260,7 +261,6 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
     )
     from app.services.ranking.member_state import (
         get_or_reconcile_member_ranking,
-        kept_keys,
         set_tiers,
     )
 
@@ -278,7 +278,6 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
     # the survivor sits in Ignore (unplaced).
     set_tiers(db, mr, [{"id": "tier-s", "label": "Critical",
                         "dimension_keys": ["financial_stewardship"]}])
-    assert kept_keys(mr) == ["financial_stewardship"]
 
     apply_consolidation(
         db, analysis, mr,
@@ -288,7 +287,6 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
         narrative=None,
     )
     # The survivor inherited the dropped twin's Critical placement, so it stays kept.
-    assert kept_keys(mr) == ["financial_literacy"]
     keys = {d["key"] for d in analysis.dimension_report["dimensions"]}
     assert keys == {"financial_literacy"}
     assert mr.run_state["tiers"][0]["dimension_keys"] == ["financial_literacy"]
@@ -352,7 +350,6 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     )
     from app.services.ranking.member_state import (
         get_or_reconcile_member_ranking,
-        kept_keys,
         set_tiers,
     )
 
@@ -381,7 +378,6 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     # Only the terminal survivor remains, and C's placement followed the full chain to it.
     keys = {d["key"] for d in analysis.dimension_report["dimensions"]}
     assert keys == {"a_oldest"}
-    assert kept_keys(mr) == ["a_oldest"]
     assert mr.run_state["tiers"][0]["dimension_keys"] == ["a_oldest"]
     # Both aliases point straight at the survivor — no mid-chain key persisted.
     aliases = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}

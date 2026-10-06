@@ -4,7 +4,7 @@ from dataclasses import asdict
 
 from sqlalchemy.orm import Session
 
-from app.db.models import MemberRanking, User, UserRole
+from app.db.models import MemberRanking, User
 from app.domain.ranking import rank_candidates
 from app.schemas.applications import DimensionContributionOut
 from app.schemas.ranking import (
@@ -19,7 +19,6 @@ from app.services.eligibility.evaluation import eligible_application_ids_for
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
     dimension_weights,
-    kept_keys,
     proposed_dimensions,
     requested_flag_keys,
     revived_flag_keys,
@@ -27,10 +26,8 @@ from app.services.ranking.member_state import (
 from app.services.ranking.view import candidate_scores
 
 
-def run_payload(db: Session, member_ranking: MemberRanking, user: User) -> CurrentRunResponse | None:
-    """The captured analysis's discovered pattern report + the signed-in member's view of it,
-    shaped for the UI. Dimensions are shared, historical operator reasoning is admin-only,
-    and badges, kept axes and proposals come from this member's ranking."""
+def run_payload(member_ranking: MemberRanking) -> CurrentRunResponse | None:
+    """Shared criteria and this member's pending proposals, without operator traces."""
     analysis = member_ranking.analysis
     report = current_dimension_report(analysis)
     if report is None:
@@ -49,20 +46,6 @@ def run_payload(db: Session, member_ranking: MemberRanking, user: User) -> Curre
             )
             for d in report.dimensions
         ],
-        discovery_narrative=(analysis.audit.discovery_narrative
-            if user.role == UserRole.ADMIN and analysis.audit else None),
-        # Dimensions absent from the immediately-prior analysis in this member's view —
-        # parked/placed but flagged for triage. Empty on a first run.
-        new_dimension_keys=(member_ranking.run_state or {}).get("new_dimension_keys", []),
-        # Of those flagged keys, the ones seen in an EARLIER analysis (revived), derived
-        # from history — the frontend colours these blue vs. amber for genuinely-new.
-        revived_dimension_keys=revived_flag_keys(db, member_ranking),
-        # Keys a member proposed for this analysis, not yet dismissed by them — "Requested" pill.
-        requested_dimension_keys=requested_flag_keys(member_ranking),
-        # Kept axes: every dimension in a working (non-Ignore) tier of this member's ranking —
-        # guaranteed to survive the next Rank. Derived from tier placement (see kept_keys). Plus
-        # any pending free-text proposals (fed to the next Rank, then consumed).
-        kept_keys=kept_keys(member_ranking),
         proposed_dimensions=proposed_dimensions(member_ranking),
     )
 
@@ -116,8 +99,4 @@ def ranking_payload(db: Session, member_ranking: MemberRanking, user: User) -> R
         new_dimension_keys=(member_ranking.run_state or {}).get("new_dimension_keys", []),
         revived_dimension_keys=revived_flag_keys(db, member_ranking),
         requested_dimension_keys=requested_flag_keys(member_ranking),
-        # Kept axes (derived from tiers) + pending proposals, so the tier list and
-        # composer stay in sync after a tier/seed save.
-        kept_keys=kept_keys(member_ranking),
-        proposed_dimensions=proposed_dimensions(member_ranking),
     )

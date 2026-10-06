@@ -12,14 +12,15 @@ export function DiscoveryPanel(props: { run: CurrentRunResponse; openingId: numb
   const { fetchFanOutAudit } = useCommitteeApi(rankingApi);
 
   const { data: audit, state, reload } = useFetchResource(
-    () => fetchFanOutAudit(props.openingId),
+    () => fetchFanOutAudit(props.openingId, props.run.analysisId),
+    { reloadKey: props.run },
   );
 
   if (state === "loading") return <p className="panel-hint">Loading…</p>;
   if (state === "error") return <RetryLoadError message="Couldn’t load discovery." onRetry={() => void reload()} />;
 
   if (audit === null || audit.passes.length === 0) {
-    if (!props.run.discoveryNarrative) {
+    if (!audit?.narrative) {
       return <p className="panel-hint">No discovery reasoning recorded for this run.</p>;
     }
     return (
@@ -27,7 +28,7 @@ export function DiscoveryPanel(props: { run: CurrentRunResponse; openingId: numb
         <div className="observability-narrative">
           <span className="observability-label">Model reasoning</span>
           <div className="ai-narrative">
-            <ReactMarkdown>{props.run.discoveryNarrative}</ReactMarkdown>
+            <ReactMarkdown>{audit?.narrative}</ReactMarkdown>
           </div>
         </div>
       </div>

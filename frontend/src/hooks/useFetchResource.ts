@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRequestScope } from "./useRequestScope";
+import { type RequestScopeKey, useRequestScope } from "./useRequestScope";
 
 // Shared reloadable resource state. This hook owns request ordering and retry state; callers may
 // replace the cached data directly when a successful mutation already returned the new value.
@@ -15,7 +15,7 @@ export type FetchState = "loading" | "ready" | "error";
 export function useFetchResource<T>(
   fetcher: () => Promise<T>,
   options: {
-    reloadKey?: string | number | boolean | null;
+    reloadKey?: RequestScopeKey; // Stable resource ID or accepted immutable snapshot; never a render-local object.
     onError?: () => void;
   } = {},
 ): {

@@ -17,13 +17,10 @@ vi.mock("../api/ranking", () => ({
   createApi: () => api,
 }));
 
-const current = (analysisId: number): CurrentRunResponse => ({
-  analysisId, dimensions: [], discoveryNarrative: null, newDimensionKeys: [],
-  revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [],
-});
+const current = (analysisId: number): CurrentRunResponse => ({ analysisId, dimensions: [], proposedDimensions: [] });
 const ranking = (analysisId: number, scoredCount = 0): RankingResponse => ({
   analysisId, scoredCount, candidates: [], weights: {}, newDimensionKeys: [],
-  revivedDimensionKeys: [], requestedDimensionKeys: [], keptKeys: [], proposedDimensions: [],
+  revivedDimensionKeys: [], requestedDimensionKeys: [],
 });
 const board = (analysisId: number, tiers: Tier[] = []): RankingBoardResponse => ({
   run: current(analysisId), ranking: ranking(analysisId), tiers,
@@ -37,20 +34,21 @@ it("refreshes displayed scores and tiers within the same analysis without an ID-
     .mockResolvedValueOnce({ ...initial, ranking: ranking(1, 2), tiers: tier("Shared update") });
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.loadRanking());
-  await act(() => result.current.refreshRankingView(true));
+  await act(() => result.current.refreshRankingView());
   expect(result.current.ranking?.scoredCount).toBe(2);
   expect(result.current.tiers).toEqual(tier("Shared update"));
   expect(result.current.staleAnalysis).toBe(false);
   expect(api.fetchRankingCurrent).not.toHaveBeenCalled();
 });
 
-it("only checks identity for a hidden board, keeping new criteria behind explicit Reload", async () => {
+it("observes dashboard identity without fetching a hidden board, keeping new criteria behind Reload", async () => {
   api.fetchRankingBoard.mockResolvedValueOnce(board(1)).mockResolvedValueOnce(board(2));
   api.fetchRankingCurrent.mockResolvedValue(current(2));
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.loadRanking());
-  await act(() => result.current.refreshRankingView(false));
+  act(() => result.current.observeCurrentAnalysis(2));
   expect(api.fetchRankingBoard).toHaveBeenCalledOnce();
+  expect(api.fetchRankingCurrent).not.toHaveBeenCalled();
   expect(result.current.ranking?.analysisId).toBe(1);
   expect(result.current.staleAnalysis).toBe(true);
   await act(async () => expect(await result.current.reloadStaleRanking()).toBe(true));
@@ -62,9 +60,21 @@ it("preserves displayed criteria when a background board read discovers a new an
   api.fetchRankingBoard.mockResolvedValueOnce(board(1)).mockResolvedValueOnce(board(2));
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.loadRanking());
-  await act(() => result.current.refreshRankingView(true));
+  await act(() => result.current.refreshRankingView());
   expect(result.current.staleAnalysis).toBe(true);
   expect(result.current.ranking?.analysisId).toBe(1);
+});
+
+it("ignores a dashboard observation captured before a newer board was accepted", async () => {
+  api.fetchRankingBoard.mockResolvedValueOnce(board(1)).mockResolvedValueOnce(board(2));
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.loadRanking());
+  const previousObservation = result.current.observeCurrentAnalysis;
+  await act(() => result.current.reloadStaleRanking());
+  act(() => previousObservation(1));
+  expect(result.current.staleAnalysis).toBe(false);
+  expect(api.fetchRankingCurrent).not.toHaveBeenCalled();
+  expect(api.fetchRankingBoard).toHaveBeenCalledTimes(2);
 });
 
 it("keeps the board on transient failure and then reflects removed candidates", async () => {
@@ -73,11 +83,11 @@ it("keeps the board on transient failure and then reflects removed candidates", 
     .mockRejectedValueOnce(new Error("Offline")).mockResolvedValueOnce(board(1));
   const { result } = renderHook(() => useRanking(1, error));
   await act(() => result.current.loadRanking());
-  await act(() => result.current.refreshRankingView(true));
+  await act(() => result.current.refreshRankingView());
   expect(result.current.ranking?.analysisId).toBe(1);
   expect(result.current.rankingLoadState).toBe("ready");
   expect(error).not.toHaveBeenCalled();
-  await act(() => result.current.refreshRankingView(true));
+  await act(() => result.current.refreshRankingView());
   expect(result.current.rankingRun?.analysisId).toBe(1);
   expect(result.current.ranking?.scoredCount).toBe(0);
   expect(result.current.staleAnalysis).toBe(false);
@@ -93,9 +103,9 @@ it("keeps pending tier drafts ahead of background reads through acknowledgement"
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.loadRanking());
   let refresh!: Promise<void>, save!: Promise<void>;
-  act(() => { refresh = result.current.refreshRankingView(true); });
+  act(() => { refresh = result.current.refreshRankingView(); });
   act(() => { save = result.current.saveTiers(tier("Edited")); });
-  await act(() => result.current.refreshRankingView(true));
+  await act(() => result.current.refreshRankingView());
   expect(api.fetchRankingBoard).toHaveBeenCalledTimes(2);
   await act(async () => { earlier.resolve(board(1, tier("Old"))); await refresh; });
   expect(result.current.tiers).toEqual(tier("Edited"));
@@ -110,7 +120,7 @@ it("discards a background response after switching openings", async () => {
   const { result, rerender } = renderHook(({ id }) => useRanking(id, vi.fn()), { initialProps: { id: 1 } });
   await act(() => result.current.loadRanking());
   let refresh!: Promise<void>;
-  act(() => { refresh = result.current.refreshRankingView(true); });
+  act(() => { refresh = result.current.refreshRankingView(); });
   rerender({ id: 2 });
   await act(() => result.current.loadRanking());
   await act(async () => { earlier.resolve(board(1)); await refresh; });
@@ -123,7 +133,7 @@ it("discards passive work when a discover run takes ownership of the displayed p
   const { result } = renderHook(() => useRanking(1, vi.fn()));
   await act(() => result.current.loadRanking());
   let refresh!: Promise<void>;
-  act(() => { refresh = result.current.refreshRankingView(true); });
+  act(() => { refresh = result.current.refreshRankingView(); });
   act(() => result.current.setDisplayedProposals([]));
   await act(async () => { earlier.resolve(board(2)); await refresh; });
   expect(result.current.ranking?.analysisId).toBe(1);
@@ -171,7 +181,6 @@ it("keeps saved proposals when an earlier board refresh finishes late", async ()
 it.each(["http", "network"])("reconciles a failed proposal with the displayed board after a %s failure", async (failure) => {
   const saved = board(1);
   saved.run.proposedDimensions = ["Existing"];
-  saved.ranking.proposedDimensions = ["Existing"];
   vi.mocked(api.fetchRankingBoard).mockResolvedValue(saved);
   if (failure === "http") vi.mocked(api.changeProposal).mockResolvedValue(new Response(null, { status: 503 }));
   else vi.mocked(api.changeProposal).mockRejectedValue(new Error("Synthetic network failure"));
@@ -407,7 +416,7 @@ it("ignores a pre-run board response through the actual no-proposal discovery li
   });
   await act(() => result.current.ranking.loadRanking());
   let checking!: Promise<void>;
-  act(() => { checking = result.current.ranking.refreshRankingView(true); });
+  act(() => { checking = result.current.ranking.refreshRankingView(); });
   let running!: Promise<void>;
   act(() => { running = result.current.runs.runRank("discover"); });
   await act(async () => { passive.resolve(board(2)); await checking; });

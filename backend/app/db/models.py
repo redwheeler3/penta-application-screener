@@ -1064,7 +1064,7 @@ class MemberRanking(TimestampMixin, Base):
 class AnalysisAudit(TimestampMixin, Base):
     """The AI-legibility trail for one Analysis, split off so the hot read path
     (dimensions + tiers) never pulls these large blobs. One row per analysis, populated as the
-    chain runs; each field is nullable when that audit was not captured. The ``/ranking/current/
+    chain runs; each field is nullable when that audit was not captured. The ``/ranking/analyses/{analysis_id}/
     *-audit`` endpoints are the only readers. ``consolidate`` carries the pass's per-pair
     reasoning (definitions + narrative) — the *merge map* is NOT duplicated here, it lives once
     in ``dimension_aliases`` (the sole merge-truth).

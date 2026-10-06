@@ -20,7 +20,7 @@ from app.db.models import Analysis, Base, MemberRanking, User, UserRole
 from app.services.ranking.member_state import (
     IGNORE_TIER_ID,
     carry_forward_layout,
-    kept_keys,
+    dimension_weights,
     tier_history,
 )
 from tests.application_support import current_opening_id
@@ -106,7 +106,7 @@ def test_all_ignore_board_stays_all_ignore_on_rerank() -> None:
     assert flagged == []  # continuous in view (present last run) → no tag
 
 
-def test_kept_keys_empty_after_all_ignore_rerank() -> None:
+def test_weights_remain_zero_after_all_ignore_rerank() -> None:
     # The invariant the user flagged: an Ignored dim is never "kept", so never injected
     # into decomposition. After an all-Ignore re-rank, the new run's kept set is empty.
     db = make_db()
@@ -122,7 +122,7 @@ def test_kept_keys_empty_after_all_ignore_rerank() -> None:
         immediately_prior_keys={"a", "b"},
     )
     new_run = _run(db, report_keys=["a", "b"], tiers=layout)
-    assert kept_keys(new_run) == []
+    assert not any(dimension_weights(new_run).values())
 
 
 def test_faded_from_ignore_stays_ignore_on_return() -> None:

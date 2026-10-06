@@ -271,7 +271,7 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         assert "financial_stability" in ignore["dimensionKeys"]
 
         current = (await client.get("/ranking/current")).json()
-        assert current["newDimensionKeys"] == ["financial_stability"]
+        assert (await client.get("/ranking/board")).json()["ranking"]["newDimensionKeys"] == ["financial_stability"]
         # A match adopts the prior dimension WHOLESALE — prior key AND prior text —
         # because it reuses the prior cached score, computed against the prior
         # definition. So the fresh re-discovered wording ("Stated participation") is
@@ -311,7 +311,7 @@ async def test_re_rank_carries_tiers_forward_and_flags_new() -> None:
         assert ack.json()["newDimensionKeys"] == []
         # And it stuck: still placed in Important (the ✕ keeps placement), just no longer flagged.
         current = (await client.get("/ranking/current")).json()
-        assert current["newDimensionKeys"] == []
+        assert (await client.get("/ranking/board")).json()["ranking"]["newDimensionKeys"] == []
         layout2 = (await client.get("/ranking/board")).json()["tiers"]
         by_label2 = {t["label"]: t for t in layout2}
         assert "financial_stability" in by_label2["Important"]["dimensionKeys"]
@@ -470,8 +470,8 @@ async def test_three_run_gap_flags_dimension_as_revived_not_new() -> None:
         # the run-2 gap) — NOT new. participation_commitment stayed continuous → unflagged.
         current = (await client.get("/ranking/current")).json()
         assert "skills_offered" in {d["key"] for d in current["dimensions"]}
-        assert current["revivedDimensionKeys"] == ["skills_offered"]
-        assert current["newDimensionKeys"] == ["skills_offered"]  # flagged set holds it
+        assert (await client.get("/ranking/board")).json()["ranking"]["revivedDimensionKeys"] == ["skills_offered"]
+        assert (await client.get("/ranking/board")).json()["ranking"]["newDimensionKeys"] == ["skills_offered"]  # flagged set holds it
         # It restored its LAST placement across the gap (durable committee intent): it was
         # in Ignore before the gap, so it returns to Ignore — while participation_commitment
         # keeps its Critical placement.
