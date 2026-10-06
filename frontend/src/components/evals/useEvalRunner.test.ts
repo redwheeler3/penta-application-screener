@@ -210,3 +210,17 @@ it("protects only the delivered result when telemetry fails, updating other stor
   expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
   expect(result.current.caseResults.b?.scoring).toMatchObject({ result: { score: 0.9 } });
 });
+
+it("preserves the confirmed receipt when a history response is older than its run ID", async () => {
+  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [{ ...history, runId: 1, evalKey: "scoring",
+    result: { experimentId: "same", cases: [scored("a", 0.1), scored("b", 0.1)] } }] })
+    .mockResolvedValue({ runs: [{ ...history, runId: 2, evalKey: "scoring",
+      result: { experimentId: "same", cases: [scored("a", 0.2), scored("b", 0.9)] } }] });
+  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring", savedPath: null, storedRunId: 3,
+    result: { experimentId: "same", cases: [scored("a", 0.8)] } })));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring"] }));
+  await waitFor(() => expect(result.current.caseResults.b?.scoring).toBeDefined());
+  await act(() => result.current.runMode({ evalKey: "scoring", label: "Scoring", rowLabel: "Run", repetitions: 1 }, "a"));
+  expect(result.current.caseResults.a?.scoring).toMatchObject({ result: { score: 0.8 } });
+  expect(result.current.caseResults.b?.scoring).toMatchObject({ result: { score: 0.9 } });
+});

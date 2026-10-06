@@ -67,7 +67,9 @@ export function useEvalRunner(options: {
     try {
       const data = await fetchLastEvalRun(options.runKeys);
       if (!isCurrent() || !data.runs.length) return;
-      const unconfirmed = !seedResults && receipt != null && receipt.storedRunId == null;
+      const stored = data.runs.find((last) => last.evalKey === receipt?.eval);
+      const unconfirmed = !seedResults && receipt != null && (receipt.storedRunId == null
+        || (stored?.runId !== undefined && stored.runId < receipt.storedRunId));
       const relevant = data.runs.filter((last) => !unconfirmed || last.evalKey !== receipt.eval
         || last.result.experimentId === receipt.result.experimentId);
       const byMode: Record<string, LastEvalRun> = {};
