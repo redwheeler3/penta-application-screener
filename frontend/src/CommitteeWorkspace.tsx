@@ -106,6 +106,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     addProposal,
     removeProposal,
     setDisplayedProposals,
+    invalidateReads,
     staleAnalysis,
     refreshRankingView,
     reloadStaleRanking,
@@ -163,11 +164,16 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
       currentRun: rankingRun,
       load: loadRanking,
       setDisplayedProposals,
+      invalidateReads,
     },
     notifications: { success: showToast, error: showError, warning: showWarning },
     refreshDashboard,
     reloadApplications,
     clearSelectedApplication,
+    refreshDisplayedRanking: () => {
+      const views = intakeViews.current;
+      if (views.displayed) void views.refreshRankingView(true);
+    },
   });
 
   const {

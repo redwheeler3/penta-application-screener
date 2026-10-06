@@ -34,10 +34,10 @@ function setup(mode: Mode, events: unknown[], finalNewline = true) {
     openingId: 1,
     ranking: {
       currentRun: null, refreshCurrentRun: vi.fn().mockResolvedValue(null),
-      load: vi.fn().mockResolvedValue(true), setDisplayedProposals: vi.fn(),
+      load: vi.fn().mockResolvedValue(true), setDisplayedProposals: vi.fn(), invalidateReads: vi.fn(),
     },
     notifications: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-    refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(),
+    refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(), refreshDisplayedRanking: vi.fn(),
   };
   const { result, unmount } = renderHook(() => useAiRuns(options));
   return {
@@ -126,9 +126,9 @@ it.each([false, true])("does not restore an earlier opening's proposals after na
   const initial = {
     openingId: 1,
     ranking: { currentRun: { proposedDimensions: ["A proposal"] } as CurrentRunResponse,
-      load: vi.fn().mockResolvedValue(true), setDisplayedProposals },
+      load: vi.fn().mockResolvedValue(true), setDisplayedProposals, invalidateReads: vi.fn() },
     notifications: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-    refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(),
+    refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(), refreshDisplayedRanking: vi.fn(),
   };
   const { result, rerender } = renderHook((options) => useAiRuns(options), { initialProps: initial });
   let running!: Promise<void>;
@@ -145,9 +145,9 @@ it("does not close a new opening's candidate when earlier screening completes", 
   const pending = deferred<Response>();
   vi.mocked(screeningApi.runScreening).mockReturnValue(pending.promise);
   const initial = {
-    openingId: 1, ranking: { currentRun: null, load: vi.fn().mockResolvedValue(true), setDisplayedProposals: vi.fn() },
+    openingId: 1, ranking: { currentRun: null, load: vi.fn().mockResolvedValue(true), setDisplayedProposals: vi.fn(), invalidateReads: vi.fn() },
     notifications: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-    refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(),
+    refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(), refreshDisplayedRanking: vi.fn(),
   };
   const { result, rerender } = renderHook((options) => useAiRuns(options), { initialProps: initial });
   let running!: Promise<void>;
@@ -161,4 +161,18 @@ it("does not close a new opening's candidate when earlier screening completes", 
   expect(initial.reloadApplications).not.toHaveBeenCalled();
   expect(initial.refreshDashboard).not.toHaveBeenCalled();
   expect(result.current.screeningRunning).toBe(false);
+});
+
+
+it.each(["discover", "score-current"] as const)("fences prior board reads when starting %s without proposals", async (mode) => {
+  const { options, run } = setup(mode, [{ type: "summary", dimensions: 1, scored: 1, totalCostUsd: 0 }]);
+  await act(run);
+  expect(options.ranking.invalidateReads).toHaveBeenCalledOnce();
+  expect(options.ranking.setDisplayedProposals).not.toHaveBeenCalled();
+});
+
+it("reconciles a displayed ranking after screening without awaiting it", async () => {
+  const { options, run } = setup("screening", [{ type: "summary", analyzed: 1, cached: 0, flagged: 1, totalCostUsd: 0 }]);
+  await act(run);
+  expect(options.refreshDisplayedRanking).toHaveBeenCalledOnce();
 });

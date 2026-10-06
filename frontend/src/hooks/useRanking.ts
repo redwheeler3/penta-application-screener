@@ -41,6 +41,8 @@ export interface RankingState {
    * them, so the run controls clear them optimistically and restore on failure.
    * The server is the source of truth; this only steers what the UI shows meanwhile. */
   setDisplayedProposals: (proposed: string[]) => void;
+  /** Fence reads that began before this workspace started AI work. */
+  invalidateReads: () => void;
   /** True once we've detected the loaded ranking is no longer current — either a tier/seed
    * save was rejected (409 stale_analysis) or a focus-time check saw the current analysis id
    * drift. Drives a global "reload" toast; cleared by ``reloadStaleRanking``. */
@@ -328,13 +330,15 @@ export function useRanking(
     void changeProposal("remove", text);
   }
 
-  function setDisplayedProposals(proposedDimensions: string[]) {
-    proposalSaveVersion.current += 1;
-    // Discovery owns the next board. Earlier passive reads cannot revive its draft
-    // or mistake its new analysis for another member's completed run.
+  function invalidateReads() {
     currentReads.invalidate();
     boardReads.invalidate();
     staleReads.invalidate();
+  }
+
+  function setDisplayedProposals(proposedDimensions: string[]) {
+    proposalSaveVersion.current += 1;
+    invalidateReads();
     const run = runRef.current;
     if (!run) return;
     const updated = { ...run, proposedDimensions };
@@ -355,6 +359,7 @@ export function useRanking(
     addProposal,
     removeProposal,
     setDisplayedProposals,
+    invalidateReads,
     staleAnalysis,
     refreshRankingView,
     reloadStaleRanking,

@@ -2,9 +2,11 @@ import { act, waitFor } from "@testing-library/react";
 import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { CurrentRunResponse, RankingBoardResponse, RankingResponse, Tier } from "../types";
+import { useAiRuns } from "./useAiRuns";
 import { type RankingRunRead, useRanking } from "./useRanking";
 
 const api = vi.hoisted(() => ({
+  runRank: vi.fn(),
   fetchRankingCurrent: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["fetchRankingCurrent"]>(),
   fetchRankingBoard: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["fetchRankingBoard"]>(),
   saveTiers: vi.fn<ReturnType<typeof import("../api/ranking").createApi>["saveTiers"]>(),
@@ -385,4 +387,33 @@ it("offers recovery when initial criteria fail instead of leaving ranking loadin
   vi.mocked(api.fetchRankingBoard).mockResolvedValue(board(1));
   await act(() => result.current.loadRanking());
   expect(result.current.rankingLoadState).toBe("ready");
+});
+
+
+it("ignores a pre-run board response through the actual no-proposal discovery lifecycle", async () => {
+  const passive = deferred<RankingBoardResponse>();
+  const request = deferred<Response>();
+  api.fetchRankingBoard.mockResolvedValueOnce(board(1)).mockReturnValueOnce(passive.promise).mockResolvedValueOnce(board(2));
+  api.runRank.mockReturnValue(request.promise);
+  const { result } = renderHook(() => {
+    const ranking = useRanking(1, vi.fn());
+    const runs = useAiRuns({ openingId: 1,
+      ranking: { currentRun: ranking.rankingRun, load: ranking.loadRanking,
+        invalidateReads: ranking.invalidateReads, setDisplayedProposals: ranking.setDisplayedProposals },
+      notifications: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
+      refreshDashboard: vi.fn(), reloadApplications: vi.fn(), clearSelectedApplication: vi.fn(), refreshDisplayedRanking: vi.fn(),
+    });
+    return { ranking, runs };
+  });
+  await act(() => result.current.ranking.loadRanking());
+  let checking!: Promise<void>;
+  act(() => { checking = result.current.ranking.refreshRankingView(true); });
+  let running!: Promise<void>;
+  act(() => { running = result.current.runs.runRank("discover"); });
+  await act(async () => { passive.resolve(board(2)); await checking; });
+  expect(result.current.ranking.staleAnalysis).toBe(false);
+  expect(result.current.ranking.ranking?.analysisId).toBe(1);
+  await act(async () => { request.resolve(new Response('{"type":"summary","dimensions":0,"scored":0,"totalCostUsd":0}\n')); await running; });
+  expect(result.current.ranking.ranking?.analysisId).toBe(2);
+  expect(result.current.ranking.staleAnalysis).toBe(false);
 });

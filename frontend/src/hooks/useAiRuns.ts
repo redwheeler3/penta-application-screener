@@ -27,6 +27,7 @@ type RankingCoordinator = {
   currentRun: CurrentRunResponse | null;
   load: () => Promise<boolean>;
   setDisplayedProposals: (proposals: string[]) => void;
+  invalidateReads: () => void;
 };
 
 export function useAiRuns(options: {
@@ -36,6 +37,7 @@ export function useAiRuns(options: {
   refreshDashboard: () => void;
   reloadApplications: () => void;
   clearSelectedApplication: () => void;
+  refreshDisplayedRanking: () => void;
 }) {
   const { fetchRankEstimate, fetchScoreCurrentEstimate, runRank: startRankRequest, scoreCurrent: startScoreCurrentRequest } = useCommitteeApi(rankingApi);
   const { fetchScreeningEstimate, runScreening: startScreeningRequest } = useCommitteeApi(screeningApi);
@@ -135,6 +137,7 @@ export function useAiRuns(options: {
     const controller = new AbortController();
     activeRun.current = controller;
     const inScope = refreshes.capture();
+    options.ranking.invalidateReads();
     setScreeningRunning(true);
     setScreeningEstimate(null);
     setScreeningProgress(null);
@@ -176,6 +179,7 @@ export function useAiRuns(options: {
           options.refreshDashboard();
           options.reloadApplications();
           options.clearSelectedApplication();
+          options.refreshDisplayedRanking();
         }
       }
     } catch (error) {
@@ -229,6 +233,7 @@ export function useAiRuns(options: {
     const controller = new AbortController();
     activeRun.current = controller;
     const inScope = refreshes.capture();
+    options.ranking.invalidateReads();
     setRankRunning(true);
     cancelRankEstimate();
     setRankProgress(null);
