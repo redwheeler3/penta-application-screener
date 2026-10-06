@@ -1,6 +1,7 @@
 import { act, waitFor } from "@testing-library/react";
 import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
+import { useEffect } from "react";
 import type { CurrentRunResponse, RankingBoardResponse, RankingResponse, Tier } from "../types";
 import { useAiRuns } from "./useAiRuns";
 import { type RankingRunRead, useRanking } from "./useRanking";
@@ -75,6 +76,40 @@ it("ignores a dashboard observation captured before a newer board was accepted",
   expect(result.current.staleAnalysis).toBe(false);
   expect(api.fetchRankingCurrent).not.toHaveBeenCalled();
   expect(api.fetchRankingBoard).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  ["passive", "observation-first"], ["passive", "board-first"],
+  ["explicit", "observation-first"], ["explicit", "board-first"],
+])("retains newer stale knowledge across a %s read (%s)", async (kind, order) => {
+  const pending = deferred<RankingBoardResponse>();
+  api.fetchRankingBoard.mockResolvedValueOnce(board(1)).mockReturnValueOnce(pending.promise)
+    .mockRejectedValueOnce(new Error("Offline")).mockResolvedValueOnce(board(2));
+  const warned = vi.fn();
+  const { result } = renderHook(() => {
+    const ranking = useRanking(1, vi.fn());
+    useEffect(() => { if (ranking.staleAnalysis) warned(); }, [ranking.staleAnalysis]);
+    return ranking;
+  });
+  await act(() => result.current.loadRanking());
+  let refresh!: Promise<void | boolean>;
+  act(() => { refresh = kind === "passive" ? result.current.refreshRankingView() : result.current.loadRanking(); });
+  await act(async () => {
+    if (order === "observation-first") result.current.observeCurrentAnalysis(2);
+    pending.resolve(board(1));
+    await refresh;
+    if (order === "board-first") result.current.observeCurrentAnalysis(2);
+  });
+  expect(result.current.ranking?.analysisId).toBe(1);
+  expect(result.current.staleAnalysis).toBe(true);
+  expect(result.current.rankingLoadState).toBe("ready");
+  expect(warned).toHaveBeenCalledOnce();
+  await act(() => result.current.reloadStaleRanking());
+  expect(result.current.staleAnalysis).toBe(true);
+  expect(result.current.rankingLoadState).toBe("error");
+  await act(() => result.current.reloadStaleRanking());
+  expect(result.current.staleAnalysis).toBe(false);
+  expect(result.current.ranking?.analysisId).toBe(2);
 });
 
 it("keeps the board on transient failure and then reflects removed candidates", async () => {

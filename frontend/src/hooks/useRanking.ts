@@ -100,16 +100,24 @@ export function useRanking(
     setStaleAnalysis(false);
   }, [openingId]);
 
+  const invalidateReads = useCallback(() => {
+    currentReads.invalidate();
+    boardReads.invalidate();
+    setRankingLoadState((state) => state === "loading"
+      ? boardRef.current !== null ? "ready" : "idle" : state);
+  }, [currentReads, boardReads]);
+
+  const markStale = useCallback(() => {
+    // A newer observation supersedes every older read, including a pending Reload.
+    invalidateReads();
+    setStaleAnalysis(true);
+  }, [invalidateReads]);
+
   // Both controls update one member record. Serialize requests so the server receives
   // edits in order; scope checks discard queued work for a board the member has left.
   function enqueueMutation(isCurrent: RequestIsCurrent, request: () => Promise<Response>) {
     pendingMutations.current.add(isCurrent);
-    currentReads.invalidate();
-    boardReads.invalidate();
-    setRankingLoadState((state) => {
-      if (state !== "loading") return state;
-      return boardRef.current !== null ? "ready" : "idle";
-    });
+    invalidateReads();
     const result = mutationQueue.current.then(async () => {
       if (!isCurrent()) return undefined;
       const response = await request();
@@ -142,7 +150,7 @@ export function useRanking(
   function handleSaveFailure(body: Awaited<ReturnType<typeof readProblemBody>>, isCurrent: RequestIsCurrent) {
     if (!isCurrent()) return { handled: true, message: null };
     if (body?.code === "stale_analysis") {
-      setStaleAnalysis(true);
+      markStale();
       return { handled: true, message: null };
     }
     return { handled: false, message: problemMessage(body) };
@@ -154,9 +162,9 @@ export function useRanking(
     // adopted while that request was waiting.
     if (currentReads.isFor(openingId) && analysisId != null && loadedId === analysisId
       && !hasPendingMutations() && currentId !== loadedId) {
-      setStaleAnalysis(true);
+      markStale();
     }
-  }, [analysisId, currentReads, hasPendingMutations, openingId]);
+  }, [analysisId, currentReads, hasPendingMutations, markStale, openingId]);
 
   const refreshRankingView = useCallback(async (): Promise<void> => {
     const loadedId = boardRef.current?.analysisId;
@@ -165,12 +173,12 @@ export function useRanking(
     try {
       const board = await api.fetchRankingBoard(openingId);
       if (!isCurrent()) return;
-      if (board.run.analysisId !== loadedId) setStaleAnalysis(true);
+      if (board.run.analysisId !== loadedId) markStale();
       else adoptBoard(board);
     } catch {
       /* Keep the displayed board; focus/intake refresh retries. */
     }
-  }, [adoptBoard, api, boardReads, hasPendingMutations, openingId]);
+  }, [adoptBoard, api, boardReads, hasPendingMutations, markStale, openingId]);
 
   async function refreshRankingRun(): Promise<RankingRunRead> {
     if (openingId === null || !currentReads.isFor(openingId) || hasPendingMutations()) {
@@ -313,11 +321,6 @@ export function useRanking(
 
   function removeProposal(text: string): void {
     void changeProposal("remove", text);
-  }
-
-  function invalidateReads() {
-    currentReads.invalidate();
-    boardReads.invalidate();
   }
 
   function setDisplayedProposals(proposedDimensions: string[]) {

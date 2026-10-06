@@ -65,7 +65,7 @@ export function usePrivateNotes(options: {
       if (!inAccount() || revision !== draft.revision || draft.blocked || beforeSave.status === "saved") return;
       // Dirty/retry drafts need an acknowledgement: an earlier uncertain write may
       // have changed the server even when this text equals the last confirmed body.
-      let saved = false;
+      let saved: boolean;
       try {
         const response = await savePrivateNote(applicationId, openingId, body);
         saved = response.ok;
