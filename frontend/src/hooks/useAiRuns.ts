@@ -153,13 +153,16 @@ export function useAiRuns(options: {
     try {
       const response = await startScreeningRequest(options.openingId, controller.signal);
       if (!inScope()) { controller.abort(); return; }
-      mayHaveCommitted = response.ok;
+      // The shared client represents a lost response or timeout as HTTP 503.
+      // Server errors likewise cannot establish whether work already committed.
+      mayHaveCommitted = response.ok || response.status >= 500;
       if (!response.ok) {
         const problem = await readProblem(response);
         if (!inScope()) return;
         options.notifications.error(
           problem ? `Screening failed: ${problem}` : "Screening failed.",
         );
+        if (mayHaveCommitted) reconcileScreening();
       } else {
         if (!response.body) throw new Error("Screening response body unavailable.");
         let finished = false;
@@ -189,7 +192,7 @@ export function useAiRuns(options: {
         reconcileScreening();
       }
     } catch (error) {
-      if (mayHaveCommitted) reconcileScreening();
+      if (mayHaveCommitted && !controller.signal.aborted) reconcileScreening();
       if (inScope() && !controller.signal.aborted) options.notifications.error(
         error instanceof Error ? `Screening error: ${error.message}` : "Screening error.",
       );
@@ -259,7 +262,8 @@ export function useAiRuns(options: {
         const problem = await readProblem(response);
         if (!inScope()) return;
         options.notifications.error(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
-        if (inScope() && mode === "discover" && priorProposals.length > 0) {
+        if (response.ok || response.status >= 500) refreshRankingViews();
+        else if (mode === "discover" && priorProposals.length > 0) {
           options.ranking.setDisplayedProposals(priorProposals);
         }
       } else {
@@ -313,7 +317,7 @@ export function useAiRuns(options: {
       if (inScope() && !controller.signal.aborted) options.notifications.error(
         error instanceof Error ? `Ranking error: ${error.message}` : "Ranking error.",
       );
-      if (inScope()) refreshRankingViews();
+      if (inScope() && !controller.signal.aborted) refreshRankingViews();
     } finally {
       if (activeRun.current === controller) activeRun.current = null;
       setRankProgress(null);
