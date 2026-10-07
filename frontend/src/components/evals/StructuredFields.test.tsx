@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { expect, it, vi } from "vitest";
 import { EvalCaseEditor } from "./EvalCaseEditor";
@@ -77,4 +77,44 @@ it("preserves focus across the text-length boundary and protects locked descenda
   fireEvent.change(text, { target: { value: "a".repeat(61) } });
   expect(screen.getByDisplayValue("a".repeat(61))).toBe(text);
   expect(text).toHaveFocus();
+});
+
+it("creates optional Boolean, object, numeric and list assertions through the case save boundary", () => {
+  const onSave = vi.fn().mockResolvedValue(null);
+  const prompt = vi.spyOn(window, "prompt");
+  render(<EvalCaseEditor evalKey="screening" existing={null}
+    onSave={onSave} onSaved={vi.fn()} onCancel={vi.fn()} />);
+
+  function addField(path: string, name: string, type: string) {
+    const selector = screen.getByRole("combobox", { name: `${path} / New field type` });
+    fireEvent.change(selector, { target: { value: type } });
+    prompt.mockReturnValueOnce(name);
+    fireEvent.click(within(selector.parentElement!).getByRole("button", { name: "+ add field" }));
+  }
+
+  fireEvent.change(screen.getByRole("textbox", { name: "Key" }), { target: { value: "typed_optional" } });
+  addField("Metadata", "contested", "boolean");
+  fireEvent.click(screen.getByRole("checkbox", { name: "Metadata / Contested" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove contested" }));
+  addField("Metadata", "contested", "boolean");
+  expect(screen.getByRole("checkbox", { name: "Metadata / Contested" })).not.toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Metadata / Contested" }));
+
+  addField("Metadata / Expected", "pets", "object");
+  addField("Metadata / Expected / Pets", "dogs", "number");
+  fireEvent.change(screen.getByRole("textbox", { name: "Metadata / Expected / Pets / Dogs" }), { target: { value: "2" } });
+  addField("Metadata / Expected / Pets", "other_pets", "list");
+  const otherPets = screen.getByRole("button", { name: "Remove other_pets" }).closest(".eval-field-row")!;
+  fireEvent.click(within(otherPets as HTMLElement).getByRole("button", { name: "+ Add item" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Metadata / Expected / Pets / Other pets / 0" }), { target: { value: "bird" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save case" }));
+
+  expect(onSave).toHaveBeenCalledWith({
+    key: "typed_optional",
+    metadata: { pass: "screening", note: "", contested: true,
+      expected: { fires: [], absent: [], pets: { dogs: 2, other_pets: ["bird"] } } },
+    given: { fields: { applicant_name: "", pets_text: "", applicant_email: "" }, essays: {} },
+  });
+  expect(screen.queryByRole("button", { name: "Remove pass" })).toBeNull();
+  prompt.mockRestore();
 });

@@ -1,9 +1,20 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { NumberInput } from "../shared/NumberInput";
 
 export type FieldValue = string | number | boolean | null | FieldObject | FieldValue[];
 export type FieldObject = { [k: string]: FieldValue };
 type FieldContext = { path: string[]; readOnlyKeys: string[] };
+type NewFieldType = "text" | "number" | "boolean" | "object" | "list";
+
+function emptyField(type: NewFieldType): FieldValue {
+  switch (type) {
+    case "number": return 0;
+    case "boolean": return false;
+    case "object": return {};
+    case "list": return [];
+    case "text": return "";
+  }
+}
 
 function label(key: string): string {
   return key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
@@ -69,11 +80,12 @@ function ValueInput(props: FieldContext & { value: FieldValue; onChange: (next: 
 
 function ObjectSection(props: FieldContext & { obj: FieldObject; onChange: (next: FieldObject) => void }): ReactNode {
   const { obj, path, readOnlyKeys, onChange } = props;
+  const [newFieldType, setNewFieldType] = useState<NewFieldType>("text");
   function addField() {
     const key = window.prompt("New field name (snake_case):")?.trim();
     if (!key) return;
     if (key in obj) { window.alert(`A field named "${key}" already exists.`); return; }
-    onChange({ ...obj, [key]: "" });
+    onChange({ ...obj, [key]: emptyField(newFieldType) });
   }
   return <div className={`eval-fields depth-${Math.min(path.length, 2)}`}>
     {Object.entries(obj).map(([key, value]) => <FieldRow key={key} name={label(key)} value={value}
@@ -83,7 +95,17 @@ function ObjectSection(props: FieldContext & { obj: FieldObject; onChange: (next
         const { [key]: _removed, ...rest } = obj;
         onChange(rest);
       }} />)}
-    <div className="eval-field-add"><button type="button" className="eval-link" onClick={addField}>+ add field</button></div>
+    <div className="eval-field-add">
+      <select aria-label={`${path.map(label).join(" / ") || "Case"} / New field type`}
+        value={newFieldType} onChange={(event) => setNewFieldType(event.target.value as NewFieldType)}>
+        <option value="text">Text</option>
+        <option value="number">Number</option>
+        <option value="boolean">Boolean</option>
+        <option value="object">Object</option>
+        <option value="list">List</option>
+      </select>{" "}
+      <button type="button" className="eval-link" onClick={addField}>+ add field</button>
+    </div>
   </div>;
 }
 
