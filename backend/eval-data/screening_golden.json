@@ -530,13 +530,13 @@
           "absent": [
             "internal_inconsistency"
           ],
-          "contested": true,
           "pets": {
             "dogs": 0,
             "cats": 2,
             "other_pets": []
           }
-        }
+        },
+        "contested": true
       },
       "given": {
         "fields": {
@@ -800,13 +800,13 @@
           "absent": [
             "fake_contact"
           ],
-          "contested": true,
           "pets": {
             "dogs": 1,
             "cats": 0,
             "other_pets": []
           }
-        }
+        },
+        "contested": true
       },
       "given": {
         "fields": {

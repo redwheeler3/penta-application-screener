@@ -103,6 +103,13 @@ def _normalize_fires(fires: list[str | list[str]] | str) -> list[str | list[str]
     return normalized
 
 
+def _case_from_expected(key: str, given: dict, expected: dict, *, contested: bool = False, note: str = "") -> ScreeningCase:
+    """Both live and blind reproduction consume the same expectation shapes."""
+    return ScreeningCase(key=key, fields=given["fields"], essays=given["essays"],
+        fires=_normalize_fires(expected.get("fires", [])), absent=expected.get("absent", []),
+        expected_pets=expected.get("pets"), contested=contested, note=note)
+
+
 def load_cases(path: Path = SCREENING_GOLDEN_PATH, *, data: dict | None = None) -> tuple[ScreeningCase, ...]:
     """Load the golden screening cases, flattening the by-consumer blocks (metadata / given —
     see docs/eval-case-schema.md) into the flat runner case."""
@@ -110,19 +117,9 @@ def load_cases(path: Path = SCREENING_GOLDEN_PATH, *, data: dict | None = None) 
     cases = []
     for c in data["cases"]:
         validate_case("screening", c)
-        given, meta, expected = c["given"], c["metadata"], c["metadata"]["expected"]
-        cases.append(
-            ScreeningCase(
-                key=c["key"],
-                fields=given["fields"],
-                essays=given["essays"],
-                fires=_normalize_fires(expected.get("fires", [])),
-                absent=expected.get("absent", []),
-                contested=expected.get("contested", False),
-                expected_pets=expected.get("pets"),
-                note=meta.get("note", ""),
-            )
-        )
+        meta = c["metadata"]
+        cases.append(_case_from_expected(c["key"], c["given"], meta["expected"],
+            contested=meta.get("contested", False), note=meta.get("note", "")))
     return tuple(cases)
 
 
@@ -196,11 +193,13 @@ def _check(case: ScreeningCase, categories: list[str], pets: PetFacts | None = N
 
 def _check_pets(case: ScreeningCase, pets: PetFacts | None) -> list[str]:
     """Grade the extracted pet inventory against ``expected_pets`` (skipped when the case sets
-    none, or in the judge/probe path that has no pets). dogs/cats must match exactly; each
+    none). dogs/cats must match exactly; each
     expected ``other_pets`` noun must appear as a substring of some extracted other-pet (so
     'rabbit' matches an extracted 'pet rabbit'), case-insensitively."""
-    if case.expected_pets is None or pets is None:
+    if case.expected_pets is None:
         return []
+    if pets is None:
+        return ["model returned no pet facts"]
     failures: list[str] = []
     for kind in ("dogs", "cats"):
         want = case.expected_pets.get(kind, 0)
@@ -235,14 +234,15 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     prompt, schema = judge_request(given)
     result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     categories = [f.category.value for f in result.output.flags]
-    probe = ScreeningCase(
-        key="judge", fields={}, essays={},
-        fires=list(expected.get("fires", [])), absent=list(expected.get("absent", [])),
-    )
-    failures = _check(probe, categories)
+    probe = _case_from_expected("judge", given, expected)
+    failures = _check(probe, categories, result.output.pets)
     cost = cost_usd(result.model_id, result.usage)
     shown = ", ".join(categories) or "no flags"
     detail = "; ".join(f"{f.category.value}: {f.summary}" for f in result.output.flags) or "no flags"
+    pets = result.output.pets
+    detail += f"; pets: {pets.dogs} dogs, {pets.cats} cats, other: {', '.join(pets.other_pets) or 'none'}"
+    if failures:
+        detail += "; " + "; ".join(failures)
     return Reproduced(shown, expected_str(expected), not failures, detail, cost)
 
 

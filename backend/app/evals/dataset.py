@@ -13,6 +13,9 @@ from app.evals.case_schema import validate_case
 from app.evals.fixture_files import read_json
 from app.evals.paths import GOLDEN_FILES
 
+# Eval-only grading changes expire coverage without changing production AI cache keys.
+GRADING_VERSION = 1
+
 
 def case_identity(key: str, family: str = "") -> str:
     return json.dumps([family, key], separators=(",", ":"), ensure_ascii=False) if family else key
@@ -25,7 +28,7 @@ def fingerprint(value: object) -> str:
 
 def case_input_fingerprint(case: dict) -> str:
     """Only model inputs and grading policy determine a case result's validity."""
-    return fingerprint({"given": case["given"], "expected": case["metadata"]["expected"],
+    return fingerprint({"grading_version": GRADING_VERSION, "given": case["given"], "expected": case["metadata"]["expected"],
                         "contested": case["metadata"].get("contested", False)})
 
 

@@ -69,8 +69,9 @@ built and why.
 
 Paid runs capture their dataset before model work starts. Their existing result JSON records
 an experiment fingerprint for the prompt, model, effective reasoning, and stability K, plus
-a fingerprint of each case's input, expected label, and contested policy. Editorial notes and
-label rationales do not expire coverage. A Judge case is identified by its family and key;
+a fingerprint of each case's input, expected label, contested policy, and eval grading revision. Editorial notes and
+label rationales do not expire coverage. A grading revision affects eval coverage only; it does
+not alter production Screen/Rank cache keys or automatically rerun any model. A Judge case is identified by its family and key;
 an equal key in another family is a separate case.
 
 The live view and restored history accumulate only compatible experiments. Changed case

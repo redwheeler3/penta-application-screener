@@ -89,8 +89,14 @@ class _ScreeningGiven(_StoredModel):
 class _ScreeningExpected(_StoredModel):
     fires: list[str | list[str]] | str = []
     absent: list[str] = []
-    contested: bool = False
     pets: PetFacts | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def common_contested_policy(cls, value):
+        if isinstance(value, dict) and "contested" in value:
+            raise ValueError("put contested in metadata, alongside expected")
+        return value
 
     @field_validator("fires")
     @classmethod

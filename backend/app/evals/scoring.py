@@ -201,7 +201,7 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     prompt, schema = judge_request(given)
     result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     produced = {s.dimension_key: s for s in result.output.scores}
-    score = produced.get(dim["key"]) or (result.output.scores[0] if result.output.scores else None)
+    score = produced.get(dim["key"])
     from app.ai.pricing import cost_usd
     cost = cost_usd(result.model_id, result.usage)
     if score is None:
