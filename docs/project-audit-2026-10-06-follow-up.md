@@ -1,5 +1,9 @@
 # Whole-project audit — 2026-10-06, post-implementation review
 
+**Next discovery batch:** the subsequent three-pass review on baseline `28d74b7` is recorded in
+[Batched discovery — October 7](discovery-batch-2026-10-07.md). Its recommendations are separate
+from the completed implementation below.
+
 **Implementation status — 2026-10-07: X01–X30 code changes implemented and verified.**
 The discovery evidence below describes the pre-fix baseline (`e4922a9`, application code unchanged
 through the earlier audit-only revisions). It is retained as the rationale and regression checklist,
