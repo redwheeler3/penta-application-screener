@@ -92,16 +92,18 @@ def purge_expired_application(db: Session, application: Application, *, now: dat
     if application is None or application.retention_due_on is None or application.retention_due_on > pacific_today(now=now):
         return False
     _record_deletion(db, record_kind="application", record_id=application.id,
-                     retention_rule=_application_retention_rule(db, application.id),
+                     retention_rule=_application_retention_rule(db, application),
                      due_on=application.retention_due_on, now=now)
     erase_application(db, application, now=now)
     return True
 
 
-def _application_retention_rule(db: Session, application_id: int) -> str:
+def _application_retention_rule(db: Session, application: Application) -> str:
+    if application.submitted_at is None:
+        return "draft_actionability"
     selected = db.scalar(
         select(ApplicationParticipation.id).where(
-            ApplicationParticipation.application_id == application_id,
+            ApplicationParticipation.application_id == application.id,
             ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
         )
     )

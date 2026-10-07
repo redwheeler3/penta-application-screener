@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
-from app.core.time import as_utc
+from app.core.time import as_utc, pacific_today
 from app.db.models import (
     Application,
     EmailDelivery,
@@ -17,7 +17,11 @@ from app.db.models import (
 )
 from app.services.email import outbox
 from app.services.email.delivery import ATTEMPT_LEASE, claim_delivery_attempt
-from app.services.email.outbox import email_queue_status, retry_queued_emails
+from app.services.email.outbox import (
+    email_delivery_issues,
+    email_queue_status,
+    retry_queued_emails,
+)
 from app.services.email.sender import (
     CapturedEmailSender,
     EmailQuotaExceededError,
@@ -28,6 +32,7 @@ from app.services.email.transactional import (
     send_application_unavailable,
     send_magic_link,
 )
+from app.services.maintenance import run_due_maintenance_with
 from tests.db_support import memory_engine, memory_session
 
 
@@ -305,6 +310,67 @@ def test_quota_blocked_magic_link_retries_with_a_fresh_credential() -> None:
     assert tokens[1].revoked_at is None
     assert as_utc(tokens[1].created_at) == now + timedelta(days=1)
     assert len(sender.messages) == 1
+
+
+@pytest.mark.parametrize("purpose", [MagicLinkPurpose.APPLICANT_ACCESS, MagicLinkPurpose.EMAIL_CHANGE])
+@pytest.mark.parametrize("expired", [False, True])
+@pytest.mark.parametrize("daily_maintenance", [False, True])
+def test_recovered_credentials_respect_retention_before_delivery(purpose, expired, daily_maintenance) -> None:
+    db = memory_session(foreign_keys=True)
+    now = datetime(2026, 10, 7, 12, tzinfo=UTC)
+    application = Application(primary_email="applicant@example.com", raw_row={}, raw_row_hash="synthetic",
+        retention_due_on=pacific_today(now=now) + timedelta(days=0 if expired else 1))
+    db.add(application)
+    db.commit()
+    recipient = "replacement@example.com" if purpose == MagicLinkPurpose.EMAIL_CHANGE else application.primary_email
+    send_magic_link(db, QuotaBlockedSender(), identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=purpose, email=recipient, recipient_id=application.id, application_id=application.id,
+        now=now - timedelta(days=1))
+    delivery = db.scalar(select(EmailDelivery))
+    delivery_id = delivery.id
+    # A worker can stop after claiming an attempt. The next write may recover it
+    # after midnight, before that day's lifecycle purge has run.
+    delivery.last_error_code = None
+    delivery.quota_blocked = False
+    db.commit()
+    sender = CapturedEmailSender()
+    if daily_maintenance:
+        assert run_due_maintenance_with(db, sender, now=now)
+    else:
+        retry_queued_emails(db, sender, now=now, retry_failures=False)
+    assert [message.to for message in sender.messages] == ([] if expired else [(recipient,)])
+    tokens = db.scalars(select(MagicLinkToken)).all()
+    expected_tokens = 2
+    if expired:
+        expected_tokens = 0 if daily_maintenance else 1
+    assert len(tokens) == expected_tokens
+    if expired and not daily_maintenance:
+        cancelled = db.get(EmailDelivery, delivery_id, populate_existing=True)
+        assert cancelled.state == EmailDeliveryState.FAILED
+        assert cancelled.last_error_code == "ApplicationExpired"
+        assert cancelled.retry_intent is None
+    assert email_queue_status(db, now=now).recent_failed == 0
+    assert email_delivery_issues(db) == []
+
+
+def test_expired_noncredential_notice_is_not_an_administrator_delivery_issue() -> None:
+    db = _db()
+    now = datetime(2026, 10, 7, 12, tzinfo=UTC)
+    application = Application(primary_email="applicant@example.com", raw_row={}, raw_row_hash="synthetic",
+        retention_due_on=pacific_today(now=now))
+    db.add(application)
+    db.flush()
+    delivery = EmailDelivery(message_kind="application_unavailable", application_id=application.id,
+        recipient_kind=PasswordlessIdentityKind.APPLICANT, state=EmailDeliveryState.QUEUED,
+        retry_intent={"type": "application_unavailable"})
+    db.add(delivery)
+    db.commit()
+    sender = CapturedEmailSender()
+    assert retry_queued_emails(db, sender, now=now).accepted == 0
+    assert sender.messages == []
+    assert delivery.last_error_code == "ApplicationExpired"
+    assert email_queue_status(db, now=now).recent_failed == 0
+    assert email_delivery_issues(db) == []
 
 
 def test_targetless_access_update_retries_without_retaining_recipient_email() -> None:

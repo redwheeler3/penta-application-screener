@@ -202,6 +202,7 @@ EXPECTED_FAILURE_CODES = frozenset(
     {
         "ApplicationSelected",
         "ApplicationWithdrawn",
+        "ApplicationExpired",
         "CommitteeAccessRemoved",
         "CredentialUsed",
         "RecoveryReset",
@@ -284,6 +285,11 @@ def _build_retry(
         return None
     # The ledger stores JSON; every producer constructs a named RetryIntent.
     intent = cast(RetryIntent, delivery.retry_intent)
+    application = delivery.application
+    if application is not None and not retention_is_current(application, now=now):
+        delivery.last_error_code = ("ApplicationNoLongerNotifiable"
+                                    if intent["type"] == "application_opening" else "ApplicationExpired")
+        return None
     if intent["type"] == "magic_link":
         return _build_magic_link_retry(db, delivery, intent, now=now)
     if intent["type"] == "vacancy_opening":
@@ -316,12 +322,7 @@ def _build_retry(
             application_unavailable_email(email=delivery.recipient_email),
             None,
         )
-    application = delivery.application
     if application is None:
-        return None
-    if not retention_is_current(application, now=now):
-        delivery.last_error_code = ("ApplicationNoLongerNotifiable"
-                                    if intent["type"] == "application_opening" else "ApplicationExpired")
         return None
     if intent["type"] == "application_confirmation":
         submitted = bool(intent.get("submitted"))

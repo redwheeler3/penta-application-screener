@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from sqlalchemy import event, select
 from sqlalchemy.orm import sessionmaker
 
@@ -9,7 +10,9 @@ from app.db.models import (
     ApplicantDraftIntent,
     Application,
     ApplicationAIResult,
+    ApplicationParticipation,
     Feedback,
+    OpeningOutcome,
     RetentionDeletion,
     User,
     UserRole,
@@ -19,6 +22,7 @@ from app.services.applications import purge
 from app.services.applications.locking import lock_application
 from app.services.applications.purge import purge_due_applicant_data
 from app.services.openings.direct_selection import create_direct_selection_opening
+from tests.application_support import current_opening
 from tests.db_support import memory_session
 from tests.test_write_concurrency import request_sessions
 
@@ -67,9 +71,22 @@ def _due_application(db) -> Application:
     return application
 
 
-def test_due_application_is_completely_purged() -> None:
+@pytest.mark.parametrize(("lifecycle", "expected_rule"), [
+    ("private", "draft_actionability"),
+    ("unsuccessful", "one_year"),
+    ("selected", "selected_seven_years"),
+])
+def test_due_application_is_completely_purged(lifecycle, expected_rule) -> None:
     db = _db()
     application = _due_application(db)
+    if lifecycle == "private":
+        application.submitted_at = None
+    elif lifecycle == "selected":
+        opening = current_opening(db)
+        opening.decided_at = datetime(2019, 8, 26, 18, tzinfo=UTC)
+        db.add(ApplicationParticipation(application_id=application.id, opening_id=opening.id,
+            applied_at=opening.decided_at, outcome=OpeningOutcome.SELECTED))
+    db.commit()
     application_id = application.id
     result = purge_due_applicant_data(db, now=datetime(2026, 8, 26, 18, tzinfo=UTC))
 
@@ -83,7 +100,7 @@ def test_due_application_is_completely_purged() -> None:
     assert deletion is not None
     assert deletion.record_kind == "application"
     assert deletion.record_id == application_id
-    assert deletion.retention_rule == "one_year"
+    assert deletion.retention_rule == expected_rule
 
 
 def test_due_unclaimed_draft_is_completely_purged() -> None:
