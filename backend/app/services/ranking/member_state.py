@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, contains_eager
+from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Analysis, MemberRanking, User
@@ -36,6 +36,17 @@ def get_or_reconcile_member_ranking(
                 db.commit()
         return existing
 
+    # A first view is a write. Serialize its snapshot with consolidation so a read
+    # started before the merge cannot insert a pre-merge layout after it commits.
+    db.execute(update(Analysis).where(Analysis.id == analysis.id)
+        .values(dimension_report=Analysis.dimension_report, updated_at=Analysis.updated_at)
+        .execution_options(synchronize_session=False))
+    db.refresh(analysis)
+    if db.scalar(lookup) is not None:
+        existing = get_or_reconcile_member_ranking(db, analysis, user, commit=False)
+        if commit:
+            db.commit()
+        return existing
     report = current_dimension_report(analysis)
     if analysis.opening_id is None:
         raise ValueError("A current analysis must belong to an opening.")
@@ -101,6 +112,36 @@ def lock_member_state(db: Session, member_ranking: MemberRanking) -> None:
         .values(run_state=MemberRanking.run_state, updated_at=MemberRanking.updated_at)
         .execution_options(synchronize_session=False))
     db.refresh(member_ranking)
+
+
+def reconcile_consolidated_members(
+    db: Session, analysis: Analysis, *, merges: dict[str, str], resurfaced: list[str],
+) -> None:
+    """Apply one shared merge to every existing personal view in its transaction.
+
+    A resurfaced survivor inherits the member's preceding history, just as it does
+    for a first view opened after consolidation. Restore it only here: subsequent
+    reads must preserve an explicit move to Ignore or another independent edit.
+    """
+    report = current_dimension_report(analysis)
+    members = db.scalars(select(MemberRanking)
+        .where(MemberRanking.analysis_id == analysis.id)
+        .options(joinedload(MemberRanking.user)).order_by(MemberRanking.id)).all()
+    for member in members:
+        lock_member_state(db, member)
+        state = _merged_member_state(member, merges)
+        if resurfaced:
+            _, prior_placements = tier_history(db, member.user, analysis.opening_id,
+                target_report=report, before_analysis_id=analysis.id)
+            tiers = state.get("tiers") or default_tier_layout()
+            tier_by_id = {tier["id"]: tier for tier in tiers}
+            placed = {key for tier in tiers for key in tier["dimension_keys"]}
+            for key in resurfaced:
+                target = prior_placements.get(key)
+                if key not in placed and target in tier_by_id:
+                    tier_by_id[target]["dimension_keys"].append(key)
+            state["tiers"] = tiers
+        member.run_state = state
 
 
 def dimension_weights(member_ranking: MemberRanking, *, report: PoolDimensionReport | None = None) -> dict[str, float]:
@@ -184,6 +225,7 @@ def display_tiers(member_ranking: MemberRanking) -> list[dict]:
 
 def tier_history(
     db: Session, user: User, opening_id: int, *, target_report: PoolDimensionReport | None = None,
+    before_analysis_id: int | None = None,
 ) -> tuple[list[dict], dict[str, str]]:
     """One member's tier intent across ALL their rankings, for carrying placements forward.
 
@@ -208,13 +250,15 @@ def tier_history(
     key mapping to it simply stays unplaced (lands in the derived Ignore zone) — never
     injected into a working tier or the ``kept_keys`` set.
     """
-    rankings = db.scalars(
-        select(MemberRanking)
+    query = (select(MemberRanking)
         .where(MemberRanking.user_id == user.id, Analysis.opening_id == opening_id)
         .join(Analysis)
         .options(contains_eager(MemberRanking.analysis))
         .order_by(Analysis.id.desc())
-    ).all()
+    )
+    if before_analysis_id is not None:
+        query = query.where(Analysis.id < before_analysis_id)
+    rankings = db.scalars(query).all()
     if target_report is None and rankings:
         target_report = current_dimension_report(rankings[0].analysis)
     aliases = report_alias_map(db, target_report)

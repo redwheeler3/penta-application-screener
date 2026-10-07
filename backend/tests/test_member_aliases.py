@@ -9,6 +9,7 @@ from app.services.ranking.analysis import apply_consolidation, create_analysis
 from app.services.ranking.member_state import (
     dimension_weights,
     get_or_reconcile_member_ranking,
+    set_tiers,
     tier_history,
 )
 from tests.application_support import current_opening_id
@@ -177,3 +178,119 @@ def test_report_owned_intermediate_survivor_preserves_prior_placement(materializ
     assert view.run_state["new_dimension_keys"] == []
     assert view.run_state["tiers"][0]["dimension_keys"] == ["b"]
     assert dimension_weights(get_or_reconcile_member_ranking(db, target, initiator)) == {"b": 0.0}
+
+
+@pytest.mark.parametrize("prior_ignored", [False, True])
+@pytest.mark.parametrize("alias_chain", [False, True])
+def test_resurfaced_priority_is_identical_before_and_after_first_view(prior_ignored, alias_chain):
+    from app.ai.schemas import PoolDimensionReport
+    from app.db.models import DimensionAlias
+
+    _, db, _ = setup_app(UserRole.MEMBER)
+    initiator = db.scalar(select(User))
+    during = User(email="during@example.test", display_name="During", role=UserRole.MEMBER)
+    after = User(email="after@example.test", display_name="After", role=UserRole.MEMBER)
+    db.add_all([during, after])
+    db.commit()
+    users = [initiator, during, after]
+    opening_id = current_opening_id(db)
+    dimension, unrelated = a_pattern_report().dimensions
+    older = dimension.model_copy(update={"key": "older"})
+    prior_report = PoolDimensionReport(dimensions=[older, unrelated])
+    prior = create_analysis(db, user=initiator, opening_id=opening_id,
+        report=prior_report, inputs_fingerprint="prior", narrative=None)
+    layouts = {}
+    for user in users:
+        layouts[user.id] = [
+            {"id": f"top-{user.id}", "label": f"Top {user.id}",
+             "dimension_keys": [] if prior_ignored else ["older"]},
+            {"id": f"lower-{user.id}", "label": f"Lower {user.id}",
+             "dimension_keys": [unrelated.key]},
+        ]
+        set_tiers(db, get_or_reconcile_member_ranking(db, prior, user), layouts[user.id])
+    if alias_chain:
+        db.add(DimensionAlias(alias_key="middle", canonical_key="older"))
+        db.commit()
+    current = create_analysis(db, user=initiator, opening_id=opening_id,
+        report=PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "newer"}), unrelated]),
+        inputs_fingerprint="current", narrative=None,
+        tier_layout=[{**tier, "dimension_keys": [key for key in tier["dimension_keys"] if key != "older"]}
+                     for tier in layouts[initiator.id]])
+    for user in [initiator, during]:
+        view = get_or_reconcile_member_ranking(db, current, user)
+        view.run_state = {**view.run_state, "proposed_dimensions": [f"Proposal {user.id}"]}
+    db.commit()
+    apply_consolidation(db, current, get_or_reconcile_member_ranking(db, current, initiator),
+        merges={"newer": "middle" if alias_chain else "older"}, audit=[], narrative=None,
+        settings=AppSettings())
+    for user in users:
+        view = get_or_reconcile_member_ranking(db, current, user)
+        assert dimension_weights(view) == {"older": 0.0 if prior_ignored else 2.0, unrelated.key: 1.0}
+        assert view.run_state["tiers"] == layouts[user.id]
+        assert view.run_state["proposed_dimensions"] == ([] if user == after else [f"Proposal {user.id}"])
+        # Repeated reads cannot revive a survivor the member explicitly ignores afterward.
+        ignored = [{**tier, "dimension_keys": [key for key in tier["dimension_keys"] if key != "older"]}
+                   for tier in layouts[user.id]]
+        set_tiers(db, view, ignored)
+        for _ in range(2):
+            reread = get_or_reconcile_member_ranking(db, current, user)
+            assert dimension_weights(reread)["older"] == 0.0
+            assert reread.run_state["tiers"] == ignored
+
+
+def test_first_view_reloads_analysis_consolidated_after_its_initial_read():
+    from sqlalchemy.orm import sessionmaker
+
+    from app.ai.schemas import PoolDimensionReport
+
+    _, db, _ = setup_app(UserRole.MEMBER)
+    initiator = db.scalar(select(User))
+    other = User(email="late@example.test", display_name="Late", role=UserRole.MEMBER)
+    db.add(other)
+    db.commit()
+    dimension = a_pattern_report().dimensions[0]
+    prior = create_analysis(db, user=other, opening_id=current_opening_id(db),
+        report=PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "older"})]),
+        inputs_fingerprint="prior", narrative=None,
+        tier_layout=[{"id": "top", "label": "Top", "dimension_keys": ["older"]}])
+    current = create_analysis(db, user=initiator, opening_id=prior.opening_id,
+        report=PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "newer"})]),
+        inputs_fingerprint="current", narrative=None)
+    factory = sessionmaker(bind=db.get_bind(), autoflush=False)
+    with factory() as reader:
+        snapshot = reader.get(Analysis, current.id)
+        member = reader.get(User, other.id)
+        assert snapshot.dimension_report["dimensions"][0]["key"] == "newer"
+        apply_consolidation(db, current, get_or_reconcile_member_ranking(db, current, initiator),
+            merges={"newer": "older"}, audit=[], narrative=None, settings=AppSettings())
+        view = get_or_reconcile_member_ranking(reader, snapshot, member)
+        assert dimension_weights(view) == {"older": 1.0}
+
+
+@pytest.mark.parametrize("commit", [False, True])
+def test_first_view_race_releases_only_its_owned_write_transaction(commit):
+    from sqlalchemy.orm import sessionmaker
+
+    _, db, _ = setup_app(UserRole.MEMBER)
+    initiator = db.scalar(select(User))
+    other = User(email="racing@example.test", display_name="Racing", role=UserRole.MEMBER)
+    db.add(other)
+    db.commit()
+    analysis = create_analysis(db, user=initiator, opening_id=current_opening_id(db),
+        report=a_pattern_report(), inputs_fingerprint="current", narrative=None)
+    analysis_id, other_id = analysis.id, other.id
+    factory = sessionmaker(bind=db.get_bind(), autoflush=False)
+    with factory() as first, factory() as second:
+        winner_ids = []
+
+        @event.listens_for(first, "do_orm_execute")
+        def competing_first_view(execution):
+            if execution.is_update and execution.statement.table.name == "analyses" and not winner_ids:
+                winner = get_or_reconcile_member_ranking(second,
+                    second.get(Analysis, analysis_id), second.get(User, other_id))
+                winner_ids.append(winner.id)
+
+        result = get_or_reconcile_member_ranking(first,
+            first.get(Analysis, analysis_id), first.get(User, other_id), commit=commit)
+        assert first.in_transaction() is not commit
+        assert result.id == winner_ids[0]

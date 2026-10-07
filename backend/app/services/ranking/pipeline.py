@@ -349,8 +349,8 @@ def _stream_consolidate(
     genuine duplicates (loser aliased to the older key, which heals the fork on future
     matches too). Runs post-score because it needs the vectors. The model call runs ONCE over
     the shared pool; ``apply_consolidation`` then rewrites the shared analysis (collapse merged
-    keys, write aliases) and transfers the triggering member's tiers to the survivor (other
-    members heal via carry-forward on next open). Usually a no-op (correlation nominates
+    keys, write aliases) and transfers every existing member's tiers to the survivor (future
+    views inherit their personal history). Usually a no-op (correlation nominates
     nothing → $0). Returns the consolidation + its wall-clock (ms)."""
     from app.ai.score_vectors import load_score_vectors
 

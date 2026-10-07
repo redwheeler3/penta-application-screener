@@ -16,12 +16,13 @@ from app.db.models import (
 from app.schemas.settings import AppSettings
 from app.services.applications.scope import opening_ai_applications
 from app.services.ranking.dimensions import alias_map, current_dimension_report
-from app.services.ranking.identity import flatten_merges, transfer_merged_tiers
+from app.services.ranking.identity import flatten_merges
 from app.services.ranking.member_state import (
     IGNORE_TIER_ID,
     default_tier_layout,
     lock_member_state,
     proposed_dimensions,
+    reconcile_consolidated_members,
     tier_history,
 )
 
@@ -122,8 +123,7 @@ def apply_consolidation(
       - **Shared** (on ``analysis``): persist a ``DimensionAlias`` row per merge (so future
         matches adopt the canonical key), drop the loser from ``dimension_report``, and record
         the ``consolidate`` audit. These are true for everyone.
-      - **Per-member tier transfer**: move the triggering member's placement inline.
-        Other existing views reconcile aliases under their member-state lock on read;
+      - **Per-member tier transfer**: reconcile every existing personal view atomically;
         future views inherit canonicalized personal history. Each survivor takes that
         member's own highest-priority placement, never another member's judgment.
 
@@ -140,7 +140,6 @@ def apply_consolidation(
     lock_member_state(db, member_ranking)
     db.refresh(analysis)
     report_json = dict(analysis.dimension_report or {})
-    state = dict(member_ranking.run_state or {})
 
     # A single run's merges can form a chain: if C→B correlates higher than B→A, the
     # confirm loop emits {C: B, B: A}. Flatten every drop to its TERMINAL survivor
@@ -237,43 +236,11 @@ def apply_consolidation(
         present = {d.get("key") for d in report_dims}
         resurfaced = [k for k in dict.fromkeys(merges.values()) if k not in present]
         if resurfaced:
-            _scaffold, most_recent_tier_by_key = tier_history(
-                db, member_ranking.user, analysis.opening_id, target_report=history,
-            )
             report_dims.extend(mint_by_key[k].model_dump(mode="json") for k in resurfaced)
         report_json["dimensions"] = report_dims
-
-        # Placement is the sole "keep" signal and weight source, so a merge
-        # must carry the member's tier intent from the DROPPED twin to the survivor —
-        # otherwise a "Critical" placement on the dropped key would silently vanish. The
-        # survivor inherits the HIGHEST-priority working tier among the keys collapsing
-        # into it (tier order = priority, top = heaviest); a twin left in Ignore
-        # contributes no placement.
-        tiers = transfer_merged_tiers(state.get("tiers") or [], merges)
-
-        if resurfaced:
-            tier_by_id = {t["id"]: t for t in tiers}
-            placed = {k for t in tiers for k in t["dimension_keys"]}
-            for keep_key in resurfaced:
-                target = most_recent_tier_by_key.get(keep_key)
-                # Restore its most-recent tier. tier_by_id holds only working tiers, so a
-                # key whose most-recent tier was Ignore (or unknown) stays unplaced and
-                # lands in the derived Ignore zone — mirrors carry_forward_layout.
-                if keep_key not in placed and target is not None and target in tier_by_id:
-                    tier_by_id[target]["dimension_keys"].append(keep_key)
-        state["tiers"] = tiers
-        # Weights are always derived from tiers (see dimension_weights), never stored.
-        # A dropped key can't stay flagged "new".
-        state["new_dimension_keys"] = [
-            k for k in (state.get("new_dimension_keys") or []) if k not in merges
-        ]
-        if "acknowledged_requested_keys" in state:
-            state["acknowledged_requested_keys"] = sorted({merges.get(key, key)
-                for key in state["acknowledged_requested_keys"]})
-        # Reassign the JSON columns so SQLAlchemy tracks the change: dimension_report is
-        # shared (on the analysis), the tier state is this member's (on member_ranking).
         analysis.dimension_report = report_json
-        member_ranking.run_state = state
+        db.flush()  # Personal history must see the final report and persisted aliases.
+        reconcile_consolidated_members(db, analysis, merges=merges, resurfaced=resurfaced)
 
     # Persisted for EVERY run the pass ran on, merges or not. Each pair row carries both
     # judged definitions (definition_keep/definition_drop), so this audit is the durable,
