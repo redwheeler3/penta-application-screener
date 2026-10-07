@@ -15,6 +15,8 @@ class VacancyOpeningRetryIntent(TypedDict):
     type: Literal["vacancy_opening"]
     opening_id: int
     subscription_id: int
+    # Set only when this delivery reserves that one-time consent generation.
+    subscription_consented_at: NotRequired[str]
 
 
 class ApplicationConfirmationRetryIntent(TypedDict):
@@ -44,6 +46,7 @@ class ApplicationOpeningRetryIntent(TypedDict):
     type: Literal["application_opening"]
     opening_id: int
     subscription_id: NotRequired[int]
+    subscription_consented_at: NotRequired[str]
 
 
 RetryIntent = (

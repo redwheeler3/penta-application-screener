@@ -40,7 +40,7 @@ async def test_invitation_response_precedes_provider_work_and_commits_the_intent
         delivery = observer.scalar(select(EmailDelivery))
         assert delivery.state == EmailDeliveryState.QUEUED
         assert delivery.user_id is not None
-        assert delivery.recipient_email is None
+        assert delivery.recipient_email == "invited@example.com"
         assert delivery.magic_link_token_id is None
     await background()
     assert len(sender.messages) == 1

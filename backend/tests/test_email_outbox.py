@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
@@ -17,7 +18,11 @@ from app.db.models import (
 from app.services.email import outbox
 from app.services.email.delivery import ATTEMPT_LEASE, claim_delivery_attempt
 from app.services.email.outbox import email_queue_status, retry_queued_emails
-from app.services.email.sender import CapturedEmailSender, EmailQuotaExceededError
+from app.services.email.sender import (
+    CapturedEmailSender,
+    EmailQuotaExceededError,
+    EmailRetryableError,
+)
 from app.services.email.transactional import (
     EmailSendOutcome,
     send_application_unavailable,
@@ -130,7 +135,7 @@ def test_an_abandoned_email_attempt_becomes_retryable_after_its_lease() -> None:
     assert claim_delivery_attempt(db, delivery_id, now=now) is not None
     assert claim_delivery_attempt(db, delivery_id, now=now + timedelta(seconds=1)) is None
     sender = CapturedEmailSender()
-    assert retry_queued_emails(db, sender, now=now + ATTEMPT_LEASE).accepted == 1
+    assert retry_queued_emails(db, sender, now=now + ATTEMPT_LEASE, retry_failures=False).accepted == 1
     assert len(sender.messages) == 1
     db.refresh(delivery)
     assert delivery.attempt_count == 2
@@ -439,9 +444,9 @@ def test_admin_email_reads_preserve_recipients_without_loading_answers():
     db.add_all([application, draft, user])
     db.flush()
     recipients = [
-        ({"application_id": application.id}, "app@example.com"),
-        ({"applicant_draft_id": draft.id}, "draft@example.com"),
-        ({"user_id": user.id, "recipient_kind": PasswordlessIdentityKind.COMMITTEE}, "member@example.com"),
+        ({"application_id": application.id}, "Unavailable"),
+        ({"applicant_draft_id": draft.id}, "Unavailable"),
+        ({"user_id": user.id, "recipient_kind": PasswordlessIdentityKind.COMMITTEE}, "Unavailable"),
         ({"recipient_email": "targetless@example.com"}, "targetless@example.com"),
         ({"application_id": application.id, "recipient_email": "explicit@example.com"}, "explicit@example.com"),
         ({}, "Unavailable"),
@@ -477,3 +482,73 @@ def test_admin_email_reads_preserve_recipients_without_loading_answers():
         assert all("email_deliveries.retry_intent," not in sql for sql in statements)
     finally:
         event.remove(db.bind, "before_cursor_execute", record)
+
+
+@pytest.mark.parametrize("failure", [EmailQuotaExceededError, EmailRetryableError])
+def test_post_write_drain_sends_new_mail_but_waits_for_scheduled_failure_retries(failure):
+    db = _db()
+    now = datetime.now(UTC)
+    first = EmailDelivery(message_kind="application_unavailable", recipient_kind=PasswordlessIdentityKind.APPLICANT,
+        recipient_email="first@example.com", state=EmailDeliveryState.QUEUED,
+        retry_intent={"type": "application_unavailable"})
+    db.add(first)
+    db.commit()
+    class FailingSender:
+        def send(self, _message):
+            raise failure("Synthetic temporary failure")
+    retry_queued_emails(db, FailingSender(), now=now, retry_failures=False)
+    assert first.attempt_count == 1
+    second = EmailDelivery(message_kind="application_unavailable", recipient_kind=PasswordlessIdentityKind.APPLICANT,
+        recipient_email="second@example.com", state=EmailDeliveryState.QUEUED,
+        retry_intent={"type": "application_unavailable"})
+    db.add(second)
+    db.commit()
+    sender = CapturedEmailSender()
+    retry_queued_emails(db, sender, now=now + timedelta(seconds=1), retry_failures=False)
+    retry_queued_emails(db, sender, now=now + timedelta(hours=1), retry_failures=False)
+    assert [message.to for message in sender.messages] == [("second@example.com",)]
+    db.refresh(first)
+    assert first.attempt_count == 1
+    retry_queued_emails(db, sender, now=now + timedelta(days=1))
+    assert [message.to for message in sender.messages] == [("second@example.com",), ("first@example.com",)]
+    db.refresh(first)
+    assert first.attempt_count == 2
+
+
+def test_attempted_recipient_survives_identity_change_and_tracks_rebuilt_retry():
+    from app.services.email.transactional import send_email_change_notice
+    db = _db()
+    now = datetime.now(UTC)
+    application = Application(primary_email="new@example.com", raw_row={}, raw_row_hash="synthetic")
+    db.add(application)
+    db.commit()
+    send_email_change_notice(db, QuotaBlockedSender(), application=application,
+        old_email="old@example.com", now=now)
+    issue = outbox.email_delivery_issues(db)[0]
+    assert issue.recipient_email == "old@example.com"
+    sender = CapturedEmailSender()
+    retry_queued_emails(db, sender, now=now + timedelta(days=1))
+    assert sender.messages[0].to == ("old@example.com",)
+    assert db.scalar(select(EmailDelivery)).recipient_email is None
+    send_magic_link(db, QuotaBlockedSender(), identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=MagicLinkPurpose.APPLICANT_ACCESS, email=application.primary_email,
+        recipient_id=application.id, application_id=application.id, now=now + timedelta(days=2))
+    delivery = db.scalar(select(EmailDelivery).where(EmailDelivery.state == EmailDeliveryState.QUEUED))
+    application.primary_email = "changed@example.com"
+    db.commit()
+    assert outbox.email_delivery_issues(db)[0].recipient_email == "new@example.com"
+    retry_queued_emails(db, QuotaBlockedSender(), now=now + timedelta(days=3))
+    db.refresh(delivery)
+    assert delivery.recipient_email == "changed@example.com"
+    assert outbox.email_delivery_issues(db)[0].recipient_email == "changed@example.com"
+
+
+def test_email_change_confirmation_records_the_requested_address():
+    db = _db()
+    application = Application(primary_email="original@example.com", raw_row={}, raw_row_hash="synthetic")
+    db.add(application)
+    db.commit()
+    send_magic_link(db, QuotaBlockedSender(), identity_kind=PasswordlessIdentityKind.APPLICANT,
+        purpose=MagicLinkPurpose.EMAIL_CHANGE, email="requested@example.com",
+        recipient_id=application.id, application_id=application.id)
+    assert outbox.email_delivery_issues(db)[0].recipient_email == "requested@example.com"

@@ -134,6 +134,7 @@ async def test_admin_can_review_queued_and_unexpected_failed_emails() -> None:
                 message_kind="application_submitted",
                 recipient_kind=PasswordlessIdentityKind.APPLICANT,
                 application_id=application.id,
+                recipient_email=application.primary_email,
                 state=EmailDeliveryState.QUEUED,
                 retry_intent={"type": "application_confirmation"},
                 quota_blocked=True,

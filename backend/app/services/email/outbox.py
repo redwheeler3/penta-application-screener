@@ -12,8 +12,6 @@ from app.core.config import get_settings
 from app.core.text import normalize_email
 from app.core.time import pacific_today
 from app.db.models import (
-    ApplicantDraft,
-    Application,
     EmailDelivery,
     EmailDeliveryState,
     MagicLinkPurpose,
@@ -21,7 +19,6 @@ from app.db.models import (
     Opening,
     OpeningPhase,
     PasswordlessIdentityKind,
-    User,
     VacancySubscription,
 )
 from app.services.applications.drafts import draft_is_available
@@ -34,6 +31,7 @@ from app.services.email.delivery import (
 )
 from app.services.email.retry_intents import MagicLinkRetryIntent, RetryIntent
 from app.services.email.sender import EmailSender, OutboundEmail
+from app.services.email.subscription_delivery import reserve_subscription_consent
 from app.services.email.templates import (
     application_confirmation_email,
     application_opening_email,
@@ -66,6 +64,11 @@ class RetrySummary:
 
 
 @dataclass(frozen=True)
+class DeferredRetry:
+    """Another delivery owns the one-time consent; no provider attempt is due."""
+
+
+@dataclass(frozen=True)
 class PreparedRetry:
     message: OutboundEmail
     magic_link_token: MagicLinkToken | None = None
@@ -87,9 +90,9 @@ VACANCY_FAILURE_RETENTION = timedelta(days=30)
 
 
 def retry_queued_emails(
-    db: Session, sender: EmailSender, *, now: datetime | None = None
+    db: Session, sender: EmailSender, *, now: datetime | None = None, retry_failures: bool = True,
 ) -> RetrySummary:
-    """Retry every provider-temporary failure once during the daily maintenance pass."""
+    """Send waiting intents; provider failures retry only in a scheduled pass."""
     accepted = 0
     queued = 0
     quota_blocked = 0
@@ -98,12 +101,16 @@ def retry_queued_emails(
         .where(
             EmailDelivery.state == EmailDeliveryState.QUEUED,
             EmailDelivery.retry_intent.is_not(None),
+            or_(EmailDelivery.attempt_count == 0, EmailDelivery.last_error_code.is_(None))
+            if not retry_failures else True,
         )
         .order_by(EmailDelivery.id)
     ).all()
     for delivery_id in delivery_ids:
         attempt_time = now or datetime.now(UTC)
-        attempt = claim_delivery_attempt(db, delivery_id, now=attempt_time, commit=False)
+        attempt = claim_delivery_attempt(
+            db, delivery_id, now=attempt_time, commit=False, retry_failures=retry_failures,
+        )
         if attempt is None:
             db.commit()
             continue
@@ -116,6 +123,12 @@ def retry_queued_emails(
         except Exception as error:
             delivery.last_error_code = f"Preparation:{type(error).__name__}"[:120]
             built = None
+        if isinstance(built, DeferredRetry):
+            # Release this attempt without incrementing its durable count or minting
+            # credentials. A later drain can reassess the consent owner.
+            db.rollback()
+            queued += 1
+            continue
         if built is None:
             vacancy_request = (delivery.retry_intent or {}).get("type") == "vacancy_opening"
             delivery.state = EmailDeliveryState.FAILED
@@ -126,7 +139,8 @@ def retry_queued_emails(
             continue
         # Publish the fresh credential before network I/O; a recipient can use it
         # immediately, and the provider wait does not hold SQLite's writer lock.
-        attempt = replace(attempt,
+        delivery.recipient_email = built.message.to[0]
+        attempt = replace(attempt, recipient_email=built.message.to[0], retry_intent=delivery.retry_intent,
             token_id=built.magic_link_token.id if built.magic_link_token is not None else None)
         db.commit()
         was_accepted = attempt_reserved_delivery(
@@ -241,16 +255,13 @@ def email_queue_status(
 
 
 def email_delivery_issues(db: Session, *, limit: int = 100) -> list[EmailDeliveryIssue]:
-    recipient = func.coalesce(func.nullif(EmailDelivery.recipient_email, ""),
-        Application.primary_email, ApplicantDraft.email, User.email, "Unavailable")
+    recipient = func.coalesce(func.nullif(EmailDelivery.recipient_email, ""), "Unavailable")
     attempted = func.coalesce(EmailDelivery.last_attempt_at, EmailDelivery.created_at)
     rows = db.execute(select(
         EmailDelivery.id, recipient.label("recipient_email"), EmailDelivery.message_kind,
         EmailDelivery.state, attempted.label("attempted_at"), EmailDelivery.attempt_count,
         EmailDelivery.last_error_code.label("error_code"), EmailDelivery.quota_blocked,
-    ).outerjoin(Application, Application.id == EmailDelivery.application_id)
-        .outerjoin(ApplicantDraft, ApplicantDraft.id == EmailDelivery.applicant_draft_id)
-        .outerjoin(User, User.id == EmailDelivery.user_id)
+    )
         .where(or_(EmailDelivery.state == EmailDeliveryState.QUEUED, _unexpected_failure_filter()))
         .order_by(attempted.desc(), EmailDelivery.id.desc()).limit(limit)).mappings()
     return [EmailDeliveryIssue(**row) for row in rows]
@@ -268,7 +279,7 @@ def _unexpected_failure_filter():
 
 def _build_retry(
     db: Session, delivery: EmailDelivery, *, now: datetime
-) -> PreparedRetry | None:
+) -> PreparedRetry | DeferredRetry | None:
     if delivery.retry_intent is None:
         return None
     # The ledger stores JSON; every producer constructs a named RetryIntent.
@@ -288,6 +299,8 @@ def _build_retry(
             or opening.unit_size_bedrooms not in unit_sizes(subscription)
         ):
             return None
+        if not reserve_subscription_consent(db, delivery, subscription, now=now):
+            return DeferredRetry()
         return PreparedRetry(
             vacancy_opening_email(
                 email=delivery.recipient_email,
@@ -402,6 +415,8 @@ def _build_retry(
             and subscription.email == normalize_email(application.primary_email)
             and opening.unit_size_bedrooms in unit_sizes(subscription)
         )
+        if overlap:
+            overlap = reserve_subscription_consent(db, delivery, subscription, now=now)
         return PreparedRetry(
             application_opening_email(
                 application_id=application.id,

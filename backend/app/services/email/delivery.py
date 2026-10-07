@@ -51,7 +51,7 @@ class DeliveryAttempt:
 
 def claim_delivery_attempt(
     db: Session, delivery_id: int, *, now: datetime, allow_failed: bool = False,
-    commit: bool = True,
+    commit: bool = True, retry_failures: bool = True,
 ) -> DeliveryAttempt | None:
     """Reserve one provider attempt before rebuilding credentials or contacting the provider.
 
@@ -67,6 +67,8 @@ def claim_delivery_attempt(
             EmailDelivery.last_attempt_at <= now - ATTEMPT_LEASE,
         )
     )
+    if not retry_failures:
+        available &= or_(EmailDelivery.attempt_count == 0, EmailDelivery.last_error_code.is_(None))
     if allow_failed:
         available = available | (EmailDelivery.state == EmailDeliveryState.FAILED)
     statement = (
@@ -147,7 +149,7 @@ def queue_email(
         application_id=application_id,
         user_id=user_id,
         magic_link_token_id=magic_link_token.id if magic_link_token is not None else None,
-        recipient_email=message.to[0] if application_id is None and user_id is None else None,
+        recipient_email=message.to[0],
         state=EmailDeliveryState.QUEUED,
         retry_intent=retry_intent,
         quota_blocked=False,
@@ -172,7 +174,7 @@ def attempt_reserved_delivery(
     """Attempt a reserved intent without ever persisting rendered credential content."""
     now = now or datetime.now(UTC)
     retry_intent = attempt.retry_intent
-    recipient_email = attempt.recipient_email
+    recipient_email = message.to[0]
     provider_message_id = None
     error_code = None
     quota_blocked = False
@@ -279,7 +281,8 @@ def _reserve_delivery(
         existing = db.get(EmailDelivery, attempt.delivery_id)
         existing.retry_intent = retry_intent
         existing.quota_blocked = False
-        attempt = replace(attempt, retry_intent=retry_intent,
+        existing.recipient_email = message.to[0]
+        attempt = replace(attempt, retry_intent=retry_intent, recipient_email=message.to[0],
             token_id=magic_link_token.id if magic_link_token is not None else None)
         db.commit()
         return attempt
@@ -292,11 +295,7 @@ def _reserve_delivery(
         user_id=user_id,
         magic_link_token_id=magic_link_token.id if magic_link_token is not None else None,
         applicant_draft_id=applicant_draft.id if applicant_draft is not None else None,
-        recipient_email=(
-            message.to[0]
-            if application_id is None and applicant_draft is None and user_id is None
-            else None
-        ),
+        recipient_email=message.to[0],
         state=EmailDeliveryState.QUEUED,
         retry_intent=retry_intent,
         quota_blocked=False,
