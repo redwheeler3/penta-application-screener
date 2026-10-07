@@ -1,6 +1,6 @@
 # Whole-project audit — 2026-10-06, post-implementation review
 
-**Status: complete; X01–X06 recommended, not implemented.** Baseline `83bfd9e`, clean
+**Status: complete, including a pre-implementation challenge pass; X01–X06 recommended, not implemented.** Baseline `83bfd9e`, clean
 working tree, ten local commits ahead of the recorded `origin/main`. The completed W01–W07
 report remains at `83bfd9e:docs/project-audit-2026-10-06-follow-up.md`.
 
@@ -15,9 +15,9 @@ a general mutation framework, or additional production caching.
 | --- | --- | --- | --- |
 | X05 | P2 | A failed background dashboard refresh can strand initial loading | Both requests settle, but the real hook remains `loading`; reversing their completion order settles correctly |
 | X01 | P2 | Fixture family metadata can disagree with its owning file/endpoint | Save returns 200; Judge lists the wrong family; its Run request returns 404 and current fingerprints use a different identity |
-| X02 | P2, eval validity | Unknown screening flag names can silently weaken an assertion | A misspelled forbidden flag saves successfully and the real grader passes output that the correct spelling rejects |
+| X02 | P2, eval validity | Screening expectations admit unknown categories and inconsistent raw types | Misspelled forbidden flags weaken assertions; a string pet count validates but fails against the identical numeric count |
 | X06 | P3 | Passive trace refresh discards expanded operator content | An open discovery trace disappears during refresh and returns collapsed, even with identical data |
-| X03 | P2, operator tooling | Golden model bake-off retains invalid success/completeness rules | Missing contested verdict counts as passed; all-error repeats report stable; a later grader error erases already-returned usage |
+| X03 | P2, operator tooling | Golden model bake-off retains invalid outcome rules and reloads inputs per model | Invalid contested output passes; all-error repeats report stable; later errors erase known usage; control/challenger can see different inputs |
 | X04 | P2, operator tooling | Full-rank copy experiment does not reliably capture its advertised inputs | Copied DB omits a committed WAL row; two visible openings fail before running; requested high reasoning leaves copied pass settings low |
 
 Preserve submission-time age, automatic cache reuse, committee judgment and unranked behavior,
@@ -75,7 +75,7 @@ same key in different families, non-ASCII keys, list/run/history identity agreem
 before fixture mutation or provider invocation. Existing valid fingerprints need not change.
 **Latency:** validation/response projection only; no additional request or model work.
 
-## X02 — Validate screening assertion vocabulary after normalization
+## X02 — Validate screening expectation meaning and raw types consistently
 
 **Anchors:** `backend/app/evals/case_schema.py:_ScreeningExpected`,
 `backend/app/evals/screening.py:_normalize_fires`, `_case_from_expected`, `_check`.
@@ -89,15 +89,30 @@ treated as a clean-applicant check. Unknown required flags create impossible ass
 The current committed corpus contains no unknown flag names; this is a hole in accepted edits,
 not a claim that existing fixture results all need to be discarded.
 
+**Additional pre-implementation probe:** `expected.pets.dogs = "2"` passes `validate_case`
+because the nested AI `PetFacts` model coerces the string for validation. The stored raw
+expectation is not rewritten, however, and the live grader compares that string with the
+model's integer `2`. It reports `expected 2 dogs, extracted 2` as a failure. Integer `2`
+passes against the same output. Boolean pet counts are also accepted by that nested model.
+The parent fixture model's strict setting does not make this separate nested model strict.
+
 **Recommendation:** normalize the supported string/list/pipe any-of forms with one shared rule,
 then validate every leaf category against the existing `FlagCategory` vocabulary. Reject empty
 names/groups and unknown forbidden/required flags before writing or running a case. Keep the
 existing raw fixture/editor contract where possible; do not invent a second category list or
 silently drop misspelled assertions.
 
+For pet expectations, validate the raw types the grader actually consumes. Prefer a small,
+strict expectation shape with nonnegative integer counts and string-list other pets over
+reusing the more permissive AI-output shape. Do not validate a coerced copy and then grade
+uncoerced input. Keep supported valid numeric fixtures intact; no new field-editor framework
+or broad corpus migration is warranted.
+
 **Acceptance:** all supported any-of representations, whitespace, empty values/groups,
 unknown required and forbidden names, correct pet-only/clean cases, and identical live/Judge
-meaning. An invalid save must leave the file unchanged. **Latency:** local validation only.
+meaning. Include string/boolean/null/negative pet counts and valid integer controls through
+both validation and grading. An invalid save must leave the file unchanged.
+**Latency:** local validation only.
 
 ## X03 — Bring the golden model-comparison CLI under the corrected outcome contract
 
@@ -114,6 +129,13 @@ Three controlled observations through the actual wrapper:
 - A mock provider returns 100 input/20 output tokens, followed by a synthetic grader exception.
   The wrapper records one call but zero tokens and zero known cost, discarding its own meter.
 
+**Additional pre-implementation probe:** the actual `run_bakeoff` job builder calls
+`spec.load()` inside its per-model loop. A controlled changing loader supplied input version
+1 to the control and version 2 to the challenger, under the same case key in one report.
+The probe models a local fixture edit between the two reads; it made no real model call or
+fixture edit. The advertised frozen comparison should capture each family's cases once and
+reuse that snapshot for all models and repetitions.
+
 This is a remaining consumer gap in W01: the shared API stability collector is corrected,
 but this CLI has a separate repetition/summary path. Existing bake-off tests build report rows
 directly or check configuration dictionaries; they did not run these failure cases through
@@ -126,11 +148,15 @@ CLI's model-comparison grouping. Remove duplicated success/error accounting rath
 a second evaluator. Missing scoring output should have the same explicit validity meaning as
 missing categorical output; do not infer validity from display strings such as `?` or `None`.
 Do not estimate unknown provider charges or retry paid calls automatically.
+Load each family's cases once before constructing its control/challenger jobs; all repetitions
+must reuse those captured inputs. This removes duplicate reads rather than adding a cache.
 
 **Acceptance:** actual runner → wrapper → summary tests for valid contested divergence, invalid
 output, missing score, one/some/all failed repeats, and returned usage followed by failure.
+Include a changing-source loader and assert a single family read with identical captured
+inputs for both models and all repetitions.
 A complete consistently wrong answer can still be stable; operational failure cannot establish
-measurement completeness. **Latency:** report bookkeeping only. Repair before the next CLI
+measurement completeness. **Latency:** report bookkeeping and fewer fixture reads. Repair before the next CLI
 model-selection experiment.
 
 ## X04 — Make the full-rank copy experiment capture a coherent, scoped configuration
@@ -291,3 +317,31 @@ entrypoint that presents that rule. The prior tooling tests covered three analys
 only configuration/helper behavior for these model wrappers. The existing audit rule already
 requires consumer coverage; this report supplies the missing consumer list rather than adding
 another general framework or promising zero future misses.
+
+## Pre-implementation challenge pass
+
+Requested after `f1e125b`; application code is unchanged from the audit baseline. This pass
+challenged the proposed changes and nearby consumers rather than repeating the entire inventory.
+It confirmed two additional manifestations within X02/X03 and added them above. No new
+independent work package or broad refactor is recommended.
+
+| Plan item | Challenge and outcome |
+| --- | --- |
+| X01 | Confirmed that new-case identity protection, write validation, and file-derived Judge identity must agree; fixing only the editor would leave manual fixture edits/API callers inconsistent. |
+| X02 | Checked raw versus validated expectation shapes. Nested pet-count coercion reproduces a contradictory failure; the plan now requires strict raw expectation types as well as valid flag names. |
+| X03 | Followed job construction before the existing outcome/summary checks. The actual job builder reloads the family per model; capture once for a fair frozen-input comparison. |
+| X04 | Reviewed the proposed SQLite snapshot, explicit opening, effective settings, and attempt/report ownership together. Keep this a wrapper over the production pipeline; avoid a second pipeline or a new experiment store. |
+| X05 | Reviewed both loader entrypoints and existing scope protections. The fix must settle the winning initial load while still allowing later background recovery; do not suppress every refresh whenever the state is not ready. |
+| X06 | Reviewed resource state and all four trace callers. Keep content only for the same opening/analysis; reset on a genuine identity change. Changing the generic resource hook globally would affect unrelated editors and is unnecessary. |
+
+**New evidence:** 55 existing backend tests plus two temporary counterexample tests passed
+(57 total), and 44 existing frontend loader/ranking/operator tests passed. The new backend
+tests exercised validation → real screening grading and the actual bake-off job builder with
+a controlled changing source. They made no real model/provider call. The temporary file was
+removed. The previous full-suite results remain the baseline; they were not rerun or presented
+as new results during this focused pass.
+
+The last challenge was whether either addition needs another abstraction: neither does.
+X02 can use a strict expectation boundary; X03 can move an existing read outside its model
+loop. The six-item implementation plan now includes these cases. Application code, fixtures,
+and permanent tests remain unchanged; no further material candidate was identified in this pass.
