@@ -106,6 +106,26 @@ async def test_tiers_reweight_and_resort_the_ranking() -> None:
 
 
 @pytest.mark.anyio
+async def test_duplicate_tier_ids_are_rejected_without_changing_the_board() -> None:
+    app, db, provider = setup_app(role=UserRole.MEMBER)
+    add_eligible(db, email="synthetic@example.test", raw_hash="synthetic")
+    route_criteria(provider, a_pattern_report())
+    provider.route("applicant_id", a_scoring_report())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        await stream_events(client, "/ranking/run")
+        before = (await client.get("/ranking/board")).json()
+        response = await client.put("/ranking/tiers", json={
+            "analysisId": before["run"]["analysisId"],
+            "tiers": [
+                {"id": "duplicate", "label": "First", "dimensionKeys": ["skills_offered"]},
+                {"id": "duplicate", "label": "Second", "dimensionKeys": ["participation_commitment"]},
+            ],
+        })
+        assert response.status_code == 422
+        assert (await client.get("/ranking/board")).json() == before
+
+
+@pytest.mark.anyio
 async def test_tier_save_blocked_while_a_rank_run_is_in_flight() -> None:
     """A tier save is rejected (409 run_in_progress) while a full rank holds the lease: that
     run already snapshotted the committee kept-list and will supersede this analysis, so a late

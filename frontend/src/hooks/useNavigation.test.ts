@@ -34,6 +34,24 @@ it("does not reopen an applicant after navigating away from a pending detail req
   expect(window.history.state.applicantId).toBeUndefined();
 });
 
+it("confirms note authority only for an accepted fresh detail read", async () => {
+  const delayed = deferred<ApplicationDetail>();
+  const application = { id: 7, selected: false } as ApplicationDetail;
+  api.fetchApplication.mockReturnValueOnce(delayed.promise).mockResolvedValueOnce(application);
+  const accepted = vi.fn();
+  const { result } = renderHook(() => useNavigation({ openingId: 1, selectOpening: vi.fn().mockResolvedValue(true),
+    loadRanking: vi.fn(), onError: vi.fn(), onApplicationLoaded: accepted }));
+  let old!: Promise<void>;
+  act(() => { old = result.current.viewApplication(7); });
+  act(() => result.current.navigateToView("applications"));
+  await act(async () => { delayed.resolve(application); await old; });
+  expect(accepted).not.toHaveBeenCalled();
+  await act(() => result.current.viewApplication(7));
+  expect(accepted).toHaveBeenCalledExactlyOnceWith(application, 1, false);
+  act(() => result.current.updateSelectedApplication({ id: 7, privateNote: "Save receipt" }));
+  expect(accepted).toHaveBeenCalledOnce();
+});
+
 it("preserves a deliberate cross-opening detail request as React renders the selected opening", async () => {
   const response = deferred<ApplicationDetail>();
   vi.mocked(api.fetchApplication).mockReturnValue(response.promise);

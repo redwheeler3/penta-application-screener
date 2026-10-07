@@ -16,6 +16,7 @@ from app.db.models import (
     ApplicationParticipation,
     ApplicationVersion,
     MemberEligibility,
+    MemberRanking,
     Opening,
     OpeningOutcome,
     User,
@@ -213,6 +214,9 @@ def serialize_detail(
     ).one()
 
     analysis = get_current_analysis(db, opening_id)
+    member_ranking = get_or_reconcile_member_ranking(db, analysis, user) if analysis is not None else None
+    if member_ranking is not None:
+        analysis = member_ranking.analysis
     report = current_dimension_report(analysis) if analysis is not None else None
     results = selected_application_scores(db, app.id, report) if report is not None else []
     scoring_trace = _dimension_scoring_trace(results)
@@ -223,8 +227,8 @@ def serialize_detail(
     dimension_scores = _dimension_scores(
         db,
         app,
-        user,
         analysis,
+        member_ranking,
         report,
         captured_candidate,
         include_historical=is_selected,
@@ -341,8 +345,8 @@ def _dimension_scoring_trace(
 def _dimension_scores(
     db: Session,
     app: Application,
-    user: User,
     analysis: Analysis | None,
+    member_ranking: MemberRanking | None,
     report: PoolDimensionReport | None,
     captured_candidate: CandidateScores,
     *,
@@ -360,8 +364,6 @@ def _dimension_scores(
     """
     if report is None:
         return None
-    member_ranking = get_or_reconcile_member_ranking(db, analysis, user)
-
     weights = dimension_weights(member_ranking, report=report)
     if not any(weight > 0 for weight in weights.values()):
         return []

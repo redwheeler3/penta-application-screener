@@ -2,6 +2,7 @@ import { useCommitteeApi } from "../api/identity";
 import { useCallback, useEffect, useRef } from "react";
 
 import * as applicationsApi from "../api/applications";
+import type { ApplicationDetail } from "../types";
 import { useRequestScope } from "./useRequestScope";
 
 type PrivateNoteSnapshot = {
@@ -27,6 +28,7 @@ type Draft = {
   queue: Promise<void>;
   listeners: Set<() => void>;
   blocked: boolean;
+  access: { openingId: number; readOnly: boolean } | null;
 };
 
 /** Account-owned drafts survive editor/tab/opening changes, in memory only. Each
@@ -56,7 +58,7 @@ export function usePrivateNotes(options: {
     if (!draft || draft.blocked || draft.snapshot.status === "saved" || suspended.current) return;
     if (draft.timer !== null) clearTimeout(draft.timer);
     draft.timer = null;
-    const { snapshot: { body }, revision, openingId } = draft;
+    const { snapshot: { body }, revision, openingId, access } = draft;
     const inAccount = requests.capture();
     draft.snapshot = { body, status: "saving" };
     draft.listeners.forEach((listener) => listener());
@@ -69,7 +71,8 @@ export function usePrivateNotes(options: {
       try {
         const response = await savePrivateNote(applicationId, openingId, body);
         saved = response.ok;
-        if (response.status === 404) draft.blocked = true;
+        // A failed opening cannot revoke authority confirmed by a newer detail read.
+        if (response.status === 404 && draft.access === access) draft.blocked = true;
       } catch {
         saved = false;
       }
@@ -113,7 +116,7 @@ export function usePrivateNotes(options: {
       let draft = drafts.current.get(applicationId);
       if (!draft) {
         draft = { snapshot: initial, savedBody, openingId, revision: 0,
-          timer: null, queue: Promise.resolve(), listeners: new Set(), blocked: false };
+          timer: null, queue: Promise.resolve(), listeners: new Set(), blocked: false, access: null };
         drafts.current.set(applicationId, draft);
       }
       return draft;
@@ -188,6 +191,25 @@ export function usePrivateNotes(options: {
     }
   }
 
+  function acceptApplicationAccess(application: Pick<ApplicationDetail, "id" | "selected">, openingId: number, readOnly: boolean) {
+    const draft = drafts.current.get(application.id);
+    if (!draft) return;
+    // Only the successful detail-read owner calls this. Rendering an old editor
+    // again is not evidence that a previous denial has been resolved.
+    draft.access = { openingId, readOnly: readOnly || application.selected };
+    draft.openingId = openingId;
+    draft.blocked = draft.access.readOnly;
+    if (draft.blocked) {
+      if (draft.timer !== null) clearTimeout(draft.timer);
+      draft.timer = null;
+      if (draft.snapshot.status !== "saved") draft.snapshot = { ...draft.snapshot, status: "blocked" };
+    } else if (draft.snapshot.status === "blocked") {
+      // Keep the text for an explicit retry; navigation never replays a denied write.
+      draft.snapshot = { ...draft.snapshot, status: "error" };
+    }
+    draft.listeners.forEach((listener) => listener());
+  }
+
   return {
     editor,
     unsavedText: () => [...drafts.current.entries()]
@@ -196,5 +218,6 @@ export function usePrivateNotes(options: {
     hasUnconfirmed: () => [...drafts.current.values()].some((draft) => draft.snapshot.status !== "saved"),
     suspendWrites,
     resumeWrites,
+    acceptApplicationAccess,
   };
 }

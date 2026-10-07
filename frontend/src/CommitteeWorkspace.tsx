@@ -90,6 +90,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     ranking,
     rankingLoadState,
     tiers,
+    acceptedTiers,
     refreshRankingRun,
     loadRanking,
     saveTiers,
@@ -128,7 +129,9 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     onOpeningRankingLoaded,
     backToList,
     navigateToView,
-  } = useNavigation({ openingId: selectedOpeningId, selectOpening, loadRanking, onError: showError });
+  } = useNavigation({ openingId: selectedOpeningId, selectOpening, loadRanking, onError: showError,
+    onApplicationLoaded: (application, openingId, readOnly) => privateNotes.acceptApplicationAccess(application, openingId, readOnly),
+  });
   const [adminSubtab, setAdminSubtab] = useState<AdminSubtab>("configuration");
   const {
     draft,
@@ -230,10 +233,11 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
   }, []);
 
   useEffect(() => {
-    if (selectedOpeningId === null) return;
+    if (applicationsLoadState !== "ready") return;
     let active = true;
     resetEstimates();
     void loadInitialDashboard();
+    if (selectedOpeningId === null) return;
     void (async () => {
       const run = await refreshRankingRun();
       if (active && run.status === "loaded") {
@@ -243,7 +247,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
     return () => { active = false; };
     // Navigation owns detail disposal/restoration. Other member surfaces are opening-scoped.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOpeningId]);
+  }, [selectedOpeningId, applicationsLoadState]);
 
   // One owner refreshes intake and the displayed board. Refs keep the interval steady
   // while renders update callbacks, navigation and live-run ownership.
@@ -476,6 +480,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
             ranking={ranking}
             rankingRun={rankingRun}
             tiers={tiers}
+            acceptedTiers={acceptedTiers}
             proposedDimensions={rankingRun?.proposedDimensions ?? []}
             onSaveTiers={(next) => saveTiers(next)}
             onAcknowledgeNew={acknowledgeNewDimensions}

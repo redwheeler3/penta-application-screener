@@ -1,13 +1,13 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { type ComponentProps, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { deferred } from "../../testSupport";
-import type { RankingResponse } from "../../types";
+import type { RankingResponse, Tier } from "../../types";
 import { RankingView } from "./RankingView";
 
 const props: Omit<ComponentProps<typeof RankingView>, "ranking"> = {
-  rankingRun: null, tiers: null, proposedDimensions: [],
+  rankingRun: null, tiers: null, acceptedTiers: null, proposedDimensions: [],
   onSaveTiers: vi.fn(), onAcknowledgeNew: vi.fn(), onDismissRequested: vi.fn(),
   onAddProposal: vi.fn(), onRemoveProposal: vi.fn(), onSelectApplication: vi.fn(),
   onToggleStar: vi.fn(), onToggleShortlist: vi.fn(),
@@ -21,6 +21,51 @@ const unranked: RankingResponse = {
   }],
   newDimensionKeys: [], revivedDimensionKeys: [], requestedDimensionKeys: [],
 };
+
+it("renders accepted priorities for both app and native printing while the editor is ahead", () => {
+  const accepted = [{ id: "priority", label: "Accepted priority", dimensionKeys: ["contribution"] }];
+  const { container } = render(<RankingView {...props} ranking={{ ...unranked, weights: { contribution: 1 } }}
+    tiers={[{ ...accepted[0], label: "Unsaved priority" }]} acceptedTiers={accepted}
+    rankingRun={{ analysisId: 1, proposedDimensions: [], dimensions: [{
+      key: "contribution", name: "Contribution", definition: "Synthetic criterion", highEnd: "High", lowEnd: "Low", whyItDifferentiates: "", fromCommitteeRequest: false,
+    }] }} />);
+  expect(screen.getByRole("textbox", { name: "Tier name" })).toHaveValue("Unsaved priority");
+  const print = container.querySelector(".tier-summary-print")!;
+  expect(print).toHaveTextContent("Accepted priority");
+  expect(print).not.toHaveTextContent("Unsaved priority");
+  const printWindow = vi.spyOn(window, "print").mockImplementation(() => {});
+  fireEvent.click(screen.getByRole("button", { name: "Print ranking" }));
+  expect(printWindow).toHaveBeenCalledOnce();
+  // Native printing reads this same print-only DOM without invoking an app button.
+  window.dispatchEvent(new Event("beforeprint"));
+  expect(print).toHaveTextContent("Accepted priority");
+  printWindow.mockRestore();
+});
+
+it("keeps custom tiers independent through add, remove, add, rename and remove", () => {
+  function Editor() {
+    const [tiers, setTiers] = useState<Tier[]>([
+      { id: "base", label: "Base", dimensionKeys: [] },
+      { id: "ignore", label: "Ignore", dimensionKeys: [], ignore: true },
+    ]);
+    return <RankingView {...props} ranking={unranked} rankingRun={{ analysisId: 1, dimensions: [], proposedDimensions: [] }}
+      tiers={tiers} acceptedTiers={tiers} onSaveTiers={setTiers} />;
+  }
+  render(<Editor />);
+  const add = screen.getByRole("button", { name: "Add tier" });
+  fireEvent.click(add);
+  fireEvent.click(add);
+  const firstCustom = screen.getByDisplayValue("Tier 2").closest(".tier-row")!;
+  fireEvent.click(within(firstCustom as HTMLElement).getByRole("button", { name: "Remove tier" }));
+  fireEvent.click(add);
+  const custom = screen.getAllByDisplayValue("Tier 3");
+  expect(custom).toHaveLength(2);
+  fireEvent.change(custom[0], { target: { value: "Independent" } });
+  expect(screen.getAllByDisplayValue("Tier 3")).toHaveLength(1);
+  const renamed = screen.getByDisplayValue("Independent").closest(".tier-row")!;
+  fireEvent.click(within(renamed as HTMLElement).getByRole("button", { name: "Remove tier" }));
+  expect(screen.getByDisplayValue("Tier 3")).toBeInTheDocument();
+});
 
 describe("RankingView priorities", () => {
   it("shows ranks only while a member has weighted criteria", () => {

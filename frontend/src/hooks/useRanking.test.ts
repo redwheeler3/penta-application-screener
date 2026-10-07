@@ -29,6 +29,67 @@ const board = (analysisId: number, tiers: Tier[] = []): RankingBoardResponse => 
 const tier = (label: string): Tier[] => [{ id: "important", label, dimensionKeys: [] }];
 beforeEach(() => vi.resetAllMocks());
 
+it.each(["accepted", "failed"])("keeps print priorities with accepted ranking through a %s save", async (outcome) => {
+  const reply = deferred<Response>();
+  api.fetchRankingBoard.mockResolvedValueOnce(board(1, tier("Accepted"))).mockRejectedValue(new Error("Offline"));
+  api.saveTiers.mockReturnValueOnce(reply.promise);
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.loadRanking());
+  let save!: Promise<void>;
+  await act(async () => { save = result.current.saveTiers(tier("Edited")); });
+  expect(result.current.tiers).toEqual(tier("Edited"));
+  expect(result.current.acceptedTiers).toEqual(tier("Accepted"));
+  expect(result.current.ranking?.scoredCount).toBe(0);
+  await act(async () => {
+    reply.resolve(outcome === "accepted" ? Response.json(ranking(1, 2)) : new Response(null, { status: 503 }));
+    await save;
+  });
+  expect(result.current.acceptedTiers).toEqual(tier(outcome === "accepted" ? "Edited" : "Accepted"));
+  expect(result.current.ranking?.scoredCount).toBe(outcome === "accepted" ? 2 : 0);
+});
+
+it("keeps queued priorities paired with the exact acknowledged ranking", async () => {
+  const first = deferred<Response>(), second = deferred<Response>();
+  api.fetchRankingBoard.mockResolvedValue(board(1, tier("Initial")));
+  api.saveTiers.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.loadRanking());
+  let savingFirst!: Promise<void>, savingSecond!: Promise<void>;
+  await act(async () => { savingFirst = result.current.saveTiers(tier("First")); savingSecond = result.current.saveTiers(tier("Second")); });
+  await act(async () => { first.resolve(Response.json(ranking(1, 1))); await savingFirst; });
+  expect(result.current.acceptedTiers).toEqual(tier("Initial"));
+  expect(result.current.ranking?.scoredCount).toBe(0);
+  await act(async () => { second.resolve(Response.json(ranking(1, 2))); await savingSecond; });
+  expect(result.current.acceptedTiers).toEqual(tier("Second"));
+  expect(result.current.ranking?.scoredCount).toBe(2);
+});
+
+it.each(["accepted", "failed"])("allows B writes while A is pending and orders A after returning (%s)", async (outcome) => {
+  const old = deferred<Response>();
+  api.fetchRankingBoard.mockResolvedValueOnce(board(10)).mockResolvedValueOnce(board(20)).mockResolvedValueOnce(board(10));
+  api.saveTiers.mockReturnValueOnce(old.promise).mockResolvedValueOnce(Response.json(ranking(20)))
+    .mockResolvedValueOnce(Response.json(ranking(10)));
+  const { result, rerender } = renderHook(({ opening }) => useRanking(opening, vi.fn()), { initialProps: { opening: 1 } });
+  await act(() => result.current.loadRanking());
+  let first!: Promise<void>;
+  await act(async () => { first = result.current.saveTiers(tier("A first")); });
+  rerender({ opening: 2 });
+  await act(() => result.current.loadRanking());
+  await act(() => result.current.saveTiers(tier("B")));
+  expect(api.saveTiers.mock.calls.map((call) => call[0])).toEqual([1, 2]);
+  rerender({ opening: 1 });
+  await act(() => result.current.loadRanking());
+  let last!: Promise<void>;
+  await act(async () => { last = result.current.saveTiers(tier("A last")); });
+  expect(api.saveTiers).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    old.resolve(outcome === "accepted" ? Response.json(ranking(10)) : new Response(null, { status: 503 }));
+    await first; await last;
+  });
+  expect(api.saveTiers.mock.calls.map((call) => call[0])).toEqual([1, 2, 1]);
+  expect(result.current.acceptedTiers).toEqual(tier("A last"));
+});
+
 it("offers Reload when a focus or periodic dashboard first observes criteria", async () => {
   api.fetchRankingCurrent.mockResolvedValue(null);
   api.fetchRankingBoard.mockResolvedValue(board(1));

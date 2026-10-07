@@ -116,6 +116,7 @@ export function RankingView(props: {
   ranking: RankingResponse;
   rankingRun: CurrentRunResponse | null;
   tiers: Tier[] | null;
+  acceptedTiers: Tier[] | null;
   proposedDimensions: string[];
   onSaveTiers: (next: Tier[]) => void;
   onAcknowledgeNew: (keys: string[]) => void;
@@ -211,7 +212,7 @@ export function RankingView(props: {
             </div>
             <CriteriaDetail dim={openDim} />
           </div>
-          <TierSummaryForPrint tiers={tiers} labelFor={labelFor} />
+          {props.acceptedTiers ? <TierSummaryForPrint tiers={props.acceptedTiers} labelFor={labelFor} /> : null}
         </>
       ) : null}
 

@@ -39,7 +39,7 @@ export function useDashboard(openingId: number | null, onAnalysis?: (analysisId:
   }, []);
 
   const refresh = useCallback(() => {
-    if (openingId === null || !requests.isFor(openingId)) return Promise.resolve();
+    if (!requests.isFor(openingId)) return Promise.resolve();
     const isCurrent = requests.begin();
     const observe = observeAnalysis.current;
     return api.fetchDashboard(openingId).then((payload) => {
@@ -52,7 +52,9 @@ export function useDashboard(openingId: number | null, onAnalysis?: (analysisId:
   const loadInitial = useCallback(async (): Promise<void> => {
     if (!requests.isFor(openingId)) return;
     setLoadState("loading");
-    if (openingId === null) return;
+    setWorkflow(EMPTY_WORKFLOW);
+    setCoverage({});
+    setAdminActions(null);
     const isCurrent = requests.begin();
     const observe = observeAnalysis.current;
     try {

@@ -36,6 +36,42 @@ function options(): Parameters<typeof useCandidateActions>[0] {
 }
 beforeEach(() => vi.resetAllMocks());
 
+it.each(["shortlist", "eligibility"])("orders one %s record across A to B to A while B saves independently", async (field) => {
+  const pendingA = deferred<Response>();
+  const send = field === "shortlist" ? api.setShortlist : api.overrideStatus;
+  send.mockReturnValueOnce(pendingA.promise).mockResolvedValue(Response.json({ application: detail(7) }));
+  const initial = options();
+  const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
+  const change = () => field === "shortlist" ? result.current.toggleShortlist(7, true) : result.current.overrideStatus(7, "eligible");
+  let first!: Promise<void>;
+  await act(async () => { first = change(); });
+  rerender({ ...initial, openingId: 2 });
+  await act(change);
+  expect(send.mock.calls.map((call) => call[1])).toEqual([1, 2]);
+  rerender(initial);
+  let last!: Promise<void>;
+  await act(async () => { last = change(); });
+  expect(send).toHaveBeenCalledTimes(2);
+  await act(async () => { pendingA.resolve(Response.json({ application: detail(7) })); await first; await last; });
+  expect(send.mock.calls.map((call) => call[1])).toEqual([1, 2, 1]);
+});
+
+it.each(["favourite", "committee note"])("keeps applicant-owned %s writes ordered across openings", async (field) => {
+  const pending = deferred<Response>();
+  const send = field === "favourite" ? api.setStar : api.addCommitteeNote;
+  send.mockReturnValueOnce(pending.promise).mockResolvedValue(Response.json({ application: detail(7) }));
+  const initial = options();
+  const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
+  const change = () => field === "favourite" ? result.current.toggleStar(7, true) : result.current.addCommitteeNote(7, "Synthetic", "unique-attempt");
+  let first!: ReturnType<typeof change>, second!: ReturnType<typeof change>;
+  await act(async () => { first = change(); });
+  rerender({ ...initial, openingId: 2 });
+  await act(async () => { second = change(); });
+  expect(send).toHaveBeenCalledOnce();
+  await act(async () => { pending.resolve(Response.json({ application: detail(7) })); await first; await second; });
+  expect(send.mock.calls.map((call) => call[1])).toEqual([1, 2]);
+});
+
 it("refreshes every eligibility surface after a successful override", async () => {
   const initial = options();
   vi.mocked(api.overrideStatus).mockResolvedValue(Response.json({ application: detail(7) }));

@@ -35,7 +35,8 @@ export function useCandidateActions(options: CandidateActionsOptions) {
     const isCurrent = requests.capture();
     // Same-field edits stay ordered. Narrow acknowledgements let independent fields
     // save concurrently without replacing unrelated detail data.
-    const queueKey = `${applicationId}:${field}`;
+    const owner = field === "status" || field === "shortlisted" ? `${openingId}:${applicationId}` : String(applicationId);
+    const queueKey = `${owner}:${field}`;
     const result = (writeQueues.current.get(queueKey) ?? Promise.resolve()).then(async (): Promise<CommitteeActionResult> => {
       if (!isCurrent()) return "rejected";
       try {

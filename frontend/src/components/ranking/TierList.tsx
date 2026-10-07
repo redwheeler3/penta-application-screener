@@ -421,7 +421,7 @@ export function TierList(props: {
   }
   function addTier() {
     // Insert a new empty tier just above the Ignore zone.
-    const id = `tier-${tiers.length}-${working.length}`;
+    const id = `tier-${crypto.randomUUID()}`;
     const newTier: Tier = { id, label: `Tier ${working.length + 1}`, dimensionKeys: [], ignore: false };
     onChange(ignore ? [...working, newTier, ignore] : [...working, newTier]);
   }

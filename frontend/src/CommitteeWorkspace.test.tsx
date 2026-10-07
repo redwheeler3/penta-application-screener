@@ -18,6 +18,8 @@ const intake = vi.hoisted(() => ({
   refreshDashboard: vi.fn<() => Promise<void>>(), reloadApplications: vi.fn<() => Promise<void>>(),
   refreshRankingView: vi.fn<() => Promise<void>>(), loadRanking: vi.fn<() => Promise<boolean>>(),
   rankingRun: null as CurrentRunResponse | null, rankRunning: false,
+  selectedOpeningId: 1 as number | null, applicationsLoadState: "ready" as "loading" | "ready",
+  loadInitialDashboard: vi.fn<() => Promise<void>>(),
 }));
 
 vi.mock("./api/cachedResults", () => ({ createApi: () => ({ refreshCachedResults: vi.fn().mockResolvedValue(false) }) }));
@@ -31,11 +33,11 @@ vi.mock("./api/applications", () => ({
   createApi: () => applicationApi,
 }));
 vi.mock("./hooks/useApplications", () => ({ useApplications: () => ({
-  applications: [], openings: [], selectedOpeningId: 1, applicationsLoadState: "ready",
+  applications: [], openings: [], selectedOpeningId: intake.selectedOpeningId, applicationsLoadState: intake.applicationsLoadState,
   reloadApplications: intake.reloadApplications, loadInitialApplications: vi.fn(), selectOpening: vi.fn(),
 }) }));
 vi.mock("./hooks/useDashboard", () => ({ useDashboard: () => ({
-  loadState: "ready", refresh: intake.refreshDashboard, loadInitial: vi.fn(),
+  loadState: "ready", refresh: intake.refreshDashboard, loadInitial: intake.loadInitialDashboard,
 }) }));
 vi.mock("./hooks/useRanking", () => ({ useRanking: () => ({
   rankingRun: intake.rankingRun, ranking: null, rankingLoadState: "ready", tiers: null,
@@ -78,6 +80,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   intake.rankingRun = null;
   intake.rankRunning = false;
+  intake.selectedOpeningId = 1;
+  intake.applicationsLoadState = "ready";
+  intake.loadInitialDashboard.mockResolvedValue(undefined);
   intake.refreshDashboard.mockResolvedValue(undefined);
   intake.reloadApplications.mockResolvedValue(undefined);
   intake.refreshRankingView.mockResolvedValue(undefined);
@@ -87,6 +92,16 @@ beforeEach(() => {
   vi.mocked(applicationApi.savePrivateNote).mockResolvedValue(new Response(null));
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+it("loads the global dashboard once the opening list confirms there are no openings", async () => {
+  intake.selectedOpeningId = null;
+  intake.applicationsLoadState = "loading";
+  const { rerender } = render(<CommitteeWorkspace user={user} logout={vi.fn()} />);
+  expect(intake.loadInitialDashboard).not.toHaveBeenCalled();
+  intake.applicationsLoadState = "ready";
+  await act(async () => rerender(<CommitteeWorkspace user={user} logout={vi.fn()} />));
+  expect(intake.loadInitialDashboard).toHaveBeenCalledOnce();
+});
 
 it("uses intake dashboard reads for hidden identity and refreshes only the displayed board", async () => {
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");

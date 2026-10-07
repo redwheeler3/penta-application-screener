@@ -20,6 +20,8 @@ export interface RankingState {
   rankingLoadState: "idle" | "loading" | "ready" | "error";
   /** The committee's importance tiers for the current run. */
   tiers: Tier[] | null;
+  /** Priorities accepted with the displayed ranking, including while newer edits await saving. */
+  acceptedTiers: Tier[] | null;
   /** Re-fetch the current run's dimensions. Returns the promise so callers can await
    * it before rendering anything that resolves dimension keys to names. */
   refreshRankingRun: () => Promise<RankingRunRead>;
@@ -70,6 +72,7 @@ export function useRanking(
   const [rankingRun, setRankingRun] = useState<CurrentRunResponse | null>(null);
   const [ranking, setRanking] = useState<RankingResponse | null>(null);
   const [tiers, setTiers] = useState<Tier[] | null>(null);
+  const [acceptedTiers, setAcceptedTiers] = useState<Tier[] | null>(null);
   const [rankingLoadState, setRankingLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [staleAnalysis, setStaleAnalysis] = useState(false);
 
@@ -78,7 +81,7 @@ export function useRanking(
   const analysisId = ranking?.analysisId ?? rankingRun?.analysisId;
   const mutationKey = `${openingId}:${analysisId ?? "none"}`;
   const mutations = useRequestScope(mutationKey);
-  const mutationQueue = useRef<Promise<void>>(Promise.resolve());
+  const mutationQueues = useRef(new Map<string, Promise<void>>());
   const pendingMutations = useRef(new Set<RequestIsCurrent>());
   const tierSaveVersion = useRef(0);
   const proposalSaveVersion = useRef(0);
@@ -93,6 +96,7 @@ export function useRanking(
     setRankingRun(null);
     setRanking(null);
     setTiers(null);
+    setAcceptedTiers(null);
     runRef.current = null;
     boardRef.current = null;
     tiersRef.current = null;
@@ -118,7 +122,7 @@ export function useRanking(
   function enqueueMutation(isCurrent: RequestIsCurrent, request: () => Promise<Response>) {
     pendingMutations.current.add(isCurrent);
     invalidateReads();
-    const result = mutationQueue.current.then(async () => {
+    const result = (mutationQueues.current.get(mutationKey) ?? Promise.resolve()).then(async () => {
       if (!isCurrent()) return undefined;
       const response = await request();
       // A write remains pending through its acknowledgement, not only its headers.
@@ -127,7 +131,11 @@ export function useRanking(
         ? { ok: true, payload: await response.json(), problem: null }
         : { ok: false, payload: null, problem: await readProblemBody(response) };
     });
-    mutationQueue.current = result.then(() => {}, () => {});
+    const tail = result.then(() => {}, () => {});
+    mutationQueues.current.set(mutationKey, tail);
+    void tail.then(() => {
+      if (mutationQueues.current.get(mutationKey) === tail) mutationQueues.current.delete(mutationKey);
+    });
     return result.finally(() => { pendingMutations.current.delete(isCurrent); });
   }
 
@@ -143,6 +151,7 @@ export function useRanking(
     setRankingRun(board.run);
     setRanking(board.ranking);
     setTiers(board.tiers);
+    setAcceptedTiers(board.tiers);
     setRankingLoadState("ready");
     setStaleAnalysis(false);
   }, [currentReads]);
@@ -222,7 +231,7 @@ export function useRanking(
 
   async function reloadAfterSaveFailure(isLatest: RequestIsCurrent, requiresBoard = false) {
     // Let already-queued edits settle before reading their combined server state.
-    await mutationQueue.current;
+    await mutationQueues.current.get(mutationKey);
     if (!isLatest()) return;
     if (requiresBoard || boardRef.current !== null) await loadRanking();
     else await refreshRankingRun();
@@ -248,6 +257,7 @@ export function useRanking(
         boardReads.invalidate();
         boardRef.current = updated;
         setRanking(updated);
+        setAcceptedTiers(next);
         setRankingLoadState("ready");
       } else {
         const { handled, message } = handleSaveFailure(response.problem, isLatest);
@@ -339,6 +349,7 @@ export function useRanking(
     ranking,
     rankingLoadState,
     tiers,
+    acceptedTiers,
     refreshRankingRun,
     loadRanking,
     saveTiers,

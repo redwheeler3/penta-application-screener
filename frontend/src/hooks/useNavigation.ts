@@ -44,6 +44,7 @@ export function useNavigation(options: {
   selectOpening: (openingId: number, isCurrent: RequestIsCurrent) => Promise<boolean>;
   loadRanking: () => Promise<boolean>;
   onError: (message: string) => void;
+  onApplicationLoaded?: (application: ApplicationDetail, openingId: number, readOnly: boolean) => void;
 }) {
   const api = useCommitteeApi(applicationsApi);
 
@@ -106,6 +107,9 @@ export function useNavigation(options: {
       if (!selected) throw new Error("Opening unavailable");
       pendingLocation.current = null;
       if (addHistory) pushLocation(location);
+      if (detail && location.openingId !== null) {
+        current.current.onApplicationLoaded?.(detail, location.openingId, Boolean(location.retainedApplicant));
+      }
       setSelectedApplication(detail && reading ? { ...detail, ...reading.receipts } : detail);
       if (pendingDetail.current === reading) pendingDetail.current = null;
       setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));

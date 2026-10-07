@@ -8,6 +8,8 @@ share one wire shape. ``PoolDimensionOut`` is a camelCase view of the stored
 
 from typing import Any, Literal
 
+from pydantic import model_validator
+
 from app.schemas.applications import DimensionContributionOut
 from app.schemas.base import RequestModel, ResponseModel
 
@@ -282,6 +284,12 @@ class TierLayoutUpdate(RequestModel):
     # from acknowledged_keys because requested is provenance, not triage — it never
     # clears on a move, only on this explicit dismissal.
     acknowledged_requested_keys: list[str] = []
+
+    @model_validator(mode="after")
+    def unique_tier_ids(self) -> "TierLayoutUpdate":
+        if len({tier.id for tier in self.tiers}) != len(self.tiers):
+            raise ValueError("Each tier must have a unique ID.")
+        return self
 
 
 class ProposalUpdate(RequestModel):

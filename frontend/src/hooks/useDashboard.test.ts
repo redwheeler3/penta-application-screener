@@ -2,6 +2,7 @@ import { act } from "@testing-library/react";
 import { renderCommitteeHook as renderHook, deferred } from "../testSupport";
 import { beforeEach, expect, it, vi } from "vitest";
 import { useDashboard } from "./useDashboard";
+import { publicClient } from "../api/client";
 
 const api = vi.hoisted(() => ({
   fetchDashboard: vi.fn<ReturnType<typeof import("../api/dashboard").createApi>["fetchDashboard"]>(),
@@ -11,6 +12,59 @@ vi.mock("../api/dashboard", () => ({
   createApi: () => api,
 }));
 beforeEach(() => vi.resetAllMocks());
+
+const emptyWorkflow = {
+  applicationsAvailable: false, screened: false, patternsDiscovered: false,
+  candidatesScored: false, rankingCurrent: false,
+};
+
+it("uses the supported unscoped dashboard URL", async () => {
+  const actual = await vi.importActual<typeof import("../api/dashboard")>("../api/dashboard");
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ analysisId: null, workflow: emptyWorkflow, coverage: {} }));
+  try {
+    await actual.createApi(publicClient).fetchDashboard(null);
+    expect(fetch.mock.calls[0][0]).toMatch(/\/dashboard$/);
+  } finally { fetch.mockRestore(); }
+});
+
+it("loads global actions without an opening and fences the preceding opening", async () => {
+  const old = deferred<Awaited<ReturnType<typeof api.fetchDashboard>>>();
+  const actions = { overdueOpeningsNeedingDecision: [], queuedEmailCount: 2, quotaBlockedEmailCount: 0,
+    recentFailedEmailCount: 1, oldestQueuedEmailAt: null, newestQueuedEmailAt: null, lastEmailAttemptAt: null };
+  api.fetchDashboard.mockReturnValueOnce(old.promise).mockResolvedValueOnce({
+    analysisId: null, workflow: emptyWorkflow, coverage: {}, adminActions: actions,
+  });
+  const { result, rerender } = renderHook(({ openingId }) => useDashboard(openingId), {
+    initialProps: { openingId: 1 as number | null },
+  });
+  let initial!: Promise<void>;
+  act(() => { initial = result.current.loadInitial(); });
+  rerender({ openingId: null });
+  await act(() => result.current.loadInitial());
+  await act(async () => { old.resolve({ analysisId: 1, workflow: { ...emptyWorkflow, applicationsAvailable: true }, coverage: {} }); await initial; });
+  expect(api.fetchDashboard).toHaveBeenLastCalledWith(null);
+  expect(result.current).toMatchObject({ loadState: "ready", workflow: emptyWorkflow, coverage: {}, adminActions: actions });
+});
+
+it("clears a previous opening's workflow while an unscoped load recovers", async () => {
+  api.fetchDashboard.mockResolvedValueOnce({ analysisId: 1, workflow: { ...emptyWorkflow, rankingCurrent: true }, coverage: {} });
+  const { result, rerender } = renderHook(({ openingId }) => useDashboard(openingId), {
+    initialProps: { openingId: 1 as number | null },
+  });
+  await act(() => result.current.loadInitial());
+  const unscoped = deferred<Awaited<ReturnType<typeof api.fetchDashboard>>>();
+  api.fetchDashboard.mockReturnValueOnce(unscoped.promise);
+  rerender({ openingId: null });
+  let loading!: Promise<void>;
+  act(() => { loading = result.current.loadInitial(); });
+  expect(result.current.workflow).toEqual(emptyWorkflow);
+  expect(result.current.loadState).toBe("loading");
+  await act(async () => { unscoped.resolve({ analysisId: null, workflow: emptyWorkflow, coverage: {} }); await loading; });
+  api.fetchDashboard.mockRejectedValueOnce(new Error("Offline"));
+  await act(() => result.current.refresh());
+  expect(result.current.loadState).toBe("ready");
+  expect(result.current.workflow).toEqual(emptyWorkflow);
+});
 
 it("does not replace a new opening's dashboard with an old initial response", async () => {
   const old = deferred<Awaited<ReturnType<typeof api.fetchDashboard>>>();

@@ -203,6 +203,49 @@ it("retains a blocked draft for copying and explicit discard without retrying", 
   expect(pageExit()).toBe(false);
 });
 
+it.each(["denial-first", "detail-first"])("uses fresh writable detail to retry a denied note (%s)", async (order) => {
+  const denied = deferred<Response>();
+  api.savePrivateNote.mockReturnValueOnce(denied.promise).mockResolvedValueOnce(new Response(null));
+  const { result } = workspace();
+  const oldEditor = result.current.editor(7, 1, "Saved");
+  const unsubscribe = oldEditor.subscribe(() => {});
+  await act(async () => { oldEditor.change("Unsaved in A"); oldEditor.flush(); });
+  const freshDetail = () => result.current.acceptApplicationAccess({ id: 7, selected: false }, 2, false);
+  if (order === "detail-first") act(freshDetail);
+  await act(async () => denied.resolve(new Response(null, { status: 404 })));
+  if (order === "denial-first") {
+    expect(oldEditor.getSnapshot().status).toBe("blocked");
+    act(freshDetail);
+  }
+  const retry = result.current.editor(7, 2, "Saved");
+  expect(retry.getSnapshot()).toEqual({ body: "Unsaved in A", status: "error" });
+  await act(() => vi.advanceTimersByTimeAsync(1_000));
+  expect(api.savePrivateNote).toHaveBeenCalledOnce();
+  await act(async () => retry.flush());
+  expect(api.savePrivateNote).toHaveBeenLastCalledWith(7, 2, "Unsaved in A");
+  expect(retry.getSnapshot().status).toBe("saved");
+  unsubscribe();
+});
+
+it("requires a fresh read to renew same-opening note authority and retains global read-only blocking", async () => {
+  api.savePrivateNote.mockResolvedValueOnce(new Response(null, { status: 404 }));
+  const { result } = workspace();
+  const editor = result.current.editor(7, 1, "Saved");
+  await act(async () => { editor.change("Draft"); editor.flush(); });
+  await act(async () => result.current.editor(7, 1, "Saved").flush());
+  expect(api.savePrivateNote).toHaveBeenCalledOnce();
+  act(() => result.current.acceptApplicationAccess({ id: 7, selected: true }, 2, false));
+  await act(async () => result.current.editor(7, 2, "Saved").flush());
+  expect(editor.getSnapshot().status).toBe("blocked");
+  act(() => result.current.acceptApplicationAccess({ id: 7, selected: false }, 1, true));
+  await act(async () => editor.flush());
+  expect(api.savePrivateNote).toHaveBeenCalledOnce();
+  act(() => result.current.acceptApplicationAccess({ id: 7, selected: false }, 1, false));
+  expect(editor.getSnapshot().status).toBe("error");
+  await act(async () => editor.flush());
+  expect(api.savePrivateNote).toHaveBeenCalledTimes(2);
+});
+
 it("stops a debounced draft when the application becomes read-only", async () => {
   const { result } = workspace();
   const editor = result.current.editor(7, 1, "Saved");
