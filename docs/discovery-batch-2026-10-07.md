@@ -1,6 +1,6 @@
 # Batched discovery — October 7, 2026
 
-**Status: all three discovery passes complete. Application-code baseline: `28d74b7`.**
+**Status: B01–B14 implemented and verified. Discovery baseline: `28d74b7`.**
 
 Three passes finished on this baseline before implementation. Each pass used three subagents
 with rotated assignments plus coordinator review. The combined findings are verified and deduplicated;
@@ -8,11 +8,72 @@ the final docket distinguishes existing defects, incomplete/recent fixes, and pr
 No finding quota applies. The completed earlier work remains in
 [the prior audit](project-audit-2026-10-06-follow-up.md).
 
-**Recommendation:** implement B01–B14 in one coordinated batch, with cohesive commits and a final
-integrated verification/review. The highest-value corrections protect publication and recoverable
-answers; the lower-priority items improve reporting, responsiveness and eval authoring. D01 is
-declined; D02 remains an applicant-presentation choice awaiting Jeff. This audit changes documentation only;
-the proposed fixes are not yet implemented, pushed or deployed.
+Jeff authorized B01–B14 on October 7; they are implemented as one coordinated batch. D01 and D02
+are declined: preserve the private-save wording and the intentional review summary of fields most
+likely to contain mistakes. SPEC now describes those choices explicitly. The findings below retain
+the discovery evidence; they are not a list of unresolved defects. No push or production changes
+are authorized for this batch.
+
+## Implementation results
+
+| Items | Result |
+| --- | --- |
+| B01–B03 | Public sign-in capability uses unfiltered opening phases; both guest collision paths share recovery persistence; initial application and session-bound comparison arrive together in one response |
+| B08–B09 | Submission-only completeness gate preserves partial/native/synthetic readers; a validated answer/opening/account/history-cutoff snapshot owns review admission, including chosen-copy and email-intent paths |
+| B04/B05/B11 | Unscoped dashboard remains available after opening-list loading; print priorities belong to acknowledged ranking; detail captures member state before criteria/scores and removes the later hidden refresh |
+| B10 | Successful detail reads renew note permission evidence; recovery is an explicit retry, and an older opening denial cannot overwrite newer evidence |
+| B12–B13 | New tiers use unique existing IDs, duplicate-ID requests are rejected; only writes to the same owning record share a pending queue, with exact-tail cleanup |
+| B06–B07 | Expired application retries stop before credential generation; expiry is expected cancellation in admin reports; unsubmitted application deletion receipts record draft actionability |
+| B14 | Existing field editor adds explicit Text/Number/Boolean/Object/List creation, retaining strict fixture validation |
+
+The initial applicant load removes a serial request. Independent opening writes no longer inherit
+another opening's pending save. No AI prompt/model/cache changes, extra provider calls, migrations,
+background pollers or broad database locks were added. The collision path writes a recovery copy
+only when needed, and the no-opening dashboard uses its existing endpoint.
+
+Runtime changes total **316 added / 94 removed lines, net +222** (excluding tests and documentation).
+That includes one cohesive publication-validation module. Its conditions belong to new publication;
+shared answer models remain appropriate for partial and retained data. The small extra transient
+state has named purposes: accepted print priorities and permission evidence from a successful detail
+read. There is no generic queue/state-machine framework.
+
+Test review removed 35 duplicate cases exercising the same inherited submission validator twice;
+the field inventory is tested once, and actual guest/authenticated HTTP tests prove both boundaries.
+The startup-client test now proves one coherent read; the obsolete delayed second-read expectation
+was replaced with delayed application/copy admission. Existing copy-choice and storage-protection
+scenarios were retained and updated to the new response contract.
+
+Final integration review found no actionable regression or excessive abstraction in the combined
+diff. A selected-in-another-opening note hypothesis was rejected after tracing actual visibility:
+the ordinary detail query excludes that household; retained detail is explicitly read-only. No
+additional capability field or broader permission change was needed.
+
+Chrome verification reused the signed-in local tab without reload. A new unsaved Boolean metadata
+field rendered as a checkbox. Added control rows measured a 4.39 px gap, stayed on one line and
+showed no clipping; the temporary case was cancelled without saving. Native print/drag behavior
+and real provider judgment were not exercised; coherent print DOM and async sequences have
+component/hook coverage.
+
+Final coordinated checks: **1,308 backend tests passed, one platform-specific skip; 462 frontend
+tests passed; frontend build, ESLint, Ruff and whitespace checks passed.** The backend suite was
+rerun after removing the duplicate inherited-validator cases. Build directories retained inherited
+permissions. No temporary probe files remain. The combined diff received coordinator review and an
+independent source review; neither identified an actionable remaining integration issue.
+
+| Commit | Items |
+| --- | --- |
+| `26e57c8` | B01/B02/B03/B08/B09: applicant access, recoverable copies, coherent restore, publication and review admission |
+| `e7076fd` | B04/B05/B10/B11/B12/B13: committee dashboard, coherent reports, note recovery, tier identity and record-owned queues |
+| `af582f7` | B06/B07: email retry retention and accurate deletion reasons |
+| `949189b` | B14: explicit typed eval field creation |
+
+The SPEC clarification and this verification record are committed separately. No push or deployment
+was performed.
+
+**Next cadence:** after this batch's final checks/review, pause repeated whole-project discovery.
+Keep ordinary usage, targeted regression tests, and focused reviews when features or ownership
+boundaries change. Reported symptoms or a concrete change justify another targeted investigation;
+an unchanged baseline does not need another unrestricted audit immediately.
 
 ## Coverage map
 
@@ -38,10 +99,10 @@ they are removed after reproduction and are not application changes.
 - Proposed remedies must identify their owner, meaningful acceptance checks, latency/complexity
   cost and deletion/consolidation opportunity. A broad rewrite is not the default remedy.
 
-## Consolidated findings
+## Findings at the discovery baseline
 
 Final docket: **13 functional/reporting findings and one worthwhile authoring improvement**, plus
-two product decisions. Pass 2 independently reproduced B07; that is corroboration,
+two declined product proposals. Pass 2 independently reproduced B07; that is corroboration,
 not an additional finding. Priority P2 means a worthwhile functional correction; P3 is a lower-impact
 reporting correction. No application changes have been made during these passes.
 
@@ -383,10 +444,9 @@ Worthwhile completeness improvement; it is lower priority than publication/recov
 
 - **D01 — Declined by Jeff (October 7).** Keep the current private-save/submitted presentation.
   Do not implement the proposed private-save wording or additional state for this recommendation.
-- **D02 — Complete final review.** `ApplicantReview` omits essays, pets and substantial household,
-  housing and reference detail while SPEC calls for reviewing all answers. Decide whether to show
-  the complete review. Existing `pendingCopyDiff.ts` has a fuller field inventory; avoid creating a
-  third independent answer mapping if this change is approved.
+- **D02 — Declined by Jeff (October 7).** The final review intentionally summarizes fields most
+  likely to contain mistakes. Preserve that summary; omitted answers still enter the submission.
+  SPEC now states this explicitly. Do not expand the review or add another answer mapping.
 
 D02 concerns which answers appear in the final preview: the current screen shows openings, names,
 primary email, child count, optional photo link, abbreviated current housing/employment, and combined
@@ -490,8 +550,8 @@ consumers. All nine domain/pass assignments are complete. The final challenge re
 reporting, review admission, public-entry policy and fix acceptance; no material candidate remains
 unexamined within the recorded coverage. Explicit limitations above remain limitations.
 
-Recommended cohesive groups: applicant access/copy recovery (B01–B03); publication/review admission
-(B08–B09, plus approved product choices); dashboard/report coherence (B04–B05/B11); note authority
+Implementation groups: applicant access/copy recovery (B01–B03); publication/review admission
+(B08–B09); dashboard/report coherence (B04–B05/B11); note authority
 (B10); tier identity and independent-write responsiveness (B12–B13); email retention and journal
 accuracy (B06–B07); supported eval authoring (B14). Tests should extend the
 existing behavior suites and replace superseded expectations rather than accumulate one test per
@@ -499,6 +559,5 @@ historical implementation branch.
 
 The application-code baseline stayed fixed throughout discovery. Temporary probes were removed;
 only this audit, the previous audit's forward pointer, and the collaboration-rule reminder changed.
-Focused test runs above support the audit evidence; this documentation-only handoff does not claim
-a new full-suite run. Implementation must run the required backend/frontend checks, exercise the
-combined applicant and committee journeys, and review the final diff before completion.
+Focused test runs above support the discovery evidence. The implementation results and final
+verification recorded at the beginning of this document describe the subsequent authorized batch.

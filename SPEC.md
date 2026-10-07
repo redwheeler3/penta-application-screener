@@ -25,7 +25,10 @@ The built-in application form begins with opening selection and a point-of-colle
 The notice identifies the purposes for collection, people and service-provider categories that may
 receive information where necessary, opening-based retention periods, and the Privacy Officer. The
 form then collects household details, current housing, essay answers, employment, and income before
-showing the complete review and declaration.
+showing a review summary and declaration. The summary intentionally focuses on fields most likely
+to contain mistakes: opening choices, household names and primary email, child count, optional
+photo link, current housing, employment and total household income. It is not a complete copy of
+every answer; omitted answers, including essays, remain part of the submission.
 
 The external form is retired and will not receive new submissions. Applications collected
 through it remain supported stored records: their answers must stay readable for committee
@@ -136,10 +139,10 @@ and the form remains usable after the save. The email heading is **Your applicat
 saved**, explicitly says it has not been submitted to the membership committee, and uses
 **Continue your application** for its return link. Submission is always a deliberate action after
 reviewing the completed application.
-The long form does not carry a private-draft banner that gets lost among its sections. The final
-review instead leads with **This is still a private draft**, explains that nothing has reached the
-membership committee, and tells the applicant to review and then submit. This warning is the same
-for Google, email, and guest access because authentication does not publish an application.
+The long form and review do not carry a separate private-draft warning. The final review leads with
+**Review your answers, then submit your application**, presents the intentional summary described
+above, and ends with the declaration and explicit submission action. Authentication through Google
+or email does not publish an application.
 For an authenticated applicant, the corresponding **Save and review** action first persists the
 private working copy and opens the review only after that save succeeds. A signed-out **Review
 application** action validates and previews the in-page answers without creating a server record or
