@@ -7,33 +7,45 @@ Resolved items are retained, not deleted, so the friction history survives for m
 
 from __future__ import annotations
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
-from app.db.models import Application, Feedback
+from app.db.models import Analysis, Application, Feedback, User, UserRole
+from app.services.applications.retained_review import retained_review_applications_query
+from app.services.applications.scope import (
+    opening_applications_query,
+    visible_committee_openings,
+)
 
 
 def create_feedback(
     db: Session,
     *,
-    user_id: int,
+    user: User,
     body: str,
     app_version: str,
     route: str | None,
     active_tab: str | None,
     analysis_id: int | None,
     applicant_id: int | None,
+    opening_id: int | None,
+    retained_review: bool,
 ) -> Feedback:
     """Persist one feedback item. Identity, version, and context come from the router
     (identity/version stamped server-side; context is what the client reported)."""
+    opening_id, analysis_id, applicant_id, retained_review = normalize_context(
+        db, user, opening_id, analysis_id, applicant_id, retained_review,
+    )
     feedback = Feedback(
-        user_id=user_id,
+        user_id=user.id,
         body=body,
         app_version=app_version,
         route=route,
         active_tab=active_tab,
         analysis_id=analysis_id,
         applicant_id=applicant_id,
+        opening_id=opening_id,
+        retained_review=retained_review,
     )
     db.add(feedback)
     db.commit()
@@ -50,17 +62,61 @@ def list_feedback(db: Session, *, include_resolved: bool) -> list[Feedback]:
     return list(db.scalars(query).all())
 
 
-def applicant_names_for(db: Session, items: list[Feedback]) -> dict[int, str]:
-    """Current applicant names for the items that carry an ``applicant_id``, batch-loaded
-    in one query — ``{applicant_id: name}``. An id whose applicant was since removed is
-    simply absent (the caller reads it as "no name"). Off the N+1 path for the list view."""
-    ids = {f.applicant_id for f in items if f.applicant_id is not None}
-    if not ids:
+def normalize_context(
+    db: Session, user: User, opening_id: int | None, analysis_id: int | None,
+    applicant_id: int | None, retained_review: bool,
+) -> tuple[int | None, int | None, int | None, bool]:
+    """Discard unusable references without rejecting the member's feedback text."""
+    visible_ids = {opening.id for opening in visible_committee_openings(db)}
+    submitted_opening = opening_id
+    opening_id = opening_id if opening_id in visible_ids else None
+    if analysis_id is not None and (opening_id is None or db.scalar(
+        select(Analysis.id).where(Analysis.id == analysis_id, Analysis.opening_id == opening_id)
+    ) is None):
+        analysis_id = None
+    if applicant_id is not None:
+        if retained_review or submitted_opening is None:
+            allowed = user.role == UserRole.ADMIN and db.scalar(
+                retained_review_applications_query().with_only_columns(Application.id)
+                .where(Application.id == applicant_id)
+            ) is not None
+            retained_review = bool(allowed)
+        else:
+            allowed = opening_id is not None and db.scalar(
+                opening_applications_query(opening_id).with_only_columns(Application.id)
+                .where(Application.id == applicant_id)
+            ) is not None
+        if not allowed:
+            applicant_id = None
+    if applicant_id is None:
+        retained_review = False
+    if retained_review:
+        opening_id, analysis_id = None, None
+    return opening_id, analysis_id, applicant_id, retained_review
+
+
+def applicant_names_for(db: Session, items: list[Feedback]) -> dict[int, str | None]:
+    """Batch-project currently reviewable targets, keyed by feedback context identity.
+
+    Membership in the mapping authorizes a link even when a visible applicant has no
+    name. A missing target never reveals a private, expired, or withdrawn name.
+    """
+    if not items:
         return {}
-    rows = db.execute(
-        select(Application.id, Application.applicant_name).where(Application.id.in_(ids))
-    )
-    return {app_id: name for app_id, name in rows if name is not None}
+    visible_ids = [opening.id for opening in visible_committee_openings(db)]
+    ordinary = opening_applications_query(Feedback.opening_id).with_only_columns(Application.id)
+    # The nested pool must correlate to the feedback row, not to the outer applicant.
+    ordinary = ordinary.correlate(Feedback)
+    retained = retained_review_applications_query().with_only_columns(Application.id)
+    rows = db.execute(select(Feedback.id, Application.applicant_name)
+        .join(Application, Application.id == Feedback.applicant_id)
+        .where(Feedback.id.in_([item.id for item in items]), or_(
+            and_(Feedback.retained_review.is_(False), Feedback.opening_id.in_(visible_ids),
+                 Application.id.in_(ordinary)),
+            and_(or_(Feedback.retained_review.is_(True), Feedback.opening_id.is_(None)),
+                 Application.id.in_(retained)),
+        )))
+    return dict(rows.all())
 
 
 def resolve_feedback(db: Session, feedback_id: int) -> Feedback | None:

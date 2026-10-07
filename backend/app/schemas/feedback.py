@@ -22,6 +22,12 @@ class FeedbackCreate(RequestModel):
     analysis_id: int | None = None
     # The applicant whose detail page they were on, if any.
     applicant_id: int | None = None
+    opening_id: int | None = None
+    retained_review: bool = False
+
+
+class FeedbackAcknowledgement(ResponseModel):
+    id: int
 
 
 class FeedbackOut(ResponseModel):
@@ -34,6 +40,8 @@ class FeedbackOut(ResponseModel):
     active_tab: str | None
     analysis_id: int | None
     applicant_id: int | None
+    opening_id: int | None
+    retained_review: bool
     # The applicant's current name, resolved on read — None if there was no applicant
     # context or the applicant has since been removed.
     applicant_name: str | None

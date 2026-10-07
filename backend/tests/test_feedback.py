@@ -1,13 +1,26 @@
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 import pytest
+from alembic.config import Config
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from alembic import command
 from app.api.dependencies import require_current_user
-from app.db.models import Application, Base, Feedback, User, UserRole
+from app.core.time import pacific_today
+from app.db.models import (
+    Analysis,
+    Application,
+    ApplicationParticipation,
+    Base,
+    Feedback,
+    Opening,
+    User,
+    UserRole,
+)
 from app.db.session import get_db
 from app.services.feedback import reopen_feedback, resolve_feedback
 from tests.app_support import shared_test_app
@@ -64,70 +77,131 @@ def test_repeated_resolution_keeps_the_current_database_timestamp() -> None:
         assert resolve_feedback(stale, item_id).resolved_at == datetime(2026, 1, 1)
 
 
+def reviewable_context(db):
+    applicant = Application(primary_email="a@x.com", applicant_name="Synthetic Applicant",
+        raw_row={}, raw_row_hash="h1", normalized={}, submitted_at=datetime.now(UTC))
+    opening = Opening(unit_size_bedrooms=2, housing_charge_cents=100000,
+        application_open_date=date(2026, 1, 1), application_close_date=date(2026, 2, 1),
+        move_in_date=date(2026, 3, 1), published_at=datetime.now(UTC))
+    db.add_all([applicant, opening])
+    db.flush()
+    db.add(ApplicationParticipation(application_id=applicant.id, opening_id=opening.id,
+        applied_at=datetime.now(UTC)))
+    analysis = Analysis(opening_id=opening.id)
+    db.add(analysis)
+    db.commit()
+    return applicant, opening, analysis
+
+
 @pytest.mark.anyio
 async def test_member_can_submit_feedback_with_context() -> None:
-    """Any member can POST; identity + app version are stamped server-side, and the
-    context the client reports (route/tab/analysis/applicant) is preserved. When an
-    applicant is named, its current name is resolved on read."""
     app, db, user = setup_app(UserRole.MEMBER)
-    applicant = Application(
-        primary_email="a@x.com", applicant_name="Dana Applicant", raw_row={},
-        raw_row_hash="h1", normalized={},
-    )
-    db.add(applicant)
-    db.commit()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        resp = await client.post(
-            "/feedback",
-            json={
-                "body": "This applicant's pet count looks wrong.",
-                "route": "/",
-                "activeTab": "ranking",
-                "analysisId": 42,
-                "applicantId": applicant.id,
-            },
-        )
-        assert resp.status_code == 201
-        payload = resp.json()
-        assert payload["body"] == "This applicant's pet count looks wrong."
-        assert payload["activeTab"] == "ranking"
-        assert payload["analysisId"] == 42
-        assert payload["applicantId"] == applicant.id
-        assert payload["applicantName"] == "Dana Applicant"  # resolved on read
-        # Server-stamped, not taken from the body.
-        assert payload["userEmail"] == "me@x.com"
-        assert payload["userName"] == "Me"
-        assert payload["appVersion"]  # non-empty (from pyproject)
-        assert payload["resolvedAt"] is None
-
-    # Persisted with the real user id.
+    applicant, opening, analysis = reviewable_context(db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        resp = await client.post("/feedback", json={"body": "Synthetic issue", "route": "/",
+            "activeTab": "ranking", "analysisId": analysis.id, "applicantId": applicant.id,
+            "openingId": opening.id})
+    assert resp.status_code == 201
     stored = db.query(Feedback).one()
-    assert stored.user_id == user.id
-    assert stored.applicant_id == applicant.id
+    assert resp.json() == {"id": stored.id}
+    assert (stored.user_id, stored.body, stored.opening_id, stored.analysis_id, stored.applicant_id) == (
+        user.id, "Synthetic issue", opening.id, analysis.id, applicant.id)
+    assert stored.app_version
 
 
 @pytest.mark.anyio
-async def test_removed_applicant_resolves_to_no_name() -> None:
-    """An applicant_id whose applicant was since removed reads as no name (nothing to
-    show), rather than erroring — the id is retained but the join finds nothing."""
-    app, db, _ = setup_app(UserRole.ADMIN)
-    applicant = Application(
-        primary_email="a@x.com", applicant_name="Gone Soon", raw_row={},
-        raw_row_hash="h1", normalized={},
-    )
-    db.add(applicant)
+@pytest.mark.parametrize("role", [UserRole.MEMBER, UserRole.ADMIN])
+@pytest.mark.parametrize("retained", [False, True])
+async def test_private_draft_context_never_enriches_submission_or_admin_list(role, retained) -> None:
+    app, db, user = setup_app(role)
+    draft = Application(primary_email="private@example.com", applicant_name="Private Draft",
+        raw_row={}, raw_row_hash="h", normalized={})
+    db.add(draft)
     db.commit()
-    applicant_id = applicant.id
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post("/feedback", json={"body": "x", "applicantId": applicant_id})
-        # Remove the applicant, then read the feedback back.
-        db.delete(db.get(Application, applicant_id))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post("/feedback", json={"body": "Keep this report",
+            "applicantId": draft.id, "openingId": 999, "analysisId": 999, "retainedReview": retained})
+        assert response.status_code == 201
+        stored = db.query(Feedback).one()
+        assert response.json() == {"id": stored.id}
+        assert stored.body == "Keep this report"
+        assert (stored.applicant_id, stored.opening_id, stored.analysis_id) == (None, None, None)
+        # Also protect older stored contexts at read time.
+        stored.applicant_id = draft.id
+        user.role = UserRole.ADMIN
         db.commit()
         item = (await client.get("/feedback")).json()["items"][0]
-        assert item["applicantId"] == applicant_id  # id retained
-        assert item["applicantName"] is None  # but nothing to resolve
+        assert item["applicantId"] is None
+        assert item["applicantName"] is None
+
+
+@pytest.mark.anyio
+async def test_admin_projection_keeps_exact_opening_and_removes_expired_or_purged_links() -> None:
+    app, db, _ = setup_app(UserRole.ADMIN)
+    applicant, opening, analysis = reviewable_context(db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        await client.post("/feedback", json={"body": "x", "applicantId": applicant.id,
+            "openingId": opening.id, "analysisId": analysis.id})
+        item = (await client.get("/feedback")).json()["items"][0]
+        assert (item["applicantId"], item["applicantName"], item["openingId"], item["retainedReview"]) == (
+            applicant.id, "Synthetic Applicant", opening.id, False)
+        applicant.retention_due_on = pacific_today()
+        db.commit()
+        item = (await client.get("/feedback")).json()["items"][0]
+        assert item["applicantId"] is None
+        assert item["applicantName"] is None
+        db.delete(applicant)
+        db.commit()
+        item = (await client.get("/feedback")).json()["items"][0]
+        assert item["applicantId"] is None
+        assert item["body"] == "x"
+
+
+@pytest.mark.anyio
+async def test_contextless_links_use_only_retained_scope_and_members_cannot_forge_it() -> None:
+    app, db, user = setup_app(UserRole.ADMIN)
+    applicant, opening, _ = reviewable_context(db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        # Ordinary undecided records are not retained-review targets.
+        await client.post("/feedback", json={"body": "ordinary", "applicantId": applicant.id})
+        assert db.query(Feedback).one().applicant_id is None
+        applicant.retention_due_on = pacific_today() + timedelta(days=30)
+        db.commit()
+        await client.post("/feedback", json={"body": "retained", "applicantId": applicant.id})
+        item = (await client.get("/feedback")).json()["items"][0]
+        assert item["applicantId"] == applicant.id
+        assert item["retainedReview"] is True
+        assert item["openingId"] is None
+        user.role = UserRole.MEMBER
+        db.commit()
+        await client.post("/feedback", json={"body": "forged", "applicantId": applicant.id,
+            "openingId": opening.id, "retainedReview": True})
+        assert db.query(Feedback).filter_by(body="forged").one().applicant_id is None
+
+
+@pytest.mark.anyio
+async def test_mismatched_and_withdrawn_context_is_discarded_without_losing_feedback() -> None:
+    app, db, _ = setup_app(UserRole.ADMIN)
+    applicant, _opening, analysis = reviewable_context(db)
+    other = Opening(unit_size_bedrooms=1, housing_charge_cents=100000,
+        move_in_date=date(2026, 3, 1), published_at=datetime.now(UTC))
+    db.add(other)
+    db.flush()
+    # Same applicant can be in both scopes, while each analysis still has one owner.
+    db.add(ApplicationParticipation(application_id=applicant.id, opening_id=other.id, applied_at=datetime.now(UTC)))
+    db.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        await client.post("/feedback", json={"body": "wrong analysis", "applicantId": applicant.id,
+            "openingId": other.id, "analysisId": analysis.id})
+        stored = db.query(Feedback).one()
+        assert stored.applicant_id == applicant.id
+        assert stored.opening_id == other.id
+        assert stored.analysis_id is None
+        applicant.withdrawn_at = datetime.now(UTC)
+        db.commit()
+        item = (await client.get("/feedback")).json()["items"][0]
+        assert item["applicantId"] is None
+        assert item["applicantName"] is None
 
 
 @pytest.mark.anyio
@@ -147,12 +221,7 @@ async def test_context_is_optional() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         resp = await client.post("/feedback", json={"body": "General note."})
         assert resp.status_code == 201
-        payload = resp.json()
-        assert payload["route"] is None
-        assert payload["activeTab"] is None
-        assert payload["analysisId"] is None
-        assert payload["applicantId"] is None
-        assert payload["applicantName"] is None
+        assert set(resp.json()) == {"id"}
 
 
 @pytest.mark.anyio
@@ -212,3 +281,19 @@ async def test_resolve_missing_is_404() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         assert (await client.post("/feedback/999/resolve")).status_code == 404
+
+
+def test_feedback_context_migration_preserves_existing_feedback_in_memory():
+    backend = Path(__file__).parents[1]
+    config = Config(str(backend / "alembic.ini"))
+    config.set_main_option("script_location", str(backend / "alembic"))
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "e81c9a53f647")
+        connection.exec_driver_sql("INSERT INTO users (id, email, display_name, role, is_active) VALUES (1, 'synthetic@example.test', 'Synthetic', 'member', 1)")
+        connection.exec_driver_sql("INSERT INTO feedback (user_id, body, app_version, applicant_id) VALUES (1, 'Preserve report', 'test', 7)")
+        command.upgrade(config, "f92d0b64a758")
+        assert connection.exec_driver_sql("SELECT body, applicant_id, opening_id, retained_review FROM feedback").one() == (
+            "Preserve report", 7, None, 0)
+    engine.dispose()

@@ -42,7 +42,7 @@ from app.schemas.applications import (
 )
 from app.schemas.base import RequestModel
 from app.services.applications.locking import lock_application
-from app.services.applications.retention import retention_is_current
+from app.services.applications.retained_review import retained_review_applications_query
 from app.services.applications.scope import (
     opening_ai_applications_query,
     opening_application,
@@ -65,7 +65,6 @@ from app.services.eligibility.status import (
     findings_fingerprint,
 )
 from app.services.openings.catalog import opening_phase
-from app.services.openings.direct_selection import available_previous_applicant
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -189,15 +188,10 @@ def get_retained_application(
     db: Session = Depends(get_db),
 ) -> ApplicationEnvelope:
     """Read a selected or direct-fill-eligible application outside ordinary scope."""
-    application = db.get(Application, application_id)
-    selected = db.scalar(
-        select(ApplicationParticipation.id).where(
-            ApplicationParticipation.application_id == application_id,
-            ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
-        )
+    application = db.scalar(
+        retained_review_applications_query().where(Application.id == application_id)
     )
-    available_for_direct_fill = available_previous_applicant(db, application_id)
-    if application is None or not retention_is_current(application) or (selected is None and available_for_direct_fill is None):
+    if application is None:
         raise Problem("not_found", detail="Retained application not found.")
     context_opening_id = db.scalar(
         select(ApplicationParticipation.opening_id)

@@ -14,7 +14,12 @@ from app.api.dependencies import require_admin, require_current_user
 from app.core.problems import Problem
 from app.db.models import Feedback, User
 from app.db.session import get_db
-from app.schemas.feedback import FeedbackCreate, FeedbackListResponse, FeedbackOut
+from app.schemas.feedback import (
+    FeedbackAcknowledgement,
+    FeedbackCreate,
+    FeedbackListResponse,
+    FeedbackOut,
+)
 from app.services import feedback as feedback_service
 from app.services.auth.authority import require_admin_write
 from app.version import app_version
@@ -22,7 +27,7 @@ from app.version import app_version
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 
-def _to_out(feedback: Feedback, applicant_names: dict[int, str]) -> FeedbackOut:
+def _to_out(feedback: Feedback, applicant_names: dict[int, str | None]) -> FeedbackOut:
     return FeedbackOut(
         id=feedback.id,
         body=feedback.body,
@@ -31,38 +36,37 @@ def _to_out(feedback: Feedback, applicant_names: dict[int, str]) -> FeedbackOut:
         route=feedback.route,
         active_tab=feedback.active_tab,
         analysis_id=feedback.analysis_id,
-        applicant_id=feedback.applicant_id,
-        applicant_name=(
-            applicant_names.get(feedback.applicant_id)
-            if feedback.applicant_id is not None
-            else None
-        ),
+        applicant_id=feedback.applicant_id if feedback.id in applicant_names else None,
+        applicant_name=applicant_names.get(feedback.id),
+        opening_id=feedback.opening_id,
+        retained_review=feedback.retained_review or (feedback.opening_id is None and feedback.id in applicant_names),
         app_version=feedback.app_version,
         created_at=feedback.created_at,
         resolved_at=feedback.resolved_at,
     )
 
 
-@router.post("", response_model=FeedbackOut, status_code=201)
+@router.post("", response_model=FeedbackAcknowledgement, status_code=201)
 def submit_feedback(
     body: FeedbackCreate,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
-) -> FeedbackOut:
+) -> FeedbackAcknowledgement:
     """Record a member's feedback. Identity + app version are stamped here (not trusted
     from the body); route/tab/analysis are the context the client reported."""
     feedback = feedback_service.create_feedback(
         db,
-        user_id=user.id,
+        user=user,
         body=body.body,
         app_version=app_version(),
         route=body.route,
         active_tab=body.active_tab,
         analysis_id=body.analysis_id,
         applicant_id=body.applicant_id,
+        opening_id=body.opening_id,
+        retained_review=body.retained_review,
     )
-    # Eager-load isn't needed: the submitting user is already in the session identity map.
-    return _to_out(feedback, feedback_service.applicant_names_for(db, [feedback]))
+    return FeedbackAcknowledgement(id=feedback.id)
 
 
 @router.get("", response_model=FeedbackListResponse)

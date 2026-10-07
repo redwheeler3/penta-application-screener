@@ -226,6 +226,8 @@ class Feedback(TimestampMixin, Base):
     # id for context even if the applicant is later removed; the admin view resolves the
     # current name on read (blank if gone).
     applicant_id: Mapped[int | None] = mapped_column()
+    opening_id: Mapped[int | None] = mapped_column()
+    retained_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     # The build the feedback came from, stamped server-side (see app.version).
     app_version: Mapped[str] = mapped_column(String(50), nullable=False)
     # Set when an admin marks the item handled; null = still open. Resolved items are
