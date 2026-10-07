@@ -107,18 +107,6 @@ export function ApplicantApp() {
     persistence.pendingEmailChange,
   ]);
 
-  useEffect(() => {
-    if (!persistence.pendingEmailChange) return;
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void persistence.refreshEmailIdentity();
-    };
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
-    // The pending-change flag owns this subscription. The persistence facade is
-    // render-local and would otherwise replace the listener on every state change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistence.pendingEmailChange, persistence.refreshEmailIdentity]);
-
   function update(updater: DraftUpdater): void {
     setReviewing(false);
     setDeclarationAccepted(false);

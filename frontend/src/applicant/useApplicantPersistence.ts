@@ -16,6 +16,7 @@ import {
   responseProblem,
   validBrowserOpeningIds,
   workingSnapshot,
+  updateSnapshotEmail,
 } from "./applicantPersistence";
 import { createApplicantEmailFlow } from "./applicantEmailFlow";
 import { createApplicantSaveFlow } from "./applicantSaveFlow";
@@ -33,6 +34,8 @@ import {
 } from "./api";
 import {
   clearApplicationDraft,
+  captureApplicantStorage,
+  BROWSER_STORAGE_CLEAR_MESSAGE,
   hasAnswersBeyondEmail,
   loadApplicationDraft,
   remembersDevice,
@@ -49,6 +52,7 @@ export function useApplicantPersistence(
   const applicationReads = useRequestScope();
   const pendingCopyReads = useRequestScope();
   const sessionWork = useRequestScope();
+  const pendingMutation = useRef<RequestIsCurrent | null>(null);
   const linkStarted = useRef(false);
   const inspectedApplicationId = useRef<number | null>(null);
   const [persistence, updatePersistence] = useReducer(
@@ -268,8 +272,10 @@ export function useApplicantPersistence(
     }
   }
 
-  async function restoreApplication(knownId?: number): Promise<void> {
+  async function restoreApplication(knownId?: number, copy: "remembered" | "saved" = "remembered",
+    storage = captureApplicantStorage()): Promise<void> {
     const isCurrent = applicationReads.begin();
+    const storedCopy = copy === "saved" ? storage : null;
     const expectedId = knownId ?? stateRef.current.applicationId;
     const read = expectedId == null ? applicantApi.fetchApplication
       : applicantApi.createApi(identityClient({ kind: "applicant", id: expectedId })).fetchApplication;
@@ -286,16 +292,22 @@ export function useApplicantPersistence(
     }
     if (!response.ok) return fail(response);
     const body = (await response.json()) as ApplicationResponse;
+    if (!isCurrent()) return;
     if (expectedId != null && body.applicationId !== expectedId) {
       updatePersistence({ message: "Your session changed. Your answers have not been replaced.", phase: "session_expired" });
       return;
     }
-    if (!isCurrent()) return;
+    if (storedCopy !== null) await acceptChosenApplication(body, storedCopy, isCurrent);
+    else applyApplicationCopy(body, copy);
+    if (copy === "remembered") await restorePendingCopy(body.applicationId);
+  }
+
+  function applyApplicationCopy(body: ApplicationResponse, copy: "remembered" | "saved") {
     const serverOpeningIds = defaultOpeningIds(body.openings);
     let restoredOpeningIds = serverOpeningIds;
     let snapshot: string | null = null;
     if (body.answers) {
-      const stored = remembersDevice() ? loadApplicationDraft(body.applicationId) : null;
+      const stored = copy === "remembered" && remembersDevice() ? loadApplicationDraft(body.applicationId) : null;
       const serverDraft = draftFromWorking(body.answers);
       const storedMatchesServer = stored?.baseRevision === body.workingRevision;
       const restored = storedMatchesServer && hasAnswersBeyondEmail(stored.draft)
@@ -319,28 +331,46 @@ export function useApplicantPersistence(
       openingIds: restoredOpeningIds,
       savedAnswers: snapshot,
       phase: "idle",
+      ...(copy === "saved" ? { pendingCopy: null } : {}),
     });
-    await restorePendingCopy(body.applicationId);
   }
 
-  async function restorePendingCopy(acceptedApplicationId = applicationId): Promise<void> {
-    if (acceptedApplicationId === null) return;
+  async function acceptChosenApplication(
+    body: ApplicationResponse, storage: ReturnType<typeof captureApplicantStorage>, isCurrent: RequestIsCurrent,
+  ) {
+    if (!(await clearApplicationDraft(body.applicationId, storage)) && isCurrent()) {
+      updatePersistence({ browserStorageMessage: BROWSER_STORAGE_CLEAR_MESSAGE });
+    }
+    if (isCurrent()) applyApplicationCopy(body, "saved");
+  }
+
+  async function restorePendingCopy(acceptedApplicationId = applicationId, onResolved?: () => Promise<void>): Promise<boolean> {
+    if (acceptedApplicationId === null) return false;
     const isCurrent = pendingCopyReads.begin();
     const restoredApi = applicantApi.createApi(identityClient({ kind: "applicant", id: acceptedApplicationId }));
     const response = await restoredApi.fetchPendingCopy().catch(() => null);
-    if (!isCurrent()) return;
+    if (!isCurrent()) return false;
     if (response === null) {
       updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
-      return;
+      return false;
     }
-    if (!response.ok) return;
+    if (!response.ok) {
+      if (response.status === 401) markSessionChanged();
+      else await fail(response);
+      return false;
+    }
     const body = (await response.json().catch(() => null)) as { pendingCopy: PendingCopy | null } | null;
-    if (!isCurrent()) return;
+    if (!isCurrent()) return false;
     if (body === null) {
       updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
-      return;
+      return false;
+    }
+    if (body.pendingCopy === null && onResolved) {
+      await onResolved();
+      return false;
     }
     updatePersistence({ pendingCopy: body.pendingCopy });
+    return body.pendingCopy !== null;
   }
 
   async function restorePublicOpenings(preserveSelection = false): Promise<void> {
@@ -400,6 +430,7 @@ export function useApplicantPersistence(
 
   async function reconcilePendingCopy(choice: "saved" | "guest"): Promise<void> {
     if (!pendingCopy) return;
+    const storage = captureApplicantStorage();
     const inSession = sessionWork.capture();
     try {
       updatePersistence({ phase: "working" });
@@ -410,20 +441,22 @@ export function useApplicantPersistence(
         if (problem.code === "session_changed") { markSessionChanged(); return; }
         if (!inSession()) return;
         if (problem.code === "stale_application" || problem.code === "pending_copy_changed") {
-          await restorePendingCopy();
-          if (inSession()) updatePersistence({ message: problem.detail, phase: "error" });
+          const needsChoice = await restorePendingCopy(applicationId,
+            () => restoreApplication(applicationId ?? undefined, "saved", storage));
+          if (needsChoice && inSession()) updatePersistence({ message: problem.detail, phase: "error" });
           return;
         }
         if (problem.code === "pending_copy_not_found") {
-          updatePersistence({ pendingCopy: null, phase: "idle" });
-          await restoreApplication(applicationId ?? undefined);
+          await restoreApplication(applicationId ?? undefined, "saved", storage);
           return;
         }
         updatePersistence({ message: problem.detail, phase: "error" });
         return;
       }
-      updatePersistence({ pendingCopy: null });
-      await restoreApplication(applicationId ?? undefined);
+      const body = await response.json() as ApplicationResponse;
+      if (!inSession()) return;
+      if (body.applicationId !== applicationId) { markSessionChanged(); return; }
+      await acceptChosenApplication(body, storage, inSession);
     } catch {
       if (inSession()) updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
     }
@@ -527,11 +560,11 @@ export function useApplicantPersistence(
     if (!inSession()) return;
     if (problem.code === "session_changed") { markSessionChanged(); return; }
     const { applicationId } = stateRef.current;
-    if (["applications_closed", "opening_archived", "opening_selection_required"].includes(
+    if (["applications_closed", "applications_locked", "opening_archived", "opening_selection_required"].includes(
       problem.code ?? "",
     )) {
       if (applicationId != null) {
-        if (!(await refreshLifecycleState())) {
+        if (!(await refreshLifecycleState(true))) {
           if (inSession()) updatePersistence((state) => (
             state.phase === "stale_copy" || state.phase === "session_expired"
               ? {} : { message: problem.detail, phase: "error" }
@@ -545,7 +578,8 @@ export function useApplicantPersistence(
       phase: problem.code === "stale_application" ? "stale_copy" : "error" });
   }
 
-  async function refreshLifecycleState(): Promise<boolean> {
+  async function refreshLifecycleState(duringMutation = false): Promise<boolean> {
+    if (!duringMutation && pendingMutation.current?.()) return false;
     const isCurrent = applicationReads.begin();
     const expectedId = stateRef.current.applicationId;
     if (expectedId == null) return false;
@@ -570,18 +604,42 @@ export function useApplicantPersistence(
     const currentRevision = stateRef.current.workingRevision;
     updatePersistence((state) => {
       const stale = state.workingRevision !== null && state.workingRevision !== body.workingRevision;
+      const emailChanged = state.primaryEmail !== null && body.primaryEmail !== state.primaryEmail;
       return {
+        primaryEmail: body.primaryEmail,
+        googleSignInLinked: body.googleSignInLinked,
+        pendingEmailChange: body.pendingEmailChange,
+        ...(emailChanged ? { emailChangeMessage: "", emailChangeStatus: "confirmed" as const,
+          googleDisconnectedByEmailChange: state.googleSignInLinked } : {}),
         openings: body.openings,
         openingIds: validBrowserOpeningIds(state.openingIds, body.openings),
         canEdit: body.canEdit,
         ...(stale ? {
           message: "This application changed in another tab or browser.", phase: "stale_copy",
         } : { workingRevision: body.workingRevision,
+          savedAnswers: updateSnapshotEmail(state.savedAnswers, body.primaryEmail),
           ...(state.phase === "session_expired" ? { phase: "idle" as const, message: "" } : {}),
         }),
       };
     });
+    setDraft((current) => current.applicant.email === body.primaryEmail ? current
+      : { ...current, applicant: { ...current.applicant, email: body.primaryEmail } });
     return currentRevision === null || body.workingRevision === currentRevision;
+  }
+
+  async function runMutation<Result>(operation: () => Promise<Result>, fallback: Result): Promise<Result> {
+    const owner = sessionWork.capture();
+    if (!owner() || pendingMutation.current?.()) return fallback;
+    pendingMutation.current = owner;
+    invalidateApplicationReads();
+    try {
+      return await operation();
+    } finally {
+      if (pendingMutation.current === owner) {
+        pendingMutation.current = null;
+        invalidateApplicationReads();
+      }
+    }
   }
 
   function invalidateApplicationReads(): void {
@@ -590,6 +648,7 @@ export function useApplicantPersistence(
   }
 
   function endSessionWork(): void {
+    pendingMutation.current = null;
     sessionWork.reset();
     invalidateApplicationReads();
   }
@@ -602,13 +661,13 @@ export function useApplicantPersistence(
     captureSession: sessionWork.capture,
     updatePersistence,
     fail,
+    runMutation,
   });
   const emailFlow = createApplicantEmailFlow({
     api,
-    beginApplicationRead: applicationReads.begin,
+    runMutation,
     captureSession: sessionWork.capture,
     updatePersistence,
-    setDraft,
   });
   const withdrawalFlow = createApplicantWithdrawalFlow({
     api,
@@ -633,7 +692,7 @@ export function useApplicantPersistence(
     clearReviewAfterAccess: () => updatePersistence({ reviewAfterAccess: false }),
     clearActionFeedback,
     returnToApplication,
-    reconcilePendingCopy,
+    reconcilePendingCopy: (choice: "saved" | "guest") => runMutation(() => reconcilePendingCopy(choice), undefined),
     openLinkedApplication,
     openReadyApplication,
     keepCurrentApplication,
@@ -666,6 +725,6 @@ export function useApplicantPersistence(
     withdrawalStatus,
     withdrawalMessage,
     workingRevision,
-    busy: phase === "working",
+    busy: phase === "working" || emailChangeStatus === "sending",
   };
 }

@@ -21,7 +21,7 @@ it.each(["during submission", "before submission"])("preserves another tab's rem
   const acknowledgement = deferred<Response>();
   const api = { submitApplication: vi.fn().mockReturnValue(acknowledgement.promise) } as unknown as ReturnType<typeof applicantApi.createApi>;
   const flow = createApplicantSaveFlow({ api, stateRef, draftRef: { current: submitted }, invalidateReads: vi.fn(),
-    captureSession: () => () => true, fail: vi.fn(), updatePersistence: (patch) => {
+    runMutation: (operation) => operation(), captureSession: () => () => true, fail: vi.fn(), updatePersistence: (patch) => {
       stateRef.current = { ...stateRef.current, ...(typeof patch === "function" ? patch(stateRef.current) : patch) };
     } });
   const saving = flow.start("submit");

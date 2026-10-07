@@ -88,13 +88,13 @@ def get_pending_copy(
     return PendingCopyResponse(pending_copy=pending_copy(application, draft))
 
 
-@router.post("/application/pending-copy", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/application/pending-copy", response_model=ApplicantApplicationResponse)
 def reconcile_pending_copy(
     body: ReconcilePendingCopyRequest,
     request: Request,
     application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
-) -> Response:
+) -> ApplicantApplicationResponse:
     lock_application_revision(db, application, body.base_revision)
     session: BrowserSession = request.state.passwordless_session
     draft = session.reconciliation_draft
@@ -123,8 +123,9 @@ def reconcile_pending_copy(
         )
     draft.resolved_at = datetime.now(UTC)
     session.reconciliation_draft_id = None
+    acknowledged = get_applicant_application(application, db)
     db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return acknowledged
 
 @router.get("/application", response_model=ApplicantApplicationResponse)
 def get_applicant_application(

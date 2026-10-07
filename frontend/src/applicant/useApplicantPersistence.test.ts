@@ -1,5 +1,5 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { useState } from "react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { createElement, useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { deferred } from "../testSupport";
@@ -8,6 +8,9 @@ import { publicClient } from "../api/client";
 import type { ApplicationResponse } from "./applicantPersistence";
 import { emptyApplicantDraft, workingAnswers } from "./applicationDraft";
 import { useApplicantPersistence } from "./useApplicantPersistence";
+import { ApplicantApp } from "./ApplicantApp";
+import { loadApplicationDraft, saveApplicationDraft, setRememberDevice } from "./draftStorage";
+vi.mock("../hooks/useEmailDeliveryStatus", () => ({ useEmailDeliveryStatus: () => false }));
 
 vi.mock("./api", async (original) => {
   const actual = await original<typeof import("./api")>();
@@ -131,7 +134,7 @@ it("does not acknowledge edits made while requesting a return access link", asyn
   expect(result.current.persistence.hasUnsavedChanges).toBe(true);
   expect(result.current.persistence.workingRevision).toBe(2);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it.each(["signOut", "withdrawApplication"] as const)("finishes confirmed %s when browser cleanup fails and reports the remaining copy", async (action) => {
   vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
@@ -246,10 +249,9 @@ it("ignores an identity response captured before this browser's own save", async
   const { result } = renderPersistence();
   await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
   vi.mocked(api.fetchApplication).mockReturnValueOnce(identity.promise);
-  let refresh!: Promise<void>;
-  act(() => { refresh = result.current.persistence.refreshEmailIdentity(); });
+  act(() => { window.dispatchEvent(new Event("focus")); });
   await act(() => result.current.persistence.start("save"));
-  await act(async () => { identity.resolve(Response.json(application(1))); await refresh; });
+  await act(async () => { identity.resolve(Response.json(application(1))); });
   expect(result.current.persistence.workingRevision).toBe(2);
   expect(result.current.persistence.phase).toBe("saved");
 });
@@ -260,11 +262,10 @@ it("does not restore email identity after sign-out clears the session", async ()
   const { result } = renderPersistence();
   await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
   vi.mocked(api.fetchApplication).mockReturnValueOnce(identity.promise);
-  let refresh!: Promise<void>;
-  act(() => { refresh = result.current.persistence.refreshEmailIdentity(); });
+  act(() => { window.dispatchEvent(new Event("focus")); });
   await act(() => result.current.persistence.signOut());
   act(() => result.current.setDraft(emptyApplicantDraft()));
-  await act(async () => { identity.resolve(Response.json(application())); await refresh; });
+  await act(async () => { identity.resolve(Response.json(application())); });
   expect(result.current.persistence.primaryEmail).toBeNull();
   expect(result.current.persistence.workingRevision).toBeNull();
   expect(result.current.draft.applicant.email).toBe("");
@@ -279,10 +280,9 @@ it("invalidates identity reads started while a save was in flight", async () => 
   let saving!: Promise<void>;
   act(() => { saving = result.current.persistence.start("save"); });
   vi.mocked(api.fetchApplication).mockReturnValueOnce(identity.promise);
-  let refresh!: Promise<void>;
-  act(() => { refresh = result.current.persistence.refreshEmailIdentity(); });
+  act(() => { window.dispatchEvent(new Event("focus")); });
   await act(async () => { saved.resolve(Response.json(application(2))); await saving; });
-  await act(async () => { identity.resolve(Response.json(application(1))); await refresh; });
+  await act(async () => { identity.resolve(Response.json(application(1))); });
   expect(result.current.persistence.workingRevision).toBe(2);
   expect(result.current.persistence.phase).toBe("saved");
 });
@@ -299,7 +299,7 @@ it("email confirmation updates identity without acknowledging unsaved essay edit
   vi.mocked(api.fetchApplication).mockResolvedValueOnce(Response.json({
     ...application(), primaryEmail: "changed@example.com", googleSignInLinked: false,
   }));
-  await act(() => result.current.persistence.refreshEmailIdentity());
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
   expect(result.current.draft.applicant.email).toBe("changed@example.com");
   expect(result.current.draft.essays.whyCoop).toBe("Unsaved synthetic edit");
   expect(result.current.persistence.hasUnsavedChanges).toBe(true);
@@ -535,4 +535,167 @@ it("resumes the original application after reauthentication without replacing it
   expect(result.current.persistence.phase).toBe("idle");
   expect(result.current.draft.pets).toBe("Keep this unsaved answer");
   expect(result.current.persistence.hasUnsavedChanges).toBe(true);
+});
+
+
+it("admits one submit across rerenders and preserves its successful acknowledgement", async () => {
+  const reply = deferred<Response>();
+  vi.mocked(api.submitApplication).mockReturnValue(reply.promise);
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  let submitted!: Promise<void>;
+  act(() => { submitted = result.current.persistence.start("submit"); });
+  act(() => result.current.setDraft((d) => ({ ...d, pets: "Newer draft" })));
+  await act(() => result.current.persistence.start("submit"));
+  expect(api.submitApplication).toHaveBeenCalledOnce();
+  await act(async () => { reply.resolve(Response.json({ ...application(2), submitted: true })); await submitted; });
+  expect(result.current.persistence.phase).toBe("submitted");
+  expect(result.current.draft.pets).toBe("Newer draft");
+});
+
+it("obsolete mutation cleanup cannot invalidate a new session's restore", async () => {
+  const saveReply = deferred<Response>();
+  const restoreReply = deferred<Response>();
+  vi.mocked(api.saveApplication).mockReturnValueOnce(saveReply.promise);
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  let saving!: Promise<void>;
+  act(() => { saving = result.current.persistence.start("save"); });
+  act(() => window.dispatchEvent(new CustomEvent("penta-session-changed", {
+    detail: { kind: "applicant", reason: "mismatch" },
+  })));
+  vi.mocked(api.fetchApplication).mockReturnValueOnce(restoreReply.promise);
+  let restoring!: Promise<void>;
+  act(() => { restoring = result.current.persistence.reloadLatestApplication(); });
+  await act(async () => { saveReply.resolve(Response.json(application(2))); await saving; });
+  await act(async () => { restoreReply.resolve(Response.json(application(3))); await restoring; });
+  expect(result.current.persistence.workingRevision).toBe(3);
+  expect(result.current.persistence.phase).toBe("idle");
+});
+
+it.each(["saved", "guest"] as const)("adopts the acknowledged %s copy instead of a third remembered draft", async (choice) => {
+  vi.stubGlobal("navigator", { locks: { request: async (_key: string, work: () => unknown) => work() } });
+  const consent = (await setRememberDevice(true))!;
+  const saved = { ...initialDraft(), pets: "Saved cat" };
+  const guest = { ...initialDraft(), pets: "Guest bird" };
+  const third = { ...initialDraft(), pets: "Third local dog" };
+  await saveApplicationDraft(1, third, [], 1, consent);
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({ ...application(), answers: workingAnswers(saved) }));
+  const comparison = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
+    savedAnswers: workingAnswers(saved), guestAnswers: workingAnswers(guest), savedOpeningIds: [], guestOpeningIds: [] };
+  vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: comparison }));
+  const reply = deferred<Response>();
+  vi.mocked(api.reconcilePendingCopy).mockReturnValue(reply.promise);
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.pendingCopy).not.toBeNull());
+  expect(result.current.draft.pets).toBe(third.pets);
+  let choosing!: Promise<void>;
+  act(() => { choosing = result.current.persistence.reconcilePendingCopy(choice); });
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  const accepted = { ...application(choice === "guest" ? 2 : 1), answers: workingAnswers(choice === "guest" ? guest : saved) };
+  await act(async () => { reply.resolve(Response.json(accepted)); await choosing; });
+  expect(api.fetchApplication).toHaveBeenCalledOnce();
+  expect(result.current.persistence.pendingCopy).toBeNull();
+  expect(result.current.draft.pets).toBe(choice === "guest" ? guest.pets : saved.pets);
+  expect(loadApplicationDraft(1)).toBeNull();
+});
+
+it.each(["saved", "guest"] as const)("keeps the comparison blocked when accepted %s choice cannot yet be recovered", async (choice) => {
+  const accepted = { ...application(choice === "guest" ? 2 : 1),
+    answers: workingAnswers({ ...initialDraft(), pets: choice === "guest" ? "Guest bird" : "Saved cat" }) };
+  const comparison = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
+    savedAnswers: workingAnswers(initialDraft()), guestAnswers: workingAnswers(initialDraft()),
+    savedOpeningIds: [], guestOpeningIds: [] };
+  vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: comparison }));
+  vi.mocked(api.reconcilePendingCopy).mockResolvedValueOnce(new Response("broken JSON", { status: 200 }))
+    .mockImplementation(async () => Response.json({ code: choice === "guest" ? "stale_application" : "pending_copy_not_found" }, { status: 409 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.pendingCopy).not.toBeNull());
+  act(() => result.current.setDraft((d) => ({ ...d, pets: "Unchosen local draft" })));
+  await act(() => result.current.persistence.reconcilePendingCopy(choice));
+  expect(result.current.persistence.pendingCopy).not.toBeNull();
+  vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: null }));
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json(accepted));
+  vi.mocked(api.fetchApplication).mockRejectedValueOnce(new Error("Synthetic restore failure"));
+  await act(() => result.current.persistence.reconcilePendingCopy(choice));
+  expect(result.current.persistence.pendingCopy).not.toBeNull();
+  expect(result.current.persistence.phase).toBe("error");
+  await act(() => result.current.persistence.reconcilePendingCopy(choice));
+  expect(result.current.persistence.pendingCopy).toBeNull();
+  expect(result.current.draft.pets).toBe(choice === "guest" ? "Guest bird" : "Saved cat");
+  expect(result.current.persistence.workingRevision).toBe(choice === "guest" ? 2 : 1);
+});
+
+it.each(["begin", "cancel"])("lifecycle responses cannot undo an email %s acknowledgement", async (action) => {
+  const oldRead = deferred<Response>();
+  vi.mocked(api.requestEmailChange).mockResolvedValue(Response.json({ pendingEmail: "new@example.com", emailSent: true, emailStatus: "sent" }));
+  vi.mocked(api.cancelEmailChange).mockResolvedValue(new Response(null, { status: 204 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  vi.mocked(api.fetchApplication).mockReturnValueOnce(oldRead.promise);
+  act(() => window.dispatchEvent(new Event("focus")));
+  await act(async () => { await (action === "begin" ? result.current.persistence.beginEmailChange("new@example.com") : result.current.persistence.stopEmailChange()); });
+  await act(async () => oldRead.resolve(Response.json({ ...application(), pendingEmailChange: action === "begin" ? null : "cancelled@example.com" })));
+  expect(result.current.persistence.pendingEmailChange).toBe(action === "begin" ? "new@example.com" : null);
+});
+
+it("pending-email visibility refresh reads once and applies lifecycle permissions in the actual form", async () => {
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({ ...application(), pendingEmailChange: "new@example.com" }));
+  render(createElement(ApplicantApp));
+  await screen.findByRole("button", { name: "Save and review" });
+  vi.mocked(api.fetchApplication).mockClear();
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({ ...application(), pendingEmailChange: "new@example.com", canEdit: false }));
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Save and review" })).toBeNull());
+  expect(api.fetchApplication).toHaveBeenCalledOnce();
+});
+
+it("a locked save refreshes permission and preserves unsaved answers", async () => {
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  act(() => result.current.setDraft((d) => ({ ...d, pets: "Keep unsaved" })));
+  vi.mocked(api.saveApplication).mockResolvedValue(Response.json({ code: "applications_locked", detail: "Editing closed." }, { status: 409 }));
+  vi.mocked(api.fetchApplication).mockResolvedValue(Response.json({ ...application(), canEdit: false }));
+  await act(() => result.current.persistence.start("save"));
+  expect(result.current.persistence.canEdit).toBe(false);
+  expect(result.current.draft.pets).toBe("Keep unsaved");
+  expect(result.current.persistence.busy).toBe(false);
+});
+
+
+it("reconciliation recovery cannot clear a browser copy written during the request", async () => {
+  vi.stubGlobal("navigator", { locks: { request: async (_key: string, work: () => unknown) => work() } });
+  const consent = (await setRememberDevice(true))!;
+  await saveApplicationDraft(1, { ...initialDraft(), pets: "Original local" }, [], 1, consent);
+  const comparison = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
+    savedAnswers: workingAnswers(initialDraft()), guestAnswers: workingAnswers(initialDraft()),
+    savedOpeningIds: [], guestOpeningIds: [] };
+  vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: comparison }));
+  const reply = deferred<Response>();
+  vi.mocked(api.reconcilePendingCopy).mockReturnValueOnce(reply.promise);
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.pendingCopy).not.toBeNull());
+  let choosing!: Promise<void>;
+  act(() => { choosing = result.current.persistence.reconcilePendingCopy("saved"); });
+  await saveApplicationDraft(1, { ...initialDraft(), pets: "Newer other-tab copy" }, [], 1, consent);
+  await act(async () => { reply.resolve(Response.json({ code: "pending_copy_not_found" }, { status: 404 })); await choosing; });
+  expect(result.current.persistence.pendingCopy).toBeNull();
+  expect(result.current.draft.pets).toBe("");
+  expect(loadApplicationDraft(1)?.draft.pets).toBe("Newer other-tab copy");
+});
+
+
+it.each([403, 500])("failed comparison recovery HTTP %s remains retryable", async (status) => {
+  const comparison = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
+    savedAnswers: workingAnswers(initialDraft()), guestAnswers: workingAnswers(initialDraft()),
+    savedOpeningIds: [], guestOpeningIds: [] };
+  vi.mocked(api.fetchPendingCopy).mockResolvedValueOnce(Response.json({ pendingCopy: comparison }));
+  vi.mocked(api.reconcilePendingCopy).mockResolvedValue(Response.json({ code: "stale_application" }, { status: 409 }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.pendingCopy).not.toBeNull());
+  vi.mocked(api.fetchPendingCopy).mockResolvedValueOnce(Response.json({ detail: "Synthetic lookup failure" }, { status }));
+  await act(() => result.current.persistence.reconcilePendingCopy("guest"));
+  expect(result.current.persistence.pendingCopy).not.toBeNull();
+  expect(result.current.persistence.phase).toBe("error");
+  expect(result.current.persistence.busy).toBe(false);
 });

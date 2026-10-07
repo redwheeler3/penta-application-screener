@@ -32,12 +32,13 @@ type SaveFlowDependencies = {
   captureSession: () => RequestIsCurrent;
   updatePersistence: UpdateApplicantPersistence;
   fail: (response: Response) => Promise<void>;
+  runMutation: <Result>(operation: () => Promise<Result>, fallback: Result) => Promise<Result>;
 };
 
 /** Saving, review preparation, and submission share one snapshot acknowledgement rule. */
 export function createApplicantSaveFlow({
   api,
-  stateRef, draftRef, updatePersistence: dispatch, invalidateReads, captureSession, fail,
+  stateRef, draftRef, updatePersistence: dispatch, invalidateReads, captureSession, fail, runMutation,
 }: SaveFlowDependencies) {
   const { checkGuestSubmission, requestReturnAccessLink, saveApplication, savePendingDraft, submitApplication, submitGuestApplication } = api;
   const inSession = captureSession();
@@ -248,15 +249,16 @@ export function createApplicantSaveFlow({
     await start(stateRef.current.lastIntent);
   }
 
-  async function recoverSave<Result>(operation: () => Promise<Result>, fallback: Result): Promise<Result> {
-    try {
-      return await operation();
-    } catch {
-      // A lost response does not prove the server rejected the write. Keep the
-      // draft and its last acknowledged revision, allowing a safe retry or reload.
-      updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
-      return fallback;
-    }
+  function recoverSave<Result>(operation: () => Promise<Result>, fallback: Result): Promise<Result> {
+    return runMutation(async () => {
+      try {
+        return await operation();
+      } catch {
+        // A lost response does not prove rejection; retain the draft and acknowledged revision.
+        updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
+        return fallback;
+      }
+    }, fallback);
   }
 
   return {

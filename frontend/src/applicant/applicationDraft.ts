@@ -160,7 +160,7 @@ export function canonicalAnswers(
 }
 
 export function workingAnswers(draft: ApplicantDraft): WorkingApplicationAnswers {
-  const currentRenter = draft.ownsCurrentHome === "no";
+  const currentRenter = draft.ownsCurrentHome !== "yes";
   return {
     ...canonicalAnswers(draft),
     ownsCurrentHome: yesNoValue(draft.ownsCurrentHome),
@@ -174,10 +174,7 @@ export function workingAnswers(draft: ApplicantDraft): WorkingApplicationAnswers
       ? optionalNumberValue(draft.coApplicantIncome)
       : null,
     currentLandlord: currentRenter ? draft.currentLandlord : null,
-    previousLandlord:
-      currentRenter && draft.previousResidences.length > 0
-        ? draft.previousLandlord
-        : null,
+    previousLandlord: currentRenter ? draft.previousLandlord : null,
   };
 }
 
@@ -238,7 +235,7 @@ function workingEmployment(employment: EmploymentDraft): WorkingEmployment {
     jobTitle: employment.jobTitle,
     companyName: employment.companyName,
     startDate: employment.startDate,
-    manager: employment.status === "employed" ? employment.manager : null,
+    manager: employment.status === "employed" || !employment.status ? employment.manager : null,
   };
 }
 

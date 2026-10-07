@@ -150,7 +150,7 @@ export function ApplicationReview(props: {
           <button
             className="applicant-primary-button"
             type="button"
-            disabled={!props.declarationAccepted}
+            disabled={!props.declarationAccepted || props.persistencePhase === "working"}
             onClick={props.onSubmit}
           >
             Submit application

@@ -121,3 +121,20 @@ def test_sender_configuration_failure_does_not_block_purge_or_failure_receipt(mo
     attempt = db.scalar(select(DailyMaintenanceRun))
     assert attempt.status == 'failed'
     assert attempt.last_error_code == 'EmailConfigurationError'
+
+
+def test_shortening_last_fallback_opening_keeps_a_finite_private_deadline():
+    from app.schemas.openings import OpeningUpdate
+    from app.services.openings.catalog import update_opening
+
+    db = memory_session()
+    op = opening(db, 10)
+    app = create_application(db, 'avery@example.com', WorkingApplicationAnswers.model_validate(sample_answers()),
+        saved_at=datetime.now(UTC), opening_ids=[])
+    db.commit()
+    original = {'unitSizeBedrooms': op.unit_size_bedrooms, 'housingChargeCents': op.housing_charge_cents,
+        'applicationOpenDate': op.application_open_date, 'applicationCloseDate': op.application_close_date,
+        'moveInDate': op.move_in_date}
+    close = pacific_today()-timedelta(days=1)
+    update_opening(db, op, OpeningUpdate(original=original, changes={**original, 'applicationCloseDate': close}))
+    assert app.retention_due_on == close+timedelta(days=1)

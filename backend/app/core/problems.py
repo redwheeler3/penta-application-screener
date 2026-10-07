@@ -32,6 +32,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "stale_application": (409, "Application changed elsewhere"),
     "stale_opening": (409, "Opening changed elsewhere"),
     "declaration_required": (422, "Declaration acceptance required"),
+    "applications_locked": (409, "Application editing is unavailable"),
     "applications_closed": (409, "Applications are closed"),
     "opening_selection_required": (409, "Choose an opening"),
     "opening_required": (409, "Choose an opening"),

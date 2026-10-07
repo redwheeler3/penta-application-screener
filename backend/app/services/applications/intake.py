@@ -24,7 +24,10 @@ from app.schemas.applicant.answers import (
 )
 from app.services.applications.purge import purge_expired_application
 from app.services.applications.retention import draft_expiry_for_opening_ids
-from app.services.openings.participation import apply_opening_selection
+from app.services.openings.participation import (
+    applicant_opening_states,
+    apply_opening_selection,
+)
 
 
 def stored_answers(answers: BaseModel) -> dict[str, Any]:
@@ -105,7 +108,10 @@ def publish_working_copy(
     submitted_at: datetime,
 ) -> None:
     """Atomically replace the committee projection and selected opening participation."""
-    validate_residence_history(answers, openings)
+    # Archived choices remain immutable history, but do not add hidden form requirements.
+    visible_openings = [state.opening for state in applicant_opening_states(db, application, today=pacific_today(now=submitted_at))
+                        if state.can_select]
+    validate_residence_history(answers, visible_openings)
     selected_opening_ids = [opening.id for opening in openings]
     save_working_copy(
         db,
@@ -154,7 +160,7 @@ def validate_residence_history(
     answers: CanonicalApplicationAnswers,
     openings: list[Opening],
 ) -> None:
-    """Require addresses back through two years before the earliest selected close date."""
+    """Require addresses back through two years before the earliest visible close date."""
     if not openings:
         return
     cutoff = two_years_before(min(opening.application_close_date for opening in openings))

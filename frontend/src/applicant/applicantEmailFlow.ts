@@ -1,41 +1,32 @@
-import type { Dispatch, SetStateAction } from "react";
 import type { RequestIsCurrent } from "../hooks/useRequestScope";
 
 import { TECH_SUPPORT_ERROR_MESSAGE } from "../support";
 import {
   APPLICANT_ACTION_ERROR_MESSAGE,
-  type ApplicationResponse,
   type EmailSendStatus,
   responseDetail,
   responseProblem,
-  updateSnapshotEmail,
 } from "./applicantPersistence";
 import type { UpdateApplicantPersistence } from "./applicantPersistenceState";
 import type * as applicantApi from "./api";
-import type { ApplicantDraft } from "./types";
 
 type EmailFlowDependencies = {
   api: ReturnType<typeof applicantApi.createApi>;
-  beginApplicationRead: () => RequestIsCurrent;
+  runMutation: <Result>(operation: () => Promise<Result>, fallback: Result) => Promise<Result>;
   captureSession: () => RequestIsCurrent;
   updatePersistence: UpdateApplicantPersistence;
-  setDraft: Dispatch<SetStateAction<ApplicantDraft>>;
 };
 
 export function createApplicantEmailFlow({
   api,
-  beginApplicationRead,
+  runMutation,
   captureSession,
   updatePersistence: dispatch,
-  setDraft: dispatchDraft,
 }: EmailFlowDependencies) {
-  const { cancelEmailChange, fetchApplication, requestEmailChange } = api;
+  const { cancelEmailChange, requestEmailChange } = api;
   const inSession = captureSession();
   const updatePersistence: UpdateApplicantPersistence = (patch) => {
     if (inSession()) dispatch(patch);
-  };
-  const setDraft: Dispatch<SetStateAction<ApplicantDraft>> = (patch) => {
-    if (inSession()) dispatchDraft(patch);
   };
   async function beginEmailChange(newEmail: string): Promise<void> {
     if (!inSession()) return;
@@ -75,6 +66,7 @@ export function createApplicantEmailFlow({
 
   async function stopEmailChange(): Promise<boolean> {
     if (!inSession()) return false;
+    updatePersistence({ emailChangeStatus: "sending" });
     const response = await cancelEmailChange();
     if (!inSession()) return false;
     if (!response.ok) {
@@ -85,68 +77,20 @@ export function createApplicantEmailFlow({
     return true;
   }
 
-  async function refreshEmailIdentity(): Promise<void> {
-    if (!inSession()) return;
-    const isCurrent = beginApplicationRead();
-    const response = await fetchApplication().catch(() => null);
-    if (!isCurrent()) return;
-    if (response === null) {
-      updatePersistence({ emailChangeMessage: APPLICANT_ACTION_ERROR_MESSAGE, emailChangeStatus: "error" });
-      return;
-    }
-    if (response.status === 401) {
-      updatePersistence({
-        emailChangeMessage: "This session has ended. Continue in the tab where you confirmed the new address.",
-        emailChangeStatus: "error",
-      });
-      return;
-    }
-    if (!response.ok) return;
-    const body = (await response.json().catch(() => null)) as ApplicationResponse | null;
-    if (!isCurrent()) return;
-    if (body === null) {
-      updatePersistence({ emailChangeMessage: APPLICANT_ACTION_ERROR_MESSAGE, emailChangeStatus: "error" });
-      return;
-    }
-    updatePersistence((state) => {
-      const emailChanged = state.primaryEmail !== null && body.primaryEmail !== state.primaryEmail;
-      const stale = state.workingRevision !== null && body.workingRevision !== state.workingRevision;
-      return {
-        primaryEmail: body.primaryEmail,
-        googleSignInLinked: body.googleSignInLinked,
-        pendingEmailChange: body.pendingEmailChange,
-        ...(emailChanged ? {
-          emailChangeMessage: "",
-          emailChangeStatus: "confirmed",
-          googleDisconnectedByEmailChange: state.googleSignInLinked,
-        } : {}),
-        ...(stale ? {
-          message: "This application changed in another tab or browser.", phase: "stale_copy",
-        } : {
-          workingRevision: body.workingRevision,
-          savedAnswers: updateSnapshotEmail(state.savedAnswers, body.primaryEmail),
-        }),
-      };
-    });
-    setDraft((current) => ({
-      ...current,
-      applicant: { ...current.applicant, email: body.primaryEmail },
-    }));
-  }
-
-  async function recoverEmailAction<Result>(operation: () => Promise<Result>, fallback: Result): Promise<Result> {
-    try {
-      return await operation();
-    } catch {
-      updatePersistence({ emailChangeMessage: APPLICANT_ACTION_ERROR_MESSAGE, emailChangeStatus: "error" });
-      return fallback;
-    }
+  function recoverEmailAction<Result>(operation: () => Promise<Result>, fallback: Result): Promise<Result> {
+    return runMutation(async () => {
+      try {
+        return await operation();
+      } catch {
+        updatePersistence({ emailChangeMessage: APPLICANT_ACTION_ERROR_MESSAGE, emailChangeStatus: "error" });
+        return fallback;
+      }
+    }, fallback);
   }
 
   return {
     beginEmailChange: (email: string) => recoverEmailAction(() => beginEmailChange(email), undefined),
     clearEmailChangeFeedback,
     stopEmailChange: () => recoverEmailAction(stopEmailChange, false),
-    refreshEmailIdentity,
   };
 }

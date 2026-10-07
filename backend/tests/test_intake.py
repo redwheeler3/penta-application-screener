@@ -318,6 +318,8 @@ def test_publication_requires_two_years_of_residence_history_before_close() -> N
         move_in_date=date(2026, 10, 1),
         published_at=datetime(2026, 7, 1, tzinfo=UTC),
     )
+    db.add_all([application, opening])
+    db.flush()
     incomplete = _answers().model_copy(update={"current_address_move_in_date": date(2025, 1, 1)})
 
     with pytest.raises(Problem, match="2024-09-01"):
@@ -390,3 +392,27 @@ def test_age_checks_are_anchored_to_last_submitted_edit() -> None:
     assert "child_age_over_max" in {
         reason["code"] for reason in submitted_after_child_birthday
     }
+
+
+def test_archived_participation_does_not_add_hidden_residence_requirements():
+    now = datetime(2026, 10, 6, 18, tzinfo=UTC)
+    db = _session()
+    archived = Opening(unit_size_bedrooms=2, housing_charge_cents=100000,
+        application_open_date=date(2026, 3, 1), application_close_date=date(2026, 4, 9),
+        move_in_date=date(2026, 5, 1), published_at=datetime(2026, 3, 1, tzinfo=UTC),
+        decided_at=datetime(2026, 4, 15, tzinfo=UTC))
+    current = Opening(unit_size_bedrooms=2, housing_charge_cents=100000,
+        application_open_date=date(2026, 10, 1), application_close_date=date(2026, 10, 16),
+        move_in_date=date(2026, 11, 1), published_at=datetime(2026, 10, 1, tzinfo=UTC))
+    app = Application(primary_email='avery@example.com', raw_row={}, raw_row_hash='old', normalized={}, submitted_at=now)
+    db.add_all([archived, current, app])
+    db.flush()
+    prior = ApplicationParticipation(application_id=app.id, opening_id=archived.id, applied_at=now)
+    db.add(prior)
+    db.flush()
+    answers = _answers().model_copy(update={'current_address_move_in_date': date(2024, 8, 17), 'previous_residences': []})
+    publish_working_copy(db, app, answers, [archived, current], submitted_at=now)
+    db.commit()
+    assert prior.withdrawn_at is None
+    assert app.working_opening_ids == [archived.id, current.id]
+    assert db.query(ApplicationVersion).one().selected_opening_ids == [archived.id, current.id]

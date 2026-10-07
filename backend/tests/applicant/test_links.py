@@ -366,7 +366,8 @@ async def test_claim_asks_owner_which_private_copy_to_keep(choice: str) -> None:
     assert opened.status_code == 200
     assert opened.json()["pendingCopy"]["guestAnswers"]["essays"]["householdIntroduction"] == "Synthetic introduction"
     assert pending.json()["pendingCopy"] == opened.json()["pendingCopy"]
-    assert reconciled.status_code == 204
+    assert reconciled.status_code == 200
+    assert reconciled.json()["workingRevision"] == existing.working_revision
     assert stored.json()["answers"]["essays"]["householdIntroduction"] == (
         "Synthetic introduction" if choice == "guest" else "Existing working answers"
     )

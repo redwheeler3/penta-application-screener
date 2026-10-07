@@ -11,6 +11,7 @@ from app.db.models import (
     Application,
     ApplicationParticipation,
     Opening,
+    OpeningIntakeMode,
     OpeningOutcome,
 )
 
@@ -122,7 +123,7 @@ def draft_expiry_for_opening_ids(db: Session, opening_ids: list[int]) -> date | 
     else:
         query = query.where(
             Opening.published_at.is_not(None),
-            Opening.application_close_date >= pacific_today(),
+            Opening.intake_mode == OpeningIntakeMode.APPLICATIONS,
         )
     latest_close = db.scalar(query.order_by(Opening.application_close_date.desc()).limit(1))
     return latest_close + timedelta(days=1) if latest_close is not None else None
