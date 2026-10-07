@@ -1,18 +1,18 @@
 # Whole-project audit — 2026-10-06, post-implementation review
 
-**Status: complete through both independent discovery rounds and fix-plan challenges;
-X01–X25 recommended, not implemented.** Original baseline `83bfd9e`; the first independent reviews
+**Status: complete through three independent discovery rounds and fix-plan challenges;
+X01–X30 recommended, not implemented.** Original baseline `83bfd9e`; the first independent reviews
 started from clean `bc8e3ff`, twelve local commits ahead of the recorded `origin/main`.
-The latest three fresh reviewers started from `712e35c`. Application code is unchanged between
+The latest three fresh reviewers started from `52c71d5`. Application code is unchanged between
 these audit revisions. The completed W01–W07
 report remains at `83bfd9e:docs/project-audit-2026-10-06-follow-up.md`.
 
 ## Recommendation
 
 Prioritize access-link authority (X07), feedback privacy (X17), cross-opening priority loss
-(X08), and retention/submission failures (X09–X12/X24). The independent reviews below add ten findings to
-the original six; the latest fresh round adds nine more and strengthens two existing findings.
-They are one combined implementation backlog, with the authoritative sequence at the end.
+(X08), and retention/submission failures (X09–X12/X24). The original six items and the additions
+from three independent rounds form one 30-item backlog. Duplicate discoveries strengthen existing
+entries; the authoritative implementation sequence is at the end.
 Then fix the dashboard loading race, the two fixture-contract gaps, and the disruptive trace refresh.
 Repair the two command-line experiment wrappers before relying on their next model comparison.
 These are bounded changes to existing owners. I do not recommend another architecture rewrite,
@@ -43,6 +43,11 @@ a general mutation framework, or additional production caching.
 | X23 | P2, unnecessary retries | Unrelated writes immediately retry old provider failures | Three outbox drains produce three attempts in two seconds |
 | X24 | P2, retention reliability | Email configuration failure prevents the maintenance purge from starting | Valid runtime settings plus sender-construction error produce zero purge calls |
 | X25 | P2, action consistency | Selected households retain controls whose writes are always rejected | Real selected detail has enabled controls; override/star/shortlist endpoints reject them |
+| X26 | P2, applicant recovery | Competing refreshes and an unrecognized rejection leave obsolete edit controls enabled | Pending email causes two GETs that lose lifecycle fields; applications_locked does not recover them |
+| X27 | P2, consent concurrency | Distinct delivery leases permit two notices for one one-time subscription | Second worker sends a different opening while first worker waits on provider acceptance |
+| X28 | P2, cost projection | Full-Rank estimate ignores current route/count changes and global matching history | Synthetic configuration change leaves $0.50 unchanged; first B run omits matching against A history |
+| X29 | P2, eval evidence | One ordinary eval case failure discards other results and run history | Actual scoring endpoint emits only terminal error after one successful case; zero EvalRun rows |
+| X30 | P2, bounded work | Stability repetitions exceed the configured per-request concurrency budget | Configured one worker and K=5 produce five simultaneous calls |
 | X06 | P3 | Passive trace refresh discards expanded operator content | An open discovery trace disappears during refresh and returns collapsed, even with identical data |
 | X16 | P3, report clarity | Cost tables compare provider replies with cached result counts | Three fresh dimensions plus one cached displays uncached 1/cached 1, while cache-hit metric correctly says 25% |
 
@@ -478,7 +483,9 @@ existing records through a reviewed data-repair plan; do not silently run a prod
 **Acceptance:** both decision types and withdrawal forms, both completion orders across
 openings, selected seven-year policy, eventual purge, no outcome email for fully withdrawn
 profiles. **Latency:** one bounded participant-identity lookup and existing deadline calculations;
-measure query count to avoid an unnecessary per-participant reload.
+measure query count to avoid an unnecessary per-participant reload. The third discovery round
+independently reproduced both decision paths and both withdrawal forms again; this strengthens
+X09 rather than creating another retention item.
 
 ### X10 — Private draft expiry is stale or absent after creation and saves
 
@@ -797,7 +804,9 @@ pruning from the private serializer instead of adding legacy flags or migration 
 
 **Acceptance:** imported mapping → editor → private save → restore for all three shapes and
 co-applicant manager; explicit status/ownership changes; canonical submission semantics unchanged.
-**Latency:** no additional requests or processing of consequence.
+**Latency:** no additional requests or processing of consequence. The third discovery round
+strengthened this with actual legacy wire → browser projection → in-memory private save/read
+evidence, including both applicants' manager contacts; submitted evidence remained intact.
 
 ### X20 — An opening's first ranking stays invisible to another open workspace
 
@@ -962,36 +971,252 @@ submission working when optional context is unusable; and separate selected muta
 from retained-view navigation. These are now part of the relevant findings, not follow-up work
 left for a later audit.
 
+## Third independent discovery round — completed
+
+Baseline `52c71d5`; requested after the previous round. Three new discovery reviewers started
+from source/SPEC without reading prior audit reports. Their assignments emphasized contracts,
+partial work, and lifecycle transitions. After initial reports, each challenged the proposed
+remedies and their interactions with existing items. The coordinator independently repeated the
+notification race and nested-concurrency probes. Application code remains unchanged.
+
+Five new work items are X26–X30. X26 groups two failures of applicant lifecycle recovery; X28
+groups two discrepancies between a Rank estimate and its actual execution inputs. These related
+manifestations remain separately evidenced and tested within their owning work item. Independent
+confirmations of withdrawn retention and imported-reference loss strengthen X09 and X19.
+
+| Review | Coverage and evidence | Closure / limits |
+| --- | --- | --- |
+| Boundary contracts | Actual legacy-reader → browser serializer → private persistence; revision/copy and cross-tab ownership; actual ApplicantApp lifecycle/email refresh; actual rejected-save code | X19 confirmed; X26 reproduced, including both completion orders; no general queue or adapter needed |
+| Partial work | Screen/Rank plans, cached vectors, leases/cancellation, settings acknowledgements, cost history, ordinary/stability eval attempts and final reports | X28–X30 confirmed by current source and synthetic probes; one disk-fixture heartbeat test did not initialize |
+| Lifecycle and simplicity | Publication/decisions, retained history and purge, consent consumption across outbox workers, maintenance/recovery source, admin acknowledgements | X09 confirmed; X27 reproduced; undecided-versus-prior audience distinction left unchanged |
+| Coordinator and closing challenge | Repeated two key probes; reviewed actual estimators/concurrency helpers and refresh consumers; challenged overlapping notification entitlements and scheduling | Remedies refined below; no unresolved material candidate from this planned coverage |
+
+### X26 — Applicant lifecycle refresh and rejected-save recovery leave obsolete controls enabled
+
+**Priority: P2.** Two paths fail to reconcile current lifecycle state through the existing
+applicant persistence owner:
+
+- **Competing visibility reads:** `frontend/src/applicant/ApplicantApp.tsx:110–120` starts an
+  email-identity refresh when a change is pending. `useApplicantPersistence.ts:133–158` also
+  starts lifecycle refresh. Both call `applicationReads.begin()`; the email read supersedes
+  lifecycle, then ignores `canEdit` and `openings` (`applicantEmailFlow.ts:88–137`).
+- **Unrecognized rejection:** `backend/app/services/applications/access.py:297–304` raises
+  `applications_locked`, absent from the problem registry and the hook's lifecycle recovery
+  list (`useApplicantPersistence.ts:530–544`). This smaller contract defect prevents the
+  rejected write itself from correcting stale permissions.
+
+Actual ApplicantApp reproduction: pending email change, then visibility event → two GETs, both
+returning `canEdit:false, openings:[]`. In **either response order**, Save and review remained.
+A focus-only control with identical server data correctly removed it. Separately, a last-opening
+closure produced a real locked-save rejection with HTTP 400/title Request failed. Passing that
+exact response through the real save hook left `canEdit:true`, phase error, and issued no recovery
+GET. Backend mutation checks still reject the changes; this is not an authorization bypass.
+
+**Remedy / owner:** consolidate metadata refresh in `useApplicantPersistence`, deleting the
+competing App listener/email-only GET interpretation. Interpret identity, permission, openings,
+revision and email-confirmation state together. Align the actual locked-save producer with the
+registered lifecycle-error contract and existing recovery handling; do not create a second
+rejection recovery flow.
+
+Background metadata refresh must preserve unsaved answers and valid selection intent. A different
+server revision remains a stale-copy condition, not permission to advance the local baseline and
+overwrite it. Preserve confirmed-email/Google-disconnection feedback and mutation success phases.
+Coordinate with X12/X18: background reads must not supersede an admitted mutation's authoritative
+reconciliation restore; retain operation ownership through that restore. Old-session completions
+must remain invalid. Register the intended locked-error status/title rather than relying on the
+unknown-code fallback.
+
+**Acceptance:** pending/no-pending email, one GET per visibility event, both response orders,
+closed/new openings, confirmed email plus unsaved edits, refresh before/after save/submit,
+visibility during either whole-copy choice, changed session, real locked-save response followed
+by successful/failed recovery. Failed refresh retains answers and cannot imply freshly confirmed
+permission. **Latency / simplification:** ordinary pending-email refresh drops from two reads to
+one; no extra round trip on successful submit. Only rejected actions use the recovery read.
+
+### X27 — Independent delivery leases can send a one-time subscription twice
+
+**Priority: P2.** `backend/app/services/openings/vacancy_notifications.py:80` queues distinct
+opening deliveries. `services/email/delivery.py:52` leases one delivery ID, not the subscription
+consent. Preparation commits before provider I/O (`outbox.py:131`); another worker can lease a
+second opening's delivery while the subscription remains active. Acceptance consumes it only
+later at line 149.
+
+Reproduced and independently repeated: queue two open offerings for one list-only subscription;
+while the first fake sender waits, run the actual outbox drain through another Session. It skips
+the leased first delivery, sends the second, then the first completes: **two accepted messages**.
+Ordinary publication drains and daily maintenance can overlap this way. Provider I/O correctly
+holds no database writer; keeping that property is essential.
+
+**Remedy / owner:** reserve a subscription's consent generation across deliveries in existing
+outbox preparation, using existing delivery identity/state, retry-intent metadata and attempt
+leases where practical. Distinguish two concepts: a valid queued/retryable delivery owns the
+consent generation; its lease owns a particular attempt. A temporary/quota failure retains consent
+ownership, otherwise another opening's row bypasses X23's scheduled retry policy.
+
+Contention is **deferred work**, not an unavailable-target terminal failure. Do not mint a
+credential or increment a provider-attempt count for a deferred notice. Acceptance conditionally
+consumes that generation; permanent unavailability, cancellation, terminal failure or changed
+consent releases/reassesses ownership. An expired attempt lease allows recovery of the owner.
+Post-write draining and maintenance must both have a path for eligible deferred work, without a
+busy retry loop. Commit ownership before network I/O; use no global send lock or new consent ledger.
+
+**Important entitlement distinction:** only subscription-only delivery is gated by that one-time
+consent. Existing applicants have separate permission to receive notices for different openings.
+`outbox.py:378` and the changed-preferences concurrency test intentionally allow an application
+notice without a matching list subscription. If an application delivery owns the optional consent,
+it may include the list-completion wording and consume it after acceptance. If another delivery
+owns that consent, send the ordinary authorized application notice without that wording or
+consumption. The initially proposed blanket gate on all overlap deliveries was rejected because
+it would suppress legitimate notices.
+
+**Acceptance:** two openings/workers; publication versus maintenance; temporary failure then an
+unrelated write and daily retry; expired lease; closed owner opening; replacement/resubscription
+while sending; two independently eligible application notices sharing a subscription (both send,
+only one completes the list request); application notice while a list-only owner waits for retry.
+Preserve X07's distinction between valid durable retries and forbidden anonymous regeneration.
+**Latency / complexity:** a bounded ownership lookup/write for subscription-bearing preparation;
+no cross-applicant wait or writer held over I/O. This adds a real ownership rule, justified by the
+one-time contract. It prevents concurrent duplicate sends and duplicates after recorded acceptance;
+it cannot promise exactly-once external delivery after ambiguous provider acceptance/timeouts.
+
+### X28 — Full-Rank cost projection does not follow current execution inputs
+
+**Priority: P2.** Two discrepancies belong to the existing ranking-estimate owner:
+
+1. `backend/app/services/ranking/estimates.py:33,40,71`,
+   `app/ai/dimension_scoring_cost.py:113`, and `services/cost_report.py:277` reuse historical
+   dollars before considering current route prices or discovery count. Synthetic actual-ledger
+   reproduction: five pass rows at $0.10 each → $0.50 estimate. Changing to a route priced 5× in
+   the repository's catalog and discovery count 1→10 still returned $0.50 with `fan_out:10`.
+2. `estimates.py:58` decides matching exists from the current opening's analysis. Execution at
+   `pipeline.py:164`/`criteria.py:135` uses global known dimensions. First Rank for B therefore
+   estimates matching as zero when it will match A's existing criteria. This second case is
+   source-traced, not a separately exercised endpoint scenario in this round.
+
+The estimate is deliberately approximate and the cap gates that estimate, **not actual spend**.
+The finding is deterministic configuration/work drift, not a demand for a hard price guarantee
+or an overhaul of the documented pool-growth heuristic.
+
+**Remedy / owner:** preserve history-first, opening-specific weighting while repricing observed
+usage for a compatible current route and normalizing discovery per provider reply × current
+count. `RunPassCost` already contains model, tokens and calls. Use existing fallbacks where
+configuration evidence is unavailable or materially incompatible; never guess a ledger-to-analysis
+link by chronology. Use the execution owner's global-history rule for matching. Keep this in
+existing estimators and bounded history reads. Coordinate with X16: provider replies normalize
+model-call usage; result units compare fresh and cached results. They are not interchangeable.
+
+**Acceptance:** unchanged configuration retains historical weighting; known route change and
+1→10 discovery count change the projection; cap gating uses the adjusted estimate; failed history
+is excluded; no global history skips matching, A history plus first B run includes it. Preserve
+explicit approximate labeling and the documented pool-growth limitation.
+**Latency / simplification:** no provider call or new synchronization; rework the raw-dollar
+history branches and reuse a bounded global-history check rather than load unrelated audit blobs.
+
+### X29 — One failed ordinary eval case discards the batch's completed evidence
+
+**Priority: P2.** `backend/app/api/evals/_shared.py:159–160` raises on the first case exception;
+its stream scaffold at lines 89–94 emits a terminal error before run persistence at line 106.
+Normal scoring, screening, categorical and Judge adapters let provider exceptions reach this
+boundary. Stability already retains per-attempt errors and marks incomplete measurement.
+
+Actual `/evals/scoring` reproduction with two cases, one worker and a mock provider: the first
+case produced a structured result and graded narration; the second timed out. The stream returned
+thinking plus terminal error, no summary, and **zero EvalRun rows**. A separate shared-stream
+probe reproduced the same loss. Completed structured evidence cannot be recovered from history.
+
+**Remedy / owner:** the shared case collector and existing family result adapters should retain
+successful results and explicit failed-case outcomes, then persist the incomplete batch. Keep
+operational errors distinct from valid failed assertions and contested divergence (X03). Invalid
+output must never count as a pass. Reuse established completeness semantics instead of adding
+retry orchestration or a second result store. Genuine `WorkCancelled` still propagates; do not
+convert cancellation into a normal failed case or automatically retry paid calls.
+
+**Acceptance:** both success/error completion orders, all failures, all normal families including
+Judge/contested cases, reload after partial batch, missing output, cancellation. Zero cases must
+be an explicit no-cases/zero-attempt outcome, never a successful/stable measurement inferred from
+an empty `all(...)`. **Latency:** no additional calls; collect the batch's intended work without
+losing completed results. Cancellation behavior remains separate from case-level recovery.
+
+### X30 — Nested stability workers exceed the configured per-request limit
+
+**Priority: P2.** `backend/app/api/evals/_shared.py:123–129` permits at least one outer case worker,
+while `backend/app/evals/stability.py:141` unconditionally creates K inner workers. A supported
+`max_workers:1` with K=5 therefore launches five simultaneous calls. Reviewer and coordinator
+independently measured peak 5 through the actual shared case/stability runners, retaining all
+five attempts. Production discovery already uses `min(k, max_workers)`.
+
+**Remedy / owner:** pass a bounded repetition concurrency into the shared stability runner;
+retain all K attempts and combine that bound with the existing outer-case budget. This is a
+limit within one eval request, not a new account-wide semaphore or spending cap. Update the
+misleading ceiling comment with the actual nested budgeting rule.
+
+**Acceptance:** max=1/K=5 peaks at one; max=3/K=5 peaks at no more than three; multiple cases stay
+within their request budget; max≥K retains current parallel behavior; every repetition remains
+accounted for, including errors/cancellation. **Latency:** only K-above-budget runs take more
+waves, honoring the chosen worker setting. Provider-call count is unchanged; no impact on normal
+within-budget concurrency and no new executor framework.
+
+### Verification, rejected changes, and final challenge
+
+- Boundary reviewer: **20 existing backend tests, 75 existing frontend tests and four temporary
+  reproduction tests passed**. Reproduction assertions described the defective behavior; they
+  are evidence, not tests claiming that fixes already exist.
+- Partial-work reviewer: **39 existing backend tests, 81 frontend tests and four synthetic probes
+  passed**. One heartbeat test stopped during disk-fixture setup, before its assertion executed.
+- Lifecycle reviewer: **82 existing backend tests and 17 frontend tests passed**. Four desired-
+  behavior retention assertions and the notification-race assertion failed as expected. A sixth
+  cohort-policy assertion also failed but was deliberately not promoted as a code defect.
+- Coordinator independently reran the notification counterexample (two versus one accepted
+  messages) and nested-worker measurement (five versus configured one). Source checks compared
+  final APIs/UI with the proposed remedies. Counts are attributed, not a deduplicated suite total.
+- Every temporary probe was removed. Application source, permanent tests, fixtures and local
+  data remain unchanged. No live provider/email, production, browser or restore action occurred.
+  Recovery and configuration paths were source-reviewed; this is not a new file-backed restore,
+  load/latency benchmark, model-judgment evaluation or exhaustive malformed-storage certification.
+
+Rejected changes: the null-deadline exclusion from previous-applicant search/new-opening audience
+was reproduced but remains a policy distinction, not a confirmed bug; an undecided current cohort
+can intentionally differ from finalized previous applicants. Existing tests explicitly support
+draft renewal during a selected-for-purge race. Neither result justifies changing policy. No
+extra cache, global queue, consent ledger, account-wide executor, or module split is recommended.
+
+The final challenge strengthened X26's interaction with admitted mutations and authoritative copy
+restoration; separated subscription consent ownership from attempt leases and independent applicant
+notification authority; retained approximate estimation policy while fixing deterministic drift;
+and preserved cancellation/validity distinctions across evals. Those corrections are incorporated
+above. Planned coverage has evidence or a stated limit; no material candidate from this round
+remains unexamined.
+
 ## Final combined implementation sequence
 
-This is the single current plan for X01–X25. Use cohesive commits within one implementation phase:
+This is the single current plan for X01–X30. Use cohesive commits within one implementation phase:
 
-1. **X07:** purpose-aware access renewal/redemption, including the legitimate outbox retry control.
-2. **X15/X17:** feedback context and privacy together; narrow submission acknowledgement and
-   scoped, batched admin enrichment.
+1. **X07:** purpose-aware access renewal/redemption, including legitimate outbox retry controls.
+2. **X15/X17:** feedback context and privacy together; narrow acknowledgement and scoped, batched
+   admin enrichment.
 3. **X09/X10/X24:** durable participant retention, private expiry maintenance, and purge independent
    of sender construction. Prepare existing-data reconciliation for explicit review; do not run
-   a production purge as part of a code change.
-4. **X11/X12/X18/X19:** visible residence policy, stable applicant mutation ownership, explicit
-   copy-choice restoration, and lossless private serialization of unresolved references.
+   production purge as part of a code change.
+4. **X11/X12/X18/X19/X26:** visible residence policy, stable applicant mutation ownership, explicit
+   copy restoration, lossless private serialization, and one lifecycle/identity refresh owner.
 5. **X08/X13/X20:** report-aware tier mapping, coverage-safe consolidation with truthful audit,
    and adoption of another member's first analysis.
-6. **X05/X06/X14/X21/X25:** dashboard loading, mounted trace refresh, subscription write ownership,
+6. **X05/X06/X14/X21/X25:** dashboard loading, mounted trace refresh, subscription editor ownership,
    partial-screen recovery, and selected-household action consistency.
-7. **X22/X23/X16:** actual email recipients, scheduled retry eligibility, and comparable cost counts.
-8. **X01/X02:** fixture family and expectation boundaries.
-9. **X03/X04:** experiment outcome/input/snapshot repairs before further model comparisons.
+7. **X22/X23/X27:** actual email recipients, first-attempt/scheduled-retry eligibility, and consent
+   ownership across deliveries. Test scheduling and independent application entitlements together.
+8. **X16/X28:** comparable cost display units and current-work Rank projections; keep provider
+   reply counts separate from cached/fresh result units.
+9. **X01/X02/X29/X30:** fixture boundaries, durable partial eval evidence, and bounded nested work.
+10. **X03/X04:** experiment outcome/input/snapshot repairs before further model comparisons.
 
-For each package, capture the reproduced failure as a focused regression, implement through the
-existing owner, prune assertions tied to superseded behavior, and check adjacent consumers.
-Run the normal backend/frontend checks appropriate to implemented changes, then a combined
-review emphasizing the intersections above. Reserve browser verification for interactions where
-component/contract tests cannot establish the result. Provider judgment changes would need their
-own real-output verification; none of these recommendations proposes changing prompts/models.
+For each package, preserve the reproduced adverse scenario as a focused regression, implement
+through the existing owner, prune superseded assertions, and check sibling consumers. Run normal
+backend/frontend checks appropriate to code changes, then review the combined changes and the
+cross-package sequences above. Use browser verification where actual interaction/layout cannot
+be established by component/contract tests. No recommendation changes model judgment or prompts.
 
-I recommend moving to implementation after this round. All planned discovery rows now have
-evidence or an explicit limit, and cross-review left no unexamined material candidate. Another
-unbounded pre-implementation scan would delay confirmed access/privacy and data-loss fixes.
-Continue only concrete follow-up threads exposed by implementation or its final review. The
-independent reviewers and boundary comparisons reduced anchoring; they do not guarantee that
-future audits will find nothing.
+The remedies mostly remove competing interpretations or reuse existing state. X27 adds necessary
+consent ownership; X30 intentionally limits over-budget parallelism. These costs are explicit,
+not reasons to introduce broad infrastructure. This completes the requested third discovery
+round and leaves one reviewable implementation plan; no application fix has been applied yet.
