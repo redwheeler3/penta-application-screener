@@ -91,3 +91,23 @@ possible acceptance still cannot provide an absolute exactly-once guarantee.
 Verification and the commit map are in [the implementation record](project-audit-2026-10-06-follow-up.md).
 The current production preview concerns retention dates only; it does not establish which other
 bug paths were previously encountered by users.
+
+
+## Follow-up corrections from two post-implementation review rounds
+
+Three subagents reviewed each round; assignments rotated for the second round, after first-round
+fixes. The following seven issues were corrected locally within the same affected workflows:
+
+| Review item | Before | After |
+| --- | --- | --- |
+| P01 — Email session recovery | An abandoned request or cancellation could leave Sending set after reauthentication, keeping Save controls busy. | Session invalidation clears that transient state without discarding pending identity or unsaved answers. |
+| P02 — Expired private records | An ordinary opening edit could make an expired private application or pending copy available again. | Expired copies remain unavailable; ordinary refresh updates only current records. |
+| P03 — Publishing an opening | An active empty-selection draft could retain the earlier opening's deadline and be purged while a later opening was available. | Publication refreshes current fallback deadlines; explicit selections remain scoped and expired copies are not revived. |
+| P04 — Priority restoration timing | Identical personal history could yield a different priority depending on whether a member first viewed the run before or after consolidation. | Consolidation restores every existing view consistently; future views use the same personal-history rule. |
+| P05 — Coherent ranking reads | A read could combine old personal priorities with the post-consolidation report. | Member state and report arrive in one coherent snapshot, including after writes. |
+| P06 — Revived review flags | A criterion returning after a gap could be flagged for review only for members first opening the view afterward. | The same presence-gap rules apply to existing views, preserving acknowledgements and subsequent choices. |
+| P07 — Real transport recovery | The shared client returned a synthetic 503 for lost requests/timeouts, bypassing recovery that only handled thrown errors. | Screen and both Rank modes reconcile uncertain transport/server outcomes; definite rejection and cancellation retain their separate behavior. |
+
+No additional AI call is needed. Ordinary existing ranking reads gain no writer lock or extra
+round trip; a resurfaced merge performs bounded history work for existing member views. Uncertain
+AI failures add recovery reads in the existing background flow. No production data was changed.

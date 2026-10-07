@@ -679,7 +679,10 @@ reports.
 Drafts do not have a separate retention period. A never-submitted server draft remains available
 only while at least one applicable opening accepts submissions and is deleted after the last such
 opening closes. Private creation and selection changes update that deadline atomically, including
-the available-opening fallback for an empty selection. Closing the last fallback opening leaves
+the available-opening fallback for an empty selection. Publishing another opening refreshes
+still-current empty-selection copies; explicit choices remain tied to their chosen openings.
+Ordinary opening edits do not reactivate either private record type after its Pacific expiry
+date has arrived. Closing the last fallback opening leaves
 a finite close-anchored deadline, never an indefinite one. Resolved, superseded, and revoked temporary copies are deleted once they no longer
 serve the access flow. Private working changes on a submitted application do not extend retention
 and are discarded once all relevant openings have decisions. Remembered-device draft
@@ -2112,7 +2115,9 @@ an explicit opening, apply effective pass settings and accept only that attempt'
 
 Same-analysis trace refresh preserves expanded content and offers retry after failure. A changed
 opening or analysis resets the displayed trace. Interrupted Screen streams reconcile committed
-partial results without claiming successful completion or waiting for all derived views.
+partial results without claiming successful completion or waiting for all derived views. Network
+failures, timeouts and server 5xx responses are uncertain outcomes for Screen and both Rank modes;
+these trigger scoped recovery reads. Definite 4xx rejection and caller cancellation remain separate.
 
 **Automatic cache reuse and workflow confirmations:** the account/opening-scoped committee
 workspace adopts valid saved screening findings and scores in the background on entry and
@@ -2142,7 +2147,10 @@ Readiness is independent of stored fingerprint format or unknown discovery histo
 complete current cache makes Screen/Rank green without repeating paid work or rewriting
 recorded provenance. A workspace that first observes criteria created by another member offers
 the existing Reload action. Consolidation preserves member priorities on keys still owned by
-each report, including intermediate alias survivors. It adopts proven reusable survivor scores
+each report, including intermediate alias survivors. Existing and first-after member views
+restore the same personal history and presence-gap review flags, preserving explicit acknowledgements
+and later Ignore choices. Personal priorities and their report are read as one coherent snapshot.
+It adopts proven reusable survivor scores
 atomically with the report change; incomplete/stale survivors defer the merge, with confirmation
 and actual application distinguished in the audit. Rank also becomes amber for free-text proposed criteria awaiting
 discovery; existing criteria in Ignore are not pending. Confirmation uses “Run ranking?”,
@@ -2160,3 +2168,8 @@ the current discovery count. Matching uses global criterion history consistently
 Unknown/incompatible history uses the existing fallback, without guessing ledger/analysis links.
 Cost tables compare cached result units with attempted uncached units (including failed attempts);
 provider reply counts are separate. No eval spending cap or automatic paid retry is introduced.
+
+
+Applicant session invalidation releases transient email Sending state. Recovery preserves the
+pending address, unsaved answers and acknowledged revision while the lifecycle read reconciles
+current identity; an abandoned response cannot keep recovered save controls busy.

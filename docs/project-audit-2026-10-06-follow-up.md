@@ -13,6 +13,12 @@ drafts exist, and no repair is indicated for that snapshot. See the
 [preview evidence](retention-preview-2026-10-07.md) and
 [before/after behavior summary](audit-fix-behavior-summary-2026-10-07.md).
 
+**Post-implementation review — completed 2026-10-07:** two full rounds with three subagents
+per round and rotated assignments found seven follow-up issues. All were fixed in five cohesive
+commits. Final checks: **1,246 backend tests passed, one platform-specific skip; 429 frontend
+tests passed; build, Ruff and diff checks passed.** The detailed round coverage and dispositions
+are at the end of this document. No production operation, push or deployment occurred in these rounds.
+
 ## Implementation and verification
 
 | Commit | Work items | Result |
@@ -1297,6 +1303,9 @@ Prepare and review the retention repair as a separate maintenance operation:
    selected participation anchors seven years; fully decided durable history (including withdrawal)
    anchors one year after the latest decision; private drafts use their selected/fallback close
    date. Use the existing Pacific-day and leap-year helpers. Keep legitimate undecided holds null.
+   Do not extend an already-expired private copy from the current opening catalog. A later
+   publication or edit cannot revive it. Suspected historically incorrect expiry needs separate
+   evidence and explicit review, including the chronology of publication/edits, before any repair.
 2. Exclude inconsistent records (such as submitted applications without durable participation)
    for separate investigation; never substitute a private-draft deadline for missing history.
    Preview in a rolled-back, no-autoflush session and emit only aggregate counts/date ranges:
@@ -1315,3 +1324,97 @@ Prepare and review the retention repair as a separate maintenance operation:
 
 This is an operational follow-up, not an automatic migration or an outstanding application-code
 implementation. Pushing does not deploy the app; production deployment/repair remains separate.
+
+## Post-implementation review — two rounds completed
+
+Requested after `9288978`. The combined implementation is reviewed from `e4922a9` through
+`9288978`, including affected neighbors. Confirmed worthwhile issues were fixed within scope before the second round examined the
+resulting code; its findings were then fixed and independently checked. No production action or push is included.
+
+| Round | Reviewer perspective | Coverage / status |
+| --- | --- | --- |
+| 1 | Integrity (new reviewer) | Complete: 143 backend and 65 frontend tests plus synthetic boundary probes; three findings |
+| 1 | Concurrency (new reviewer) | Complete: 167 frontend and 54 backend tests plus 21 shared-memory delivery sequences; one finding |
+| 1 | Simplicity (returning reviewer, rotated away from owned eval work) | Complete: 49 backend and 123 frontend tests; no material simplification finding |
+| 1 | Coordinator | Complete: source/consumer review plus 68 focused eval/estimate tests; first-round fixes independently checked |
+| 2 | Integrity (round-one concurrency reviewer) | Full affected data/access/copy/retention/feedback/ranking/email paths; 150 backend tests passed; coherent-snapshot finding |
+| 2 | Concurrency (round-one integrity reviewer) | Actual transport boundary, applicant/session/storage, committee streams, eval cancellation and delivery; 74 backend and 173 frontend tests passed; synthetic-503 finding |
+| 2 | Simplicity (rotated committee/ranking/UI focus) | Full changed ownership and test contracts; 75 backend and 160 frontend tests passed; presence-gap flag finding |
+| 2 | Coordinator | Complete: fixes validated through full presentation/transport contracts; 1,246 backend and 429 frontend tests passed |
+
+Reviewers distinguish source analysis, synthetic execution and known limits. Passing prior tests
+and the implementation narrative are not proof of an untested sequence. Production retention
+preview conclusions remain a separate point-in-time result.
+
+
+### Round-one confirmed findings and disposition
+
+| ID | Finding | Evidence | Disposition |
+| --- | --- | --- | --- |
+| P01 | Abandoned email actions retain Sending after session recovery, leaving save controls busy | Request/cancel × reply-before/after-recovery, four deferred-hook cases | Fixed in `1e522ca`; 87 applicant tests and build passed |
+| P02 | Ordinary opening edits can reactivate already-expired private records | Both application and temporary-draft representations cross unavailable → available | Fixed in `49e1228`; expired records remain excluded from ordinary recomputation |
+| P03 | New publication leaves current empty-selection drafts tied to an older fallback deadline | A closes earlier; publishing B does not extend fallback, so A's deadline can purge while B is open | Fixed in `49e1228`; publication/edit share current-only refresh and explicit choices remain scoped |
+| P04 | Reading a ranking before consolidation changes a member's eventual priority without an edit | Same prior Top placement yields weight 1 if first read after merge, 0 if view materialized before | Fixed in `d5901de`; all materialized views reconcile in the merge transaction, and first creation uses a current report |
+
+No material source simplification was promoted merely to reduce line count. Small retained-scope,
+trace-resource and consent owners remain justified; a generic mutation queue, notification state
+machine or additional ledger was rejected. The coordinator also rejected the hypothesis that
+skipped matching passes necessarily poison repriced history: actual skipped pass records have no
+model evidence and the estimator already falls back.
+
+
+### Round-two confirmed findings and disposition
+
+Round two began at `d5901de` after the first-round fixes. Reviewers rotated assignments and
+re-examined the combined implementation and neighboring consumers, rather than only rerunning
+the original counterexamples.
+
+| ID | Finding | Evidence | Disposition |
+| --- | --- | --- | --- |
+| P05 | Existing ranking reads can combine old personal state and a newer analysis | Two-session probe through actual member-view and presentation owners produces zero weight/Ignore against persisted Top | Implemented in `aab091e`; coherent joined read including post-write returns |
+| P06 | Resurfaced criterion review flags differ by view timing after a presence gap | Same history restores equal weights, but only the first-after view flags the criterion revived | Implemented in `aab091e`; shared carry-forward semantics, acknowledgement and later edits preserved |
+| P07 | Actual client transport conversion bypasses uncertain AI-run recovery | Hook → API → identity client turns fetch/timeout failure into 503; all three AI modes made zero recovery reads | Fixed in `c6aef41`; 21 actual-client regressions cover uncertain failure, definite rejection and cancellation |
+
+The second-round findings refine real boundaries: compare the full criteria/weights/tiers/flags
+response rather than only stored weights, and include the actual HTTP client in transport-failure
+regressions rather than mocking its API wrapper to throw. No new queue, cache or tracking store is
+proposed. Focused fixes passed independent checks; final integrated results are recorded below.
+
+
+### Final review disposition and limits
+
+| Review items | Fix commit | Verification |
+| --- | --- | --- |
+| P01 | `1e522ca` | Four request/cancel × response-order regressions; 87 applicant tests and build |
+| P02/P03 | `49e1228` | Both private representations, explicit/fallback selection, exact expiry boundary, publication and edit; 80 focused tests |
+| P04 | `d5901de` | Before/during/after view timing, prior/later Ignore, own tiers/proposals, first-view transaction ownership; 117 broader ranking tests |
+| P07 | `c6aef41` | 21 actual-client cases across all three AI modes, including network rejection, timeout, server error, definite rejection, cancellation and scope change; 84 focused tests |
+| P05/P06 | `aab091e` | Joined snapshot before/after consolidation and commits, presence gaps and acknowledgements; 115 focused tests plus independent 69-test/8-scenario review |
+
+The final integrated suite at `aab091e` passed **1,246 backend tests (one existing platform skip)**
+and **429 frontend tests across 52 files**. Frontend production build, full backend Ruff and diff
+checks passed. Build directory permissions inherit from their parents. Earlier sandbox fixture
+setup errors were rerun using normal filesystem access; no ACL repair or ad hoc test-temp root
+was introduced. One existing frontend visibility test timed out during a concurrent build/test
+run, then passed isolated, targeted and final full-suite runs. Reviewer test counts overlap and
+are not presented as additional unique coverage.
+
+Relative to `9288978`, these fixes add 120 runtime lines and remove 61 (**net +59**), and add
+499 test lines while removing 12. There is no new schema, service, queue, cache, state-machine
+library or identity. Consolidation now does bounded history reconciliation for existing member
+views; ordinary ranking reads gain neither a writer lock nor an extra round trip. AI recovery
+reads occur only for uncertain outcomes, in the existing background flow. Session recovery adds
+no request. No provider call was added and no production latency benchmark is claimed.
+
+Both rounds revisited the full affected workflows with rotated perspectives; the second was not
+just a rerun of the first-round counterexamples. The useful process corrections are concrete:
+compare the complete presentation contract (criteria, priorities, tiers and flags), and exercise
+the real client wrapper in transport-failure tests. The new regressions encode those boundaries.
+No additional broad abstraction or line-count cleanup earned a recommendation. No material
+candidate from the two coverage maps remains open after the fixes and final checks.
+
+These rounds used source analysis and synthetic tests, including separate-session DB and actual
+client/mock-fetch probes. They did not perform production operations, live provider/email calls,
+new browser/layout verification, or production load testing. The earlier production retention
+preview remains a separate dated observation; it had no private drafts and is unaffected by the
+new private-expiry transition findings. No further discovery round was started.
