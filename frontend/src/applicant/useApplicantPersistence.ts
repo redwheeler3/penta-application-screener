@@ -651,6 +651,10 @@ export function useApplicantPersistence(
     pendingMutation.current = null;
     sessionWork.reset();
     invalidateApplicationReads();
+    // The abandoned request cannot acknowledge its outcome after the session changes.
+    // Release its busy state; the next lifecycle read reconciles the pending address.
+    updatePersistence((state) => state.emailChangeStatus === "sending"
+      ? { emailChangeStatus: "idle" } : {});
   }
 
   const saveFlow = createApplicantSaveFlow({

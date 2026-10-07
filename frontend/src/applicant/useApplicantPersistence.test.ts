@@ -537,6 +537,49 @@ it("resumes the original application after reauthentication without replacing it
   expect(result.current.persistence.hasUnsavedChanges).toBe(true);
 });
 
+it.each([
+  ["request", "before-recovery"], ["request", "after-recovery"],
+  ["cancel", "before-recovery"], ["cancel", "after-recovery"],
+] as const)("releases an abandoned email %s across session recovery (%s)", async (operation, order) => {
+  const reply = deferred<Response>();
+  vi.mocked(api.requestEmailChange).mockReturnValueOnce(reply.promise);
+  vi.mocked(api.cancelEmailChange).mockReturnValueOnce(reply.promise);
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({
+    ...application(), pendingEmailChange: "known@example.com",
+  }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  act(() => result.current.setDraft((draft) => ({ ...draft, pets: "Keep this unsaved answer" })));
+  let sending!: Promise<unknown>;
+  act(() => {
+    sending = operation === "request"
+      ? result.current.persistence.beginEmailChange("new@example.com")
+      : result.current.persistence.stopEmailChange();
+  });
+  expect(result.current.persistence.busy).toBe(true);
+  act(() => window.dispatchEvent(new CustomEvent("penta-session-changed", {
+    detail: { kind: "applicant", reason: "mismatch" },
+  })));
+  expect(result.current.persistence.phase).toBe("session_expired");
+  expect(result.current.persistence.pendingEmailChange).toBe("known@example.com");
+  const finish = async () => {
+    reply.resolve(operation === "request"
+      ? Response.json({ emailSent: true, emailStatus: "sent", pendingEmail: "new@example.com" })
+      : new Response(null, { status: 204 }));
+    await sending;
+  };
+  if (order === "before-recovery") await act(finish);
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(result.current.persistence.phase).toBe("idle");
+  if (order === "after-recovery") await act(finish);
+  expect(result.current.persistence.busy).toBe(false);
+  expect(result.current.persistence.emailChangeStatus).toBe("idle");
+  expect(result.current.persistence.pendingEmailChange).toBe("known@example.com");
+  expect(result.current.persistence.workingRevision).toBe(1);
+  expect(result.current.draft.pets).toBe("Keep this unsaved answer");
+  expect(result.current.persistence.hasUnsavedChanges).toBe(true);
+});
+
 
 it("admits one submit across rerenders and preserves its successful acknowledgement", async () => {
   const reply = deferred<Response>();
