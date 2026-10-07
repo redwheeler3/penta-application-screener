@@ -253,24 +253,10 @@ class JudgeCaseOut(EvalCaseResult):
     label_rationale: str = ""  # why the human chose this label — context for a disagreement
 
 
-class AgreementOut(ResponseModel):
-    n_scored: int
-    n_agree: int
-    n_contested: int
-    agreement: float
-    kappa: float | None
-    per_category: dict[str, list[int]]  # pass_name -> [agree, scored]
-    failure_total: int
-    failure_caught: int
-    failure_recall: float | None
-    failure_precision: float | None
-
-
 class JudgeRunResponse(EvalResult):
     judge_prompt_version: str
     judge_model: str
     cases: list[JudgeCaseOut] = []
-    agreement: AgreementOut | None = None  # None when fewer than 2 scored cases
 
 
 # --- stability --------------------------------------------------------------

@@ -117,11 +117,7 @@ def judge_request(given: dict):
 
 
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, background: str, model: str):
-    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model decides whether
-    the new dimension is the same concept as the prior one from the editable ``background`` +
-    the two definitions (never the human label), then we exact-match its matches/mismatches
-    verdict against ``expected``. A wrong MATCH corrupts a carried-forward score, so 'mismatches'
-    is the problem side (feeds failure-recall)."""
+    """Reproduce the pass blind, then grade its output against the human expectation."""
     from app.ai.pricing import cost_usd
     from app.evals.reproduce import Reproduced
 
@@ -131,7 +127,7 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, backgro
     cost = cost_usd(result.model_id, result.usage)
     return Reproduced(
         verdict, expected, verdict == expected,
-        expected == MISMATCHES, verdict == MISMATCHES, result.output.reason, cost,
+        result.output.reason, cost,
     )
 
 

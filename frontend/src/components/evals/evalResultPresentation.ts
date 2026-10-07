@@ -27,20 +27,17 @@ export function evalCaseStatus(outcome: EvalCaseOutcome): EvalCaseStatus {
 }
 
 export function runSummary(run: EvalRunSummary, totalCases: number): string {
-  const { eval: mode, result } = run;
+  const { eval: mode } = run;
   const outcomes = caseOutcomes(run);
   const total = totalCases || outcomes.length;
   const passing = outcomes.filter((outcome) => evalCaseStatus(outcome) !== "fail").length;
   if (mode === "judge") {
-    const head = total ? `${passing}/${total} agree` : "";
-    const agreement = result.agreement;
-    if (!agreement) return head;
-    const parts = head ? [head] : [];
-    parts.push(`κ ${agreement.kappa !== null ? agreement.kappa.toFixed(2) : "n/a"}`);
-    if (agreement.failureRecall !== null) {
-      parts.push(`failure-recall ${agreement.failureCaught}/${agreement.failureTotal} = ${Math.round(agreement.failureRecall * 100)}%`);
-    }
-    return parts.join(" · ");
+    const decisive = outcomes.filter((outcome) => evalCaseStatus(outcome) !== "contested");
+    const agreeing = decisive.filter((outcome) => evalCaseStatus(outcome) === "ok").length;
+    const contested = outcomes.length - decisive.length;
+    const missing = Math.max(0, total - outcomes.length);
+    return [decisive.length ? `${agreeing}/${decisive.length} agree` : "No decisive results",
+      contested ? `${contested} contested` : "", missing ? `${missing} not run` : ""].filter(Boolean).join(" · ");
   }
   if (!total) return "";
   const stability = mode.endsWith("_stability") || mode === "stability";

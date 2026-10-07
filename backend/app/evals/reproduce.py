@@ -23,21 +23,11 @@ from app.ai.prompt_fragments import INJECTION_GUARD_NOTE
 
 @dataclass(frozen=True)
 class Reproduced:
-    """One pass reproduced blind by the judge, graded against the human label.
-
-    ``judge_label``/``human_label`` are compact display tokens (the pass's verdict, or a band
-    pass/fail token) for the run table and κ. ``agrees`` is the audit signal: did the blind
-    output satisfy the human ``expected``? ``*_is_problem`` drive failure-recall — a pass with
-    no single "defect" side (merge/keep, scoring band) sets both False and is excluded there.
-    ``detail`` is the judge's reproduced output + reasoning, narrated so a disagreement explains
-    itself.
-    """
+    """One blind output, its human expectation, grade, explanation, and known cost."""
 
     judge_label: str
     human_label: str
     agrees: bool
-    human_is_problem: bool
-    judge_is_problem: bool
     detail: str
     cost_usd: float
 

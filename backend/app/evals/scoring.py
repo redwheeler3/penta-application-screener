@@ -194,11 +194,7 @@ def judge_request(given: dict):
 
 
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, background: str, model: str):
-    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model re-scores the case
-    from the editable ``background`` + ``given`` (never the human label), then we grade its score
-    against the expected band with the SAME check the live eval uses. 'Agrees' = the blind score
-    landed in the band the human specified. Scoring has no single 'problem' side, so it does not
-    contribute to failure-recall (both is_problem False)."""
+    """Reproduce the pass blind, then grade its output against the human expectation."""
     from app.evals.reproduce import Reproduced
 
     dim = given["dimension"]
@@ -209,10 +205,10 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     from app.ai.pricing import cost_usd
     cost = cost_usd(result.model_id, result.usage)
     if score is None:
-        return Reproduced("no score", band_str(expected), False, False, False, "judge returned no score", cost)
+        return Reproduced("no score", band_str(expected), False, "judge returned no score", cost)
     agrees = not _check_expectations(score, expected)
     detail = f"judge scored {score.score:+.2f} ({score.confidence.value}): {score.rationale}"
-    return Reproduced(f"{score.score:+.2f}", band_str(expected), agrees, False, False, detail, cost)
+    return Reproduced(f"{score.score:+.2f}", band_str(expected), agrees, detail, cost)
 
 
 @dataclass(frozen=True)

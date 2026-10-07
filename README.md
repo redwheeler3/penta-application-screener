@@ -141,8 +141,7 @@ offline log archaeology.
   exercise screening, decomposition, matching, scoring, and consolidation against live models.
 - Stability runs repeat non-deterministic cases to expose flips instead of hiding them behind one
   passing sample.
-- A blind LLM judge audits human labels and reports agreement, Cohen's kappa, and problem-detection
-  recall/precision. Judge results are review signals, never CI gates or production mutations.
+- A blind LLM judge audits human labels and reports decisive-case agreement with contested cases counted separately. Judge results are review signals, never CI gates or production mutations.
 - Applicant-facing eval cases can be harvested only from pools carrying persisted synthetic
   provenance, keeping real application text out of source control.
 

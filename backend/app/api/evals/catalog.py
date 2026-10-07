@@ -24,7 +24,7 @@ from app.core.problems import Problem
 from app.core.time import utc_isoformat
 from app.db.models import EvalRun, User
 from app.db.session import get_db
-from app.evals.dataset import case_identity, load_dataset
+from app.evals.dataset import load_dataset
 from app.evals.fixture import FIXTURE_PATH, load, record
 from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invariants
 from app.evals.paths import GOLDEN_FILES
@@ -139,12 +139,6 @@ def last_run(
         case_run_ids = {}
         if "cases" in result:
             cases, case_run_ids = latest_case_results(db, key, newest.prompt_version or "", result, set(fingerprints))
-            # Aggregate counts describe the reconstructed cases. Judge agreement belongs
-            # to its original full run, so don't attach it to an accumulated partial set.
-            def by_identity(items):
-                return {case_identity(item["key"], item.get("passName", "")): item for item in items}
-            if by_identity(cases) != by_identity(result["cases"]):
-                result["agreement"] = None
             result["cases"] = cases
             if "total" in result:
                 result["total"] = len(cases)

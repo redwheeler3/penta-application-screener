@@ -38,8 +38,7 @@ The shape of this eval system, and why it's shaped that way — the five ideas t
 2. **The LLM judge earns its keep on the fuzzy questions, not routine grading.** It has two
    legitimate jobs: **label auditing** (on a genuinely subjective call, a judge that disagrees
    with our label is a signal the *label* may be wrong) and **calibration** (before trusting any
-   judge, measure it against human labels with Cohen's κ — chance-corrected agreement, defined
-   under "Judge-vs-human agreement metrics"; "who evaluates the evaluator"). It
+   judge, inspect its graded agreement and disagreements against the human labels). It
    runs **blind** — never shown the human label — because a judge shown the answer rubber-stamps
    it. It re-derives each pass's output from the same input production saw, then the harness
    compares.
@@ -129,7 +128,7 @@ case's `given` + the pass's editable `judge_background` brief — blind to the h
 the harness grades that blind output against `metadata.expected` with the pass's own grader. A
 consistent judge-vs-label disagreement signals the **label** may be wrong, not the judge.
 
-Run it from the in-app **Evals tab** → Judge subtab: a whole-set "Run judge + agreement"
+Run it from the in-app **Evals tab** → Judge subtab: a whole-set "Run judge"
 or a per-case "judge"/"stability" run. (No CLI wrapper; the tab calls the same
 `judge_case`/`stability_run` functions directly.)
 
@@ -174,8 +173,8 @@ a re-run of the production prompt — the SAME grader as the live eval, but on o
    mistake]"* — on a subjective call like merge/keep, a blind judge that consistently disagrees
    with our `expected` signals the **label may be wrong**, not the judge (*"are our expected
    values defensible?"*).
-2. **Calibration.** Before trusting a judge, measure its agreement against human labels —
-   Cohen's κ, target ≈ human-human ~0.80. The Judge tab *is* that agreement-measurement apparatus.
+2. **Calibration.** Inspect graded agreement and individual disagreements against human
+   labels, keeping contested cases separate. These are observations about the current corpus.
 
 So the Judge tab is **demoted from grader to periodic audit/calibration instrument**: run it
 occasionally to ask "are our labels sound, and is our judge sound?", not as a per-run gate. The
@@ -545,67 +544,16 @@ runs to date it finds **zero** real drift — decompose is behaving well — so 
 seeded. It earns its keep the run it finally catches one. Subtle no-key-named drift remains
 the LLM judge's job (that's the `matches`/`mismatches` task applied to a decision).
 
-## Judge-vs-human agreement metrics
+## Judge-vs-human agreement
 
-Best practice (Arize, Evidently, Pragmatic Engineer) is unanimous: before you
-trust an LLM-as-judge, **validate it against human labels with real metrics** — an
-eyeballed "5/5" isn't validation. So a whole-set judge run (the Evals tab → Judge →
-"Run judge + agreement") returns, after the per-case verdicts, a `score_agreement`
-summary (`app/evals/agreement.py`):
+The Judge tab derives its summary from the displayed case results: agreements divided by
+completed decisive cases, with contested and unrun cases counted separately. A contested
+outcome does not count as agreement or disagreement. The same rule applies to a whole run
+and restored results assembled from compatible partial runs.
 
-- **Overall agreement** — the share of *decisive* (non-contested) cases where the judge's
-  blind verdict matched the human label, plus **Cohen's κ**. *Cohen's kappa* measures how much
-  two raters (here: the judge vs. the human labels) agree **beyond what chance alone would
-  produce**: `κ = (observed agreement − chance agreement) / (1 − chance agreement)`. It runs
-  from 1 (perfect) through 0 (only chance-level) to negative (worse than chance); we target
-  **≈ 0.80**, the rate at which two *humans* typically agree, so the judge is as reliable as a
-  second person. Kappa matters because raw agreement inflates when one label dominates — if 90%
-  of cases are `keep`, a judge that blindly says `keep` scores 90% agreement while being
-  useless; kappa corrects for that.
-- **Per-AI-step agreement** — agreement + kappa computed separately per pass, so a strong score
-  on clean cases can't hide weak `mismatches` / required-flag performance (the field's "85%
-  overall can still be unusable" warning).
-- **Failure-detection recall + precision** — *the number that matters*. Over the cases whose
-  human label flags a PROBLEM (matching `mismatches`; a screening case whose `expected.fires`
-  demands a flag): **recall** = of the real problems, how many the judge caught (missing these
-  is the dangerous error); **precision** = of the judge's problem-calls, how many were real (the
-  rest are false alarms). A judge that aces clean cases but misses over-reaches is worse than an
-  overall score implies — which recall exposes and overall agreement hides.
-
-**Contested cases are excluded from every scored metric** and reported separately: their
-label is a human *leaning*, not ground truth, so scoring the judge against it would
-penalise a defensible call (the field: don't force binary on genuinely indeterminate
-cases). It's aggregate-only, no extra cost (same calls as the per-case run), and — like
-the rest — non-gating. `merge`/`keep` cases contribute to overall agreement + kappa but
-not to failure-recall (neither side is inherently "the problem" — noted in the report so
-it isn't a silent omission).
-
-**Best-practices audit — where we stand.** Aligned with (some ahead of) the LLM-as-judge
-literature: code-vs-judge split (deterministic invariants gate CI, judge handles semantics);
-fixed categorical verdicts, never 1–10 scores ("easiest to misuse"); the **contested** category
-(the field's `needs_review` for indeterminate cases); label + rationale + separate evidence
-fields; the fidelity rule; judge never gates CI. Still open, deferred with reason: a **holdout
-set** (our cases are both calibration and test — small set, revisit as it grows); **judge drift
-tracking** over model/prompt versions (the deferred judge-score-persistence item — gated on a
-run cadence); and a **bias audit** (self-preference — judge and production are both Claude;
-verbosity — the coop_motivation case hinted richer text scored favourably). Known risks, not
-yet measured.
-
-**What measuring bought us.** The first scored agreement runs made the point: a per-case skim
-of green checks read "great," but the failure-recall metric said the judge missed a third of
-the problem cases. The disagreements resolved into two findings, both handled by the discipline
-"a disagreement re-examines the label or is recorded — never tunes the judge":
-
-- **Label bug fixed (agreement rose honestly).** The judge called a 0.0-on-EMPTY-evidence
-  score *unsupported*; our label said *supported*. The judge was right: the eval judges "is the
-  CITED evidence sufficient?", and an empty evidence field cites nothing. `score_outdoor_grounds_absent_*`
-  flipped supported→unsupported — agreement rose because a label improved, not because the
-  judge was tuned.
-- **Known judge weakness kept on the record.** The judge consistently rules a name≠email
-  mismatch a *supported* fake-contact flag; we hold it's benign over-reach and kept both cases
-  `flag_unsupported`. These stay as genuine judge misses — NOT relabelled to agree, NOT used to
-  tune the judge. So **the judge over-flags name/email mismatches** is a measured, documented
-  limitation to weigh before trusting it on screening over-reaches.
+Inspect the case-level reproduced output, human expectation and rationale to investigate
+disagreement. These counts describe this corpus; they do not establish general judge quality
+or turn a subjective human label into ground truth. No model call is added for aggregation.
 
 **Absence policy — NEUTRAL on a signed −1..+1 scale.** On a [0,1] scale, "nothing" and "worst"
 collide at 0, so silence can pattern-match the low pole. A re-score found 66 of 99 zeros were

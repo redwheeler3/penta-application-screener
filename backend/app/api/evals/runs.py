@@ -31,7 +31,6 @@ from app.core.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
 from app.evals import stability
-from app.evals.agreement import score_agreement
 from app.evals.consolidate import load_cases as load_consolidation_cases
 from app.evals.consolidate import run_case as run_consolidation_case
 from app.evals.consolidate import stability_run as consolidation_stability_run
@@ -52,7 +51,6 @@ from app.evals.screening import load_cases as load_screening_cases
 from app.evals.screening import run_case as run_screening_case
 from app.evals.screening import stability_run as screening_stability_run
 from app.schemas.evals import (
-    AgreementOut,
     ConsolidationCaseOut,
     ConsolidationResponse,
     ConsolidationStabilityCaseOut,
@@ -353,8 +351,7 @@ def run_judge(
     """Stream a blind label-audit run over every pass's golden cases, then compute
     judge-vs-human agreement. Each case is reproduced by an INDEPENDENT model (blind to the
     label) and graded against the human label — see judge.py. ``case`` runs just that one
-    (per-row run); agreement needs ≥2 scored cases, so a single-case run reports no agreement
-    block, only the verdict.
+    (per-row run); case results carry the agreement evidence.
 
     ``?mode=stability`` instead blind-audits each case K times on fixed inputs and reports
     whether the judge's verdict held (persisted under eval_key ``stability``). ``k`` is clamped
@@ -412,20 +409,9 @@ def run_judge(
             )
             for r in results
         ]
-        scored = [r for r in results if not r.case.contested]
-        agreement = None
-        if len(scored) >= 2:
-            rep = score_agreement(results)
-            agreement = AgreementOut(
-                n_scored=rep.n_scored, n_agree=rep.n_agree, n_contested=rep.n_contested,
-                agreement=rep.agreement, kappa=rep.kappa,
-                per_category={k: [v[0], v[1]] for k, v in rep.per_category.items()},
-                failure_total=rep.failure_total, failure_caught=rep.failure_caught,
-                failure_recall=rep.failure_recall, failure_precision=rep.failure_precision,
-            )
         return JudgeRunResponse(
             judge_prompt_version=pv, judge_model=JUDGE_MODEL,
-            cases=case_out, agreement=agreement,
+            cases=case_out,
         )
 
     return stream(db, "judge", pv, work, case_fingerprints=fingerprints)

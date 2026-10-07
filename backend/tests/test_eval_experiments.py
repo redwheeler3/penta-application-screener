@@ -208,16 +208,15 @@ async def test_history_skips_non_json_narration_era_rows():
     assert [case["key"] for case in response.json()["runs"][0]["result"]["cases"]] == [key]
 
 
-async def test_whole_run_agreement_survives_history_reordering_and_contested_counts():
+async def test_history_restores_case_identity_and_contested_counts():
     from app.api.evals._shared import current_prompt_version
     app, db, _provider = setup_app()
     snapshot = load_dataset()
     cases = [{"key": case.key, "passName": case.pass_name, "marker": "[ok]"}
              for case in judge.load_cases(snapshot)[:2]]
-    agreement = {"kappa": 1, "nScored": 2}
     db.add(EvalRun(eval_key="judge", prompt_version=judge.prompt_version(snapshot),
                    result={"judgeModel": judge.DEFAULT_MODEL, "experimentId": "whole",
-                           "cases": list(reversed(cases)), "agreement": agreement}))
+                           "cases": list(reversed(cases))}))
     matching_key = snapshot.families["matching"]["cases"][0]["key"]
     db.add(EvalRun(eval_key="matching", prompt_version=current_prompt_version("matching"),
                    result={"model": "synthetic", "experimentId": "contested", "passed": 1, "total": 1,
@@ -225,7 +224,7 @@ async def test_whole_run_agreement_survives_history_reordering_and_contested_cou
     db.commit()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         runs = (await client.get("/evals/last-run?keys=judge,matching")).json()["runs"]
-    assert runs[0]["result"]["agreement"] == agreement
+    assert {(c["passName"], c["key"]) for c in runs[0]["result"]["cases"]} == {(c["passName"], c["key"]) for c in cases}
     assert runs[1]["result"]["passed"] == 1
 
 

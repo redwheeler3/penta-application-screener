@@ -115,7 +115,7 @@ it.each(["a", "new"])("starts a fresh template when switching case %s to Add cas
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   fireEvent.click(screen.getByRole("button", { name: "+ Add case" }));
   expect(screen.getByText("Add case", { selector: "strong" })).toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Key", exact: true })).toHaveValue("");
+  expect(screen.getByRole("textbox", { name: "Key" })).toHaveValue("");
   expect(screen.queryByDisplayValue("Original A")).not.toBeInTheDocument();
 });
 

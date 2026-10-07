@@ -30,7 +30,7 @@ judge grading a case you can already exact-match is redundant cost.
   golden case across all five passes, an independent model reproduces that pass's output
   from an editable per-pass `judge_background` brief + the case's `given`, **blind to the
   label**, and the harness grades that blind output with the pass's own grader. Agreement
-  (Cohen's κ, target ≈ human-human ~0.80) calibrates the judge; a consistent disagreement on
+  (decisive-case agreement, with contested cases counted separately) informs review; a consistent disagreement on
   a subjective case flags the *label*, not the pass. Blindness is load-bearing (judge sees
   `given` + `judge_background` only, never `metadata`).
 - The judge is run **occasionally as audit/calibration**, never per-run and never a CI gate.
@@ -41,7 +41,7 @@ judge grading a case you can already exact-match is redundant cost.
 
 - One clear grader per pass; the redundant "judge grades what a regex could" cost is gone.
 - The Judge tab answers two useful questions it couldn't before: *are our `expected` labels
-  defensible?* and *is our judge trustworthy (κ vs. human)?* — demoted from grader to
+  defensible?* and *where does our judge disagree with human expectations?* — demoted from grader to
   audit instrument, which resolved the long-parked "how useful is judge-the-judge?" question.
 - The multi-agent judge escalation (N-judge voting / adversarial skeptic) was **not built**:
   a K=5 stability run on real Bedrock showed the single blind judge is stable on all

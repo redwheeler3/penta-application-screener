@@ -99,8 +99,7 @@ export type EvalCaseOutcomesByMode = Partial<Record<EvalRunMode, EvalCaseOutcome
 
 // A whole run's summary (the NDJSON `summary` payload, also what LastEvalRun.result carries):
 // the per-case results plus run-level aggregates. The HTTP boundary attaches the requested mode
-// before results reach case renderers. `agreement` is the judge's calibration block
-// (Cohen's κ + failure-recall); `model`/`scoringModel`/`judgeModel` name the model that mode used.
+// before results reach case renderers. Model fields identify the model that mode used.
 export type EvalRunResult<Mode extends EvalRunMode = EvalRunMode> = {
   experimentId?: string;
   promptVersion?: string;
@@ -108,12 +107,6 @@ export type EvalRunResult<Mode extends EvalRunMode = EvalRunMode> = {
   judgePromptVersion?: string;
   reasoningEffort?: string | null;
   cases?: EvalCaseResultByMode[Mode][];
-  agreement?: {
-    kappa: number | null;
-    failureRecall: number | null;
-    failureCaught: number;
-    failureTotal: number;
-  } | null;
   model?: string;
   scoringModel?: string;
   judgeModel?: string;

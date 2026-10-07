@@ -83,3 +83,12 @@ describe("eval result presentation", () => {
     expect(screen.getByText("Outside the band.")).toBeInTheDocument();
   });
 });
+
+
+it("summarizes only decisive Judge results and reports contested/unrun cases separately", () => {
+  const ok = { key: "a", passName: "matching", marker: "[ok]", humanLabel: "matches", judgeLabel: "matches", contested: false, detail: "Synthetic", labelRationale: "" };
+  const disputed = { ...ok, key: "b", marker: "[contested]", contested: true, judgeLabel: "mismatches" };
+  expect(runSummary({ eval: "judge", result: { cases: [ok, disputed] } }, 3)).toBe("1/1 agree · 1 contested · 1 not run");
+  expect(runSummary({ eval: "judge", result: { cases: [disputed] } }, 1)).toBe("No decisive results · 1 contested");
+  expect(runSummary({ eval: "judge", result: { cases: [{ ...ok, marker: "[review]" }] } }, 1)).toBe("0/1 agree");
+});

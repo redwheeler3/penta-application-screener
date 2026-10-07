@@ -228,12 +228,7 @@ def judge_request(given: dict):
 
 
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, background: str, model: str):
-    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model re-screens the
-    applicant from the editable ``background`` (which carries the policy context the production
-    prompt gets from settings) + the given fields/essays — never the human label — then we grade
-    its flag categories with the SAME fires/absent check the live eval uses. A screening case
-    HAS a defect notion: a missed required flag or an over-reach is the failure, so it feeds
-    failure-recall (human_is_problem = the case guards something; judge_is_problem = it failed)."""
+    """Reproduce the pass blind, then grade its output against the human expectation."""
     from app.ai.pricing import cost_usd
     from app.evals.reproduce import Reproduced
 
@@ -248,8 +243,7 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     cost = cost_usd(result.model_id, result.usage)
     shown = ", ".join(categories) or "no flags"
     detail = "; ".join(f"{f.category.value}: {f.summary}" for f in result.output.flags) or "no flags"
-    human_is_problem = bool(probe.fires or probe.absent)  # the case guards a real defect
-    return Reproduced(shown, expected_str(expected), not failures, human_is_problem, bool(failures), detail, cost)
+    return Reproduced(shown, expected_str(expected), not failures, detail, cost)
 
 
 def fire_label(req: object) -> str:

@@ -9,12 +9,7 @@ That is this module. For every golden case (across all five ``<pass>_golden.json
 asks a second, independent model to REPRODUCE that pass's output — from a plain-language,
 editable brief (the file's ``judge_background``, "what this pass does") + the case's ``given``,
 BLIND to the human label — then grades the blind output with the SAME grader the live eval
-uses. Two reads come out of it:
-  - **Label audit.** A case where the independent judge consistently disagrees with the human
-    ``expected`` is a signal the LABEL may be wrong (not the judge). That is the reframed Judge
-    tab's value.
-  - **Calibration.** Aggregate judge-vs-human agreement (Cohen's κ, failure-recall — see
-    ``agreement.py``) says whether the judge is itself trustworthy before you lean on it.
+uses. Case-level agreement and explanations help the operator review the human labels.
 
 It owns NO case files: it reads every pass's golden file. Blindness (never showing the judge
 ``metadata.expected``) is the load-bearing rule — a judge shown the answer rubber-stamps it.

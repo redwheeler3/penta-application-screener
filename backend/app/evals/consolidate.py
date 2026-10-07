@@ -114,10 +114,7 @@ def judge_request(given: dict):
 
 
 def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, background: str, model: str):
-    """Blind-judge adapter (see app/evals/reproduce.py): an INDEPENDENT model decides merge/keep
-    for the pair from the editable ``background`` + the two definitions (never the human label),
-    then we exact-match its verdict against ``expected``. merge/keep has no single 'problem'
-    side, so it does not contribute to failure-recall."""
+    """Reproduce the pass blind, then grade its output against the human expectation."""
     from app.ai.pricing import cost_usd
     from app.evals.reproduce import Reproduced
 
@@ -125,7 +122,7 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, backgro
     result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     verdict = result.output.verdict.value
     cost = cost_usd(result.model_id, result.usage)
-    return Reproduced(verdict, expected, verdict == expected, False, False, result.output.reason, cost)
+    return Reproduced(verdict, expected, verdict == expected, result.output.reason, cost)
 
 
 def run_case(
