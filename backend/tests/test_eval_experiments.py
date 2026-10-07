@@ -29,23 +29,6 @@ def local_corpus(tmp_path, monkeypatch):
         monkeypatch.setitem(GOLDEN_FILES, family, target)
 
 
-async def test_catalog_reads_each_family_once(monkeypatch):
-    from app.evals import dataset
-
-    reads = []
-    original = dataset.read_json
-
-    def counted(path):
-        reads.append(path)
-        return original(path)
-
-    monkeypatch.setattr(dataset, "read_json", counted)
-    app, _db, _provider = setup_app()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.get("/evals/catalog")).status_code == 200
-    assert reads == list(GOLDEN_FILES.values())
-
-
 async def test_judge_version_uses_captured_briefs_and_actual_guard(tmp_path, monkeypatch):
     local_corpus(tmp_path, monkeypatch)
     captured = load_dataset()

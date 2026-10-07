@@ -4,8 +4,8 @@ The eval RUNNERS live in ``app.evals.*`` and return plain dataclasses; these are
 camelCase response shapes the frontend reads. Kept separate from the runners so the CLI
 path (``./judge.sh`` etc.) stays dependency-free of the API layer.
 
-The catalog is FREE (no model calls) — it lists each eval and how many model calls a run
-would cost, so the UI can show a spend-confirm before firing. Each run response carries the
+The catalog supplies repetition counts and editing policy without reading case data.
+The UI calculates call estimates from its visible case set. Each run response carries the
 prompt version(s) it exercised, so a result is always attributable to the exact prompt.
 """
 
@@ -19,13 +19,9 @@ from app.schemas.base import RequestModel, ResponseModel
 
 
 class EvalDescriptor(ResponseModel):
-    """One runnable eval + its cost shape, for the catalog the UI lists."""
+    """One runnable mode and its per-case call count."""
 
-    key: str  # "scoring" | "judge" | "stability" | "invariants"
-    label: str
-    description: str
-    spends: bool  # True if a run makes model calls (UI shows a spend-confirm)
-    estimated_calls: int  # nominal model calls at the captured corpus size
+    key: str
     repetitions: int = 1  # one live call, or the requested stability K
 
 

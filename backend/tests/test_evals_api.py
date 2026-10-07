@@ -156,18 +156,21 @@ def test_over_cases_flushes_as_completed_no_interleave() -> None:
     assert emitted == ["case 1 line a\n", "case 1 line b\n", "case 0 line a\n", "case 0 line b\n"]
 
 
-async def test_catalog_lists_evals_with_spend_flags() -> None:
+async def test_catalog_supplies_call_shape_without_reading_fixtures(monkeypatch) -> None:
+    from app.api.evals import catalog
+    def unexpected_read(*_args, **_kwargs):
+        raise AssertionError("Catalog must not load the corpus")
+    monkeypatch.setattr(catalog, "load_dataset", unexpected_read)
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
         body = (await client.get("/evals/catalog")).json()
     by_key = {e["key"]: e for e in body["evals"]}
-    assert by_key["invariants"]["spends"] is False
-    assert by_key["invariants"]["estimatedCalls"] == 0
-    # Spending evals report a positive call estimate for the UI's confirm dialog.
-    assert by_key["scoring"]["spends"] is True
-    assert by_key["scoring"]["estimatedCalls"] > 0
-    assert by_key["stability"]["estimatedCalls"] > by_key["judge"]["estimatedCalls"]
+    assert by_key["invariants"] == {"key": "invariants", "repetitions": 0}
+    assert by_key["scoring"] == {"key": "scoring", "repetitions": 1}
+    assert by_key["stability"] == {"key": "stability", "repetitions": 5}
+    assert len(by_key) == 13
+    assert all(set(item) == {"key", "repetitions"} for item in by_key.values())
 
 
 async def test_invariants_run_free_over_the_fixture() -> None:

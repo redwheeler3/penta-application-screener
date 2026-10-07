@@ -44,101 +44,13 @@ router = APIRouter()
 
 @router.get("/catalog", response_model=EvalCatalogResponse)
 def catalog(user: User = Depends(require_admin)) -> EvalCatalogResponse:
-    """List the runnable evals + how many model calls each run costs (for the UI's
-    spend-confirm). Free — computed from the committed fixtures, no model calls."""
-    dataset = load_dataset()
-    golden = dataset.families["scoring"]["cases"]
-    scoring_calls = len(golden)  # one score call per case; the per-pass evals are judge-free
-    n_judge = sum(len(data["cases"]) for data in dataset.families.values())
-    consolidation = dataset.families["consolidation"]["cases"]
-    consolidation_calls = len(consolidation)  # one confirm call per case
-    matching = dataset.families["matching"]["cases"]
-    matching_calls = len(matching)
-    decomposition = dataset.families["decomposition"]["cases"]
-    decomposition_calls = len(decomposition)
-    n_screening = len(dataset.families["screening"]["cases"])  # one screening call per applicant
-    return EvalCatalogResponse(fixture_editing_enabled=get_settings().eval_fixture_editing_enabled, evals=[
-        EvalDescriptor(
-            key="invariants", label="Invariants",
-            description="Deterministic checks on the committed baseline fixture (poles "
-            "present, no protected attributes). Free, instant.",
-            spends=False, estimated_calls=0, repetitions=0,
-        ),
-        EvalDescriptor(
-            key="scoring", label="Scoring",
-            description=f"Run {len(golden)} golden synthetic inputs through the REAL scoring "
-            "prompt+model; grade each produced score against its expected [min, max] band.",
-            spends=True, estimated_calls=scoring_calls,
-        ),
-        EvalDescriptor(
-            key="scoring_stability", label="Scoring — stability",
-            description=f"Run the REAL scoring prompt K times (default K={DEFAULT_STABILITY_K}) per "
-            "golden case on fixed input; flag when a case's pass/fail wanders across runs.",
-            spends=True, estimated_calls=len(golden) * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
-        ),
-        EvalDescriptor(
-            key="consolidation", label="Consolidation",
-            description=f"Run {len(consolidation)} golden dimension pairs through the REAL "
-            "consolidation prompt+model; grade merge/keep against the label (exact match).",
-            spends=True, estimated_calls=consolidation_calls,
-        ),
-        EvalDescriptor(
-            key="consolidation_stability", label="Consolidation — stability",
-            description=f"Run the REAL consolidation prompt K times (default K={DEFAULT_STABILITY_K}) "
-            f"per pair on fixed input to measure verdict stability. Costs K times a run.",
-            spends=True, estimated_calls=len(consolidation) * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
-        ),
-        EvalDescriptor(
-            key="matching", label="Matching",
-            description=f"Run {len(matching)} golden prior/new dimension pairs through the REAL "
-            "identity-match prompt+model; grade matches/mismatches against the label (exact match).",
-            spends=True, estimated_calls=matching_calls,
-        ),
-        EvalDescriptor(
-            key="matching_stability", label="Matching — stability",
-            description=f"Run the REAL match prompt K times (default K={DEFAULT_STABILITY_K}) per "
-            "pair on fixed input to measure verdict stability. Costs K times a run.",
-            spends=True, estimated_calls=len(matching) * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
-        ),
-        EvalDescriptor(
-            key="decomposition", label="Decomposition",
-            description=f"Run {len(decomposition)} golden discovery-report sets through the REAL "
-            "decomposition prompt+model; grade merge/keep (derived from the settled set) against "
-            "the label (exact match).",
-            spends=True, estimated_calls=decomposition_calls,
-        ),
-        EvalDescriptor(
-            key="decomposition_stability", label="Decomposition — stability",
-            description=f"Run the REAL decompose prompt K times (default K={DEFAULT_STABILITY_K}) per "
-            "set on fixed input to measure fold/keep stability. Costs K times a run.",
-            spends=True, estimated_calls=len(decomposition) * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
-        ),
-        EvalDescriptor(
-            key="screening", label="Screening",
-            description=f"Run {n_screening} golden synthetic applicants through the REAL screening "
-            "prompt+model; grade the produced flags per-category (expected fires present, "
-            "over-reach guards absent, clean applicants flag-free).",
-            spends=True, estimated_calls=n_screening,
-        ),
-        EvalDescriptor(
-            key="screening_stability", label="Screening — stability",
-            description=f"Run the REAL screening prompt K times (default K={DEFAULT_STABILITY_K}) per "
-            "applicant on fixed input to measure whether the flag set holds. Costs K times a run.",
-            spends=True, estimated_calls=n_screening * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
-        ),
-        EvalDescriptor(
-            key="judge", label="Judge + agreement",
-            description=f"Judge all {n_judge} labelled cases once and report judge-vs-human "
-            "agreement (overall, kappa, per-step, failure recall).",
-            spends=True, estimated_calls=n_judge,
-        ),
-        EvalDescriptor(
-            key="stability", label="Stability",
-            description=f"Judge each case K times on fixed inputs (default K={DEFAULT_STABILITY_K}) "
-            "to measure verdict stability. Costs K times a judge run.",
-            spends=True, estimated_calls=n_judge * DEFAULT_STABILITY_K, repetitions=DEFAULT_STABILITY_K,
-        ),
-    ])
+    """Run repetition counts and local editing policy, independent of fixture contents."""
+    modes = [EvalDescriptor(key="invariants", repetitions=0)]
+    for family in GOLDEN_FILES:
+        modes.extend((EvalDescriptor(key=family),
+                      EvalDescriptor(key=f"{family}_stability", repetitions=DEFAULT_STABILITY_K)))
+    modes.extend((EvalDescriptor(key="judge"), EvalDescriptor(key="stability", repetitions=DEFAULT_STABILITY_K)))
+    return EvalCatalogResponse(fixture_editing_enabled=get_settings().eval_fixture_editing_enabled, evals=modes)
 
 
 def _invariants_response() -> InvariantsResponse:

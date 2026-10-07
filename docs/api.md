@@ -151,7 +151,7 @@ consolidation audits expose captured configuration where it was recorded.
 | POST | `/evals/baseline` | Rebaseline | Local admin |
 | GET | `/evals/cases/{eval_key}` | An eval's cases, straight from its committed fixture (free). 404 for an eval with no editable case set (invariants; stability reads the judge set). | Admin |
 | PUT | `/evals/cases/{eval_key}` | Upsert one case (by key) into the eval's fixture FILE (the operator commits it to git deliberately). Validated server-side; a bad payload is refused (422). | Local admin |
-| GET | `/evals/catalog` | List the runnable evals + how many model calls each run costs (for the UI's spend-confirm). Free — computed from the committed fixtures, no model calls. | Admin |
+| GET | `/evals/catalog` | Run repetition counts and local editing policy, independent of fixture contents. | Admin |
 | POST | `/evals/consolidation` | Run Consolidation | Admin |
 | POST | `/evals/decomposition` | Run Decomposition | Admin |
 | GET | `/evals/invariants` | Run the deterministic invariants over the committed fixture. Free (no model calls). (Judgement signals — overlap, carry-forward rate — live on the Observability tab over the live run, which shows them better; they aren't duplicated here.) | Admin |

@@ -135,10 +135,6 @@ export type EvalCasesResponse = { cases: Record<string, unknown>[]; caseFingerpr
 
 export type EvalDescriptor = {
   key: EvalKey;
-  label: string;
-  description: string;
-  spends: boolean;
-  estimatedCalls: number;
   repetitions: number;
 };
 

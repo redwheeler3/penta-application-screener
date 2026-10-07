@@ -711,7 +711,7 @@ Boundaries that keep this honest (dependency flows evals→app, never app→eval
 - **The tab calls the eval runner functions directly** (`run_case`, `judge_case`,
   `stability_run`, `run_invariants`, `record`) — one code path, no CLI/UI drift.
 - **Runs stream** via the shared NDJSON vocabulary as Rank/Screen (`thinking` deltas then a
-  terminal `summary`); the spend-confirm/call-count come from a free `/evals/catalog`.
+  terminal `summary`); the free `/evals/catalog` supplies repetitions; confirmations multiply them by the visible case count.
 - **Runs persist** to an `EvalRun` DB row (result + streamed reasoning) — telemetry,
   queryable for trends, raw material to "eval the eval" later.
 - **Cases stay in the versioned JSON dataset**, NOT the DB. Git history, PR review, the
