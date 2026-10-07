@@ -99,6 +99,7 @@ def create_opening(
     db.add(opening)
     db.flush()
     create_opening_rules(db, opening)
+    refresh_draft_retention_for_opening(db, opening.id, now=now)
     return opening
 
 

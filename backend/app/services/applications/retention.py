@@ -1,6 +1,6 @@
 """Application retention dates derived from opening decisions."""
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -92,25 +92,44 @@ def _discard_private_working_copy(application: Application) -> None:
     application.working_opening_ids = []
 
 
-def refresh_draft_retention_for_opening(db: Session, opening_id: int) -> None:
-    """Refresh private records whose saved opening selections include one edited opening."""
-    applications = db.scalars(
-        select(Application).where(Application.submitted_at.is_(None))
-    ).all()
-    for application in applications:
-        if not application.working_opening_ids or opening_id in application.working_opening_ids:
-            refresh_application_retention(db, application)
+def refresh_draft_retention_for_opening(
+    db: Session, opening_id: int, *, now: datetime | None = None,
+) -> None:
+    """Update current private deadlines after publication or an opening edit.
 
+    Explicit selections follow only their chosen openings; empty selections share
+    the latest published close date. An elapsed deadline cannot be revived here.
+    The caller holds the opening's write transaction through these updates.
+    """
+    now = now or datetime.now(UTC)
+    today = pacific_today(now=now)
+    applications = db.scalars(
+        select(Application).where(
+            Application.submitted_at.is_(None),
+            current_retention_clause(now=now),
+        )
+    ).all()
     drafts = db.scalars(
         select(ApplicantDraft).where(
             ApplicantDraft.resolved_at.is_(None),
             ApplicantDraft.revoked_at.is_(None),
+            ApplicantDraft.expires_on > today,
         )
     ).all()
+
+    fallback_due_on = (draft_expiry_for_opening_ids(db, [])
+        if any(not record.working_opening_ids for record in [*applications, *drafts]) else None)
+    for application in applications:
+        ids = application.working_opening_ids or []
+        if not ids:
+            application.retention_due_on = fallback_due_on
+        elif opening_id in ids:
+            application.retention_due_on = draft_expiry_for_opening_ids(db, ids)
     for draft in drafts:
-        if draft.working_opening_ids and opening_id not in draft.working_opening_ids:
+        ids = draft.working_opening_ids or []
+        if ids and opening_id not in ids:
             continue
-        due_on = draft_expiry_for_opening_ids(db, draft.working_opening_ids or [])
+        due_on = draft_expiry_for_opening_ids(db, ids) if ids else fallback_due_on
         if due_on is not None:
             draft.expires_on = due_on
 

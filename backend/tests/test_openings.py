@@ -273,12 +273,15 @@ async def test_changing_move_in_date_does_not_set_participant_retention() -> Non
 @pytest.mark.anyio
 async def test_changing_close_date_updates_private_draft_expiry() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
+    today = pacific_today()
+    original_close = today + timedelta(days=14)
+    extended_close = today + timedelta(days=30)
     opening = Opening(
         unit_size_bedrooms=2,
         housing_charge_cents=125_000,
-        application_open_date=date(2026, 9, 1),
-        application_close_date=date(2026, 9, 15),
-        move_in_date=date(2026, 10, 1),
+        application_open_date=today,
+        application_close_date=original_close,
+        move_in_date=today + timedelta(days=45),
         published_at=datetime.now(UTC),
     )
     application = Application(
@@ -287,7 +290,7 @@ async def test_changing_close_date_updates_private_draft_expiry() -> None:
         raw_row_hash="claimed-draft",
         normalized={},
         working_opening_ids=[],
-        retention_due_on=date(2026, 9, 16),
+        retention_due_on=original_close + timedelta(days=1),
     )
     db.add_all([opening, application])
     db.flush()
@@ -299,7 +302,7 @@ async def test_changing_close_date_updates_private_draft_expiry() -> None:
         working_opening_ids=[opening.id],
         created_at=datetime.now(UTC),
         saved_at=datetime.now(UTC),
-        expires_on=date(2026, 9, 16),
+        expires_on=original_close + timedelta(days=1),
     )
     db.add(pending)
     db.commit()
@@ -309,14 +312,13 @@ async def test_changing_close_date_updates_private_draft_expiry() -> None:
         response = await client.put(
             f"/openings/{opening.id}",
             json=_opening_update(opening,
-                applicationCloseDate="2026-10-15",
-                moveInDate="2026-11-01",
+                applicationCloseDate=extended_close.isoformat(),
             ),
         )
 
     assert response.status_code == 200
-    assert application.retention_due_on == date(2026, 10, 16)
-    assert pending.expires_on == date(2026, 10, 16)
+    assert application.retention_due_on == extended_close + timedelta(days=1)
+    assert pending.expires_on == extended_close + timedelta(days=1)
 
 
 def _opening_with_candidates(db, *, archived: bool = False) -> tuple[Opening, list[Application]]:
