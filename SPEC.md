@@ -47,7 +47,8 @@ The children section collects first name, last name, and age for up to 4 childre
 
 The housing section asks for the current address and move-in date, then collects earlier addresses
 and their move-in dates until the history reaches two years before the earliest application close
-date shown on the form. It also asks whether the applicant owns real estate and collects current
+date shown on the form. Archived participation remains immutable but adds no hidden address-history
+requirement. It also asks whether the applicant owns real estate and collects current
 and previous landlord contacts. The form explains that landlord reference checks are required
 before membership acceptance and will be performed only if selected for interview.
 
@@ -237,14 +238,19 @@ answers as a private pending copy, emails the address owner an access link, and 
 authentication instead. The submission endpoint repeats the identity check as a race-condition
 safeguard. After sign-in, the applicant sees only fields that differ between the saved application
 and the answers just entered, then chooses **Keep my saved application** or **Use the answers I just
-entered**. This is a whole-copy choice, never a field-level merge. The exact pending copy is bound
+entered**. This is a whole-copy choice, never a field-level merge. Its authoritative acknowledgement
+replaces any unchosen remembered browser copy. If acknowledgement or recovery is uncertain, the
+comparison remains blocked and retryable; newer browser storage from another tab is not cleared. The exact pending copy is bound
 to the resulting browser session; a newer collision supersedes older unclaimed copies. Either
 choice changes only the private working copy. The committee-facing submitted copy remains unchanged
 until the applicant explicitly submits again. Requests are rate-limited and notification emails
 are coalesced so this protection cannot become an email-bombing tool.
 
 An emailed credential is not a permanent bearer link. Every applicant and committee magic link is
-valid for seven days and single-use. Repeated requests may leave several unused links valid so a
+valid for seven days and single-use. Anonymous renewal of an access link must still prove the
+current mailbox. Cancelled or completed email-change proposals cannot restart through renewal;
+expired unused proposals may renew. A valid durable email retry retains its separate authority
+after a failed provider attempt revokes that attempt's token. Repeated requests may leave several unused links valid so a
 provider-delayed earlier email does not arrive broken; consuming any link revokes its unused siblings
 for the same identity and purpose and creates a revocable server-side session. Applicants can sign
 out the current browser and revoke all application
@@ -407,7 +413,8 @@ asking them to retry an unexpected failure. Confirmation failures are recorded f
 Sending is rate-limited. Repeated credential requests retain older queued requests because either
 email may arrive first at the mailbox. A provider-temporary failure leaves a semantic request in a
 durable outbox for the next daily
-maintenance pass. The outbox never stores a rendered message, applicant answers, or a raw access
+maintenance pass. Post-write draining sends eligible first attempts and recovers expired attempt
+leases; unrelated writes do not immediately retry prior provider/quota failures. The outbox never stores a rendered message, applicant answers, or a raw access
 token: a credential email receives a fresh token immediately before each provider attempt, and an
 unsuccessful attempt revokes that token. Operational records contain only the provider message ID,
 message kind, recipient identifier, delivery state, and the minimum data needed to rebuild the
@@ -442,7 +449,9 @@ the SocketLabs status block. Manual Refresh repeats both requests without blanki
 Locally queued mail and quota-blocked mail appear in the administrator action banner and retry on the
 ordinary once-per-Pacific-day maintenance cadence. Unexpected terminal failures also appear in the
 banner for seven days. The Email Delivery report lists current queued and failed messages with the
-recipient address, attempted time, email type, state, attempt count, and error classification.
+actual queued/failed recipient address, attempted time, email type, state, attempt count, and error
+classification. The attempted address is cleared after acceptance or aggregate purge; missing
+historical recipient evidence is unavailable rather than inferred from a mutable account address.
 Expected cancellations, such as mail cancelled by withdrawal, do
 not appear as failures. The report never stores or displays rendered message contents or
 credentials. The application cannot email an alert through the same suspended account, so
@@ -591,8 +600,9 @@ the filter does not make another request or change the candidate set. Confirming
 records the selected participation and records every other active participation in that opening as
 unsuccessful. AI eligibility and ranking never imply that decision. Selecting an applicant excludes
 that application from future Screen and Rank work and every successful-applicant picker, while the
-Applications list and detail view retain the committee's ordinary review tools and persisted AI
-evidence. The detail view shows both the purple Selected state and the member's underlying
+Applications list and detail view retain persisted AI evidence, eligibility badges, and read-only
+notes. Selected households cannot change eligibility overrides, favourites, or shortlist state.
+Their ordinary detail keeps Back to list; retained admin review remains a distinct navigation mode. The detail view shows both the purple Selected state and the member's underlying
 Eligible/Ineligible status; status filters continue to use that underlying eligibility. The opening
 card shows the selected household as an ordinary read-only fact and links to the full retained
 application. Only an undecided closed opening offers the action to record a decision; a finalized
@@ -668,7 +678,9 @@ reports.
 
 Drafts do not have a separate retention period. A never-submitted server draft remains available
 only while at least one applicable opening accepts submissions and is deleted after the last such
-opening closes. Resolved, superseded, and revoked temporary copies are deleted once they no longer
+opening closes. Private creation and selection changes update that deadline atomically, including
+the available-opening fallback for an empty selection. Closing the last fallback opening leaves
+a finite close-anchored deadline, never an indefinite one. Resolved, superseded, and revoked temporary copies are deleted once they no longer
 serve the access flow. Private working changes on a submitted application do not extend retention
 and are discarded once all relevant openings have decisions. Remembered-device draft
 storage likewise has no independent 30-day timer and is removed by sign-out, clearing the device,
@@ -1401,6 +1413,11 @@ Each Admin Settings section loads its own resources. Loading or failing to load 
 configuration affects only the Configuration section, which offers a retry; the admin section
 navigation, openings, notifications, delivery, access, and feedback remain available.
 
+Feedback carries nullable opening and retained-review context. Submission returns only an
+acknowledgement; inaccessible or mismatched references are omitted without rejecting the text.
+Admin applicant links and names use current ordinary/retained visibility, never private draft
+identities. Contextless records do not broaden retained access.
+
 Implementation defaults:
 
 - Readability first; avoid redundancy; prefer elegant, boring solutions over clever abstractions.
@@ -1640,8 +1657,11 @@ matching vacancy notice.
   after confirmation, the opening exists and every matching notice is durably queued as one
   operation.
 - The first matching opening sends one notice and consumes the entire record regardless of how
-  many sizes were selected; a transient provider failure remains retryable and cannot double-send
-  after provider acceptance. The notice explains the removal and offers a link to subscribe again.
+  many sizes were selected. One delivery owns that consent generation across transient failures;
+  its attempt lease survives lifecycle changes while the provider is sending. Competing list-only
+  deliveries defer, while independently authorized application notices still send without claiming
+  list completion. Acceptance consumes only the matching generation. Recorded acceptance prevents
+  another notice; ambiguous provider acceptance after timeout cannot guarantee exactly-once delivery. The notice explains the removal and offers a link to subscribe again.
 - Application withdrawal and vacancy-request deletion remain independent, and application activity
   never silently subscribes an address.
 - Every vacancy-list message uses the common SocketLabs permanent-unsubscribe footer. SocketLabs
@@ -1991,7 +2011,7 @@ session as email sign-in. Setup is in
 The mock suite proves plumbing, not judgment, so these judgment-dependent claims were owed on real data. **All are now resolved** (2026-07-26 audit); the earlier-concluded ones — K sensitivity, prompt-output trimming, the convergence experiment — are in CHANGELOG / `docs/case-studies/dimension-convergence.md`. Kept here as the closed record:
 
 1. **Reconcile-era behavior is moot** (that subsystem was deleted; see ADR 0007). No action.
-2. **Carry-forward cost win in the wild — ✅ validated (2026-07-25), with a caveat.** Across 17 real rank runs the recorded cache savings grow run-over-run as the pool stabilizes ($0 → ~$1.25/run), confirming per-dimension score reuse works in practice — the core claim. **Caveat found:** the re-rank cost *estimate* is NOT a guaranteed upper bound. It's a recency-weighted **average** of recent runs' actual scoring cost (`recent_pass_fresh_usd`), so by construction it's exceeded roughly half the time (8/17 runs came in over, up to ~142%) — a full discovery re-mints dimensions whose fresh scoring can outrun the historical mean. All runs stayed well under the spending cap regardless. Deliberately kept as an *expected*-cost estimate (the honest number to show at the confirm card) rather than padded into a false ceiling; the true atomic budget guard is M16/M17. Docstrings + this item corrected to say "expected cost," not "upper bound."
+2. **Carry-forward cost win in the wild — ✅ validated (2026-07-25), with a caveat.** Across 17 real rank runs the recorded cache savings grow run-over-run as the pool stabilizes ($0 → ~$1.25/run), confirming per-dimension score reuse works in practice — the core claim. **Caveat found:** the re-rank cost *estimate* is NOT a guaranteed upper bound. It's a recency-weighted **average** of recent runs' actual scoring cost (`project_pass_cost_from_history`), so by construction it's exceeded roughly half the time (8/17 runs came in over, up to ~142%) — a full discovery re-mints dimensions whose fresh scoring can outrun the historical mean. All runs stayed well under the spending cap regardless. Deliberately kept as an *expected*-cost estimate (the honest number to show at the confirm card) rather than padded into a false ceiling; the true atomic budget guard is M16/M17. Docstrings + this item corrected to say "expected cost," not "upper bound."
 3. **Pet-fact extraction accuracy (M15 1e) — ✅ validated on a real run (2026-07-24).** A real Bedrock screening run over the live pool confirmed extraction is reliable across the phrasings that matter: multi-pet ("Three dogs, two cats, and a parrot" → `{3, 2, ['parrot']}`), multiple exotics ("penguin and iguana" → both in `other_pets`), three negation flavors ("I don't have any pets" / "No pets" / "N/A - no animals" → all zeros), and rabbit → `other_pets`. Every spot-check matched the source text. 57 of 58 screened apps carry pet facts on their latest result; the one exception was rules-ineligible under the committee default, so the screening gate correctly skipped it — not a gap. The structural goldens hold against real output; no tuning needed. First real run also re-populated the screening cache under the new `screening_prompt_version()` (old results lacked `pets`).
 
 ### UI Consistency Walkthrough (✅ done 2026-07-25)
@@ -2081,6 +2101,19 @@ measures consistency separately from correctness. Baseline vectors are scoped to
 analysis's current opening cohort and criteria. Provenance uses captured pool configuration
 and selected score producers; unavailable or mixed history is unknown rather than guessed.
 
+Fixture family identity comes from its owning endpoint/file; conflicting metadata is rejected.
+Screening expectations validate category names and strict raw pet-count types. Ordinary eval
+batches retain completed case evidence alongside explicit operational errors; invalid output
+cannot pass through contested handling, and cancellation remains distinct. Stability bounds
+nested concurrency under the request's worker setting without dropping repetitions. Golden
+comparisons capture inputs once and retain known usage after errors; incomplete repetitions
+have no stability verdict. Copied Rank experiments use SQLite-consistent snapshots, require
+an explicit opening, apply effective pass settings and accept only that attempt's new results.
+
+Same-analysis trace refresh preserves expanded content and offers retry after failure. A changed
+opening or analysis resets the displayed trace. Interrupted Screen streams reconcile committed
+partial results without claiming successful completion or waiting for all derived views.
+
 **Automatic cache reuse and workflow confirmations:** the account/opening-scoped committee
 workspace adopts valid saved screening findings and scores in the background on entry and
 intake/focus refresh. It does not delay initial reads, generate output, claim an AI run or
@@ -2107,7 +2140,11 @@ buttons retain the explanation of why the action is unavailable.
 
 Readiness is independent of stored fingerprint format or unknown discovery history. A
 complete current cache makes Screen/Rank green without repeating paid work or rewriting
-recorded provenance. Rank also becomes amber for free-text proposed criteria awaiting
+recorded provenance. A workspace that first observes criteria created by another member offers
+the existing Reload action. Consolidation preserves member priorities on keys still owned by
+each report, including intermediate alias survivors. It adopts proven reusable survivor scores
+atomically with the report change; incomplete/stale survivors defer the merge, with confirmation
+and actual application distinguished in the audit. Rank also becomes amber for free-text proposed criteria awaiting
 discovery; existing criteria in Ignore are not pending. Confirmation uses “Run ranking?”,
 brief action/cost text and the discovery tier-retention sentence in the same paragraph.
 
@@ -2115,3 +2152,11 @@ Discovery-only model/prompt/strategy changes leave existing scored criteria read
 a screening/scoring model, effective reasoning or prompt requires a matching cache for that
 configuration; otherwise that step becomes amber while last-consumed results remain visible.
 Certified-equivalent routes share model identity and reuse valid work. No AI runs automatically.
+
+
+Full-Rank cost projections remain expected costs, not upper bounds. Compatible historical token
+usage is repriced for the selected route; discovery usage is normalized by provider replies and
+the current discovery count. Matching uses global criterion history consistently with execution.
+Unknown/incompatible history uses the existing fallback, without guessing ledger/analysis links.
+Cost tables compare cached result units with attempted uncached units (including failed attempts);
+provider reply counts are separate. No eval spending cap or automatic paid retry is introduced.

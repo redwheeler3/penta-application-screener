@@ -1,13 +1,69 @@
 # Whole-project audit — 2026-10-06, post-implementation review
 
-**Status: complete through three independent discovery rounds and fix-plan challenges;
-X01–X30 recommended, not implemented.** Original baseline `83bfd9e`; the first independent reviews
-started from clean `bc8e3ff`, twelve local commits ahead of the recorded `origin/main`.
-The latest three fresh reviewers started from `52c71d5`. Application code is unchanged between
-these audit revisions. The completed W01–W07
-report remains at `83bfd9e:docs/project-audit-2026-10-06-follow-up.md`.
+**Implementation status — 2026-10-07: X01–X30 code changes implemented and verified.**
+The discovery evidence below describes the pre-fix baseline (`e4922a9`, application code unchanged
+through the earlier audit-only revisions). It is retained as the rationale and regression checklist,
+not a list of still-open code recommendations. Production data repair is a separate reviewed
+operation described at the end; no production action or push was performed.
 
-## Recommendation
+## Implementation and verification
+
+| Commit | Work items | Result |
+| --- | --- | --- |
+| `af8aab4` | X07 | Current-mailbox access proof and purpose-aware anonymous renewal; legitimate expired-link recovery retained |
+| `e780e3e` | X09/X10/X24 | Durable-history retention, private-save deadlines, and purge before sender construction |
+| `9056515` | X15/X17 backend | Narrow feedback acknowledgement, validated optional context, scoped name projection, additive context migration |
+| `dec6032` | X01/X02/X03/X04/X29/X30 | Authoritative fixture contracts, preserved partial eval evidence, bounded repetition workers, coherent experiment inputs |
+| `948e82d` | X11/X12/X18/X19/X26 and X10 follow-up | Visible residence scope, lossless incomplete references, shared write admission, authoritative copy acknowledgement, lifecycle recovery and finite closed fallback deadline |
+| `0ec3583` | X08/X13/X16/X20/X28 | Report-owned alias traversal, atomically consumed survivor scores, truthful consolidation audit, shared-analysis observation and current-price projections |
+| `87b15cb` | X05/X06/X14/X15 frontend/X21/X25 | Settled loading, mounted traces, contextual feedback navigation, safe subscription editing, partial-screen recovery and selected read-only controls |
+| `490a721` | X22/X23/X27 | Actual delivery recipients, scheduled failure retries and consent ownership across distinct deliveries/live attempts |
+
+Final integrated checks: **1,222 backend tests passed, one existing platform-specific skip;
+404 frontend tests passed; production frontend build, Ruff and diff checks passed.** A final
+mechanical rename to `project_pass_cost_from_history` makes the helper's current-price projection
+semantics explicit; its 35 focused tests and Ruff also passed. Temporary probes were removed.
+The feedback migration `f92d0b64a758` was first verified on isolated schema history, then applied
+to the local SQLite database without resetting it. Generated build directories retain inherited
+permissions.
+
+Independent implementation review found and resolved additional interactions before completion:
+
+- A closed-last-opening fallback must retain a finite private deadline.
+- Old-session mutation cleanup must not invalidate a new session's reads.
+- Email acknowledgements must supersede older lifecycle responses.
+- Both saved and guest choices must recover after lost acknowledgements without exposing an
+  unchosen local copy or clearing a newer browser draft; HTTP recovery failure remains retryable.
+- Consolidation must consume the reusable survivor references, not merely observe cache rows.
+- Alias traversal must stop at an intermediate key owned by the target report.
+- A prepared notification retains consent while its provider attempt is live, even if the opening
+  closes; separate application-notice entitlement still permits its ordinary message.
+
+Read-only Chrome DevTools checks used the signed-in local app: Applications, Observability/Cost
+and Feedback loaded without alerts; Cost showed comparable uncached/cached units without page
+horizontal overflow at a 1920-pixel viewport. An expanded discovery trace retained the **same DOM
+node and open state** while a focus-triggered background audit read completed (observed read count
+5→6). No page reload, AI run, saved application edit or production operation was used for this check.
+Model judgment, provider behavior and drag gestures were not newly validated.
+
+**Net complexity:** relative to `e4922a9`, runtime code adds 1,004 lines and removes 551 (**+453**);
+tests add 1,947 and remove 128; the additive migration is 24 lines. Runtime changes add no service,
+global queue, cache layer, state-machine library, or extra business identity. Small shared owners
+replace repeated trace, visibility, grading and refresh interpretations. Consent reservation is
+an intentional added rule required by the one-time-notice contract. Large domain model registries
+were retained rather than split cosmetically; the applicant persistence owner remains below the
+project's large-module review threshold. Tests retain adverse sequences and replace obsolete
+expectations rather than treating line count as a quality target.
+
+**Responsiveness:** successful reconciliation now returns the accepted copy directly, removing
+its follow-up read; pending-email visibility refresh uses one GET instead of two. Screening and
+ranking continue refreshing derived views without an awaited UI barrier. The email queue avoids
+retries triggered by unrelated writes. No new provider call is required. Low-worker stability runs
+use additional waves only when K exceeds the explicitly configured budget. Small database checks
+protect identity, scope, expiry and consent; these are source-based cost assessments, not a new
+production latency benchmark.
+
+## Original recommendation
 
 Prioritize access-link authority (X07), feedback privacy (X17), cross-opening priority loss
 (X08), and retention/submission failures (X09–X12/X24). The original six items and the additions
@@ -1187,9 +1243,9 @@ and preserved cancellation/validity distinctions across evals. Those corrections
 above. Planned coverage has evidence or a stated limit; no material candidate from this round
 remains unexamined.
 
-## Final combined implementation sequence
+## Implemented package sequence
 
-This is the single current plan for X01–X30. Use cohesive commits within one implementation phase:
+The following package sequence was implemented; the commit map and final checks are above:
 
 1. **X07:** purpose-aware access renewal/redemption, including legitimate outbox retry controls.
 2. **X15/X17:** feedback context and privacy together; narrow acknowledgement and scoped, batched
@@ -1210,13 +1266,41 @@ This is the single current plan for X01–X30. Use cohesive commits within one i
 9. **X01/X02/X29/X30:** fixture boundaries, durable partial eval evidence, and bounded nested work.
 10. **X03/X04:** experiment outcome/input/snapshot repairs before further model comparisons.
 
-For each package, preserve the reproduced adverse scenario as a focused regression, implement
-through the existing owner, prune superseded assertions, and check sibling consumers. Run normal
-backend/frontend checks appropriate to code changes, then review the combined changes and the
-cross-package sequences above. Use browser verification where actual interaction/layout cannot
-be established by component/contract tests. No recommendation changes model judgment or prompts.
+The packages retain focused adverse regressions and existing ownership, with independent review
+and integrated verification recorded above. No model judgment or prompt was changed.
 
 The remedies mostly remove competing interpretations or reuse existing state. X27 adds necessary
 consent ownership; X30 intentionally limits over-budget parallelism. These costs are explicit,
-not reasons to introduce broad infrastructure. This completes the requested third discovery
-round and leaves one reviewable implementation plan; no application fix has been applied yet.
+not reasons to introduce broad infrastructure. The discovery record is now paired with the completed implementation and verification record.
+
+
+## Existing-data reconciliation — review before production deployment
+
+The code corrects future writes and decisions. It does not silently rewrite stored production
+retention dates or infer committee priorities already altered by an earlier alias reconciliation.
+No production database was inspected or changed during implementation.
+
+Prepare and review the retention repair as a separate maintenance operation:
+
+1. From a consistent read, compare each stored deadline with the existing retention calculation:
+   selected participation anchors seven years; fully decided durable history (including withdrawal)
+   anchors one year after the latest decision; private drafts use their selected/fallback close
+   date. Use the existing Pacific-day and leap-year helpers. Keep legitimate undecided holds null.
+2. Exclude inconsistent records (such as submitted applications without durable participation)
+   for separate investigation; never substitute a private-draft deadline for missing history.
+   Preview in a rolled-back, no-autoflush session and emit only aggregate counts/date ranges:
+   unchanged, extended, shortened, and newly due. The calculator also adjusts private-copy fields
+   in memory, so this preview must never commit those incidental mutations.
+3. Review the newly due group before any production action: correcting its deadline can make it
+   eligible for the next purge. Obtain explicit authorization for that production data change;
+   maintain a recoverable consistent backup and a short controlled maintenance window.
+4. Revalidate the preview against current records, then apply **deadline changes only** in one
+   transaction. Preserve working/submitted answers, versions, participation, identity, notes and
+   priorities. Do not use the full retention helper as an unreviewed bulk-write command. Check the
+   affected counts and access/retention invariants before resuming normal maintenance.
+5. If already-rewritten member tiers are suspected, inspect retained member history against the
+   actual report. Do not reverse global aliases heuristically or invent a committee member's
+   missing priorities; ambiguous cases require their explicit choice.
+
+This is an operational follow-up, not an automatic migration or an outstanding application-code
+implementation. Pushing does not deploy the app; production deployment/repair remains separate.

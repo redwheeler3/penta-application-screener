@@ -11,7 +11,7 @@ from app.ai.provider import Usage
 from app.ai.schemas import ConsolidationReport
 from app.db.models import Analysis, ApplicationAIResult, RunCostLedger, User, UserRole
 from app.schemas.settings import AppSettings
-from app.services.cost_report import recent_pass_fresh_usd
+from app.services.cost_report import project_pass_cost_from_history
 from app.services.ranking import criteria, pipeline
 from app.services.ranking.analysis import create_analysis
 from tests.application_support import current_opening_id
@@ -93,7 +93,7 @@ async def test_known_pass_costs_survive_later_failures(monkeypatch, caplog, fail
         assert last["failedPass"] == {"decomposition": "Dimension decomposition", "validation": "Dimension decomposition",
             "matching": "Dimension matching", "criteria storage": "Criteria persistence", "scoring storage": "Dimension scoring"}[failure]
         assert metrics["runs"][0]["status"] == "failed"
-        assert recent_pass_fresh_usd(db, opening_id, "Pattern discovery", model_id=AppSettings().ai.discovery_model) is None
+        assert project_pass_cost_from_history(db, opening_id, "Pattern discovery", model_id=AppSettings().ai.discovery_model) is None
         assert db.scalar(select(ApplicationAIResult)) is None
         if failure in {"decomposition", "validation", "matching", "criteria storage"}:
             analyses = db.scalars(select(Analysis)).all()

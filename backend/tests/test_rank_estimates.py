@@ -10,7 +10,7 @@ from app.db.models import User, UserRole
 from app.schemas.settings import AppSettings
 from app.services.cost_report import (
     RANK_PASS_LABELS,
-    recent_pass_fresh_usd,
+    project_pass_cost_from_history,
     record_run_cost,
 )
 from app.services.ranking.analysis import create_analysis
@@ -68,11 +68,11 @@ def test_history_weights_usage_and_normalizes_discovery_by_replies_not_result_un
     record_history(db, opening_id, model=model, tokens=2000000, calls=4)
     record_history(db, opening_id, model=model, tokens=1000000, calls=2)
     record_history(db, opening_id, model=model, tokens=9000000, calls=1, status="failed")
-    assert recent_pass_fresh_usd(db, opening_id, "Pattern discovery",
+    assert project_pass_cost_from_history(db, opening_id, "Pattern discovery",
         model_id=model, provider_calls=10) == pytest.approx(1)
-    assert recent_pass_fresh_usd(db, opening_id, model_id=model) == pytest.approx((0.4 + 2 * 0.2) / 3)
+    assert project_pass_cost_from_history(db, opening_id, model_id=model) == pytest.approx((0.4 + 2 * 0.2) / 3)
     # A materially different model does not inherit another model's usage pattern.
-    assert recent_pass_fresh_usd(db, opening_id, model_id=MODEL_IDS_BY_ROUTE["direct"]["sonnet"]) is None
+    assert project_pass_cost_from_history(db, opening_id, model_id=MODEL_IDS_BY_ROUTE["direct"]["sonnet"]) is None
 
 
 def test_first_opening_run_estimates_matching_against_global_history():

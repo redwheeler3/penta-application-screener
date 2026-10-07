@@ -24,7 +24,7 @@ from app.ai.provider import Usage
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
-from app.services.cost_report import recent_pass_fresh_usd
+from app.services.cost_report import project_pass_cost_from_history
 from app.services.ranking.analysis import get_current_analysis
 from app.services.ranking.dimensions import current_dimension_report
 
@@ -110,7 +110,7 @@ def estimate_rank_scoring(
     """
     if not candidates:
         return 0.0
-    measured = recent_pass_fresh_usd(db, opening_id, model_id=settings.ai.dimension_scoring_model)
+    measured = project_pass_cost_from_history(db, opening_id, model_id=settings.ai.dimension_scoring_model)
     if measured is not None:
         return round(measured, 4)
 

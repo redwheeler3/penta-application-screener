@@ -279,7 +279,7 @@ def last_runs_report(db: Session) -> LastRunsReport:
 _SCORING_HISTORY_WINDOW = 5
 
 
-def recent_pass_fresh_usd(
+def project_pass_cost_from_history(
     db: Session, opening_id: int, pass_label: str = "Dimension scoring", *,
     model_id: str, provider_calls: int | None = None,
 ) -> float | None:

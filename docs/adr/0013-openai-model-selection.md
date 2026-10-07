@@ -129,7 +129,8 @@ or privacy settings.
 ## Reproduction
 
 Run from `backend` with the credential for the selected route. Reports and copied databases belong
-under the ignored `.pytest-tmp` directory.
+under the ignored `.pytest-tmp` directory. Set `$openingId` to the intended local opening ID
+before running the copied Rank command.
 
 ```powershell
 $env:UV_CACHE_DIR='.uv-cache'
@@ -139,7 +140,7 @@ uv run python -m app.evals.model_bakeoff `
   --output .pytest-tmp/m20-golden-low-repeat-3.json
 
 uv run python -m app.evals.model_rank_bakeoff `
-  --configuration direct-candidate --workers 10 `
+  --configuration direct-candidate --opening-id $openingId --workers 10 `
   --work-db .pytest-tmp/m20-rank-candidate.db `
   --output .pytest-tmp/m20-rank-candidate.json
 ```
