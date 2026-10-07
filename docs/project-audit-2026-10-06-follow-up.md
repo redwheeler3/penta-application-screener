@@ -1,13 +1,14 @@
 # General audit: correctness and simplification — 2026-10-06
 
-**Status: coverage-driven extension complete; W01–W07 recommended, not implemented.**
+**Status: W01–W07 implemented and automatically verified. W04 browser review remains unavailable while the local frontend is stopped.**
 Baseline: clean `main` at `c4c2ffc`, verified equal to `origin/main` after the authorized push.
 The completed V01–V03 audit and implementation evidence remain in
 `c4c2ffc:docs/project-audit-2026-10-06-follow-up.md`.
 
 ## Recommendation
 
-Implement these seven bounded changes. Four address incorrect or unusable eval behavior;
+The seven findings below describe the audited baseline; implementation outcomes are recorded
+at the end. Four address incorrect or unusable eval behavior;
 three remove unnecessary work. The most useful simplifications are removing misleading
 Judge metrics, shrinking the unused eval catalog contract, sharing grading rules, and
 replacing the dashboard's participant-loading loop with an existence query.
@@ -364,8 +365,8 @@ W01–W03 need one joint final review of fingerprints, retained history, and sum
 fixing the grader does not leave its consumers using an obsolete success definition.
 Run relevant suites/build/lint for each package, then the full suites and a final consumer-matrix
 review. Keep the document open for any implementation finding inside those boundaries.
-Application changes await authorization. This extension changes the audit and the agreed
-repository audit procedure only.
+The coverage extension preceded implementation authorization; its evidence and stopping
+decision are retained below. Implementation followed the user's subsequent instruction.
 
 ## Coverage-driven extension
 
@@ -475,3 +476,67 @@ environments or actions and do not block the documented deterministic recommenda
 Before implementing a materially changed editor workflow, include browser interaction review;
 before changing prompts, apply the project's real-output verification rule. No such application
 or prompt change was made here.
+
+## Implementation outcomes
+
+Implemented from `c055007` in seven cohesive commits:
+
+| Finding | Commit | Outcome |
+| --- | --- | --- |
+| W06 | `894e3b3` | Overdue-opening discovery uses an existence query with the same active/retained predicates; no participant answer hydration. |
+| W07 | `bb3abfe` | Email issues project recipient metadata directly; queue summaries aggregate in SQL. Full entities stay on the send path. |
+| W05 | `41de4bc` | Catalog contains only mode keys, repetitions, and editing policy; zero corpus reads. Superseded read-count test removed. |
+| W04 | `80515fd` | Recursive list editing preserves types; strings retain focus; locked identity descendants protect their parents from removal. |
+| W03 | `017a852` | Removed the calibration aggregate, its fields/adapters/tests, and obsolete documentation. UI derives decisive agreement and separate contested/unrun counts from case results. |
+| W02 | `0c30e93` | Shared screening expectation parsing, pet grading parity, exact scoring identity, and one contested-policy location. Added eval-only grading revision. |
+| W01 | `c3a2ce2` | Live/Judge stability share one ordered attempt report; errors remain visible and incomplete statistics are null. Invalid contested results do not count as successes. |
+
+### Final consumer review
+
+- **Meaning of current versus successful:** an errored/incomplete eval may still describe
+  the current inputs. It remains inspectable as an error/incomplete result and never counts
+  as stable or successful coverage. A valid but consistently wrong answer may still be stable.
+- **Retention and history:** each attempt retains its explanation, including errors, in
+  submission order. Recorded partial failures round-trip through the API and history. An
+  unrecorded incomplete result retains its paid output through failed history refreshes.
+- **Contested cases:** valid disagreement stays a review signal. Missing/invalid output
+  remains an error. Judge summaries separate errors from decisive cases; stability summaries
+  separate contested splits from stable measurements.
+- **Within-scope follow-up:** decomposition could derive a merge from only part of its input
+  key set. W01 now requires every source key exactly once; partial/duplicate source assignments
+  are errors in both a single run and stability. No additional production algorithm changed.
+- **Cache boundary:** `GRADING_VERSION` enters existing eval case fingerprints only. Earlier
+  grading output remains historical evidence; production Screen/Rank cache keys and prompts
+  are unchanged. A regression test checks that separation. No automatic paid rerun is added.
+- **Ordering/cancellation:** the shared collector uses the existing bounded pool and preserves
+  cancellation propagation. Production discovery's intentional survivor policy is unchanged.
+- **Read projections:** SQL tests check recipient precedence, limits, timestamp aggregation,
+  lifecycle exclusions, bounded query counts, and absence of answer/retry-payload projections.
+- **Editor:** tests exercise each family through its actual editor save callback, object and
+  nested/scalar/empty lists, adding/removing entries, numeric/boolean values, text focus, locked
+  ancestors, and the existing newer-draft/save-order behavior. Server schemas remain authoritative.
+
+The final cross-consumer review found no further confirmed change worth expanding this
+implementation to address. The browser-review limitation below remains explicit.
+
+### Verification and net complexity
+
+- Full backend: **1,111 passed, 1 skipped** (existing POSIX-only test on Windows).
+- Full frontend: **368 passed across 50 files**.
+- Production build, ESLint, Ruff (app/migrations/tests/scripts), and `git diff --check` passed.
+- Compared with `c055007`, application source is **418 net lines smaller**. Tests are **319 net
+  lines larger**, including removal of the unused agreement suite and catalog-read test.
+  The benefit is substantive: one stability report replaces parallel Judge arrays; one
+  expectation parser replaces divergent grading inputs; unused contracts and aggregation are
+  removed. No new dependency, database migration, persistent identity, or general workflow
+  abstraction was introduced.
+- Read-side work decreases. Editor changes add no requests. Stability calls remain parallel
+  with the same requested K; the collector retains errors rather than retrying. Production
+  application cache behavior and user-facing save ordering are unchanged.
+
+**Remaining verification limit:** the local frontend was unreachable on port 5173 on both
+checks, and the available browser inventory had no existing project tab. The user was asked
+to start the server; no server was started automatically. W04's real-browser layout/interaction
+review is therefore pending, not claimed complete. Component tests and build passed. No real
+model/provider call, production operation, or applicant data change was made. These commits
+are local; this implementation turn did not request a push.
