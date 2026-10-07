@@ -292,5 +292,135 @@ def test_first_view_race_releases_only_its_owned_write_transaction(commit):
 
         result = get_or_reconcile_member_ranking(first,
             first.get(Analysis, analysis_id), first.get(User, other_id), commit=commit)
-        assert first.in_transaction() is not commit
+        # A coherent post-commit SELECT may open a Session read transaction, but
+        # only the caller-owned path may retain SQLite's write transaction.
+        assert first.connection().connection.driver_connection.in_transaction is not commit
         assert result.id == winner_ids[0]
+
+
+@pytest.mark.parametrize("merge_at", [
+    "before-member-read", "after-member-read", "after-first-view-commit", "after-reconcile-commit",
+])
+def test_member_read_returns_coherent_criteria_priorities_and_flags_during_consolidation(merge_at):
+    from sqlalchemy.orm import sessionmaker
+
+    from app.ai.schemas import PoolDimensionReport
+    from app.api.ranking.presentation import ranking_payload, run_payload
+    from app.api.ranking.shortlist import _current_member_view
+    from app.db.models import DimensionAlias
+    from app.services.ranking.member_state import display_tiers
+
+    _, writer, _ = setup_app(UserRole.MEMBER)
+    initiator = writer.scalar(select(User))
+    other = User(email="reader@example.test", display_name="Reader", role=UserRole.MEMBER)
+    writer.add(other)
+    writer.commit()
+    opening_id = current_opening_id(writer)
+    dimension = a_pattern_report().dimensions[0]
+    create_analysis(writer, user=other, opening_id=opening_id,
+        report=PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "older"})]),
+        inputs_fingerprint="prior", narrative=None,
+        tier_layout=[{"id": "top", "label": "Personal priority", "dimension_keys": ["older"]}])
+    current = create_analysis(writer, user=initiator, opening_id=opening_id,
+        report=PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "newer"})]),
+        inputs_fingerprint="current", narrative=None)
+    if merge_at != "after-first-view-commit":
+        view = get_or_reconcile_member_ranking(writer, current, other)
+        set_tiers(writer, view, [{"id": "top", "label": "Personal priority", "dimension_keys": ["newer"]}])
+        if merge_at == "after-reconcile-commit":
+            writer.add(DimensionAlias(alias_key="prior_alias", canonical_key="newer"))
+            view.run_state = {**view.run_state,
+                "tiers": [{"id": "top", "label": "Personal priority", "dimension_keys": ["prior_alias"]}]}
+            writer.commit()
+    factory = sessionmaker(bind=writer.get_bind(), autoflush=False)
+    with factory() as reader:
+        member = reader.get(User, other.id)
+        merged = False
+
+        def consolidate():
+            nonlocal merged
+            merged = True
+            apply_consolidation(writer, current, get_or_reconcile_member_ranking(writer, current, initiator),
+                merges={"newer": "older"}, audit=[], narrative=None, settings=AppSettings())
+
+        @event.listens_for(reader, "do_orm_execute")
+        def between_reads(execution):
+            if merged or not execution.is_select:
+                return
+            entity = MemberRanking if merge_at == "before-member-read" else DimensionAlias
+            if not merge_at.endswith("-commit") and any(
+                column.get("entity") is entity for column in execution.statement.column_descriptions
+            ):
+                consolidate()
+
+        @event.listens_for(reader, "after_commit")
+        def after_first_view(_session):
+            if merge_at.endswith("-commit") and not merged:
+                consolidate()
+
+        view = _current_member_view(reader, member, opening_id, "ranking")
+        assert merged
+        run = run_payload(view)
+        ranking = ranking_payload(reader, view, member)
+        tiers = display_tiers(view)
+        expected = "newer" if merge_at == "after-member-read" else "older"
+        assert [dimension.key for dimension in run.dimensions] == [expected]
+        assert ranking.weights == {expected: 1.0}
+        assert tiers[0]["dimension_keys"] == [expected]
+        assert tiers[-1]["dimension_keys"] == []
+        assert ranking.new_dimension_keys == (["newer"] if expected == "newer" else [])
+        assert ranking.revived_dimension_keys == []
+
+
+@pytest.mark.parametrize("acknowledged", [False, True])
+@pytest.mark.parametrize("prior_ignored", [False, True])
+def test_resurfaced_review_flags_match_late_views_and_preserve_explicit_acknowledgements(acknowledged, prior_ignored):
+    from app.ai.schemas import PoolDimensionReport
+    from app.api.ranking.presentation import ranking_payload, run_payload
+    from app.services.ranking.member_state import display_tiers
+
+    _, db, _ = setup_app(UserRole.MEMBER)
+    initiator = db.scalar(select(User))
+    eager = User(email="eager@example.test", display_name="Eager", role=UserRole.MEMBER)
+    late = User(email="late@example.test", display_name="Late", role=UserRole.MEMBER)
+    db.add_all([eager, late])
+    db.commit()
+    opening_id = current_opening_id(db)
+    dimension, unrelated = a_pattern_report().dimensions
+    older = dimension.model_copy(update={"key": "older"})
+    prior = create_analysis(db, user=initiator, opening_id=opening_id,
+        report=PoolDimensionReport(dimensions=[older, unrelated]), inputs_fingerprint="prior", narrative=None)
+    for user in [eager, late]:
+        set_tiers(db, get_or_reconcile_member_ranking(db, prior, user), [
+            {"id": "top", "label": "Personal priority", "dimension_keys": [] if prior_ignored else ["older"]},
+        ])
+    gap = create_analysis(db, user=initiator, opening_id=opening_id,
+        report=PoolDimensionReport(dimensions=[unrelated]), inputs_fingerprint="gap", narrative=None)
+    for user in [eager, late]:
+        get_or_reconcile_member_ranking(db, gap, user)
+    current = create_analysis(db, user=initiator, opening_id=opening_id,
+        report=PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "newer"}), unrelated]),
+        inputs_fingerprint="current", narrative=None)
+    eager_view = get_or_reconcile_member_ranking(db, current, eager)
+    assert eager_view.run_state["new_dimension_keys"] == ["newer"]
+    eager_view.run_state = {**eager_view.run_state, "proposed_dimensions": ["Personal proposal"]}
+    db.commit()
+    if acknowledged:
+        set_tiers(db, eager_view, eager_view.run_state["tiers"], acknowledged_keys=["newer"])
+    apply_consolidation(db, current, get_or_reconcile_member_ranking(db, current, initiator),
+        merges={"newer": "older"}, audit=[], narrative=None, settings=AppSettings())
+    for user in [eager, late]:
+        view = get_or_reconcile_member_ranking(db, current, user)
+        payload = ranking_payload(db, view, user)
+        assert {dimension.key for dimension in run_payload(view).dimensions} == {"older", unrelated.key}
+        assert payload.weights == {"older": 0.0 if prior_ignored else 1.0, unrelated.key: 0.0}
+        expected_flags = [] if user == eager and acknowledged else ["older"]
+        assert payload.new_dimension_keys == payload.revived_dimension_keys == expected_flags
+        assert display_tiers(view)[0]["label"] == "Personal priority"
+        assert view.run_state["proposed_dimensions"] == (["Personal proposal"] if user == eager else [])
+        set_tiers(db, view, [{"id": "top", "label": "Personal priority", "dimension_keys": []}],
+            acknowledged_keys=["older"])
+        for _ in range(2):
+            reread = get_or_reconcile_member_ranking(db, current, user)
+            assert ranking_payload(db, reread, user).new_dimension_keys == []
+            assert dimension_weights(reread)["older"] == 0.0

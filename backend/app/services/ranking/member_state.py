@@ -21,19 +21,23 @@ def get_or_reconcile_member_ranking(
     independently edited fields while transferring priorities and review flags.
     A brand-new member gets the default all-Ignore layout.
     """
+    # Capture the personal state and shared report together. Separate lazy reads
+    # can straddle consolidation and combine priorities with different criteria.
     lookup = select(MemberRanking).where(
         MemberRanking.analysis_id == analysis.id,
         MemberRanking.user_id == user.id,
-    )
+    ).options(joinedload(MemberRanking.analysis)).execution_options(populate_existing=True)
     existing = db.scalar(lookup)
     if existing is not None:
         aliases = report_alias_map(db, current_dimension_report(analysis))
         if _merged_member_state(existing, aliases) != (existing.run_state or {}):
             lock_member_state(db, existing)
+            db.refresh(analysis)
             existing.run_state = _merged_member_state(existing,
                 report_alias_map(db, current_dimension_report(analysis)))
             if commit:
                 db.commit()
+                return db.scalar(lookup)
         return existing
 
     # A first view is a write. Serialize its snapshot with consolidation so a read
@@ -46,6 +50,7 @@ def get_or_reconcile_member_ranking(
         existing = get_or_reconcile_member_ranking(db, analysis, user, commit=False)
         if commit:
             db.commit()
+            return db.scalar(lookup)
         return existing
     report = current_dimension_report(analysis)
     if analysis.opening_id is None:
@@ -89,8 +94,7 @@ def get_or_reconcile_member_ranking(
         if existing is None:
             raise
         return get_or_reconcile_member_ranking(db, analysis, user)
-    db.refresh(member_ranking)
-    return member_ranking
+    return db.scalar(lookup)
 
 
 def _merged_member_state(member_ranking: MemberRanking, aliases: dict[str, str]) -> dict:
@@ -131,16 +135,32 @@ def reconcile_consolidated_members(
         lock_member_state(db, member)
         state = _merged_member_state(member, merges)
         if resurfaced:
-            _, prior_placements = tier_history(db, member.user, analysis.opening_id,
+            scaffold, prior_placements = tier_history(db, member.user, analysis.opening_id,
                 target_report=report, before_analysis_id=analysis.id)
+            restored, flagged = carry_forward_layout(
+                new_report=PoolDimensionReport(dimensions=[dimension for dimension in report.dimensions
+                    if dimension.key in resurfaced]),
+                scaffold_tiers=scaffold,
+                most_recent_tier_by_key=prior_placements,
+                immediately_prior_keys=_immediately_prior_keys(db, member.user,
+                    opening_id=analysis.opening_id, before_analysis_id=analysis.id, target_report=report),
+            )
             tiers = state.get("tiers") or default_tier_layout()
             tier_by_id = {tier["id"]: tier for tier in tiers}
             placed = {key for tier in tiers for key in tier["dimension_keys"]}
-            for key in resurfaced:
-                target = prior_placements.get(key)
-                if key not in placed and target in tier_by_id:
-                    tier_by_id[target]["dimension_keys"].append(key)
+            for tier in restored:
+                if tier["id"] in tier_by_id:
+                    tier_by_id[tier["id"]]["dimension_keys"].extend(
+                        key for key in tier["dimension_keys"] if key not in placed)
             state["tiers"] = tiers
+            # Carry pending review to its resurfaced survivor, but do not undo an
+            # explicit acknowledgement of the source before consolidation.
+            pending = set((member.run_state or {}).get("new_dimension_keys", []))
+            pending_survivors = {keep for drop, keep in merges.items() if drop in pending}
+            state["new_dimension_keys"] = list(dict.fromkeys([
+                *state.get("new_dimension_keys", []),
+                *(key for key in flagged if key in pending_survivors),
+            ]))
         member.run_state = state
 
 
