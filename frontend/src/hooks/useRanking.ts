@@ -157,10 +157,11 @@ export function useRanking(
   }
 
   const observeCurrentAnalysis = useCallback((currentId: number | null) => {
-    const loadedId = boardRef.current?.analysisId ?? runRef.current?.analysisId;
+    const loadedId = boardRef.current?.analysisId ?? runRef.current?.analysisId ?? null;
     // A dashboard read describes the board it started beside, not a newer board
     // adopted while that request was waiting.
-    if (currentReads.isFor(openingId) && analysisId != null && loadedId === analysisId
+    if (currentReads.isFor(openingId) && (currentId != null || loadedId != null)
+      && loadedId === (analysisId ?? null)
       && !hasPendingMutations() && currentId !== loadedId) {
       markStale();
     }

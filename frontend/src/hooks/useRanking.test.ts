@@ -29,6 +29,46 @@ const board = (analysisId: number, tiers: Tier[] = []): RankingBoardResponse => 
 const tier = (label: string): Tier[] => [{ id: "important", label, dimensionKeys: [] }];
 beforeEach(() => vi.resetAllMocks());
 
+it("offers Reload when a focus or periodic dashboard first observes criteria", async () => {
+  api.fetchRankingCurrent.mockResolvedValue(null);
+  api.fetchRankingBoard.mockResolvedValue(board(1));
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  await act(() => result.current.refreshRankingRun());
+  act(() => result.current.observeCurrentAnalysis(null));
+  expect(result.current.staleAnalysis).toBe(false);
+  act(() => result.current.observeCurrentAnalysis(1));
+  expect(result.current.staleAnalysis).toBe(true);
+  await act(() => result.current.reloadStaleRanking());
+  expect(result.current.rankingRun?.analysisId).toBe(1);
+  expect(result.current.staleAnalysis).toBe(false);
+});
+
+it.each(["observation-first", "current-first"])("reconciles first criteria with initial metadata (%s)", async (order) => {
+  const pending = deferred<CurrentRunResponse | null>();
+  api.fetchRankingCurrent.mockReturnValue(pending.promise);
+  const { result } = renderHook(() => useRanking(1, vi.fn()));
+  const observation = result.current.observeCurrentAnalysis;
+  let request!: Promise<RankingRunRead>;
+  act(() => { request = result.current.refreshRankingRun(); });
+  await act(async () => {
+    if (order === "observation-first") observation(1);
+    pending.resolve(current(1));
+    await request;
+    if (order === "current-first") observation(1);
+  });
+  expect(result.current.staleAnalysis).toBe(order === "observation-first");
+  if (order === "current-first") expect(result.current.rankingRun?.analysisId).toBe(1);
+});
+
+it("ignores a first-analysis observation from a previous opening", () => {
+  const { result, rerender } = renderHook(({ opening }) => useRanking(opening, vi.fn()),
+    { initialProps: { opening: 1 } });
+  const previous = result.current.observeCurrentAnalysis;
+  rerender({ opening: 2 });
+  act(() => previous(1));
+  expect(result.current.staleAnalysis).toBe(false);
+});
+
 it("refreshes displayed scores and tiers within the same analysis without an ID-only request", async () => {
   const initial = board(1, tier("Initial"));
   api.fetchRankingBoard.mockResolvedValueOnce({ ...initial, ranking: ranking(1, 1) })

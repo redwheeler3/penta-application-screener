@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import event, select
 
 from app.db.models import Analysis, MemberRanking, User, UserRole
+from app.schemas.settings import AppSettings
 from app.services.ranking.analysis import apply_consolidation, create_analysis
 from app.services.ranking.member_state import (
     dimension_weights,
@@ -43,7 +44,7 @@ def test_consolidation_preserves_personal_priority(materialized, drop_tier, keep
         db.commit()
     initiator_view = get_or_reconcile_member_ranking(db, current, initiator)
     apply_consolidation(db, current, initiator_view, merges={drop: keep},
-                        audit=[], narrative=None)
+                        audit=[], narrative=None, settings=AppSettings())
     view = get_or_reconcile_member_ranking(db, current, other)
     expected_weight = 2.0 if drop_tier == 0 else 1.0 if drop_tier == 1 or keep_placed else 0.0
     assert dimension_weights(view) == {keep: expected_weight}
@@ -95,7 +96,84 @@ def test_ignored_merged_key_reconciles_flags_without_adding_weight() -> None:
     db.add(DimensionAlias(alias_key=drop, canonical_key=keep))
     db.commit()
     view = get_or_reconcile_member_ranking(db, analysis, user)
-    assert view.run_state["new_dimension_keys"] == []
-    assert view.run_state["acknowledged_requested_keys"] == [keep]
+    assert view.run_state["new_dimension_keys"] == [drop]
+    assert view.run_state["acknowledged_requested_keys"] == [drop]
     assert view.run_state["proposed_dimensions"] == ["Keep my proposal"]
     assert not any(dimension_weights(view).values())
+
+
+@pytest.mark.parametrize("materialized", [False, True])
+@pytest.mark.parametrize("both_keys", [False, True])
+def test_other_opening_alias_preserves_target_report_keys_and_member_intent(materialized, both_keys):
+    from app.db.models import DimensionAlias, Opening
+    from tests.application_support import current_opening
+
+    _, db, _ = setup_app(role=UserRole.MEMBER)
+    user = db.scalar(select(User))
+    opening_a = current_opening(db)
+    opening_b = Opening(unit_size_bedrooms=1, housing_charge_cents=100000,
+        application_open_date=opening_a.application_open_date,
+        application_close_date=opening_a.application_close_date,
+        move_in_date=opening_a.move_in_date)
+    db.add(opening_b)
+    db.flush()
+    report = a_pattern_report()
+    keep, drop = [dimension.key for dimension in report.dimensions]
+    create_analysis(db, user=user, opening_id=opening_a.id, report=report,
+        inputs_fingerprint="a", narrative=None)
+    target = report if both_keys else report.model_copy(update={"dimensions": [report.dimensions[1]]})
+    prior = create_analysis(db, user=user, opening_id=opening_b.id, report=target,
+        inputs_fingerprint="b", narrative=None)
+    view = get_or_reconcile_member_ranking(db, prior, user)
+    view.run_state = {"tiers": [{"id": "top", "label": "Top", "dimension_keys": [drop]}],
+        "new_dimension_keys": [drop], "acknowledged_requested_keys": [drop]}
+    db.commit()
+    if not materialized:
+        prior = create_analysis(db, user=user, opening_id=opening_b.id, report=target,
+            inputs_fingerprint="b", narrative=None)
+        db.delete(db.scalar(select(MemberRanking).where(MemberRanking.analysis_id == prior.id)))
+        db.commit()
+    db.add_all([DimensionAlias(alias_key=drop, canonical_key="middle"),
+                DimensionAlias(alias_key="middle", canonical_key=keep)])
+    db.commit()
+    view = get_or_reconcile_member_ranking(db, prior, user)
+    assert dimension_weights(view)[drop] == 1.0
+    if both_keys:
+        assert dimension_weights(view)[keep] == 0.0
+    if materialized:
+        assert view.run_state["new_dimension_keys"] == [drop]
+        assert view.run_state["acknowledged_requested_keys"] == [drop]
+    assert view.run_state["tiers"][0]["dimension_keys"] == [drop]
+
+
+@pytest.mark.parametrize("materialized", [False, True])
+def test_report_owned_intermediate_survivor_preserves_prior_placement(materialized):
+    from app.ai.schemas import PoolDimensionReport
+    from app.db.models import DimensionAlias
+
+    _, db, _ = setup_app(role=UserRole.MEMBER)
+    user = db.scalar(select(User))
+    initiator = User(email="initiator@example.test", display_name="Initiator", role=UserRole.MEMBER)
+    db.add(initiator)
+    db.commit()
+    opening_id = current_opening_id(db)
+    dimension = a_pattern_report().dimensions[0]
+    create_analysis(db, user=user, opening_id=opening_id,
+        report=PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "c"})]),
+        inputs_fingerprint="prior", narrative=None,
+        tier_layout=[{"id": "top", "label": "Top", "dimension_keys": ["c"]}])
+    target = create_analysis(db, user=initiator, opening_id=opening_id,
+        report=PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "b"})]),
+        inputs_fingerprint="target", narrative=None)
+    db.add(DimensionAlias(alias_key="c", canonical_key="b"))
+    db.commit()
+    if materialized:
+        assert dimension_weights(get_or_reconcile_member_ranking(db, target, user)) == {"b": 1.0}
+    # Global history advances again while this opening retains its report with B.
+    db.add(DimensionAlias(alias_key="b", canonical_key="a"))
+    db.commit()
+    view = get_or_reconcile_member_ranking(db, target, user)
+    assert dimension_weights(view) == {"b": 1.0}
+    assert view.run_state["new_dimension_keys"] == []
+    assert view.run_state["tiers"][0]["dimension_keys"] == ["b"]
+    assert dimension_weights(get_or_reconcile_member_ranking(db, target, initiator)) == {"b": 0.0}

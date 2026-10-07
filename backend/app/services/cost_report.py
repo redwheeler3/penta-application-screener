@@ -16,7 +16,9 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.pricing import MeasuredProvider, PassCost
+from app.ai.model_catalog import known_model_spec
+from app.ai.pricing import MeasuredProvider, PassCost, cost_usd
+from app.ai.provider import Usage
 from app.core.time import utc_isoformat
 from app.db.models import RunCostLedger, RunPassCost
 from app.schemas.observability import (
@@ -171,7 +173,9 @@ def _cost_pass(label: str, rows: list[RunPassCost]) -> CostPass:
     """Fold every recorded row for one pass label into its cumulative CostPass."""
     return CostPass(
         pass_label=label,
-        calls=sum(r.calls for r in rows),
+        provider_calls=sum(r.calls for r in rows),
+        fresh_units=(sum(r.fresh_units for r in rows)
+                     if all(r.fresh_units is not None for r in rows) else None),
         input_tokens=sum(r.input_tokens for r in rows),
         output_tokens=sum(r.output_tokens for r in rows),
         cost_usd=round(sum(r.cost_usd for r in rows), 6),
@@ -236,7 +240,8 @@ def _last_run(db: Session, kind: str) -> LastRunCost | None:
         LastRunPass(
             label=p.label,
             fresh_usd=round(p.cost_usd, 6),
-            fresh_calls=p.calls,
+            provider_calls=p.calls,
+            fresh_units=p.fresh_units,
             input_tokens=p.input_tokens,
             output_tokens=p.output_tokens,
             cached_count=p.cached_count,
@@ -275,28 +280,18 @@ _SCORING_HISTORY_WINDOW = 5
 
 
 def recent_pass_fresh_usd(
-    db: Session, opening_id: int, pass_label: str = "Dimension scoring"
+    db: Session, opening_id: int, pass_label: str = "Dimension scoring", *,
+    model_id: str, provider_calls: int | None = None,
 ) -> float | None:
-    """A recency-weighted average of what recent Rank runs actually spent (fresh) on the
-    named pass — the MEASURED predictor of a re-run's cost for that pass.
+    """Reprice recent compatible usage, weighted toward this opening's newest runs.
 
-    The principle (per .clinerules: estimate from history when we have it, seed only
-    when we don't): a past run's stored fresh cost for a pass already captures its real
-    cost shape — for scoring, carry-forward reuse plus newly-minted fresh scoring; for
-    discovery/decompose, the real output size at the current prompt (so it self-corrects
-    when a prompt change moves the token count, instead of a hand-tuned constant going
-    stale). Weighted toward the most recent run because early runs (fresh pool, bigger
-    output) shouldn't dominate.
+    Discovery normalizes usage per returned provider reply and multiplies by the
+    requested fan-out. Other passes retain their measured workload and cache mix.
+    Unknown or incompatible models and skipped passes provide no usage evidence;
+    callers use their existing seed/cache-aware fallback when none remains.
 
-    Returns None when no Rank run has recorded this pass yet — the caller falls back to
-    a seed estimate. Only reads the ledger (the honest per-run source); does not see the
-    *current* cache state, so a pool that just grew is under-predicted until the next run
-    records it (documented caveat, not a blend).
-
-    Minor edge: a pass that records $0 on a first run (match, which is skipped with no
-    prior history) will pull the average down if such a run falls in the recency window.
-    Tolerated, not filtered — recency-weighting favours later non-zero runs and first-runs
-    age out fast; the seed fallback already covers the first re-run.
+    This remains approximate: the ledger does not establish prompt/reasoning changes
+    or pool growth. Never invent those facts by associating runs and analyses by time.
     """
     rows = list(
         db.scalars(
@@ -313,7 +308,21 @@ def recent_pass_fresh_usd(
         )
     )
     # rows are newest→oldest (one per recent Rank, since each run records one row per pass).
-    fresh = [float(r.cost_usd) for r in rows]
+    current = known_model_spec(model_id)
+    fresh = []
+    for row in rows:
+        observed = known_model_spec(row.model_id)
+        # Tokens transfer only between certified routes for the same model.
+        # The ledger has no analysis FK: do not infer prompt/reasoning provenance
+        # from an adjacent analysis or reuse dollars from an unknown model.
+        if current is None or observed is None or current.model_identity != observed.model_identity:
+            continue
+        if row.calls == 0 and provider_calls is not None:
+            continue
+        projected = cost_usd(model_id, Usage(input_tokens=row.input_tokens, output_tokens=row.output_tokens))
+        if provider_calls is not None:
+            projected *= provider_calls / row.calls
+        fresh.append(projected)
     if not fresh:
         return None
     # Linear recency weights: newest gets the largest weight (len), oldest gets 1.

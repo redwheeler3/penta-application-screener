@@ -147,6 +147,8 @@ export type ConsolidateAuditResponse = {
     dropName: string;
     r: number;
     merged: boolean;
+    appliedKeep?: string | null;
+    deferredReason?: string | null;
     reason: string;
   }[];
   nominatedCount: number;

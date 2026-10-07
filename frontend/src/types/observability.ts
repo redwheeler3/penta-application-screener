@@ -1,8 +1,10 @@
 // GET /observability/cost — aggregated AI spend for the Observability tab.
 export type CostPass = {
   passLabel: string;
-  // Uncached result units; dimension scoring counts per-dimension rows.
-  calls: number;
+  // Returned provider replies; distinct from result units when a reply batches dimensions.
+  providerCalls: number;
+  // Attempted cache misses, including failed work; null when interrupted work is unmeasured.
+  freshUnits: number | null;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
@@ -35,8 +37,8 @@ export type CostReport = {
 export type LastRunPass = {
   label: string;
   freshUsd: number;
-  // Uncached result units; dimension scoring counts per-dimension rows.
-  freshCalls: number;
+  providerCalls: number;
+  freshUnits: number | null;
   inputTokens: number;
   outputTokens: number;
   cachedCount: number;

@@ -16,7 +16,8 @@ class CostPass(ResponseModel):
     caching doesn't read as "caching failed here"."""
 
     pass_label: str
-    calls: int  # uncached result units; dimension scoring counts per dimension row
+    provider_calls: int  # returned provider replies, including successful re-asks
+    fresh_units: int | None  # attempted cache misses, including failed work; unknown after interruption
     input_tokens: int
     output_tokens: int
     cost_usd: float
@@ -61,10 +62,11 @@ class LastRunPass(ResponseModel):
 
     label: str
     fresh_usd: float
-    fresh_calls: int  # uncached result units; dimension scoring counts dimensions
+    provider_calls: int
+    fresh_units: int | None
     input_tokens: int = 0
     output_tokens: int = 0
-    cached_count: int  # cached result units, in the same units as fresh_calls
+    cached_count: int  # cached result units, in the same units as fresh_units
     cached_saved_usd: float
     # Whether this pass can cache at all. Pattern discovery and dimension matching
     # do not reuse results, so the UI shows "—" for their savings, not $0.

@@ -493,7 +493,8 @@ def test_rerun_estimate_prefers_measured_history() -> None:
 
     def rank_row(scoring_fresh: float) -> None:
         record_run_cost(db, kind="rank", opening_id=current_opening_id(db), passes={
-            "Dimension scoring": PassCost(calls=1, cost_usd=scoring_fresh),
+            "Dimension scoring": PassCost(calls=1, cost_usd=scoring_fresh,
+                model_id=settings.ai.dimension_scoring_model, input_tokens=round(scoring_fresh * 1_000_000)),
         })
 
     # Two recorded runs: older $0.40, newer $0.10. Recency weights (2×newer + 1×older)

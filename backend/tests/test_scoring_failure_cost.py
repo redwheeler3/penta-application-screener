@@ -52,7 +52,8 @@ async def test_incomplete_retries_keep_usage_and_only_successes_count_as_scored(
         assert charged["inputTokens"] == known_calls * 1000
         assert charged["outputTokens"] == known_calls * 200
         assert charged["freshUsd"] == pytest.approx(expected_cost)
-        assert charged["freshCalls"] == known_calls
+        assert charged["providerCalls"] == known_calls
+        assert charged["freshUnits"] == 2 * (1 + int(mixed))  # misses include attempted failed work
         assert ledger["freshUsd"] == pytest.approx(expected_cost)
     assert len(provider.calls) == known_calls
     assert db.scalar(select(ApplicationAIResult).where(ApplicationAIResult.producer_application_id == failed_applicant.id)) is None
@@ -120,3 +121,44 @@ def test_successful_reasks_count_completed_replies_separately_from_dimensions() 
     assert measured.calls == len(provider.calls) == 2
     assert measured.input_tokens == 2000
     assert measured.output_tokens == 400
+    from app.services.cost_report import cost_report, last_runs_report, record_run_cost
+
+    record_run_cost(db, kind="rank_scores", passes={"Dimension scoring": measured})
+    assert last_runs_report(db).rank_scores.passes[0].fresh_units == 3
+    assert cost_report(db).groups[2].passes[0].fresh_units == 3
+
+
+def test_cost_tables_count_mixed_fresh_and_cached_dimensions_as_results():
+    from app.services.cost_report import cost_report, last_runs_report, record_run_cost
+
+    _, db, provider = setup_app(UserRole.MEMBER)
+    application = add_eligible(db, email="mixed@example.test", raw_hash="mixed")
+    settings = AppSettings()
+    dimension = a_pattern_report().dimensions[0]
+    report = a_pattern_report().model_copy(update={"dimensions": [dimension]})
+    provider.queue(DimensionScoringReport(scores=[a_scoring_report().scores[0]]))
+    list(score_dimensions(db, provider, applications=[application], report=report, settings=settings, max_workers=1))
+    report.dimensions.extend(dimension.model_copy(update={"key": key}) for key in ["b", "c", "d"])
+    provider.queue(DimensionScoringReport(scores=[a_scoring_report().scores[0].model_copy(
+        update={"dimension_key": key}) for key in ["b", "c", "d"]]))
+    tally = ScoreTally()
+    for result in score_dimensions(db, provider, applications=[application], report=report, settings=settings, max_workers=1):
+        tally.add(result)
+    record_run_cost(db, kind="rank_scores", passes={"Dimension scoring": tally.as_pass_cost(settings.ai.dimension_scoring_model)})
+    for row in [last_runs_report(db).rank_scores.passes[0], cost_report(db).groups[2].passes[0]]:
+        assert row.provider_calls == 1
+        assert row.fresh_units == 3
+        assert row.cached_count == 1
+
+
+def test_unknown_interrupted_result_counts_remain_unknown_in_both_tables():
+    from app.ai.pricing import PassCost
+    from app.services.cost_report import cost_report, last_runs_report, record_run_cost
+
+    _, db, _ = setup_app(UserRole.MEMBER)
+    record_run_cost(db, kind="rank_scores", passes={"Dimension scoring": PassCost(calls=1, fresh_units=3)})
+    record_run_cost(db, kind="rank_scores", status="failed", failed_pass="Interrupted",
+        passes={"Dimension scoring": PassCost(calls=2)})
+    assert last_runs_report(db).rank_scores.passes[0].fresh_units is None
+    assert cost_report(db).groups[2].passes[0].fresh_units is None
+    assert cost_report(db).groups[2].passes[0].provider_calls == 3

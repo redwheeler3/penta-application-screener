@@ -17,6 +17,7 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 // "caching failed".
 const savedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : money(n));
 const cachedCell = (n: number, cacheable: boolean) => (!cacheable ? "—" : String(n));
+const freshCell = (units: number | null, cacheable: boolean) => !cacheable || units === null ? "—" : String(units);
 // Compact token count: 1_234 → "1.2k", 26_203 → "26.2k". Output ~5× the input rate on
 // Sonnet, so the in→out split is what tells you whether a pass is input- or output-bound.
 const tok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
@@ -81,6 +82,8 @@ export function CostPanel(): ReactNode {
 
   return (
     <div className="cost-report">
+      <p className="panel-hint">Counts are application results for screening and criterion scores for ranking.
+        Uncached counts include failed attempts; — means unknown or not applicable.</p>
       <div className="cost-section">
         <div className="cost-block-head">
           <span className="observability-label">Last runs</span>
@@ -115,7 +118,7 @@ export function CostPanel(): ReactNode {
                     <tr key={p.label}>
                       <td className="cost-pass-name">{p.label}</td>
                       <td className="cost-num">{tokensCell(p.inputTokens, p.outputTokens)}</td>
-                      <td className="cost-num">{p.freshCalls}</td>
+                      <td className="cost-num" title={`${p.providerCalls} provider replies`}>{freshCell(p.freshUnits, p.cacheable)}</td>
                       <td className="cost-num">{cachedCell(p.cachedCount, p.cacheable)}</td>
                       <td className="cost-num">{savedCell(p.cachedSavedUsd, p.cacheable)}</td>
                       <td className="cost-num">{money(p.freshUsd)}</td>
@@ -148,7 +151,7 @@ export function CostPanel(): ReactNode {
                 <tr key={p.passLabel}>
                   <td className="cost-pass-name">{p.passLabel}</td>
                   <td className="cost-num">{tokensCell(p.inputTokens, p.outputTokens)}</td>
-                  <td className="cost-num">{p.calls}</td>
+                  <td className="cost-num" title={`${p.providerCalls} provider replies`}>{freshCell(p.freshUnits, p.cacheable)}</td>
                   <td className="cost-num">{cachedCell(p.cachedCount, p.cacheable)}</td>
                   <td className="cost-num">{savedCell(p.cachedSavedUsd, p.cacheable)}</td>
                   <td className="cost-num">{money(p.costUsd)}</td>
@@ -174,7 +177,7 @@ function renderEmptyRun(kind: InsightRunKind): ReactNode {
         <tr key={p.label}>
           <td className="cost-pass-name">{p.label}</td>
           <td className="cost-num">—</td>
-          <td className="cost-num">0</td>
+          <td className="cost-num">{freshCell(0, p.cacheable)}</td>
           <td className="cost-num">{cachedCell(0, p.cacheable)}</td>
           <td className="cost-num">{savedCell(0, p.cacheable)}</td>
           <td className="cost-num">{money(0)}</td>
@@ -191,8 +194,8 @@ function CostHead(): ReactNode {
       <tr>
         <th className="cost-col-label" />
         <th className="cost-col-tokens">tokens (in→out)</th>
-        <th className="cost-col-count">uncached</th>
-        <th className="cost-col-count">cached</th>
+        <th className="cost-col-count">uncached units</th>
+        <th className="cost-col-count">cached units</th>
         <th className="cost-col-money">cache savings</th>
         <th className="cost-col-money">spent</th>
       </tr>

@@ -77,3 +77,27 @@ def transfer_merged_tiers(tiers: list[dict], merges: dict[str, str]) -> list[dic
         if index < len(updated) and survivor_key not in updated[index]["dimension_keys"]:
             updated[index]["dimension_keys"].append(survivor_key)
     return updated
+
+
+def report_aliases(aliases: dict[str, str], report: PoolDimensionReport | None) -> dict[str, str]:
+    """Follow direct alias edges only as far as a survivor owned by the target report.
+
+    Global consolidation in another opening does not change this report's keys.
+    When both twins are still present, each retains its independent placement.
+    """
+    keys = {dimension.key for dimension in report.dimensions} if report else set()
+    transfers = {}
+    for source in aliases:
+        if source in keys:
+            continue
+        target = source
+        visited = {source}
+        while target in aliases:
+            target = aliases[target]
+            if target in keys:
+                transfers[source] = target
+                break
+            if target in visited:
+                break
+            visited.add(target)
+    return transfers

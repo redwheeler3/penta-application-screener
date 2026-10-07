@@ -132,6 +132,8 @@ class ConsolidatedPairOut(ResponseModel):
     drop_name: str = ""
     r: float
     merged: bool
+    applied_keep: str | None = None
+    deferred_reason: str | None = None
     reason: str = ""
 
 

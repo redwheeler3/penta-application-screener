@@ -13,6 +13,7 @@ from app.db.models import (
     MemberRanking,
     User,
 )
+from app.schemas.settings import AppSettings
 from app.services.applications.scope import opening_ai_applications
 from app.services.ranking.dimensions import alias_map, current_dimension_report
 from app.services.ranking.identity import flatten_merges, transfer_merged_tiers
@@ -110,6 +111,7 @@ def apply_consolidation(
     merges: dict[str, str],
     audit: list[dict],
     narrative: str | None,
+    settings: AppSettings,
     configuration: dict | None = None,
 ) -> Analysis:
     """Fold confirmed duplicate keys into their canonical key on an already-persisted
@@ -145,7 +147,51 @@ def apply_consolidation(
     # ({C: A, B: A}) so aliases point straight at the winner and every by-value lookup
     # below (tier-placement transfer especially) lands on a key that still exists, not a
     # mid-chain key that was itself dropped.
-    merges = flatten_merges(merges)
+    known_aliases = alias_map(db)
+    resolved = flatten_merges({**known_aliases, **merges})
+    merges = {drop: resolved[drop] for drop in merges}
+
+    # A confirmed concept match cannot replace scores under another frozen wording.
+    # Check terminal survivors against the same current cache grid used by scoring.
+    if merges:
+        from app.ai.dimension_scoring import (
+            applications_to_score,
+            kind_for_dimension,
+            plan_dimension_scoring,
+        )
+        from app.ai.result_selection import select_results
+
+        history = all_known_dimensions(db)
+        mint_by_key = {dimension.key: dimension for dimension in history.dimensions} if history else {}
+        survivors = PoolDimensionReport(dimensions=[mint_by_key[key]
+            for key in dict.fromkeys(merges.values()) if key in mint_by_key])
+        plan = plan_dimension_scoring(db, applications=applications_to_score(db, analysis.opening_id),
+            report=survivors, settings=settings)
+        unsafe = {dimension.key for applicant in plan.applicants for dimension in applicant.dimensions_to_score}
+        unsafe.update(key for key in merges.values() if key not in mint_by_key)
+        frozen_fields = {"name", "definition", "high_end", "low_end"}
+        for dimension in report_json.get("dimensions", []):
+            key = dimension["key"]
+            if key in merges.values() and key in mint_by_key:
+                if any(dimension.get(field) != getattr(mint_by_key[key], field) for field in frozen_fields):
+                    unsafe.add(key)
+        deferred = {drop for drop, keep in merges.items() if keep in unsafe}
+        applied_audit = []
+        for pair in audit:
+            recorded_pair = dict(pair)
+            if pair.get("merged"):
+                if pair.get("drop") in deferred:
+                    recorded_pair.update(merged=False, deferred_reason=(
+                        "Merge deferred: the terminal survivor lacks frozen wording or complete current scores."))
+                elif pair.get("drop") in merges:
+                    recorded_pair["applied_keep"] = merges[pair["drop"]]
+            applied_audit.append(recorded_pair)
+        audit = applied_audit
+        merges = {drop: keep for drop, keep in merges.items() if drop not in deferred}
+        # Readers consume selected references, not every reusable cache row. Adopt
+        # these already-validated scores in the same transaction as their report keys.
+        survivor_kinds = {kind_for_dimension(key) for key in merges.values()}
+        select_results(db, [reference for reference in plan.cached_references if reference[1] in survivor_kinds])
 
     if merges:
         # An alias may already exist: matching is high-bar, so a merged key can be
@@ -191,13 +237,9 @@ def apply_consolidation(
         present = {d.get("key") for d in report_dims}
         resurfaced = [k for k in dict.fromkeys(merges.values()) if k not in present]
         if resurfaced:
-            history = all_known_dimensions(db)
-            mint_by_key = {d.key: d for d in history.dimensions} if history else {}
             _scaffold, most_recent_tier_by_key = tier_history(
-                db, member_ranking.user, analysis.opening_id
+                db, member_ranking.user, analysis.opening_id, target_report=history,
             )
-            # Only keys we can actually rebuild from a mint record get surfaced+placed.
-            resurfaced = [k for k in resurfaced if k in mint_by_key]
             report_dims.extend(mint_by_key[k].model_dump(mode="json") for k in resurfaced)
         report_json["dimensions"] = report_dims
 
@@ -225,6 +267,9 @@ def apply_consolidation(
         state["new_dimension_keys"] = [
             k for k in (state.get("new_dimension_keys") or []) if k not in merges
         ]
+        if "acknowledged_requested_keys" in state:
+            state["acknowledged_requested_keys"] = sorted({merges.get(key, key)
+                for key in state["acknowledged_requested_keys"]})
         # Reassign the JSON columns so SQLAlchemy tracks the change: dimension_report is
         # shared (on the analysis), the tier state is this member's (on member_ranking).
         analysis.dimension_report = report_json
@@ -343,6 +388,15 @@ def all_known_dimensions(db: Session) -> PoolDimensionReport | None:
     return PoolDimensionReport(dimensions=list(minted_by_key.values()))
 
 
+def has_known_dimensions(db: Session) -> bool:
+    """Check matching's global history without materializing analysis audit blobs."""
+    aliases = alias_map(db)
+    for report in db.scalars(select(Analysis.dimension_report).execution_options(yield_per=100)):
+        if report and any(dimension["key"] not in aliases for dimension in report.get("dimensions", [])):
+            return True
+    return False
+
+
 def record_rank_inputs(db: Session, analysis: Analysis, inputs_fingerprint: str) -> None:
     """Persist a score-only run's captured inputs; changes made during it remain stale."""
     if analysis.opening_id is None:
@@ -388,7 +442,7 @@ def committee_kept_keys(
     valid = {d.key for d in report.dimensions}
     kept: set[str] = set()
     for user in db.scalars(select(User).where(User.is_active.is_(True))):
-        _, most_recent_tier_by_key = tier_history(db, user, opening_id)
+        _, most_recent_tier_by_key = tier_history(db, user, opening_id, target_report=report)
         kept.update(
             key
             for key, tier_id in most_recent_tier_by_key.items()

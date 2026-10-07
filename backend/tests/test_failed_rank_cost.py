@@ -93,7 +93,7 @@ async def test_known_pass_costs_survive_later_failures(monkeypatch, caplog, fail
         assert last["failedPass"] == {"decomposition": "Dimension decomposition", "validation": "Dimension decomposition",
             "matching": "Dimension matching", "criteria storage": "Criteria persistence", "scoring storage": "Dimension scoring"}[failure]
         assert metrics["runs"][0]["status"] == "failed"
-        assert recent_pass_fresh_usd(db, opening_id, "Pattern discovery") is None
+        assert recent_pass_fresh_usd(db, opening_id, "Pattern discovery", model_id=AppSettings().ai.discovery_model) is None
         assert db.scalar(select(ApplicationAIResult)) is None
         if failure in {"decomposition", "validation", "matching", "criteria storage"}:
             analyses = db.scalars(select(Analysis)).all()

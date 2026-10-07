@@ -213,7 +213,7 @@ async def test_observability_cost_aggregates_by_pass() -> None:
         assert rank_passes["Pattern discovery"]["costUsd"] > 0.0
         # Decomposition ran (K≥2 reports settled), so it recorded a cost.
         assert rank_passes["Dimension decomposition"]["costUsd"] > 0.0
-        assert rank_passes["Dimension scoring"]["calls"] == 1  # one batched scoring reply
+        assert rank_passes["Dimension scoring"]["providerCalls"] == 1  # one batched scoring reply
         # Cacheable passes are marked so; the always-fresh ones are not (UI shows "—").
         assert rank_passes["Dimension scoring"]["cacheable"] is True
         assert rank_passes["Pattern discovery"]["cacheable"] is False
@@ -252,9 +252,9 @@ async def test_last_runs_records_fresh_and_cached_cost() -> None:
         # First run: everything fresh, nothing cached.
         assert rank["freshUsd"] > 0
         assert rank["cachedSavedUsd"] == 0.0
-        assert by_pass["Dimension scoring"]["freshCalls"] == 1
+        assert by_pass["Dimension scoring"]["providerCalls"] == 1
         # Discovery ran K parallel calls (the fan-out), not 1.
-        assert by_pass["Pattern discovery"]["freshCalls"] == AISettings().discovery_fan_out
+        assert by_pass["Pattern discovery"]["providerCalls"] == AISettings().discovery_fan_out
         # Each fresh pass persists the tokens behind its spend
         # (MockProvider bills 100 in / 50 out a call).
         assert by_pass["Pattern discovery"]["inputTokens"] == 100 * AISettings().discovery_fan_out

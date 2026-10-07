@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, contains_eager
 
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Analysis, MemberRanking, User
-from app.services.ranking.dimensions import alias_map, current_dimension_report
+from app.services.ranking.dimensions import current_dimension_report, report_alias_map
 from app.services.ranking.identity import transfer_merged_tiers
 
 
@@ -27,10 +27,11 @@ def get_or_reconcile_member_ranking(
     )
     existing = db.scalar(lookup)
     if existing is not None:
-        aliases = alias_map(db)
+        aliases = report_alias_map(db, current_dimension_report(analysis))
         if _merged_member_state(existing, aliases) != (existing.run_state or {}):
             lock_member_state(db, existing)
-            existing.run_state = _merged_member_state(existing, alias_map(db))
+            existing.run_state = _merged_member_state(existing,
+                report_alias_map(db, current_dimension_report(analysis)))
             if commit:
                 db.commit()
         return existing
@@ -38,10 +39,11 @@ def get_or_reconcile_member_ranking(
     report = current_dimension_report(analysis)
     if analysis.opening_id is None:
         raise ValueError("A current analysis must belong to an opening.")
-    scaffold, most_recent = tier_history(db, user, analysis.opening_id)
+    scaffold, most_recent = tier_history(db, user, analysis.opening_id, target_report=report)
     if report is not None and scaffold:
         immediately_prior = _immediately_prior_keys(
-            db, user, opening_id=analysis.opening_id, before_analysis_id=analysis.id
+            db, user, opening_id=analysis.opening_id, before_analysis_id=analysis.id,
+            target_report=report,
         )
         layout, flagged = carry_forward_layout(
             new_report=report,
@@ -181,7 +183,7 @@ def display_tiers(member_ranking: MemberRanking) -> list[dict]:
 
 
 def tier_history(
-    db: Session, user: User, opening_id: int
+    db: Session, user: User, opening_id: int, *, target_report: PoolDimensionReport | None = None,
 ) -> tuple[list[dict], dict[str, str]]:
     """One member's tier intent across ALL their rankings, for carrying placements forward.
 
@@ -213,7 +215,9 @@ def tier_history(
         .options(contains_eager(MemberRanking.analysis))
         .order_by(Analysis.id.desc())
     ).all()
-    aliases = alias_map(db)
+    if target_report is None and rankings:
+        target_report = current_dimension_report(rankings[0].analysis)
+    aliases = report_alias_map(db, target_report)
     scaffold: list[dict] = []
     most_recent_tier_by_key: dict[str, str] = {}
     # Newest analysis first: the first tier we see for a key is its most-recent one.
@@ -242,7 +246,8 @@ def tier_history(
 
 
 def _immediately_prior_keys(
-    db: Session, user: User, *, opening_id: int, before_analysis_id: int
+    db: Session, user: User, *, opening_id: int, before_analysis_id: int,
+    target_report: PoolDimensionReport | None,
 ) -> set[str]:
     """The dimension keys of this member's ranking on the analysis IMMEDIATELY BEFORE
     ``before_analysis_id`` — the ones continuous in their view (never flagged). Empty if
@@ -263,7 +268,7 @@ def _immediately_prior_keys(
     if prior is None:
         return set()
     report = current_dimension_report(prior.analysis)
-    aliases = alias_map(db)
+    aliases = report_alias_map(db, target_report)
     return {aliases.get(d.key, d.key) for d in report.dimensions} if report is not None else set()
 
 

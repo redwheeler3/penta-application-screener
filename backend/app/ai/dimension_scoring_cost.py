@@ -110,7 +110,7 @@ def estimate_rank_scoring(
     """
     if not candidates:
         return 0.0
-    measured = recent_pass_fresh_usd(db, opening_id)
+    measured = recent_pass_fresh_usd(db, opening_id, model_id=settings.ai.dimension_scoring_model)
     if measured is not None:
         return round(measured, 4)
 

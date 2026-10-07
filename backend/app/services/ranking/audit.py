@@ -160,7 +160,7 @@ def consolidate_audit_view(db: Session, analysis: Analysis) -> dict | None:
     ]
     return {
         # Derived from the merged pairs, not stored — dimension_aliases is the merge-truth.
-        "merges": {p["drop"]: p["keep"] for p in pairs if p.get("merged")},
+        "merges": {p["drop"]: p.get("applied_keep") or p["keep"] for p in pairs if p.get("merged")},
         "pairs": pairs,
         "nominated_count": len(pairs),
         "merged_count": sum(1 for p in pairs if p.get("merged")),

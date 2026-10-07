@@ -27,6 +27,86 @@ from tests.ranking_support import (
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("survivor_coverage", ["missing", "stale", "complete", "unselected", "stale_selection"])
+async def test_full_rank_only_adopts_survivor_with_current_complete_coverage(survivor_coverage):
+    from app.ai.dimension_scoring import kind_for_dimension, score_dimensions
+    from app.ai.schemas import DimensionMatchReport
+    from app.db.models import ApplicationAISelection, DimensionAlias
+    from app.schemas.settings import AppSettings
+    from app.services.ranking.analysis import create_analysis, get_latest_analysis
+    from tests.ranking_support import a_pattern_report
+
+    app, db, provider = setup_app(role=UserRole.ADMIN)
+    settings = AppSettings()
+    user = db.scalar(select(User))
+    apps = [add_eligible(db, email=f"coverage{i}@example.test", raw_hash=f"coverage{i}") for i in range(4)]
+    dimension = a_pattern_report().dimensions[0]
+    older = PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "older"})])
+    newer = PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "newer", "definition": "Fresh wording"})])
+    create_analysis(db, user=user, opening_id=current_opening_id(db), report=older,
+        inputs_fingerprint="old", narrative=None)
+    for application, value in zip(apps, [0.1, 0.4, 0.7, 0.95], strict=True):
+        provider.route(f'"applicant_id": {application.id}', DimensionScoringReport(scores=[
+            DimensionScore(dimension_key="older", score=value, rationale="synthetic",
+                evidence="", confidence=ScoreConfidence.MEDIUM)]))
+    seeded = apps[:3] if survivor_coverage == "missing" else apps
+    assert all(not result.failed for result in score_dimensions(db, provider,
+        applications=seeded, report=older, settings=settings, max_workers=1))
+    expected_survivor_id = None
+    if survivor_coverage in {"unselected", "stale_selection"}:
+        selected = db.scalar(select(ApplicationAISelection).where(
+            ApplicationAISelection.application_id == apps[-1].id,
+            ApplicationAISelection.kind == kind_for_dimension("older")))
+        expected_survivor_id = selected.result_id
+        if survivor_coverage == "unselected":
+            db.delete(selected)
+        else:
+            selected.result_id = db.scalar(select(ApplicationAISelection.result_id).where(
+                ApplicationAISelection.application_id == apps[-2].id,
+                ApplicationAISelection.kind == kind_for_dimension("older")))
+        db.commit()
+    if survivor_coverage == "stale":
+        apps[-1].raw_row_hash = "changed-input"
+        db.commit()
+    provider.routed.clear()
+    provider.route("<applicant_pool>", newer)
+    provider.route("<discovery_reports>", _decomposition_of(newer))
+    provider.route("", DimensionMatchReport(matches=[]))
+    provider.route("<candidate_pairs>", ConsolidationReport(verdicts=[
+        ConsolidationVerdict(key_a="older", key_b="newer", same_concept=True, reason="Same concept")]))
+    for application, value in zip(apps, [0.1, 0.4, 0.7, 0.95], strict=True):
+        provider.route(f'"applicant_id": {application.id}', DimensionScoringReport(scores=[
+            DimensionScore(dimension_key="newer", score=value, rationale="synthetic",
+                evidence="", confidence=ScoreConfidence.MEDIUM)]))
+    calls_before = len(provider.calls)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        events = await stream_events(client, "/ranking/run")
+        summary = events[-1]
+        assert summary["type"] == "summary"
+        assert summary["scored"] == 4
+        assert summary["failed"] == 0
+        assert summary["dimensions"] == 1
+        board = (await client.get("/ranking/board")).json()
+        assert board["ranking"]["scoredCount"] == 4
+        assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
+        analysis = get_latest_analysis(db)
+        audit = (await client.get(f"/ranking/analyses/{analysis.id}/consolidate-audit")).json()
+        complete = survivor_coverage in {"complete", "unselected", "stale_selection"}
+        assert audit["mergedCount"] == int(complete)
+        assert audit["pairs"][0]["merged"] is complete
+        assert bool(audit["pairs"][0]["deferredReason"]) is not complete
+        assert analysis.dimension_report["dimensions"][0]["key"] == ("older" if complete else "newer")
+        assert bool(db.scalar(select(DimensionAlias))) is complete
+        if expected_survivor_id is not None:
+            selected = db.scalar(select(ApplicationAISelection).where(
+                ApplicationAISelection.application_id == apps[-1].id,
+                ApplicationAISelection.kind == kind_for_dimension("older")))
+            assert selected.result_id == expected_survivor_id
+    # K discovery + decomposition + matching + four scores + confirmation; no repair call.
+    assert len(provider.calls) - calls_before == settings.ai.discovery_fan_out + 7
+
+
+@pytest.mark.anyio
 async def test_decomposition_merges_axes_and_records_the_merge() -> None:
     # Decomposition settles parallel discovery reports before scoring. Here discovery emits
     # three axes but decomposition merges
@@ -284,7 +364,7 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
         merges={"financial_stewardship": "financial_literacy"},
         audit=[{"keep": "financial_literacy", "drop": "financial_stewardship",
                 "r": 0.94, "merged": True, "reason": "same concept"}],
-        narrative=None,
+        narrative=None, settings=AppSettings(),
     )
     # The survivor inherited the dropped twin's Critical placement, so it stays kept.
     keys = {d["key"] for d in analysis.dimension_report["dimensions"]}
@@ -322,7 +402,7 @@ def test_apply_consolidation_reconfirming_an_existing_alias_is_idempotent() -> N
             merges={"financial_stewardship": "financial_literacy"},
             audit=[{"keep": "financial_literacy", "drop": "financial_stewardship",
                     "r": 0.94, "merged": True, "reason": reason}],
-            narrative=None,
+            narrative=None, settings=AppSettings(),
         )
 
     run_with_merge("first time")
@@ -372,7 +452,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
             {"keep": "b_mid", "drop": "c_newest", "r": 0.95, "merged": True, "reason": "c=b"},
             {"keep": "a_oldest", "drop": "b_mid", "r": 0.88, "merged": True, "reason": "b=a"},
         ],
-        narrative=None,
+        narrative=None, settings=AppSettings(),
     )
 
     # Only the terminal survivor remains, and C's placement followed the full chain to it.
@@ -382,6 +462,47 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     # Both aliases point straight at the survivor — no mid-chain key persisted.
     aliases = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
     assert aliases == {"c_newest": "a_oldest", "b_mid": "a_oldest"}
+    from app.services.ranking.audit import consolidate_audit_view
+
+    audit = consolidate_audit_view(db, analysis)
+    assert audit["merges"] == aliases
+    assert audit["pairs"][0]["keep"] == "b_mid"  # model-judged pair remains intact
+    assert audit["pairs"][0]["applied_keep"] == "a_oldest"
+
+
+@pytest.mark.parametrize("invalid_survivor", ["missing", "rewritten"])
+def test_consolidation_defers_terminal_survivor_without_its_frozen_wording(invalid_survivor):
+    from app.db.models import DimensionAlias
+    from app.schemas.settings import AppSettings
+    from app.services.ranking.analysis import apply_consolidation, create_analysis
+    from app.services.ranking.member_state import get_or_reconcile_member_ranking
+    from tests.ranking_support import a_pattern_report
+
+    _, db, _ = setup_app(UserRole.MEMBER)
+    user = db.scalar(select(User))
+    dimension = a_pattern_report().dimensions[0]
+    prior = PoolDimensionReport(dimensions=[dimension.model_copy(update={"key": "older"})])
+    create_analysis(db, user=user, opening_id=current_opening_id(db), report=prior,
+        inputs_fingerprint="prior", narrative=None)
+    newer = dimension.model_copy(update={"key": "newer"})
+    dimensions = [newer]
+    if invalid_survivor == "rewritten":
+        dimensions.append(dimension.model_copy(update={"key": "older", "definition": "Different scope"}))
+    report = PoolDimensionReport(dimensions=dimensions)
+    analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=report,
+        inputs_fingerprint="current", narrative=None,
+        tier_layout=[{"id": "top", "label": "Top", "dimension_keys": ["newer"]}])
+    member = get_or_reconcile_member_ranking(db, analysis, user)
+    terminal = "absent" if invalid_survivor == "missing" else "older"
+    apply_consolidation(db, analysis, member, merges={"newer": "middle", "middle": terminal},
+        audit=[{"keep": "middle", "drop": "newer", "r": 0.9, "merged": True, "reason": "same"}],
+        narrative=None, settings=AppSettings())
+    assert analysis.dimension_report == report.model_dump(mode="json")
+    assert member.run_state["tiers"][0]["dimension_keys"] == ["newer"]
+    assert db.scalar(select(DimensionAlias)) is None
+    pair = analysis.audit.consolidate["pairs"][0]
+    assert pair["merged"] is False
+    assert pair["deferred_reason"]
 
 
 def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
@@ -445,7 +566,7 @@ def test_apply_consolidation_surfaces_a_prior_key_on_a_cross_run_heal() -> None:
         merges={"child_age_profile": "child_age_profile_community_fit"},
         audit=[{"keep": "child_age_profile_community_fit", "drop": "child_age_profile",
                 "r": 0.803, "merged": True, "reason": "same age axis"}],
-        narrative=None,
+        narrative=None, settings=AppSettings(),
     )
 
     dims = {d["key"]: d for d in analysis2.dimension_report["dimensions"]}
@@ -584,7 +705,7 @@ def test_merged_alias_does_not_donate_its_definition_to_the_canonical_key() -> N
         merges={"hands_on_trade": "licensed_trade"},
         audit=[{"keep": "licensed_trade", "drop": "hands_on_trade", "r": 0.93,
                 "merged": True, "reason": "same axis"}],
-        narrative=None,
+        narrative=None, settings=AppSettings(),
     )
     # Run 3: the broad concept re-surfaces under its OWN key, and the canonical narrow key
     # does NOT appear on its own. This is the trigger: a newest-first history builder would

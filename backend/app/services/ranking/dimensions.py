@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.schemas import PoolDimensionReport
 from app.db.models import Analysis, DimensionAlias
-from app.services.ranking.identity import flatten_merges
+from app.services.ranking.identity import flatten_merges, report_aliases
 
 
 def current_dimension_report(analysis: Analysis) -> PoolDimensionReport | None:
@@ -24,6 +24,14 @@ def alias_map(db: Session) -> dict[str, str]:
     canonical key. Cycles (shouldn't occur — merges always point newer→older) are broken
     defensively by capping the walk.
     """
-    direct = {a.alias_key: a.canonical_key for a in db.scalars(select(DimensionAlias))}
-    return flatten_merges(direct)
+    return flatten_merges(_stored_aliases(db))
+
+
+def report_alias_map(db: Session, report: PoolDimensionReport | None) -> dict[str, str]:
+    """Resolve aliases against this report, retaining an intermediate survivor it owns."""
+    return report_aliases(_stored_aliases(db), report)
+
+
+def _stored_aliases(db: Session) -> dict[str, str]:
+    return {alias.alias_key: alias.canonical_key for alias in db.scalars(select(DimensionAlias))}
 

@@ -48,7 +48,7 @@ from app.services.ranking.criteria import (
     CriteriaStageChange,
     run_criteria_passes,
 )
-from app.services.ranking.dimensions import current_dimension_report
+from app.services.ranking.dimensions import current_dimension_report, report_alias_map
 from app.services.ranking.identity import adopt_matched_keys
 from app.services.ranking.member_state import (
     carry_forward_layout,
@@ -162,7 +162,6 @@ def _stream_criteria(
     prior_analysis = get_current_analysis(db, opening_id)
     prior_report = current_dimension_report(prior_analysis) if prior_analysis else None
     match_history = all_known_dimensions(db)  # every dimension ever, one per key
-    scaffold_tiers, tier_by_key = tier_history(db, user, opening_id)
     # The immediately-prior run's keys: a dimension present here is continuous in
     # the committee's view (never flagged); one absent-then-present is a presence
     # gap to flag (new or revived). See carry_forward_layout.
@@ -261,6 +260,9 @@ def _stream_criteria(
     # the wording that score was computed against.
     try:
         report = adopt_matched_keys(work.report, work.new_to_old, match_history)
+        scaffold_tiers, tier_by_key = tier_history(db, user, opening_id, target_report=report)
+        adopted_aliases = report_alias_map(db, report)
+        immediately_prior_keys = {adopted_aliases.get(key, key) for key in immediately_prior_keys}
         # Carry committee intent forward across ALL runs: restore each key's most-recent
         # tier placement, and flag every dimension absent from the immediately-prior run
         # (new OR revived) for triage — the new-vs-revived label is derived at read time.
@@ -419,6 +421,7 @@ def _stream_consolidate(
         merges=consolidation.merges,
         audit=consolidation.audit,
         narrative=consolidation.narrative,
+        settings=settings,
         configuration=configuration,
     )
     return consolidation, round((time.perf_counter() - _t0) * 1000)
