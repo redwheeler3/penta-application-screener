@@ -78,13 +78,12 @@ def claim_link_target(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink
     if link.purpose == MagicLinkPurpose.EMAIL_CHANGE:
         return _claim_email_change(db, link)
     if link.application_id is not None:
-        application = _active_application(db, link.application_id)
-        if application is not None and not application_is_editable(db, application):
+        application = link_target(db, link)
+        if not isinstance(application, Application):
+            return ClaimedApplicantLink(None, state="abandoned")
+        if not application_is_editable(db, application):
             return ClaimedApplicantLink(None, state="unavailable")
-        return ClaimedApplicantLink(
-            application,
-            state="valid" if application is not None else "abandoned",
-        )
+        return ClaimedApplicantLink(application)
     draft = db.get(ApplicantDraft, link.applicant_draft_id, populate_existing=True) if link.applicant_draft_id is not None else None
     if draft is None or not draft_is_available(draft):
         return ClaimedApplicantLink(None, state="abandoned")
@@ -221,13 +220,37 @@ def draft_belongs_to_application(
 
 def link_target(db: Session, link: MagicLinkToken) -> Application | ApplicantDraft | None:
     if link.application_id is not None:
-        return _active_application(db, link.application_id)
-    draft = link.applicant_draft
-    if draft is None:
+        target = _active_application(db, link.application_id)
+    else:
+        draft = link.applicant_draft
+        if draft is None:
+            return None
+        if draft.resolved_at is not None and draft.application_id is not None:
+            target = _active_application(db, draft.application_id)
+        else:
+            target = draft if draft_is_available(draft) else None
+    if target is not None and link.purpose == MagicLinkPurpose.APPLICANT_ACCESS:
+        email = target.primary_email if isinstance(target, Application) else target.email
+        if normalize_email(email) != normalize_email(link.email):
+            return None
+    return target
+
+
+def renewable_link_target(db: Session, link: MagicLinkToken) -> Application | ApplicantDraft | None:
+    """Recheck anonymous renewal authority while holding the credential writer lock.
+
+    Used access links can recover the same mailbox. A cancelled or completed email
+    change cannot restart; durable delivery retries have their own queued authority.
+    """
+    db.execute(update(MagicLinkToken).where(MagicLinkToken.id == link.id)
+        .values(revoked_at=MagicLinkToken.revoked_at)
+        .execution_options(synchronize_session=False))
+    db.refresh(link)
+    if link.purpose == MagicLinkPurpose.EMAIL_CHANGE and (
+        link.consumed_at is not None or link.revoked_at is not None
+    ):
         return None
-    if draft.resolved_at is not None and draft.application_id is not None:
-        return _active_application(db, draft.application_id)
-    return draft if draft_is_available(draft) else None
+    return link_target(db, link)
 
 
 def application_for_access_target(

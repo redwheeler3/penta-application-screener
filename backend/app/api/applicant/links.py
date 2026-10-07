@@ -34,7 +34,7 @@ from app.services.applications.access import (
     applicant_link,
     application_for_access_target,
     claim_link_target,
-    link_target,
+    renewable_link_target,
 )
 from app.services.applications.drafts import (
     applicant_email_request_allowed,
@@ -167,7 +167,7 @@ def regenerate_applicant_access_link(
 ) -> RegenerateAccessLinkResponse:
     now = datetime.now(UTC)
     link = applicant_link(db, body.token)
-    target = link_target(db, link) if link is not None else None
+    target = renewable_link_target(db, link) if link is not None else None
     if link is None or target is None:
         return RegenerateAccessLinkResponse(
             target_available=False,
