@@ -1,18 +1,33 @@
 # Whole-project audit — 2026-10-06, post-implementation review
 
-**Status: complete, including a pre-implementation challenge pass; X01–X06 recommended, not implemented.** Baseline `83bfd9e`, clean
-working tree, ten local commits ahead of the recorded `origin/main`. The completed W01–W07
+**Status: complete through four independent domain reviews and a reconciliation/challenge pass;
+X01–X16 recommended, not implemented.** Original baseline `83bfd9e`; the independent reviews
+started from clean `bc8e3ff`, twelve local commits ahead of the recorded `origin/main`.
+Application code is unchanged between these audit revisions. The completed W01–W07
 report remains at `83bfd9e:docs/project-audit-2026-10-06-follow-up.md`.
 
 ## Recommendation
 
-Fix the dashboard loading race, the two fixture-contract gaps, and the disruptive trace refresh.
+Prioritize the access-link identity defect (X07), cross-opening priority loss (X08), and
+retention/submission failures (X09–X12). The independent reviews below add ten findings to
+the original six; they are one combined implementation backlog, not separate implementation rounds.
+Then fix the dashboard loading race, the two fixture-contract gaps, and the disruptive trace refresh.
 Repair the two command-line experiment wrappers before relying on their next model comparison.
 These are bounded changes to existing owners. I do not recommend another architecture rewrite,
 a general mutation framework, or additional production caching.
 
 | ID | Priority | Finding | Evidence |
 | --- | --- | --- | --- |
+| X07 | P1, access control | Regeneration revives superseded access and cancelled email-change links | Actual anonymous regeneration/redemption restores access to a synthetic current profile |
+| X08 | P1, ranking integrity | Global criterion aliases erase another opening's effective priorities | Another opening's report retains `newer`, but reconciliation changes its positive tier to `older`; weight becomes zero |
+| X09 | P2, retention | Withdrawn participation misses the final-decision retention update | Four withdrawal/decision combinations remain without deadlines and survive an overdue purge |
+| X10 | P2, draft loss/retention | Private draft deadlines are stale or absent after saves/claims | Switching to a later opening leaves early expiry; empty-selection claim creates a nonexpiring Application |
+| X11 | P2, intake | Hidden archived openings demand address history the form removes | Form accepts August 2024 move-in; actual submit rejects it against hidden April 2024 cutoff |
+| X12 | P2, submission | Duplicate submit can replace success with a stale-copy error | Real review permits repeated clicks; real hook moves `submitted` → `stale_copy` on late 409 |
+| X13 | P2, ranking coverage | Consolidation revives criteria without complete current scores | Run reports 4 scored/0 failed; final board and dashboard have only 3/4 coverage |
+| X14 | P2, operator writes | Subscription controls permit overlapping writes and obsolete acknowledgements | Same-normalized-address edit allows delete; earlier save then restores deleted subscription in UI |
+| X15 | P2, navigation | Feedback applicant links use the currently selected opening | Feedback for A invokes detail read for B, failing or displaying B's eligibility context |
+| X16 | P3, report clarity | Cost tables compare provider replies with cached result counts | Three fresh dimensions plus one cached displays uncached 1/cached 1, while cache-hit metric correctly says 25% |
 | X05 | P2 | A failed background dashboard refresh can strand initial loading | Both requests settle, but the real hook remains `loading`; reversing their completion order settles correctly |
 | X01 | P2 | Fixture family metadata can disagree with its owning file/endpoint | Save returns 200; Judge lists the wrong family; its Run request returns 404 and current fingerprints use a different identity |
 | X02 | P2, eval validity | Screening expectations admit unknown categories and inconsistent raw types | Misspelled forbidden flags weaken assertions; a string pet count validates but fails against the identical numeric count |
@@ -345,3 +360,325 @@ The last challenge was whether either addition needs another abstraction: neithe
 X02 can use a strict expectation boundary; X03 can move an existing read outside its model
 loop. The six-item implementation plan now includes these cases. Application code, fixtures,
 and permanent tests remain unchanged; no further material candidate was identified in this pass.
+
+## Independent discovery passes — 2026-10-06
+
+This extension deliberately did not begin from X01–X06. Three subagents independently
+reviewed lifecycle/security, ranking/accounting, and committee/admin UI; the coordinating
+review examined applicant journeys. Each started from source and user-visible invariants.
+The findings were compared with the existing audit only during consolidation. No application
+implementation was performed. The earlier closing statements describe their respective passes,
+not a claim that later independent review could not uncover more issues.
+
+### Coverage and challenge results
+
+| Independent pass | Journey / invariant | Adverse sequence or transformation | Evidence / closure |
+| --- | --- | --- | --- |
+| Lifecycle and authority | A credential proves the currently authorized identity | Change email or cancel a proposal, then regenerate the old token anonymously | X07, actual ASGI routes with captured mail; independently repeated by coordinating reviewer |
+| Lifecycle and retention | Every retained record has the correct lifecycle deadline | Withdraw before final decision; choose a later opening; claim a draft with no selection | X09/X10, isolated DB/API probes plus existing retention suites |
+| Applicant form | Form validation and submitted-answer validation agree | Retained archived participation plus a new opening and intervening address move | X11, real submit route and frontend canonical-answer helper |
+| Applicant persistence | A confirmed submit remains confirmed | Two submissions at revision 1; first succeeds, second returns 409 later | X12, actual review component and persistence hook |
+| Ranking identity | A committee member's priorities remain attached to the report being viewed | Opening A creates a global alias while B still uses the old report keys | X08, existing/new member paths source-reviewed; existing-member counterexample reproduced |
+| Ranking completion | Successful scoring retains complete coverage after all transformations | Consolidation selects an older survivor missing one current applicant's score | X13, actual ranking endpoint, board, dashboard, cache refresh and estimate |
+| Accounting | Adjacent cached/uncached counts use comparable units | One reused criterion plus three freshly scored criteria in one provider reply | X16, actual scoring and report functions; metrics used as independent comparator |
+| Committee/admin UI | Pending writes retain ownership and navigation retains context | Normalized email edit during write; feedback opened from another opening | X14/X15, actual components/hooks with deferred mocked API responses |
+| Notes, settings, publication, access | Acknowledgements preserve newer drafts and scope | Source challenge of queues, uncertain writes, session remount, preview and decision replay | No additional finding; existing owners protect different guarantees |
+| Performance / simplicity | Avoid redundant work and policy copies | Batched ranking reads, cost reporting, retained results, report consumers, all proposed remedies | No measured latency regression or broad rewrite justified; consolidate only the specific duplicated policies below |
+| Recovery and external behavior | Preserve explicit evidence limits | Disk-fixture initialization failed in seven targeted cases; no production/provider probe | Recovery/concurrency source-reviewed where tests could not start; no new runtime conclusion from those failures |
+
+### X07 — Historical links can restore superseded or cancelled email access
+
+**Priority: P1.** `backend/app/api/applicant/links.py:163` regenerates using the old
+`link.email` and `link.purpose`, even after its authority has been superseded or cancelled.
+`backend/app/services/applications/access.py:77` accepts an application-bound access link
+without comparing its email proof with the application's current primary address.
+
+Two independent runs through the actual routes, using only synthetic identities and captured
+email, reproduced both sequences:
+
+1. Sign in as `old@example.com`, confirm a change to `new@example.com`, then anonymously
+   regenerate the consumed original access token. The replacement goes to `old@example.com`;
+   redeeming it permits GET `/applicant/application` and returns the current profile.
+2. Request an email change, cancel it successfully (204), then anonymously regenerate the
+   cancelled confirmation token. Redeeming the replacement applies the cancelled change.
+
+Possession of the historical token and access to its recipient mailbox are required. This is
+an access-control failure, not evidence of an incident or a claim about deployed production.
+`SPEC.md:222–232` describes cancellation; stale-link renewal remains an intentional feature.
+
+**Remedy / owner:** centralize purpose-aware renewal and identity checks in application access
+services. Current-address access recovery can continue after ordinary expiry/consumption;
+superseded addresses must not regain authority. Revoked/consumed email-change proposals must
+not restart. Preserve renewal of expired, unused, nonrevoked proposals. Enforce the binding at
+redemption as well as renewal, under the existing identity/write protections, including a link
+issued before an intervening email change. Do not blanket-ban all stale links or duplicate policy
+in the route. Handle draft-bound and application-bound links consistently without weakening
+selected/withdrawn/expired application restrictions.
+
+**Acceptance:** both reproduced sequences; ordinary expired/current-address recovery;
+expired valid proposal; replaced/cancelled/completed proposals; intervening identity change;
+draft claim; existing single-use and session-revocation behavior. **Latency:** existing target
+lookup plus comparisons; no new provider work. This is first in the implementation order.
+
+### X08 — Global aliases silently remove priorities from another opening
+
+**Priority: P1.** `backend/app/services/ranking/member_state.py:83` transfers tier keys using
+global aliases, while `dimension_weights` at line 104 still uses the target report's original
+keys. `tier_history` at line 216 has the equivalent carry-forward mismatch.
+
+Reproduced: A mints `older`; B has criterion `newer` in a positive tier. A consolidates
+`newer → older`. Reading B rewrites the stored tier to `older`, but B's unchanged report
+still contains `newer`. Its effective weight becomes zero; with one criterion, B becomes
+unranked. A read has silently changed committee intent in an unrelated opening.
+
+**Remedy / owner:** reconcile member placements against the captured target report. Preserve
+keys still owned by that report; transfer an alias when that report has adopted the survivor.
+Share this report-aware mapping between reconciliation and carry-forward. Do not rewrite
+unrelated reports or rescore them to compensate. Review flagged/acknowledged key sets with
+the same mapping, rather than fixing only the displayed weights.
+
+**Acceptance:** two openings with different current reports; existing and newly materialized
+member views; independent members; same-opening consolidation; alias chains; both source and
+survivor present. **Latency:** local mapping over existing data; no provider call or new waiting.
+
+### X09 — Final decisions omit withdrawn households from retention refresh
+
+**Priority: P2.** `backend/app/services/openings/selection.py:163` and `:209` refresh deadlines
+only for active participants. `backend/app/services/applications/retention.py:38` correctly
+uses durable participation, including withdrawal, but is never called for these omitted rows.
+
+Four isolated combinations reproduced this: selected-household/no-household decisions, each
+with full profile withdrawal or withdrawal only from A while still active in B. When B finishes
+before A, the final A decision leaves the withdrawn profile's deadline `None`; an overdue sweep
+purges nothing. Explicit recomputation produces the expected one-year deadline. This conflicts
+with `SPEC.md:685–690`: withdrawal changes access/scope, not the retention clock.
+
+**Remedy / owner:** share a final-decision retention refresh across both decision functions,
+covering every application with participation in that opening. Keep outcome assignment and
+email audiences restricted to active participants. Do not reuse one participant filter for
+these different responsibilities. In implementation, account for already-stale deadlines in
+existing records through a reviewed data-repair plan; do not silently run a production purge.
+
+**Acceptance:** both decision types and withdrawal forms, both completion orders across
+openings, selected seven-year policy, eventual purge, no outcome email for fully withdrawn
+profiles. **Latency:** one bounded participant-identity lookup and existing deadline calculations;
+measure query count to avoid an unnecessary per-participant reload.
+
+### X10 — Private draft expiry is stale or absent after creation and saves
+
+**Priority: P2.** `backend/app/services/applications/intake.py:59` assigns initial expiry only
+when selected IDs are truthy. Ordinary save at `backend/app/api/applicant/application.py:207`
+and reconciliation at `:92` update selections without maintaining the private deadline.
+
+Actual save-route reproduction: a draft chooses A closing October 7, then saves B closing
+October 26. Its working selection is B, but expiry remains October 8; the sweep deletes it
+while B is still open. Opposite reproduction: an empty-selection guest draft receives the
+supported fallback deadline, but claiming it creates an Application with deadline `None`.
+The sweep deletes the temporary draft and leaves the claimed private profile indefinitely.
+`SPEC.md:669–673` establishes the draft lifetime.
+
+**Remedy / owner:** make private-draft expiry one lifecycle rule applied on creation and
+working-selection changes, including empty-selection fallback. Reuse it for ordinary save,
+reconciliation, email claim and Google creation; remove the truthiness special case and
+separate equivalent assignments. `refresh_draft_retention_for_opening` also needs to cover
+empty-selection drafts whose fallback depends on that edited opening. Preserve submitted
+participation-based deadlines. Existing private records need a scoped repair strategy that
+does not turn this code fix into an unapproved production deletion.
+
+**Acceptance:** A→B and B→A; empty selection; email/Google claim; reconciliation; opening
+extension; submitted-copy deadline unchanged. **Latency:** existing close-date query on relevant
+private saves; no extra browser round trip. Keep expiry policy out of generic answer-copy code
+unless that owner is explicitly given the lifecycle context.
+
+### X11 — Hidden archived openings make valid-looking resubmissions impossible
+
+**Priority: P2.** `frontend/src/applicant/applicationDraft.ts:88` computes the residence cutoff
+from form-visible open/closed offerings; `canonicalAnswers` drops unnecessary earlier addresses.
+`backend/app/services/openings/participation.py:181` preserves required archived participation,
+and `backend/app/services/applications/intake.py:149` includes it in the residence cutoff.
+
+Actual API reproduction: archived close April 9, 2026, new visible opening close October 16,
+2026, current residence began August 17, 2024. The form cutoff is October 16, 2024; its real
+canonical helper removes previous addresses, even if they were retained in the draft. Submit
+returns 422 demanding history back to April 9, 2024. The UI hides those previous-address inputs,
+so an honest applicant cannot complete this request through the form.
+
+**Remedy / owner:** compute submission residence validation from the same form-visible scope
+required by `SPEC.md:48–50`, separately from immutable participation selection. Do not simply
+remove archived openings from `publish_working_copy`'s selected list: that would change historical
+participation. Visibility includes all shown open/closed offerings, not only checked choices,
+and excludes inactive closed cards. Reuse the existing applicant-opening presentation rule;
+keep one named cutoff policy per language, tested with identical scenarios. Earlier versions
+remain historical; `SPEC.md:559–560` already allows later submissions while retaining archived
+participation. No new grandfathering policy or selected-household edit permission is needed.
+
+**Acceptance:** archived plus new opening; current address on either side of cutoff; prior
+address pruning; inactive closed/unselected visible offerings; leap day; archived participation
+and historical versions unchanged. **Latency:** derive scope from existing opening data where
+available, with no extra browser request.
+
+### X12 — A repeated submit can replace success with a stale-copy error
+
+**Priority: P2.** `frontend/src/applicant/ApplicantReview.tsx` disables submit only for an
+unchecked declaration. `applicantSaveFlow.ts:51` admits repeated starts while working; the
+session guard does not order writes within the same session.
+
+The real review component accepts two clicks while `persistencePhase="working"`. A real
+`useApplicantPersistence` probe submits revision 1 twice: success at revision 2 sets `submitted`,
+then the other request's late 409 sets `stale_copy`. The backend's revision protection is correct;
+the UI misreports a successfully submitted application.
+
+**Remedy / owner:** retain a synchronous pending-mutation guard in the existing applicant
+persistence/save ownership and disable review submission while pending. The save-flow factory
+is recreated each render, so a closure-local busy variable is insufficient; use stable ownership
+from the hook. Cover sibling revision-bearing writes (`saveForReview`, `emailReturnLink`) and
+release on failure. Old-session completion must not release a new session's operation. Do not
+replace the hook with a general queue/state-machine library or discard the existing submitted
+snapshot rules. Review navigation during submission must preserve any permitted newer edits.
+
+**Acceptance:** rapid double click, both completion orders, rejection/network failure followed
+by retry, review/edit interaction, session change, newer draft preservation. **Latency:** block
+only a second conflicting mutation until the existing request settles; no additional work or
+serial refresh on the ordinary successful submit.
+
+### X13 — Consolidation loses coverage after reporting a successful rank
+
+**Priority: P2.** `backend/app/services/ranking/analysis.py:179` drops the freshly scored key
+and may revive a historical survivor without current scores for every applicant. The pipeline
+at `pipeline.py:466` proceeds to completion; the summary at `:521` retains pre-consolidation
+counts.
+
+Reproduced through POST `/ranking/run`: `older` has current scores for applicants 1–3, `newer`
+is scored for 1–4, then mock confirmation merges `newer → older`. The final summary says one
+dimension, four scored, zero failed. The board omits applicant 4; dashboard coverage is 3/4
+and correctly amber. Automatic cache adoption cannot repair it because the missing survivor
+score does not exist; Score current would require another paid call.
+
+**Remedy / owner:** gate cross-run replacements on complete current survivor coverage before
+publishing the merge/alias. Defer an unsafe merge and retain the criterion just scored. Reuse
+batched cache-planning checks. Do not copy scores under different frozen wording, insert zero
+scores, or make an unestimated follow-up provider call. X08's report-aware tier mapping remains
+necessary even for coverage-safe merges.
+
+**Acceptance:** missing/stale/complete survivor scores, multiple replacements and alias chains,
+board/detail/dashboard agreement, truthful final summary, no hidden provider calls. **Latency:**
+bounded batched database lookup; no additional model latency. Consolidate the coverage predicate
+with existing cache ownership instead of adding another readiness definition.
+
+### X14 — Subscription writes lose ownership after a normalized email edit
+
+**Priority: P2.** `frontend/src/components/admin/VacancyNotificationsPanel.tsx:148` clears busy
+on every email edit, while write acknowledgements use a request scope keyed by normalized email.
+Changing capitalization or surrounding whitespace therefore unlocks controls without invalidating
+the pending write's scope. Read invalidation does not cancel captured write ownership.
+
+Real component probe: start Replace preferences for `a@example.com`, edit to `A@example.com`,
+look up again and successfully delete, then resolve the first save. The UI restores the deleted
+subscription and says saved. Overlapping requests also leave actual server arrival order able
+to conflict with the later intent. A sibling probe found deletion clears preference edits made
+while that deletion is pending.
+
+**Remedy / owner:** retain write ownership until settlement in this component; disable the email
+control during save/delete while keeping lookup reads replaceable. During deletion, either lock
+preference editing or preserve a permitted newer draft. Keep this local; no global mutation queue.
+
+**Acceptance:** same-normalized address edits, both save/delete completion orders, replaceable
+different-address lookups, failure/retry, delete versus newer preferences. **Latency:** only the
+existing write duration restricts conflicting controls; no added requests or waits.
+
+### X15 — Feedback links lose opening and retained-review context
+
+**Priority: P2.** `frontend/src/components/admin/FeedbackPanel.tsx:119` passes only applicant ID
+through `CommitteeWorkspace` to `useNavigation.viewApplication`, which uses the current opening.
+The producer (`FeedbackButton.tsx:50`), feedback schema/model and response omit opening/retained
+context; `route` stores only pathname and cannot recover it.
+
+Real component/navigation reproduction: feedback for applicant 7 in A, admin currently on B;
+click invokes `fetchApplication(7, B)` and fails when the applicant belongs only to A. If the
+applicant belongs to both, it opens B's eligibility context instead of the reported context.
+
+**Remedy / owner:** carry existing opening ID and retained-review mode through feedback's
+context and use existing explicit-opening/retained navigation. Replace the insufficient ID-only
+callback. Contextless older feedback can open the admin retained detail; do not guess its opening
+or build a second navigation system. Scope non-applicant feedback links using the same available
+context. Nullable context reflects feedback legitimately sent outside an opening, not a legacy
+shape adapter. Preserve existing access checks and safe missing/purged-target behavior.
+
+**Acceptance:** A feedback while B selected; applicant only in A or in both with different
+eligibility; retained review; contextless feedback; unavailable target; back navigation.
+**Latency:** existing detail/list loading can remain parallel; no added serial lookup needed.
+
+### X16 — Cached and uncached cost counts use different units
+
+**Priority: P3.** `backend/app/services/cost_report.py:174`/`:239` expose provider reply counts;
+`frontend/src/components/observability/CostPanel.tsx:118`/`:151` labels them "uncached" next to
+cached dimension-result counts. `backend/app/schemas/observability.py:19`/`:64` incorrectly
+claims these are comparable per-result units.
+
+Actual scoring/report probe: score `a`, then `a,b,c,d`. The second run reuses one criterion and
+produces three fresh dimensions in one provider reply. Both cost tables display uncached 1 /
+cached 1, while the metrics correctly show 25% cache hits using ledger `fresh_units: 3`.
+This finding concerns count semantics; the probe did not establish incorrect dollar totals.
+
+**Remedy / owner:** use the existing `fresh_units` for comparable result counts, retaining
+unknown/null where interrupted attempts cannot establish them. Label provider reply counts
+explicitly if they are retained. Update the response names/comments and shared table presentation
+together. No new accounting store, estimates, or historic fabricated counts.
+
+**Acceptance:** mixed reuse, successful re-asks, incomplete retries, interrupted attempts,
+noncacheable passes, cumulative and last-run tables agree with metrics. **Latency:** existing
+ledger data; no additional query/provider call needed.
+
+### Verification, limits, and one combined implementation sequence
+
+Fresh evidence from these independent passes (separate from earlier full-suite results):
+
+- Lifecycle reviewer: **34 existing backend tests passed**; synthetic ASGI/in-memory probes
+  confirmed X07/X09/X10. Four restore cases could not initialize their disk fixtures, before
+  application behavior executed; restore remains source-reviewed in this extension.
+- Ranking reviewer: **138 targeted backend tests passed**; mock-provider/in-memory probes
+  confirmed X08/X13/X16. Three additional disk-based concurrency cases stopped at fixture setup.
+- UI reviewer: **7 temporary component/hook tests passed**, three adverse-sequence probes plus
+  four copied sibling regressions. All calls were mocked.
+- Coordinating reviewer: independently repeated both X07 actual-route sequences; reproduced
+  X11 through the real submit endpoint; **3 temporary frontend tests passed** for X11/X12.
+- Temporary frontend probe files were removed. Backend probes ran from stdin. No production,
+  live applicant database, real email/provider, dev server, or browser mutation was used.
+  No full-suite rerun is claimed for this documentation-only extension.
+
+The final challenge checked sibling producers and downstream consequences: cancelled versus
+expired credentials; active-email audiences versus durable retention membership; private versus
+submitted expiry; archived participation versus visible form validation; stable mutation ownership
+across renders/sessions; global aliases versus local reports; coverage after consolidation; and
+accounting units at the final UI. It refined X11/X12's remedies rather than opening another
+unexamined candidate. For example, filtering archived selections wholesale would introduce a
+withdrawal defect, and a factory-local submit guard would reset on every render.
+
+Implement in cohesive commits within one authorized implementation phase:
+
+1. **X07:** access-link authority and purpose-aware renewal, with route-level adverse tests.
+2. **X09/X10:** separate durable retention membership from active outcomes; centralize private
+   expiry maintenance. Prepare any needed existing-data reconciliation for explicit review.
+3. **X11/X12:** align residence scope and preserve single-owner applicant writes.
+4. **X08/X13:** report-aware tier reconciliation and coverage-safe consolidation, tested together
+   across openings and the full run/board/readiness path.
+5. **X05/X06/X14:** bounded UI loading/refresh/write corrections, retaining existing hook ownership.
+6. **X15/X16:** feedback context and honest cost-count presentation through producers and consumers.
+7. **X01/X02:** fixture family/expectation boundaries, including the previous challenge cases.
+8. **X03/X04:** experiment wrappers before further model-comparison use.
+
+The intended net change is fewer competing policies: one link-authority policy, one private-draft
+expiry rule, one form-visible residence rule per language, one report-aware tier mapping, and
+reuse of existing score-coverage and accounting data. Added guards should protect actual writes;
+no general synchronization framework, speculative caching, module split by length, or blanket
+serialization is recommended. Tests should target these real boundary sequences, replacing
+superseded assertions rather than preserving duplicate helper tests.
+
+To reduce misses, retain independent coverage assignments through discovery, then require each
+finding to be challenged by another perspective **before implementation**. In particular, follow
+transformations that occur *after* a successful operation (consolidation, acknowledgement,
+regeneration, retention refresh), and compare membership sets across consumers (visible, active,
+historical, retained). A broad passing suite is supporting evidence, not a substitute for those
+counterexamples. Close when the coverage map is evidenced or explicitly limited and the final
+challenge leaves no material candidate unexplored. This extension meets that bounded stop rule;
+it does not promise that future review will find no defects.
