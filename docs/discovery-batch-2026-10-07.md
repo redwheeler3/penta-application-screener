@@ -10,8 +10,8 @@ No finding quota applies. The completed earlier work remains in
 
 **Recommendation:** implement B01–B14 in one coordinated batch, with cohesive commits and a final
 integrated verification/review. The highest-value corrections protect publication and recoverable
-answers; the lower-priority items improve reporting, responsiveness and eval authoring. D01/D02
-are separate applicant-presentation choices awaiting Jeff. This audit changes documentation only;
+answers; the lower-priority items improve reporting, responsiveness and eval authoring. D01 is
+declined; D02 remains an applicant-presentation choice awaiting Jeff. This audit changes documentation only;
 the proposed fixes are not yet implemented, pushed or deployed.
 
 ## Coverage map
@@ -379,19 +379,24 @@ Boolean/object/numeric payloads, preserve existing scalar/list/object edits and 
 limitation, not an October regression: the earlier text-only field creation relied on family templates.
 Worthwhile completeness improvement; it is lower priority than publication/recovery fixes.
 
-## Product decisions awaiting Jeff
+## Product decisions
 
-- **D01 — Saved privately versus submitted.** Current “Application saved” wording does not explain
-  that the committee still sees the last submitted version (SPEC 114/140). The server returns submitted
-  state, but persistence presentation discards that distinction. Proposed concise wording:
-  “Saved privately—submit to send these changes to the committee.” Do not add duplicate banners.
+- **D01 — Declined by Jeff (October 7).** Keep the current private-save/submitted presentation.
+  Do not implement the proposed private-save wording or additional state for this recommendation.
 - **D02 — Complete final review.** `ApplicantReview` omits essays, pets and substantial household,
   housing and reference detail while SPEC calls for reviewing all answers. Decide whether to show
   the complete review. Existing `pendingCopyDiff.ts` has a fuller field inventory; avoid creating a
   third independent answer mapping if this change is approved.
 
-Both questions were sent during discovery. Their answers affect product presentation, not whether
-B08/B09 must prevent incomplete or unreviewed publication.
+D02 concerns which answers appear in the final preview: the current screen shows openings, names,
+primary email, child count, optional photo link, abbreviated current housing/employment, and combined
+income. It omits the essay answers, pets, phone/birth/relationship details, individual child details,
+previous housing and ownership choices, full reference contacts, employment dates and individual
+incomes. Those answers remain in the submission payload. The proposed change is a complete read-only
+preview grouped like the form, with inapplicable sections omitted and the existing editing/submission
+actions retained. It requires no new API call, provider work or publication policy.
+
+This presentation decision is separate from B08/B09's publication and review-admission corrections.
 
 ## Evidence and exclusions
 
