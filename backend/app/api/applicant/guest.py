@@ -21,9 +21,11 @@ from app.db.models import (
     ApplicantDraftIntent,
     Application,
     MagicLinkPurpose,
+    OpeningPhase,
     PasswordlessIdentityKind,
 )
 from app.db.session import get_db
+from app.schemas.applicant.answers import WorkingApplicationAnswers
 from app.schemas.applicant.contracts import (
     AccessLinkRequest,
     ApplicantOpeningsResponse,
@@ -87,6 +89,7 @@ def read_applicant_openings(db: Session = Depends(get_db)) -> ApplicantOpeningsR
     states = applicant_opening_states(db, None)
     return ApplicantOpeningsResponse(
         can_start_application=any(state.can_select for state in states),
+        can_sign_in=any(state.phase in {OpeningPhase.OPEN, OpeningPhase.CLOSED} for state in states),
         openings=applicant_openings(states),
     )
 
@@ -109,40 +112,43 @@ def check_guest_submission(
     )
     if application is None:
         return GuestSubmissionCheckResponse(can_submit=True)
+    outcome = preserve_collision_and_send_access(
+        db, sender, application, body.answers, body.opening_ids, now=now,
+    )
+    return GuestSubmissionCheckResponse(
+        can_submit=False, email_sent=outcome.email_sent, email_status=outcome.value,
+    )
+
+
+def preserve_collision_and_send_access(
+    db: Session, sender: EmailSender, application: Application,
+    answers: WorkingApplicationAnswers, opening_ids: list[int], *, now: datetime,
+) -> EmailSendOutcome:
+    """Keep losing guest answers recoverable without changing the saved household."""
     if application_is_selected(db, application.id):
         sent = send_selected_application_locked(db, sender, application, now=now)
-        return GuestSubmissionCheckResponse(
-            can_submit=False,
-            email_sent=sent,
-            email_status="sent" if sent else "failed",
-        )
-    validate_working_opening_selection(db, None, body.opening_ids, now=now)
+        return EmailSendOutcome.SENT if sent else EmailSendOutcome.FAILED
+    validate_working_opening_selection(db, None, opening_ids, now=now)
     draft = save_collision_copy(
         db,
         application=application,
-        answers=body.answers,
-        opening_ids=body.opening_ids,
+        answers=answers,
+        opening_ids=opening_ids,
         now=now,
     )
     if draft is None:
         sent = send_selected_application_locked(db, sender, application, now=now)
-        return GuestSubmissionCheckResponse(can_submit=False, email_sent=sent,
-                                            email_status="sent" if sent else "failed")
+        return EmailSendOutcome.SENT if sent else EmailSendOutcome.FAILED
     revoke_other_pending_drafts(db, draft, now=now)
-    outcome = send_magic_link(
+    return send_magic_link(
         db,
         sender,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
         purpose=MagicLinkPurpose.APPLICANT_ACCESS,
-        email=email,
+        email=application.primary_email,
         recipient_id=draft.id,
         applicant_draft=draft,
         now=now,
-    )
-    return GuestSubmissionCheckResponse(
-        can_submit=False,
-        email_sent=outcome.email_sent,
-        email_status=outcome.value,
     )
 
 @router.post("/drafts", response_model=PendingDraftResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -214,19 +220,11 @@ def submit_guest_application(
         )
     )
     if existing is not None:
-        if application_is_selected(db, existing.id):
-            send_selected_application_locked(db, sender, existing, now=now)
-        else:
-            send_magic_link(
-                db,
-                sender,
-                identity_kind=PasswordlessIdentityKind.APPLICANT,
-                purpose=MagicLinkPurpose.APPLICANT_ACCESS,
-                email=email,
-                recipient_id=existing.id,
-                application_id=existing.id,
-                now=now,
-            )
+        preserve_collision_and_send_access(
+            db, sender, existing,
+            WorkingApplicationAnswers.model_validate(body.answers.model_dump(mode="json")),
+            body.opening_ids, now=now,
+        )
         raise Problem(
             "application_already_exists",
             detail=(

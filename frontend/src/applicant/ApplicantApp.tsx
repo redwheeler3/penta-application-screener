@@ -46,11 +46,12 @@ import { hasDraftContent } from "./draftStorage";
 import { useRememberedApplicantDraft } from "./useRememberedApplicantDraft";
 import { emptyApplicantDraft, residenceHistoryCutoff } from "./applicationDraft";
 import { useApplicantPersistence } from "./useApplicantPersistence";
+import { workingSnapshot } from "./applicantPersistence";
 import { useEmailDeliveryStatus } from "../hooks/useEmailDeliveryStatus";
 
 export function ApplicantApp() {
   const [draft, setDraft] = useState(emptyApplicantDraft);
-  const [reviewing, setReviewing] = useState(false);
+  const [reviewedSnapshot, setReviewedSnapshot] = useState<string | null>(null);
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
@@ -63,6 +64,12 @@ export function ApplicantApp() {
   const [openingError, setOpeningError] = useState(false);
   const persistence = useApplicantPersistence(draft, setDraft, changeRememberDevice);
   const housingHistoryCutoff = residenceHistoryCutoff(persistence.openings);
+  const reviewInputs = useRef({ persistence, snapshot: "" });
+  reviewInputs.current = {
+    persistence,
+    snapshot: JSON.stringify([persistence.applicationId, workingSnapshot(draft, persistence.openingIds), housingHistoryCutoff]),
+  };
+  const reviewing = persistence.canEdit && reviewedSnapshot === reviewInputs.current.snapshot;
 
   const browserDraft = useRememberedApplicantDraft({
     authenticated: persistence.authenticated, applicationId: persistence.applicationId,
@@ -71,13 +78,19 @@ export function ApplicantApp() {
   const { savedAt, rememberDevice } = browserDraft;
 
   useEffect(() => {
-    if (!persistence.reviewAfterAccess) return;
-    setReviewing(true);
+    // An email submit intent can restore an incomplete saved copy or require a
+    // choice between copies. Validate the chosen, mounted form before review.
+    if (!persistence.reviewAfterAccess || !persistence.openingsLoaded
+      || persistence.pendingCopy || persistence.busy || persistence.phase !== "idle"
+      || !formRef.current) return;
     persistence.clearReviewAfterAccess();
-    // The persistence facade is rebuilt as its state changes. This transition is
-    // owned only by the primitive flag; depending on the facade would loop it.
+    if (validateReview()) {
+      setDeclarationAccepted(false);
+      setReviewedSnapshot(reviewInputs.current.snapshot);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistence.clearReviewAfterAccess, persistence.reviewAfterAccess]);
+  }, [persistence.reviewAfterAccess, persistence.openingsLoaded, persistence.pendingCopy,
+    persistence.busy, persistence.phase, persistence.canEdit, draft, persistence.openingIds]);
 
   useEffect(() => {
     if (
@@ -108,34 +121,44 @@ export function ApplicantApp() {
   ]);
 
   function update(updater: DraftUpdater): void {
-    setReviewing(false);
+    setReviewedSnapshot(null);
     setDeclarationAccepted(false);
     setClearingDraft(false);
     setDraft(updater);
   }
 
-  async function review(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const currentSelected = persistence.openings.some((opening) => (
-      opening.phase !== "archived" && persistence.openingIds.includes(opening.id)
+  function validateReview(): boolean {
+    const current = reviewInputs.current.persistence;
+    if (!current.canEdit || !formRef.current) return false;
+    const currentSelected = current.openings.some((opening) => (
+      opening.phase !== "archived" && current.openingIds.includes(opening.id)
     ));
-    const withdrawing = persistence.openings.some((opening) => (
+    const withdrawing = current.openings.some((opening) => (
       opening.phase !== "archived"
       && opening.participating
-      && !persistence.openingIds.includes(opening.id)
+      && !current.openingIds.includes(opening.id)
     ));
     if (!currentSelected && !withdrawing) {
       setOpeningError(true);
       const top = (openingsRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 110;
       window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-      return;
+      return false;
     }
     setOpeningError(false);
     validateFormFields(formRef.current);
-    if (!formRef.current?.reportValidity()) return;
+    return formRef.current.reportValidity();
+  }
+
+  async function review(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!validateReview()) return;
+    const validated = reviewInputs.current.snapshot;
     if (!(await persistence.prepareGuestReview())) return;
+    if (reviewInputs.current.snapshot !== validated || !validateReview()) return;
     if (!(await persistence.saveForReview())) return;
-    setReviewing(true);
+    if (reviewInputs.current.snapshot !== validated || !validateReview()) return;
+    setDeclarationAccepted(false);
+    setReviewedSnapshot(validated);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -169,7 +192,7 @@ export function ApplicantApp() {
     setClearingDraft(false);
     setDraft((current) => current === discarded ? emptyApplicantDraft() : current);
     browserDraft.reset();
-    setReviewing(false);
+    setReviewedSnapshot(null);
   }
 
   async function changeRememberDevice(remember: boolean): Promise<void> {
@@ -190,7 +213,7 @@ export function ApplicantApp() {
   function resetApplicantStateAfterExit(): void {
     setDraft(emptyApplicantDraft());
     browserDraft.reset();
-    setReviewing(false);
+    setReviewedSnapshot(null);
     setDeclarationAccepted(false);
     setEmailChangeOpen(false);
     setWithdrawConfirmOpen(false);
@@ -218,9 +241,6 @@ export function ApplicantApp() {
       "load_error",
       "submitted",
     ].includes(persistence.phase);
-  const hasActiveOpening = persistence.openings.some((opening) => (
-    opening.phase === "open" || opening.phase === "closed"
-  ));
   const hasOpenOpening = persistence.openings.some((opening) => opening.phase === "open");
 
   return (
@@ -281,7 +301,7 @@ export function ApplicantApp() {
             )}
             onReturn={() => {
               persistence.returnToApplication();
-              setReviewing(false);
+              setReviewedSnapshot(null);
               setDeclarationAccepted(false);
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
@@ -325,7 +345,7 @@ export function ApplicantApp() {
             || persistence.phase === "error"
             ? <ApplicationLoadRecovery stage={persistence.loadRecoveryStage ?? "failed"} />
             : <ApplicationLoading />
-        ) : !persistence.authenticated && !hasActiveOpening ? (
+        ) : !persistence.authenticated && !persistence.canSignIn ? (
           <ApplicationsUnavailable />
         ) : !persistence.authenticated && !guestStarted ? (
           <ApplicationEntryWithDeliveryStatus
@@ -352,7 +372,7 @@ export function ApplicantApp() {
             onSubmit={() => void persistence.start("submit")}
             onEdit={() => {
               persistence.clearActionFeedback();
-              setReviewing(false);
+              setReviewedSnapshot(null);
             }}
           />
         ) : !persistence.canEdit ? (

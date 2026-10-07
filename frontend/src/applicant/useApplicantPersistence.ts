@@ -10,6 +10,7 @@ import {
   APPLICANT_ACTION_ERROR_MESSAGE,
   type ApplicationResponse,
   defaultOpeningIds,
+  hasPendingCopyState,
   type EmailSendStatus,
   linkBody,
   type PendingCopy,
@@ -70,6 +71,7 @@ export function useApplicantPersistence(
     openings,
     openingIds,
     canEdit,
+    canSignIn,
     openingsLoaded,
     pendingDraftToken,
     accessToken,
@@ -291,15 +293,18 @@ export function useApplicantPersistence(
       return;
     }
     if (!response.ok) return fail(response);
-    const body = (await response.json()) as ApplicationResponse;
+    const body = (await response.json().catch(() => null)) as ApplicationResponse | null;
     if (!isCurrent()) return;
+    if (!hasPendingCopyState(body)) {
+      updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "load_error" });
+      return;
+    }
     if (expectedId != null && body.applicationId !== expectedId) {
       updatePersistence({ message: "Your session changed. Your answers have not been replaced.", phase: "session_expired" });
       return;
     }
     if (storedCopy !== null) await acceptChosenApplication(body, storedCopy, isCurrent);
     else applyApplicationCopy(body, copy);
-    if (copy === "remembered") await restorePendingCopy(body.applicationId);
   }
 
   function applyApplicationCopy(body: ApplicationResponse, copy: "remembered" | "saved") {
@@ -331,7 +336,7 @@ export function useApplicantPersistence(
       openingIds: restoredOpeningIds,
       savedAnswers: snapshot,
       phase: "idle",
-      ...(copy === "saved" ? { pendingCopy: null } : {}),
+      pendingCopy: body.pendingCopy,
     });
   }
 
@@ -361,7 +366,7 @@ export function useApplicantPersistence(
     }
     const body = (await response.json().catch(() => null)) as { pendingCopy: PendingCopy | null } | null;
     if (!isCurrent()) return false;
-    if (body === null) {
+    if (!hasPendingCopyState(body)) {
       updatePersistence({ message: APPLICANT_ACTION_ERROR_MESSAGE, phase: "error" });
       return false;
     }
@@ -380,6 +385,7 @@ export function useApplicantPersistence(
     if (!response.ok) return fail(response);
     const body = (await response.json()) as {
       canStartApplication: boolean;
+      canSignIn: boolean;
       openings: ApplicantOpening[];
     };
     if (!isCurrent()) return;
@@ -389,6 +395,7 @@ export function useApplicantPersistence(
         ? validBrowserOpeningIds(state.openingIds, body.openings)
         : defaultOpeningIds(body.openings),
       canEdit: body.canStartApplication,
+      canSignIn: body.canSignIn,
       openingsLoaded: true,
     }));
   }
@@ -710,6 +717,7 @@ export function useApplicantPersistence(
     openingIds,
     canEdit,
     openingsLoaded,
+    canSignIn,
     setOpeningSelected: (openingId: number, selected: boolean) => {
       updatePersistence((state) => ({
         openingIds: selected

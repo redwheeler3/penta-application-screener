@@ -484,7 +484,8 @@ async def test_reapplication_after_expiry_never_restores_the_expired_record() ->
 
 
 @pytest.mark.anyio
-async def test_selection_during_guest_collision_creates_no_private_copy_or_link(monkeypatch) -> None:
+@pytest.mark.parametrize(("endpoint", "expected_status"), [("/submissions/check", 200), ("/submissions", 409)])
+async def test_selection_during_guest_collision_creates_no_private_copy_or_link(monkeypatch, endpoint, expected_status) -> None:
     from app.api.applicant import guest
 
     app, db, sender = app_and_db()
@@ -501,10 +502,66 @@ async def test_selection_during_guest_collision_creates_no_private_copy_or_link(
         return save(*args, **kwargs)
     monkeypatch.setattr(guest, "save_collision_copy", select_before_copy)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
-        response = await client.post("/applicant/submissions/check", json={
-            "answers": sample_answers(application.primary_email), "openingIds": [opening_id]})
-    assert response.status_code == 200
-    assert response.json()["canSubmit"] is False
+        response = await client.post(f"/applicant{endpoint}", json={
+            "answers": sample_answers(application.primary_email), "openingIds": [opening_id],
+            "declarationAccepted": True})
+    assert response.status_code == expected_status
     assert db.scalar(select(ApplicantDraft)) is None
     assert db.scalar(select(MagicLinkToken)) is None
     assert sender.messages[-1].kind == "application_selected_locked"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(("phase", "can_sign_in", "can_start"), [
+    ("open", True, True), ("closed", True, False), ("upcoming", False, False), ("archived", False, False),
+])
+async def test_public_entry_capability_is_independent_of_selectable_cards(phase, can_sign_in, can_start) -> None:
+    app, db, _ = app_and_db()
+    opening = db.scalar(select(Opening))
+    today = pacific_today()
+    if phase == "closed":
+        opening.application_open_date = today - timedelta(days=10)
+        opening.application_close_date = today - timedelta(days=1)
+    elif phase == "upcoming":
+        opening.application_open_date = today + timedelta(days=1)
+    elif phase == "archived":
+        opening.decided_at = datetime.now(UTC)
+    db.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.get("/applicant/openings")
+    assert response.status_code == 200
+    assert response.json()["canSignIn"] is can_sign_in
+    assert response.json()["canStartApplication"] is can_start
+    if phase == "closed":
+        assert response.json()["openings"] == []
+
+
+@pytest.mark.anyio
+async def test_final_identity_collision_preserves_exact_guest_answers_for_reconciliation() -> None:
+    app, db, sender = app_and_db()
+    opening_id = db.scalar(select(Opening.id))
+    saved_answers = sample_answers(introduction="First tab submitted")
+    guest_answers = sample_answers(introduction="Losing tab's private answers")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        checked = await client.post("/applicant/submissions/check", json={
+            "answers": guest_answers, "openingIds": [opening_id]})
+        assert checked.json()["canSubmit"] is True
+        first = await client.post("/applicant/submissions", json={
+            "answers": saved_answers, "openingIds": [opening_id], "declarationAccepted": True})
+        assert first.status_code == 201
+        collision = await client.post("/applicant/submissions", json={
+            "answers": guest_answers, "openingIds": [opening_id], "declarationAccepted": True})
+        assert collision.status_code == 409
+        opened = await client.post("/applicant/access-links/open", json={
+            "token": link_from_email(sender), "switchCurrent": False})
+        restored = await client.get("/applicant/application")
+
+    application = db.scalar(select(Application))
+    assert application.raw_row["essays"]["household_introduction"] == "First tab submitted"
+    assert db.scalar(select(func.count()).select_from(ApplicationVersion)) == 1
+    comparison = restored.json()["pendingCopy"]
+    assert comparison == opened.json()["pendingCopy"]
+    assert comparison["guestAnswers"]["essays"]["householdIntroduction"] == "Losing tab's private answers"
+    assert comparison["guestAnswers"]["applicant"]["birthDate"] == guest_answers["applicant"]["birthDate"]
+    assert comparison["guestOpeningIds"] == [opening_id]
+    assert restored.json()["answers"]["essays"]["householdIntroduction"] == "First tab submitted"

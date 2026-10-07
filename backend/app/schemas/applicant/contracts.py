@@ -3,13 +3,14 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, field_validator
 
 from app.db.models import ApplicantDraftIntent, MagicLinkPurpose, OpeningPhase
 from app.schemas.applicant.answers import (
     CanonicalApplicationAnswers,
     WorkingApplicationAnswers,
 )
+from app.schemas.applicant.submission import validate_submission_completeness
 from app.schemas.base import RequestModel, ResponseModel
 from app.schemas.openings import OpeningDetailsOut
 
@@ -111,10 +112,12 @@ class ApplicantApplicationResponse(ResponseModel):
     submitted: bool
     can_edit: bool
     openings: list[ApplicantOpeningOut]
+    pending_copy: PendingCopyOut | None = None
 
 
 class ApplicantOpeningsResponse(ResponseModel):
     can_start_application: bool
+    can_sign_in: bool
     openings: list[ApplicantOpeningOut]
 
 
@@ -140,6 +143,12 @@ class SubmitApplicationRequest(RequestModel):
     opening_ids: list[int] = Field(max_length=20)
     declaration_accepted: bool = False
     base_revision: int | None = Field(default=None, ge=1)
+
+    @field_validator("answers")
+    @classmethod
+    def complete_answers(cls, answers: CanonicalApplicationAnswers) -> CanonicalApplicationAnswers:
+        validate_submission_completeness(answers)
+        return answers
 
 
 class GuestSubmitApplicationRequest(SubmitApplicationRequest):

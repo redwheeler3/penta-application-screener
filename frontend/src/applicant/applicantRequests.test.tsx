@@ -34,7 +34,7 @@ function requestFixture(fragment = "") {
     if (path === "/applicant/application") return Response.json({
       applicationId: actor, primaryEmail: actor === 7 ? draft.applicant.email : "other@example.com",
       googleSignInLinked: false, pendingEmailChange: null, answers: workingAnswers(draft),
-      workingSavedAt: null, workingRevision: 1, submitted: true, canEdit: true, openings: [],
+      workingSavedAt: null, workingRevision: 1, submitted: true, canEdit: true, openings: [], pendingCopy: null,
     });
     if (path === "/applicant/application/pending-copy") return Response.json({ pendingCopy: null });
     throw new Error(`Unexpected request: ${path}`);
@@ -46,11 +46,11 @@ function requestFixture(fragment = "") {
   return { ...view, requests, setActor: (id: number) => { actor = id; } };
 }
 
-it("binds startup follow-ups to the accepted application response", async () => {
+it("accepts startup application and comparison in one response without a follow-up", async () => {
   const { result, requests } = requestFixture();
-  await waitFor(() => expect(requests.some((item) => item.path.endsWith("pending-copy"))).toBe(true));
+  await waitFor(() => expect(result.current.applicationId).toBe(7));
   expect(result.current.phase).toBe("idle");
-  expect(requests.find((item) => item.path.endsWith("pending-copy"))?.identity).toBe("applicant:7");
+  expect(requests).toEqual([{ path: "/applicant/application", identity: null }]);
 });
 
 it("binds a switched link target's follow-ups before its React render", async () => {
@@ -59,7 +59,8 @@ it("binds a switched link target's follow-ups before its React render", async ()
   await act(() => result.current.openLinkedApplication(false));
   expect(result.current.applicationId).toBe(8);
   expect(result.current.phase).toBe("idle");
-  expect(requests.find((item) => item.path.endsWith("pending-copy"))?.identity).toBe("applicant:8");
+  expect(requests.filter((item) => item.path === "/applicant/application").at(-1)?.identity).toBe("applicant:8");
+  expect(requests.some((item) => item.path.endsWith("pending-copy"))).toBe(false);
 });
 
 it("handles repeated mismatch and recovery without losing application ownership", async () => {

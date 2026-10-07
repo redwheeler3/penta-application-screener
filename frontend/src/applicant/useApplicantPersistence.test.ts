@@ -41,7 +41,7 @@ function application(workingRevision = 1): ApplicationResponse {
   return {
     applicationId: 1, primaryEmail: draft.applicant.email, googleSignInLinked: false,
     pendingEmailChange: null, answers: workingAnswers(draft), workingSavedAt: null,
-    workingRevision, submitted: false, canEdit: true, openings: [],
+    workingRevision, submitted: false, canEdit: true, openings: [], pendingCopy: null,
   };
 }
 
@@ -59,7 +59,7 @@ beforeEach(() => {
   vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json(application()));
   vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: null }));
   vi.mocked(api.fetchApplicantOpenings).mockImplementation(async () => Response.json({
-    canStartApplication: true, openings: [],
+    canStartApplication: true, canSignIn: true, openings: [],
   }));
 });
 
@@ -200,9 +200,10 @@ it("discards a lifecycle response started before a successful save", async () =>
 });
 
 it("clears authenticated state and pending reconciliation when signing out", async () => {
-  vi.mocked(api.fetchPendingCopy).mockResolvedValue(Response.json({
+  vi.mocked(api.fetchApplication).mockResolvedValue(Response.json({ ...application(),
     pendingCopy: { savedAnswers: workingAnswers(initialDraft()), savedOpeningIds: [],
-      guestAnswers: workingAnswers(initialDraft()), guestOpeningIds: [] },
+      guestAnswers: workingAnswers(initialDraft()), guestOpeningIds: [], baseRevision: 1,
+      guestSavedAt: "2026-10-03T00:00:00Z" },
   }));
   vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
   const { result } = renderPersistence();
@@ -213,18 +214,20 @@ it("clears authenticated state and pending reconciliation when signing out", asy
   expect(result.current.persistence.pendingCopy).toBeNull();
 });
 
-it("does not restore a pending copy when its response arrives after sign-out", async () => {
+it("does not admit an old application and comparison after sign-out", async () => {
   const pending = deferred<Response>();
-  vi.mocked(api.fetchPendingCopy).mockReturnValue(pending.promise);
   vi.mocked(api.logoutApplicant).mockResolvedValue(new Response(null, { status: 204 }));
   const { result } = renderPersistence();
   await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  vi.mocked(api.fetchApplication).mockReturnValueOnce(pending.promise);
+  let restoring!: Promise<void>;
+  act(() => { restoring = result.current.persistence.reloadLatestApplication(); });
   await act(() => result.current.persistence.signOut());
   await act(async () => {
-    pending.resolve(Response.json({ pendingCopy: {
+    pending.resolve(Response.json({ ...application(), pendingCopy: {
       savedAnswers: workingAnswers(initialDraft()), savedOpeningIds: [],
       guestAnswers: workingAnswers(initialDraft()), guestOpeningIds: [],
-    } }));
+    } })); await restoring;
   });
   expect(result.current.persistence.pendingCopy).toBeNull();
   expect(result.current.persistence.authenticated).toBe(false);
@@ -365,7 +368,7 @@ it("signs out without waiting for the public openings refresh", async () => {
   vi.mocked(api.fetchApplicantOpenings).mockReturnValue(openings.promise);
   await act(async () => { expect(await result.current.persistence.signOut()).toBe(true); });
   expect(result.current.persistence.authenticated).toBe(false);
-  await act(async () => { openings.resolve(Response.json({ canStartApplication: true, openings: [] })); });
+  await act(async () => { openings.resolve(Response.json({ canStartApplication: true, canSignIn: true, openings: [] })); });
 });
 
 it("does not enter review when its save completes after session exit", async () => {
@@ -396,8 +399,8 @@ it.each(["stale_application", "pending_copy_changed"])("refreshes the comparison
     savedAnswers: workingAnswers(initialDraft()), savedOpeningIds: [],
     guestAnswers: workingAnswers(initialDraft()), guestOpeningIds: [] };
   const latest = { ...original, baseRevision: 2, guestSavedAt: "2026-10-03T00:00:01Z" };
-  vi.mocked(api.fetchPendingCopy).mockResolvedValueOnce(Response.json({ pendingCopy: original }))
-    .mockResolvedValueOnce(Response.json({ pendingCopy: latest }));
+  vi.mocked(api.fetchApplication).mockResolvedValueOnce(Response.json({ ...application(), pendingCopy: original }));
+  vi.mocked(api.fetchPendingCopy).mockResolvedValueOnce(Response.json({ pendingCopy: latest }));
   vi.mocked(api.reconcilePendingCopy).mockResolvedValue(Response.json({ code, detail: "Compare the current copies again." }, { status: 409 }));
   const { result } = renderPersistence();
   await waitFor(() => expect(result.current.persistence.pendingCopy).toEqual(original));
@@ -623,10 +626,9 @@ it.each(["saved", "guest"] as const)("adopts the acknowledged %s copy instead of
   const guest = { ...initialDraft(), pets: "Guest bird" };
   const third = { ...initialDraft(), pets: "Third local dog" };
   await saveApplicationDraft(1, third, [], 1, consent);
-  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({ ...application(), answers: workingAnswers(saved) }));
   const comparison = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
     savedAnswers: workingAnswers(saved), guestAnswers: workingAnswers(guest), savedOpeningIds: [], guestOpeningIds: [] };
-  vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: comparison }));
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({ ...application(), answers: workingAnswers(saved), pendingCopy: comparison }));
   const reply = deferred<Response>();
   vi.mocked(api.reconcilePendingCopy).mockReturnValue(reply.promise);
   const { result } = renderPersistence();
@@ -649,7 +651,7 @@ it.each(["saved", "guest"] as const)("keeps the comparison blocked when accepted
   const comparison = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
     savedAnswers: workingAnswers(initialDraft()), guestAnswers: workingAnswers(initialDraft()),
     savedOpeningIds: [], guestOpeningIds: [] };
-  vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: comparison }));
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({ ...application(), pendingCopy: comparison }));
   vi.mocked(api.reconcilePendingCopy).mockResolvedValueOnce(new Response("broken JSON", { status: 200 }))
     .mockImplementation(async () => Response.json({ code: choice === "guest" ? "stale_application" : "pending_copy_not_found" }, { status: 409 }));
   const { result } = renderPersistence();
@@ -657,7 +659,6 @@ it.each(["saved", "guest"] as const)("keeps the comparison blocked when accepted
   act(() => result.current.setDraft((d) => ({ ...d, pets: "Unchosen local draft" })));
   await act(() => result.current.persistence.reconcilePendingCopy(choice));
   expect(result.current.persistence.pendingCopy).not.toBeNull();
-  vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: null }));
   vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json(accepted));
   vi.mocked(api.fetchApplication).mockRejectedValueOnce(new Error("Synthetic restore failure"));
   await act(() => result.current.persistence.reconcilePendingCopy(choice));
@@ -713,7 +714,7 @@ it("reconciliation recovery cannot clear a browser copy written during the reque
   const comparison = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
     savedAnswers: workingAnswers(initialDraft()), guestAnswers: workingAnswers(initialDraft()),
     savedOpeningIds: [], guestOpeningIds: [] };
-  vi.mocked(api.fetchPendingCopy).mockImplementation(async () => Response.json({ pendingCopy: comparison }));
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({ ...application(), pendingCopy: comparison }));
   const reply = deferred<Response>();
   vi.mocked(api.reconcilePendingCopy).mockReturnValueOnce(reply.promise);
   const { result } = renderPersistence();
@@ -721,6 +722,7 @@ it("reconciliation recovery cannot clear a browser copy written during the reque
   let choosing!: Promise<void>;
   act(() => { choosing = result.current.persistence.reconcilePendingCopy("saved"); });
   await saveApplicationDraft(1, { ...initialDraft(), pets: "Newer other-tab copy" }, [], 1, consent);
+  vi.mocked(api.fetchApplication).mockResolvedValueOnce(Response.json(application()));
   await act(async () => { reply.resolve(Response.json({ code: "pending_copy_not_found" }, { status: 404 })); await choosing; });
   expect(result.current.persistence.pendingCopy).toBeNull();
   expect(result.current.draft.pets).toBe("");
@@ -732,7 +734,7 @@ it.each([403, 500])("failed comparison recovery HTTP %s remains retryable", asyn
   const comparison = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
     savedAnswers: workingAnswers(initialDraft()), guestAnswers: workingAnswers(initialDraft()),
     savedOpeningIds: [], guestOpeningIds: [] };
-  vi.mocked(api.fetchPendingCopy).mockResolvedValueOnce(Response.json({ pendingCopy: comparison }));
+  vi.mocked(api.fetchApplication).mockResolvedValueOnce(Response.json({ ...application(), pendingCopy: comparison }));
   vi.mocked(api.reconcilePendingCopy).mockResolvedValue(Response.json({ code: "stale_application" }, { status: 409 }));
   const { result } = renderPersistence();
   await waitFor(() => expect(result.current.persistence.pendingCopy).not.toBeNull());
@@ -741,4 +743,43 @@ it.each([403, 500])("failed comparison recovery HTTP %s remains retryable", asyn
   expect(result.current.persistence.pendingCopy).not.toBeNull();
   expect(result.current.persistence.phase).toBe("error");
   expect(result.current.persistence.busy).toBe(false);
+});
+
+it("admits the saved application and pending comparison together in one read", async () => {
+  const reply = deferred<Response>();
+  vi.mocked(api.fetchApplication).mockReturnValueOnce(reply.promise);
+  const { result } = renderPersistence();
+  expect(result.current.persistence.canEdit).toBe(false);
+  expect(result.current.persistence.openingsLoaded).toBe(false);
+  const pendingCopy = { baseRevision: 1, guestSavedAt: "2026-10-03T00:00:00Z",
+    savedAnswers: workingAnswers(initialDraft()), savedOpeningIds: [],
+    guestAnswers: workingAnswers({ ...initialDraft(), pets: "Guest cat" }), guestOpeningIds: [] };
+  await act(async () => { reply.resolve(Response.json({ ...application(), pendingCopy })); });
+  expect(result.current.persistence.pendingCopy).toEqual(pendingCopy);
+  expect(result.current.persistence.openingsLoaded).toBe(true);
+  expect(api.fetchPendingCopy).not.toHaveBeenCalled();
+});
+
+it.each([undefined, "unknown", {}])("keeps an uncertain initial comparison blocked and permits retry (%j)", async (pendingCopy) => {
+  const body = { ...application(), pendingCopy };
+  vi.mocked(api.fetchApplication).mockResolvedValueOnce(Response.json(body));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.phase).toBe("load_error"));
+  expect(result.current.persistence.openingsLoaded).toBe(false);
+  expect(result.current.persistence.canEdit).toBe(false);
+  expect(result.current.persistence.authenticated).toBe(false);
+  await act(() => result.current.persistence.reloadLatestApplication());
+  expect(result.current.persistence.openingsLoaded).toBe(true);
+  expect(result.current.persistence.canEdit).toBe(true);
+  expect(api.fetchPendingCopy).not.toHaveBeenCalled();
+});
+
+it("shows returning-applicant sign-in while closed opening cards remain hidden", async () => {
+  vi.mocked(api.fetchApplication).mockResolvedValueOnce(new Response(null, { status: 401 }));
+  vi.mocked(api.fetchApplicantOpenings).mockResolvedValueOnce(Response.json({
+    canStartApplication: false, canSignIn: true, openings: [],
+  }));
+  render(createElement(ApplicantApp));
+  await screen.findByRole("textbox", { name: "Email address" });
+  expect(screen.queryByRole("button", { name: "Continue as a guest" })).toBeNull();
 });

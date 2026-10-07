@@ -18,6 +18,7 @@ export type ApplicantPersistenceState = {
   openings: ApplicantOpening[];
   openingIds: number[];
   canEdit: boolean;
+  canSignIn: boolean;
   openingsLoaded: boolean;
   pendingDraftToken: string | null;
   accessToken: string | null;
@@ -55,6 +56,7 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   openings: [],
   openingIds: [],
   canEdit: false,
+  canSignIn: false,
   openingsLoaded: false,
   pendingDraftToken: null,
   accessToken: null,
@@ -92,6 +94,7 @@ export function resetApplicantSession(
     openings: state.openings,
     openingsLoaded: state.openingsLoaded,
     canEdit: state.canEdit,
+    canSignIn: state.canSignIn,
     phase,
   };
 }

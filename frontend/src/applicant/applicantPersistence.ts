@@ -41,6 +41,7 @@ export type ApplicationResponse = {
   submitted: boolean;
   canEdit: boolean;
   openings: ApplicantOpening[];
+  pendingCopy: PendingCopy | null;
 };
 
 export type EmailChangeStatus = "idle" | "sending" | "sent" | "confirmed" | "error";
@@ -62,6 +63,20 @@ export type PendingCopy = {
   guestAnswers: WorkingApplicationAnswers;
   guestOpeningIds: number[];
 };
+
+/** Missing comparison state is uncertainty, not confirmation that no copy exists. */
+export function hasPendingCopyState(body: unknown): body is { pendingCopy: PendingCopy | null } {
+  if (body === null || typeof body !== "object" || !("pendingCopy" in body)) return false;
+  const copy = body.pendingCopy;
+  if (copy === null) return true;
+  return typeof copy === "object" && copy !== null
+    && "baseRevision" in copy && typeof copy.baseRevision === "number"
+    && "guestSavedAt" in copy && typeof copy.guestSavedAt === "string"
+    && "savedAnswers" in copy && copy.savedAnswers !== null && typeof copy.savedAnswers === "object"
+    && "guestAnswers" in copy && copy.guestAnswers !== null && typeof copy.guestAnswers === "object"
+    && "savedOpeningIds" in copy && Array.isArray(copy.savedOpeningIds)
+    && "guestOpeningIds" in copy && Array.isArray(copy.guestOpeningIds);
+}
 
 export type AccessLinkBody = {
   state: "valid" | "expired" | "used" | "replaced" | "invalid" | "abandoned" | "unavailable" | "email_in_use";

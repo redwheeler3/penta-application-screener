@@ -123,15 +123,22 @@ def reconcile_pending_copy(
         )
     draft.resolved_at = datetime.now(UTC)
     session.reconciliation_draft_id = None
-    acknowledged = get_applicant_application(application, db)
+    acknowledged = application_response(application, db)
     db.commit()
     return acknowledged
 
 @router.get("/application", response_model=ApplicantApplicationResponse)
 def get_applicant_application(
+    request: Request,
     application: Application = Depends(require_current_application),
     db: Session = Depends(get_db),
 ) -> ApplicantApplicationResponse:
+    response = application_response(application, db)
+    response.pending_copy = get_pending_copy(request, application).pending_copy
+    return response
+
+
+def application_response(application: Application, db: Session) -> ApplicantApplicationResponse:
     opening_states = applicant_opening_states(db, application, use_working_copy=True)
     return ApplicantApplicationResponse(
         application_id=application.id,
@@ -222,7 +229,7 @@ def save_applicant_application(
         opening_ids=body.opening_ids,
     )
     db.flush()
-    acknowledged = get_applicant_application(application, db)
+    acknowledged = application_response(application, db)
     db.commit()
     return acknowledged
 
@@ -245,7 +252,7 @@ def submit_applicant_application(
     openings = validate_opening_selection(db, application, body.opening_ids, now=now)
     publish_working_copy(db, application, body.answers, openings, submitted_at=now)
     queue_submission_confirmation(db, application)
-    acknowledged = get_applicant_application(application, db)
+    acknowledged = application_response(application, db)
     db.commit()
     background_tasks.add_task(outbox_runner, sender)
     return acknowledged
