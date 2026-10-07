@@ -11,6 +11,8 @@ export function createApi(client: ApiClient) {
     activeTab: string | null;
     analysisId: number | null;
     applicantId: number | null;
+    openingId: number | null;
+    retainedReview: boolean;
   }): Promise<Response> {
     return request("/feedback", {
       method: "POST",

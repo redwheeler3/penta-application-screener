@@ -150,6 +150,8 @@ export type FeedbackItem = {
   activeTab: string | null;
   analysisId: number | null;
   applicantId: number | null;
+  openingId: number | null;
+  retainedReview: boolean;
   // Current name resolved on read; null without applicant context or after deletion.
   applicantName: string | null;
   appVersion: string;

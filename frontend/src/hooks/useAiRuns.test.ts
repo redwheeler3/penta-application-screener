@@ -176,3 +176,39 @@ it("reconciles a displayed ranking after screening without awaiting it", async (
   await act(run);
   expect(options.refreshDisplayedRanking).toHaveBeenCalledOnce();
 });
+
+
+it("reconciles committed screening results after the response body throws", async () => {
+  const { options, run } = setup("screening", []);
+  let reads = 0;
+  screeningApi.runScreening.mockResolvedValue(new Response(new ReadableStream({
+    pull(controller) {
+      if (reads++ === 0) controller.enqueue(new TextEncoder().encode('{"type":"progress","processed":1,"total":2}\n'));
+      else controller.error(new Error("Connection lost"));
+    },
+  })));
+  await act(run);
+  expect(options.notifications.error).toHaveBeenCalledOnce();
+  expect(options.notifications.success).not.toHaveBeenCalled();
+  for (const callback of [options.refreshDashboard, options.reloadApplications,
+    options.clearSelectedApplication, options.refreshDisplayedRanking]) expect(callback).toHaveBeenCalledOnce();
+});
+
+it("does not refresh screening results for a definite pre-run rejection", async () => {
+  const { options, run } = setup("screening", []);
+  screeningApi.runScreening.mockResolvedValue(new Response(null, { status: 403 }));
+  await act(run);
+  expect(options.refreshDashboard).not.toHaveBeenCalled();
+  expect(options.reloadApplications).not.toHaveBeenCalled();
+});
+
+
+it("reconciles an uncertain screening request failure without claiming completion", async () => {
+  const { options, run } = setup("screening", []);
+  screeningApi.runScreening.mockRejectedValue(new Error("Connection lost before response"));
+  await act(run);
+  expect(options.notifications.success).not.toHaveBeenCalled();
+  expect(options.notifications.error).toHaveBeenCalledOnce();
+  expect(options.refreshDashboard).toHaveBeenCalledOnce();
+  expect(options.reloadApplications).toHaveBeenCalledOnce();
+});

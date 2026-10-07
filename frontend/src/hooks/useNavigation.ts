@@ -174,7 +174,11 @@ export function useNavigation(options: {
     setSelectedApplicationReadOnly(false);
   }
 
-  function navigateToView(tab: ViewTab) {
+  function navigateToView(tab: ViewTab, openingId = current.current.openingId) {
+    if (openingId !== null && openingId !== current.current.openingId) {
+      void loadLocation({ screenerLocation: true, tab, openingId }, true);
+      return;
+    }
     requests.invalidate();
     pendingLocation.current = null;
     pushLocation({ screenerLocation: true, tab, openingId: current.current.openingId });

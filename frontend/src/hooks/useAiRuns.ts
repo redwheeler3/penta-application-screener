@@ -141,16 +141,27 @@ export function useAiRuns(options: {
     setScreeningRunning(true);
     setScreeningEstimate(null);
     setScreeningProgress(null);
+    const reconcileScreening = () => {
+      if (!inScope()) return;
+      options.refreshDashboard();
+      options.reloadApplications();
+      options.clearSelectedApplication();
+      options.refreshDisplayedRanking();
+    };
+    // A transport failure cannot establish whether the server committed work.
+    let mayHaveCommitted = true;
     try {
       const response = await startScreeningRequest(options.openingId, controller.signal);
       if (!inScope()) { controller.abort(); return; }
-      if (!response.ok || !response.body) {
+      mayHaveCommitted = response.ok;
+      if (!response.ok) {
         const problem = await readProblem(response);
         if (!inScope()) return;
         options.notifications.error(
           problem ? `Screening failed: ${problem}` : "Screening failed.",
         );
       } else {
+        if (!response.body) throw new Error("Screening response body unavailable.");
         let finished = false;
         await streamNdjson<ScreeningStreamEvent>(response.body, (event) => {
           if (!inScope()) return;
@@ -175,14 +186,10 @@ export function useAiRuns(options: {
             "Review current results before starting another run.",
           );
         }
-        if (inScope()) {
-          options.refreshDashboard();
-          options.reloadApplications();
-          options.clearSelectedApplication();
-          options.refreshDisplayedRanking();
-        }
+        reconcileScreening();
       }
     } catch (error) {
+      if (mayHaveCommitted) reconcileScreening();
       if (inScope() && !controller.signal.aborted) options.notifications.error(
         error instanceof Error ? `Screening error: ${error.message}` : "Screening error.",
       );

@@ -7,6 +7,7 @@ type StarButtonProps = {
   size?: "sm" | "md";
   // Rows navigate on click, so the star must not bubble to the row handler.
   stopPropagation?: boolean;
+  disabled?: boolean;
 };
 
 // A member's private favourite toggle: a gold star, filled when starred and a
@@ -18,12 +19,14 @@ export function StarButton({
   onToggle,
   size = "sm",
   stopPropagation = false,
+  disabled = false,
 }: StarButtonProps) {
   const px = size === "md" ? 22 : 18;
   const action = starred ? "Remove from my favourites" : "Add to my favourites";
   return (
     <button
       type="button"
+      disabled={disabled}
       className={`star-button no-print${starred ? " is-starred" : ""} star-${size}`}
       aria-pressed={starred}
       aria-label={action}

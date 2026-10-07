@@ -28,9 +28,9 @@ export function AdminSettingsPanel(props: {
   configurationLoadFailed: boolean;
   onRetryConfiguration: () => void;
   onError: (message: string) => void;
-  onOpenApplicant: (id: number) => void;
+  onOpenApplicant: (id: number, openingId: number | null, retainedReview: boolean) => void;
   onOpenOpeningApplicant: (id: number, openingId: number) => void;
-  onOpenView: (tab: ViewTab) => void;
+  onOpenView: (tab: ViewTab, openingId: number | null) => void;
   currentUser: CurrentUser;
   subtab: AdminSubtab;
   onSubtabChange: (subtab: AdminSubtab) => void;

@@ -459,7 +459,10 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
             configurationLoadFailed={settingsLoadFailed}
             onRetryConfiguration={retrySettings}
             onError={showError}
-            onOpenApplicant={viewApplication}
+            onOpenApplicant={(id, openingId, retainedReview) => {
+              if (retainedReview) void viewRetainedApplication(id);
+              else if (openingId !== null) void viewApplication(id, openingId);
+            }}
             onOpenOpeningApplicant={viewApplication}
             onOpenView={navigateToView}
             currentUser={user}
@@ -530,6 +533,8 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
         activeTab={selectedApp ? "applicant-detail" : activeTab}
         analysisId={rankingRun?.analysisId ?? null}
         applicantId={selectedApp?.id ?? null}
+        openingId={selectedApplicationReadOnly ? null : selectedOpeningId}
+        retainedReview={selectedApplicationReadOnly}
         onToast={showToast}
         onError={showError}
       />

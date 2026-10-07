@@ -2,9 +2,8 @@ import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import * as rankingApi from "../../api/ranking";
-import { useFetchResource } from "../../hooks/useFetchResource";
+import { AnalysisTraceResource } from "./AnalysisTraceResource";
 import type { AnalysisTraceScope, ConsolidateAuditResponse } from "../../types";
-import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Post-score consolidation observability: how the run healed duplicate dimensions the
 // pre-score match pass couldn't catch. After scoring, two dimensions whose per-applicant
@@ -18,15 +17,13 @@ import { RetryLoadError } from "../shared/RetryLoadError";
 export function ConsolidateAuditPanel(props: { scope: AnalysisTraceScope }): ReactNode {
   const { fetchConsolidateAudit } = useCommitteeApi(rankingApi);
 
-  const { data: audit, state, reload } = useFetchResource(
-    () => fetchConsolidateAudit(props.scope.openingId, props.scope.analysisId),
-    { reloadKey: props.scope },
-  );
+  return <AnalysisTraceResource scope={props.scope}
+    fetcher={() => fetchConsolidateAudit(props.scope.openingId, props.scope.analysisId)}>
+    {(audit) => <ConsolidateAuditContent audit={audit} />}
+  </AnalysisTraceResource>;
+}
 
-  if (state === "loading") return <p className="panel-hint">Loading…</p>;
-  if (state === "error") {
-    return <RetryLoadError message="Couldn’t load the consolidation audit." onRetry={() => void reload()} />;
-  }
+function ConsolidateAuditContent({ audit }: { audit: ConsolidateAuditResponse | null }): ReactNode {
   if (audit === null) {
     return (
       <p className="panel-hint">
@@ -106,10 +103,11 @@ function ConsolidateAuditBody(props: { audit: ConsolidateAuditResponse }): React
                 {p.merged ? (
                   <span className="match-audit-new">merged</span>
                 ) : (
-                  <span className="match-audit-key-unnamed">kept apart</span>
+                  <span className="match-audit-key-unnamed">{p.deferredReason ? "deferred" : "kept apart"}</span>
                 )}
               </td>
-              <td>{p.reason}</td>
+              <td>{p.reason}{p.deferredReason && <p>{p.deferredReason}</p>}
+                {p.appliedKeep && p.appliedKeep !== p.keep && <p>Applied survivor: {p.appliedKeep}</p>}</td>
             </tr>
           ))}
         </tbody>

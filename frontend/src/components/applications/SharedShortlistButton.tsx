@@ -6,6 +6,7 @@ export function SharedShortlistButton(props: {
   compact?: boolean;
   size?: "sm" | "md";
   stopPropagation?: boolean;
+  disabled?: boolean;
 }) {
   const action = props.shortlisted ? "Remove from shared shortlist" : "Add to shared shortlist";
   const size = props.size ?? "sm";
@@ -13,6 +14,7 @@ export function SharedShortlistButton(props: {
   return (
     <button
       type="button"
+      disabled={props.disabled}
       className={`shortlist-button no-print shortlist-${size}${props.shortlisted ? " is-shortlisted" : ""}${props.compact ? " is-compact" : ""}`}
       aria-pressed={props.shortlisted}
       aria-label={action}

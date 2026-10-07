@@ -29,8 +29,8 @@ function viewLabel(tab: string | null): string {
 
 export function FeedbackPanel(props: {
   onError: (message: string) => void;
-  onOpenApplicant: (id: number) => void;
-  onOpenView: (tab: ViewTab) => void;
+  onOpenApplicant: (id: number, openingId: number | null, retainedReview: boolean) => void;
+  onOpenView: (tab: ViewTab, openingId: number | null) => void;
 }): ReactNode {
   const api = useCommitteeApi(feedbackApi);
 
@@ -116,7 +116,7 @@ export function FeedbackPanel(props: {
                   <button
                     type="button"
                     className="feedback-context-link"
-                    onClick={() => props.onOpenApplicant(item.applicantId as number)}
+                    onClick={() => props.onOpenApplicant(item.applicantId as number, item.openingId, item.retainedReview)}
                   >
                     {item.applicantName ?? `applicant #${item.applicantId}`}
                   </button>
@@ -124,7 +124,7 @@ export function FeedbackPanel(props: {
                   <button
                     type="button"
                     className="feedback-context-link"
-                    onClick={() => props.onOpenView(item.activeTab as ViewTab)}
+                    onClick={() => props.onOpenView(item.activeTab as ViewTab, item.openingId)}
                   >
                     {viewLabel(item.activeTab)}
                   </button>

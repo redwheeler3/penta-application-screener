@@ -18,6 +18,8 @@ export function FeedbackButton(props: {
   activeTab: string;
   analysisId: number | null;
   applicantId: number | null;
+  openingId: number | null;
+  retainedReview: boolean;
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
@@ -54,6 +56,8 @@ export function FeedbackButton(props: {
         activeTab: props.activeTab,
         analysisId: props.analysisId,
         applicantId: props.applicantId,
+        openingId: props.openingId,
+        retainedReview: props.retainedReview,
       });
       if (!isCurrent()) return;
       if (response.ok) {

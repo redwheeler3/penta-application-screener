@@ -107,11 +107,13 @@ export function CandidateDetail(props: {
           <div className="candidate-save-buttons detail-save-buttons">
             <StarButton
               starred={app.starredByMe}
+              disabled={app.selected}
               onToggle={(next) => props.onToggleStar(app.id, next)}
               size="md"
             />
             <SharedShortlistButton
               shortlisted={app.shortlisted}
+              disabled={app.selected}
               onToggle={(next) => props.onToggleShortlist(app.id, next)}
               compact
               size="md"
@@ -157,7 +159,7 @@ export function CandidateDetail(props: {
                   type="button"
                   className="segment"
                   aria-pressed={!isHuman}
-                  disabled={!isHuman}
+                  disabled={app.selected || !isHuman}
                   onClick={() => props.onClearOverride(app.id)}
                 >
                   Automatic
@@ -166,7 +168,7 @@ export function CandidateDetail(props: {
                   type="button"
                   className="segment"
                   aria-pressed={isHuman && app.status === "eligible"}
-                  disabled={isHuman && app.status === "eligible"}
+                  disabled={app.selected || (isHuman && app.status === "eligible")}
                   onClick={() => props.onOverrideStatus(app.id, "eligible")}
                 >
                   Eligible
@@ -175,7 +177,7 @@ export function CandidateDetail(props: {
                   type="button"
                   className="segment"
                   aria-pressed={isHuman && app.status === "ineligible"}
-                  disabled={isHuman && app.status === "ineligible"}
+                  disabled={app.selected || (isHuman && app.status === "ineligible")}
                   onClick={() => props.onOverrideStatus(app.id, "ineligible")}
                 >
                   Ineligible

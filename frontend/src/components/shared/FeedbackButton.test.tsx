@@ -13,7 +13,7 @@ vi.mock("../../api/feedback", () => ({
 function setup() {
   const onToast = vi.fn();
   const onError = vi.fn();
-  render(<FeedbackButton activeTab="ranking" analysisId={1} applicantId={null} onToast={onToast} onError={onError} />);
+  render(<FeedbackButton activeTab="ranking" analysisId={1} applicantId={null} openingId={null} retainedReview={false} onToast={onToast} onError={onError} />);
   fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
   return { onToast, onError };
 }

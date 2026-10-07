@@ -2,23 +2,21 @@ import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import * as rankingApi from "../../api/ranking";
-import { useFetchResource } from "../../hooks/useFetchResource";
-import type { AnalysisTraceScope } from "../../types";
-import { RetryLoadError } from "../shared/RetryLoadError";
+import { AnalysisTraceResource } from "./AnalysisTraceResource";
+import type { AnalysisTraceScope, FanOutAuditResponse } from "../../types";
 
 // Show each independent discovery pass and its reasoning. When per-pass data is absent,
 // fall back to the run-level narrative.
 export function DiscoveryPanel(props: { scope: AnalysisTraceScope }): ReactNode {
   const { fetchFanOutAudit } = useCommitteeApi(rankingApi);
 
-  const { data: audit, state, reload } = useFetchResource(
-    () => fetchFanOutAudit(props.scope.openingId, props.scope.analysisId),
-    { reloadKey: props.scope },
-  );
+  return <AnalysisTraceResource scope={props.scope}
+    fetcher={() => fetchFanOutAudit(props.scope.openingId, props.scope.analysisId)}>
+    {(audit) => <DiscoveryBody audit={audit} />}
+  </AnalysisTraceResource>;
+}
 
-  if (state === "loading") return <p className="panel-hint">Loading…</p>;
-  if (state === "error") return <RetryLoadError message="Couldn’t load discovery." onRetry={() => void reload()} />;
-
+function DiscoveryBody({ audit }: { audit: FanOutAuditResponse | null }): ReactNode {
   if (audit === null || audit.passes.length === 0) {
     if (!audit?.narrative) {
       return <p className="panel-hint">No discovery reasoning recorded for this run.</p>;

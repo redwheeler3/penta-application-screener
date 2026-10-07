@@ -60,7 +60,7 @@ it("removes accepted lookup actions immediately when the address changes", async
   expect(api.deleteVacancySubscription).not.toHaveBeenCalled();
 });
 
-it("ignores a save acknowledgement after switching addresses", async () => {
+it("keeps the email locked until a save acknowledgement settles", async () => {
   const saved = deferred<Response>();
   vi.mocked(api.lookupVacancySubscription).mockResolvedValue(Response.json({ subscription: null }));
   vi.mocked(api.saveVacancySubscription).mockReturnValue(saved.promise);
@@ -71,6 +71,29 @@ it("ignores a save acknowledgement after switching addresses", async () => {
   expect(api.saveVacancySubscription).toHaveBeenCalledWith("a@example.com", [2], "Tech support request");
   fireEvent.change(screen.getByPlaceholderText("person@example.com"), { target: { value: "b@example.com" } });
   await act(async () => { saved.resolve(Response.json({ subscription: subscription("a@example.com") })); });
-  expect(screen.queryByText("Subscription saved.")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Delete subscription" })).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText("person@example.com")).toHaveValue("a@example.com");
+  expect(screen.getByText("Subscription saved.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Delete subscription" })).toBeEnabled();
+});
+
+
+it.each(["save", "delete"])("locks address and preferences during %s and releases them after failure", async (action) => {
+  api.lookupVacancySubscription.mockResolvedValue(Response.json({ subscription: subscription("a@example.com") }));
+  const pending = deferred<Response>();
+  api.saveVacancySubscription.mockReturnValue(pending.promise);
+  api.deleteVacancySubscription.mockReturnValue(pending.promise);
+  render(<VacancyNotificationsPanel onError={vi.fn()} />);
+  await act(async () => lookup("a@example.com"));
+  fireEvent.click(screen.getByRole("button", { name: action === "save" ? "Replace preferences" : "Delete subscription" }));
+  const email = screen.getByPlaceholderText("person@example.com");
+  expect(email).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "2 bedrooms" })).toBeDisabled();
+  fireEvent.change(email, { target: { value: " A@example.com " } });
+  expect(email).toHaveValue("a@example.com");
+  fireEvent.click(screen.getByRole("button", { name: action === "save" ? "Delete subscription" : "Replace preferences" }));
+  expect(action === "save" ? api.deleteVacancySubscription : api.saveVacancySubscription).not.toHaveBeenCalled();
+  await act(async () => pending.reject(new Error("Offline")));
+  expect(email).toBeEnabled();
+  expect(screen.getByRole("checkbox", { name: "2 bedrooms" })).toBeChecked();
+  expect(screen.getByRole("button", { name: "Replace preferences" })).toBeEnabled();
 });

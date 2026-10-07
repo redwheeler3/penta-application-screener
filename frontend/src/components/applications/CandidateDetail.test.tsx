@@ -1,8 +1,9 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ApplicationDetail, CommitteeOpening } from "../../types";
 import { CandidateDetail } from "./CandidateDetail";
+import { ApplicationsList } from "./ApplicationsList";
 
 const application: ApplicationDetail = {
   id: 1,
@@ -101,7 +102,7 @@ describe("CandidateDetail", () => {
     ).toEqual(["View essay responses", "View AI scoring"]);
   });
 
-  it("keeps selected applications fully reviewable and shows both statuses", () => {
+  it("keeps selected evidence and ordinary back navigation while disabling mutations", () => {
     render(
       <CandidateDetail
         app={{ ...application, selected: true }}
@@ -123,7 +124,28 @@ describe("CandidateDetail", () => {
     expect(selectedBadge).toHaveClass("status-selected");
     expect(within(badges).getByText("Eligible")).toHaveClass("status-eligible");
     expect(screen.getByText("Decided by:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Back to list" })).toBeEnabled();
+    for (const name of ["Ineligible", "Eligible", "Automatic", "Add to my favourites", "Add to shared shortlist"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
     expect(screen.getByRole("heading", { name: "Notes" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "AI scoring" })).toBeInTheDocument();
   });
+});
+
+
+it.each([false, true])("only permits list saved-list writes for non-selected applicants (selected=%s)", (selected) => {
+  const onToggleStar = vi.fn();
+  const onToggleShortlist = vi.fn();
+  render(<ApplicationsList applications={[{ ...application, selected }]} applicationsLoadState="ready"
+    appFilter={{}} appFacets={{ status: { eligible: 1, ineligible: 0 }, source: { untouched: 1, rules: 0, ai: 0, human: 0 },
+      favourites: 0, shortlist: 0 }} appSearch="" appSort={{ key: "applicant", direction: "asc" }}
+    onApplyFilter={vi.fn()} onSearch={vi.fn()} onToggleSort={vi.fn()} onSelectApplication={vi.fn()}
+    onToggleStar={onToggleStar} onToggleShortlist={onToggleShortlist} onRetryLoad={vi.fn()} />);
+  const favourite = screen.getByRole("button", { name: "Add to my favourites" });
+  const shortlist = screen.getByRole("button", { name: "Add to shared shortlist" });
+  fireEvent.click(favourite);
+  fireEvent.click(shortlist);
+  expect(onToggleStar).toHaveBeenCalledTimes(selected ? 0 : 1);
+  expect(onToggleShortlist).toHaveBeenCalledTimes(selected ? 0 : 1);
 });

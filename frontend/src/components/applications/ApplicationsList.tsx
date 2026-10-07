@@ -192,11 +192,13 @@ export function ApplicationsList(props: {
                     <div className="candidate-save-buttons">
                       <StarButton
                         starred={app.starredByMe}
+                        disabled={app.selected}
                         onToggle={(next) => props.onToggleStar(app.id, next)}
                         stopPropagation
                       />
                       <SharedShortlistButton
                         shortlisted={app.shortlisted}
+                        disabled={app.selected}
                         onToggle={(next) => props.onToggleShortlist(app.id, next)}
                         compact
                         stopPropagation

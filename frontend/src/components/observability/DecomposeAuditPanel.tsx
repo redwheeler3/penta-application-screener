@@ -2,24 +2,21 @@ import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import * as rankingApi from "../../api/ranking";
-import { useFetchResource } from "../../hooks/useFetchResource";
+import { AnalysisTraceResource } from "./AnalysisTraceResource";
 import type { AnalysisTraceScope, DecomposeAuditResponse } from "../../types";
-import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Show how parallel discovery reports were settled into non-overlapping dimensions,
 // including merge reasoning and any committee request folded into another axis.
 export function DecomposeAuditPanel(props: { scope: AnalysisTraceScope }): ReactNode {
   const { fetchDecomposeAudit } = useCommitteeApi(rankingApi);
 
-  const { data: audit, state, reload } = useFetchResource(
-    () => fetchDecomposeAudit(props.scope.openingId, props.scope.analysisId),
-    { reloadKey: props.scope },
-  );
+  return <AnalysisTraceResource scope={props.scope}
+    fetcher={() => fetchDecomposeAudit(props.scope.openingId, props.scope.analysisId)}>
+    {(audit) => <DecomposeAuditContent audit={audit} />}
+  </AnalysisTraceResource>;
+}
 
-  if (state === "loading") return <p className="panel-hint">Loading…</p>;
-  if (state === "error") {
-    return <RetryLoadError message="Couldn’t load the decomposition audit." onRetry={() => void reload()} />;
-  }
+function DecomposeAuditContent({ audit }: { audit: DecomposeAuditResponse | null }): ReactNode {
   if (audit === null) {
     return (
       <p className="panel-hint">

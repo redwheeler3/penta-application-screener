@@ -2,22 +2,21 @@ import { useCommitteeApi } from "../../api/identity";
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import * as rankingApi from "../../api/ranking";
-import { useFetchResource } from "../../hooks/useFetchResource";
+import { AnalysisTraceResource } from "./AnalysisTraceResource";
 import type { AnalysisTraceScope, MatchAuditResponse } from "../../types";
-import { RetryLoadError } from "../shared/RetryLoadError";
 
 // Show how settled dimensions map onto prior dimensions. A high reuse rate is expected;
 // individual incorrect mappings are the actionable signal.
 export function MatchAuditPanel(props: { scope: AnalysisTraceScope }): ReactNode {
   const { fetchMatchAudit } = useCommitteeApi(rankingApi);
 
-  const { data: audit, state, reload } = useFetchResource(
-    () => fetchMatchAudit(props.scope.openingId, props.scope.analysisId),
-    { reloadKey: props.scope },
-  );
+  return <AnalysisTraceResource scope={props.scope}
+    fetcher={() => fetchMatchAudit(props.scope.openingId, props.scope.analysisId)}>
+    {(audit) => <MatchAuditContent audit={audit} />}
+  </AnalysisTraceResource>;
+}
 
-  if (state === "loading") return <p className="panel-hint">Loading…</p>;
-  if (state === "error") return <RetryLoadError message="Couldn’t load the matching audit." onRetry={() => void reload()} />;
+function MatchAuditContent({ audit }: { audit: MatchAuditResponse | null }): ReactNode {
   if (audit === null) {
     return (
       <p className="panel-hint">

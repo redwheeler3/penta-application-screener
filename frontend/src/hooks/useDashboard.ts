@@ -44,7 +44,9 @@ export function useDashboard(openingId: number | null, onAnalysis?: (analysisId:
     const observe = observeAnalysis.current;
     return api.fetchDashboard(openingId).then((payload) => {
       if (isCurrent()) apply(payload, observe);
-    }).catch(() => {});
+    }).catch(() => {
+      if (isCurrent()) setLoadState((state) => state === "ready" ? "ready" : "error");
+    });
   }, [apply, openingId, requests, api]);
 
   const loadInitial = useCallback(async (): Promise<void> => {

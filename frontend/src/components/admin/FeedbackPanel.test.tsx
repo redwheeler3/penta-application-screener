@@ -13,7 +13,7 @@ vi.mock("../../api/feedback", () => ({
   createApi: () => api,
 }));
 const items = [1, 2].map((id) => ({ id, body: `Synthetic feedback ${id}`, userEmail: "member@example.com",
-  userName: "Synthetic member", route: null, activeTab: null, analysisId: null, applicantId: null,
+  userName: "Synthetic member", route: null, activeTab: null, analysisId: null, applicantId: null, openingId: null, retainedReview: false,
   applicantName: null, appVersion: "test", createdAt: "2026-10-03T00:00:00Z", resolvedAt: null }));
 beforeEach(() => {
   vi.resetAllMocks();
@@ -38,4 +38,22 @@ it("keeps each pending row busy independently and releases a failed row", async 
   await act(async () => { second.reject(new Error("Synthetic failure")); });
   expect(onError).toHaveBeenCalledOnce();
   expect(within(row).getByRole("button", { name: "Mark resolved" })).toBeEnabled();
+});
+
+
+it.each([false, true])("passes the reported applicant context to navigation (retained=%s)", async (retainedReview) => {
+  api.fetchFeedback.mockResolvedValue([{ ...items[0], applicantId: 7, applicantName: "Synthetic applicant",
+    openingId: retainedReview ? null : 12, retainedReview }]);
+  const onOpenApplicant = vi.fn();
+  render(<FeedbackPanel onError={vi.fn()} onOpenApplicant={onOpenApplicant} onOpenView={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Synthetic applicant" }));
+  expect(onOpenApplicant).toHaveBeenCalledExactlyOnceWith(7, retainedReview ? null : 12, retainedReview);
+});
+
+it("passes the opening for a non-applicant context link", async () => {
+  api.fetchFeedback.mockResolvedValue([{ ...items[0], activeTab: "ranking", openingId: 12 }]);
+  const onOpenView = vi.fn();
+  render(<FeedbackPanel onError={vi.fn()} onOpenApplicant={vi.fn()} onOpenView={onOpenView} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Ranking" }));
+  expect(onOpenView).toHaveBeenCalledExactlyOnceWith("ranking", 12);
 });

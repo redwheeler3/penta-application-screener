@@ -28,6 +28,7 @@ export function VacancyNotificationsPanel(props: {
   const requests = useRequestScope(emailKey);
   const lookedUp = lookedUpEmail === emailKey;
   const [busy, setBusy] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [message, setMessage] = useState("");
 
   async function lookup(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -60,6 +61,7 @@ export function VacancyNotificationsPanel(props: {
   async function save(): Promise<void> {
     if (lookedUpEmail === null || !lookedUp || unitSizes.length === 0 || !source.trim() || busy) return;
     const isCurrent = requests.capture();
+    setWriting(true);
     setBusy(true);
     try {
       const response = await api.saveVacancySubscription(lookedUpEmail, unitSizes, source.trim());
@@ -77,13 +79,14 @@ export function VacancyNotificationsPanel(props: {
     } catch {
       if (isCurrent()) props.onError("Could not save that subscription.");
     } finally {
-      if (isCurrent()) setBusy(false);
+      if (isCurrent()) { setBusy(false); setWriting(false); }
     }
   }
 
   async function remove(): Promise<void> {
     if (!subscription || !lookedUp || busy) return;
     const isCurrent = requests.capture();
+    setWriting(true);
     setBusy(true);
     try {
       const response = await api.deleteVacancySubscription(subscription.email);
@@ -100,7 +103,7 @@ export function VacancyNotificationsPanel(props: {
     } catch {
       if (isCurrent()) props.onError("Could not delete that subscription.");
     } finally {
-      if (isCurrent()) setBusy(false);
+      if (isCurrent()) { setBusy(false); setWriting(false); }
     }
   }
 
@@ -142,10 +145,12 @@ export function VacancyNotificationsPanel(props: {
         <form className="vacancy-lookup" onSubmit={lookup}>
           <input
             type="email"
+            disabled={writing}
             required
             value={email}
             placeholder="person@example.com"
             onChange={(event) => {
+              if (writing) return;
               setEmail(event.target.value);
               requests.invalidate();
               setBusy(false);
@@ -176,7 +181,7 @@ export function VacancyNotificationsPanel(props: {
         ) : null}
         {lookedUp ? (
           <div className="vacancy-support-editor">
-            <fieldset>
+            <fieldset disabled={writing}>
               <legend>Notify for</legend>
               {[1, 2, 3].map((size) => (
                 <label key={size}>
@@ -191,7 +196,7 @@ export function VacancyNotificationsPanel(props: {
             </fieldset>
             <label>
               <span>Request source</span>
-              <input value={source} maxLength={120} onChange={(event) => setSource(event.target.value)} />
+              <input disabled={writing} value={source} maxLength={120} onChange={(event) => setSource(event.target.value)} />
             </label>
             <div className="opening-form-actions">
               {subscription ? (

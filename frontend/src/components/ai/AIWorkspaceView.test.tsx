@@ -145,3 +145,34 @@ it("keeps paid controls unavailable when run details fail and offers Retry", asy
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Run screening (~1)" })).toBeEnabled());
 });
+
+
+it("preserves expanded discovery through delayed and failed same-analysis refreshes", async () => {
+  const audit = { analysisId: 1, k: 1, narrative: null, passes: [{
+    dimensions: [{ key: "synthetic", name: "Synthetic dimension", definition: "Evidence" }], narrative: "Original reasoning",
+  }] };
+  traces.fetchFanOutAudit.mockResolvedValue(audit);
+  const props = { family: "obs" as const, openingId: 1, run: criteria(1), onToast: vi.fn(), onError: vi.fn() };
+  const { rerender } = render(<AIWorkspaceView {...props} refreshKey={null} />);
+  const details = (await screen.findByText("Discoverer 1")).closest("details")!;
+  fireEvent.click(details.querySelector("summary")!);
+  expect(details.open).toBe(true);
+  const refresh = deferred<typeof audit>();
+  traces.fetchFanOutAudit.mockReturnValueOnce(refresh.promise);
+  rerender(<AIWorkspaceView {...props} refreshKey={{}} />);
+  expect(details).toBeInTheDocument();
+  expect(details.open).toBe(true);
+  await act(async () => refresh.reject(new Error("Offline")));
+  expect(details).toBeInTheDocument();
+  expect(details.open).toBe(true);
+  expect(screen.getByText(/Showing the last loaded results/)).toBeInTheDocument();
+  traces.fetchFanOutAudit.mockResolvedValue({ ...audit, passes: [{ ...audit.passes[0], narrative: "Refreshed reasoning" }] });
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await screen.findByText("Refreshed reasoning");
+  expect(details).toBeInTheDocument();
+  expect(details.open).toBe(true);
+  traces.fetchFanOutAudit.mockReturnValue(new Promise(() => {}));
+  rerender(<AIWorkspaceView {...props} run={criteria(2)} refreshKey={null} />);
+  expect(details).not.toBeInTheDocument();
+  expect(screen.queryByText("Refreshed reasoning")).not.toBeInTheDocument();
+});

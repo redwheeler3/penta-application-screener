@@ -266,3 +266,12 @@ it("reconciles successful writes with an overlapping same-app detail read", asyn
   expect(result.current.selectedApplication).toMatchObject({ privateNote: "Confirmed",
     status: "ineligible", shortlisted: false });
 });
+
+
+it("opens a non-applicant feedback view in its recorded opening", async () => {
+  const { result } = await workspace();
+  act(() => result.current.navigateToView("observability", 2));
+  await waitFor(() => expect(result.current.selectedOpeningId).toBe(2));
+  expect(result.current.activeTab).toBe("observability");
+  expect(window.history.state).toEqual({ screenerLocation: true, tab: "observability", openingId: 2 });
+});
