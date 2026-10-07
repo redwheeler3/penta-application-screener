@@ -1,186 +1,93 @@
 import { type ReactNode } from "react";
 import { NumberInput } from "../shared/NumberInput";
 
-// A field-level editor for an eval case — no raw JSON. A case is a nested object whose
-// shape varies by family (a scoring case has given{applicant{facts, essays}, dimension{…}}
-// + metadata{expected{…}}; a consolidation case has given{pair:[…]}). Rather than a rigid
-// per-family form, this renders GENERICALLY and usefully:
-//   - a scalar (string/number/bool) → a labeled typed input (textarea for long text)
-//   - a nested object → a titled section of labeled rows, each removable, with "+ add field"
-// so any family is editable at the field level, and a new case shape needs no new code.
-//
-// Values are edited immutably against a single `value` object the parent owns; every change
-// calls onChange with the next object. Keys the caller marks readOnly (e.g. `key`, `pass`)
-// render as fixed labels.
-
 export type FieldValue = string | number | boolean | null | FieldObject | FieldValue[];
 export type FieldObject = { [k: string]: FieldValue };
+type FieldContext = { path: string[]; readOnlyKeys: string[] };
 
-// Humanize a snake_case key for a label ("cited_evidence" → "Cited evidence").
 function label(key: string): string {
   return key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
-function setAt(obj: FieldObject, path: string[], next: FieldValue): FieldObject {
-  if (path.length === 0) return obj;
-  const [head, ...rest] = path;
-  const child = obj[head];
-  return {
-    ...obj,
-    [head]:
-      rest.length === 0
-        ? next
-        : setAt((child && typeof child === "object" && !Array.isArray(child) ? child : {}) as FieldObject, rest, next),
-  };
+/** New list entries keep the preceding entry's structure, without copying its answers. */
+function blankLike(value: FieldValue): FieldValue {
+  if (Array.isArray(value)) return value.map(blankLike);
+  if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, blankLike(v)]));
+  if (typeof value === "number") return 0;
+  if (typeof value === "boolean") return false;
+  return "";
 }
 
-function removeAt(obj: FieldObject, path: string[]): FieldObject {
-  if (path.length === 0) return obj;
-  const [head, ...rest] = path;
-  if (rest.length === 0) {
-    const { [head]: _drop, ...keep } = obj;
-    return keep;
-  }
-  const child = obj[head];
-  if (!child || typeof child !== "object" || Array.isArray(child)) return obj;
-  return { ...obj, [head]: removeAt(child as FieldObject, rest) };
-}
-
-function ScalarInput(props: {
-  value: string | number | boolean | null;
-  onChange: (v: FieldValue) => void;
+function FieldRow(props: FieldContext & {
+  name: string; value: FieldValue; onChange: (next: FieldValue) => void; onRemove: () => void;
 }): ReactNode {
-  const { value } = props;
-  if (typeof value === "boolean") {
-    return (
-      <label className="eval-field-bool">
-        <input type="checkbox" checked={value} onChange={(e) => props.onChange(e.target.checked)} /> {String(value)}
-      </label>
-    );
+  const here = props.path.join(".");
+  const locked = props.readOnlyKeys.some((key) => here === key || here.startsWith(`${key}.`));
+  const containsLock = props.readOnlyKeys.some((key) => key.startsWith(`${here}.`));
+  return <div className="eval-field-row">
+    <div className="eval-field-labelrow">
+      <span className="eval-field-label">{props.name}</span>
+      {!locked && !containsLock ? <button type="button" className="eval-field-remove"
+        aria-label={`Remove ${props.path.at(-1)}`} title="Remove field" onClick={props.onRemove}>✕</button> : null}
+    </div>
+    {locked ? <span className="eval-field-locked">{String(props.value ?? "")}</span>
+      : <ValueInput {...props} />}
+  </div>;
+}
+
+function ValueInput(props: FieldContext & { value: FieldValue; onChange: (next: FieldValue) => void }): ReactNode {
+  const { value, onChange, path, readOnlyKeys } = props;
+  const name = path.map(label).join(" / ");
+  if (Array.isArray(value)) {
+    return <div className="eval-fields depth-1">
+      {value.map((item, index) => <FieldRow key={index} name={`Item ${index + 1}`} value={item}
+        path={[...path, String(index)]} readOnlyKeys={readOnlyKeys}
+        onChange={(next) => onChange(value.map((entry, i) => i === index ? next : entry))}
+        onRemove={() => onChange(value.filter((_entry, i) => i !== index))} />)}
+      <div className="eval-field-add">
+        <button type="button" className="eval-link" onClick={() => onChange([...value, blankLike(value.at(-1) ?? "")])}>+ Add item</button>
+        {value.length === 0 ? <>
+          {" "}<button type="button" className="eval-link" onClick={() => onChange([{}])}>+ Add object</button>
+          {" "}<button type="button" className="eval-link" onClick={() => onChange([[]])}>+ Add list</button>
+        </> : null}
+      </div>
+    </div>;
   }
-  if (typeof value === "number") {
-    return (
-      <NumberInput
-        className="eval-field-input"
-        value={value}
-        onChange={(v) => props.onChange(v ?? 0)}
-      />
-    );
+  if (value !== null && typeof value === "object") {
+    return <ObjectSection obj={value} path={path} readOnlyKeys={readOnlyKeys} onChange={onChange} />;
   }
+  if (typeof value === "boolean") return <label className="eval-field-bool">
+    <input type="checkbox" aria-label={name} checked={value} onChange={(event) => onChange(event.target.checked)} /> {String(value)}
+  </label>;
+  if (typeof value === "number") return <NumberInput className="eval-field-input" aria-label={name}
+    value={value} onChange={(next) => onChange(next ?? 0)} />;
   const text = value ?? "";
-  // Long strings get a growing textarea; short ones a single-line input.
-  if (String(text).length > 60) {
-    return (
-      <textarea
-        className="eval-field-textarea"
-        value={String(text)}
-        rows={Math.min(10, Math.max(2, Math.ceil(String(text).length / 70)))}
-        onChange={(e) => props.onChange(e.target.value)}
-      />
-    );
+  // Keep the same control mounted as text grows, preserving focus and selection.
+  return <textarea className="eval-field-textarea" aria-label={name} value={text}
+    rows={Math.min(10, Math.max(1, Math.ceil(text.length / 70)))} onChange={(event) => onChange(event.target.value)} />;
+}
+
+function ObjectSection(props: FieldContext & { obj: FieldObject; onChange: (next: FieldObject) => void }): ReactNode {
+  const { obj, path, readOnlyKeys, onChange } = props;
+  function addField() {
+    const key = window.prompt("New field name (snake_case):")?.trim();
+    if (!key) return;
+    if (key in obj) { window.alert(`A field named "${key}" already exists.`); return; }
+    onChange({ ...obj, [key]: "" });
   }
-  return (
-    <input
-      type="text"
-      className="eval-field-input"
-      value={String(text)}
-      onChange={(e) => props.onChange(e.target.value)}
-    />
-  );
+  return <div className={`eval-fields depth-${Math.min(path.length, 2)}`}>
+    {Object.entries(obj).map(([key, value]) => <FieldRow key={key} name={label(key)} value={value}
+      path={[...path, key]} readOnlyKeys={readOnlyKeys}
+      onChange={(next) => onChange({ ...obj, [key]: next })}
+      onRemove={() => {
+        const { [key]: _removed, ...rest } = obj;
+        onChange(rest);
+      }} />)}
+    <div className="eval-field-add"><button type="button" className="eval-link" onClick={addField}>+ add field</button></div>
+  </div>;
 }
 
-// One object rendered as a section of labeled, removable rows + an add-field control.
-function ObjectSection(props: {
-  obj: FieldObject;
-  path: string[];
-  readOnlyKeys: Set<string>;
-  onChange: (next: FieldValue, path: string[]) => void;
-  onRemove: (path: string[]) => void;
-  depth: number;
-}): ReactNode {
-  const { obj, path } = props;
-  return (
-    <div className={`eval-fields depth-${Math.min(props.depth, 2)}`}>
-      {Object.entries(obj).map(([k, v]) => {
-        const childPath = [...path, k];
-        const isObj = v !== null && typeof v === "object" && !Array.isArray(v);
-        const locked = props.readOnlyKeys.has(childPath.join("."));
-        return (
-          <div key={k} className={`eval-field-row${isObj ? " is-object" : ""}`}>
-            <div className="eval-field-labelrow">
-              <span className="eval-field-label">{label(k)}</span>
-              {!locked ? (
-                <button
-                  type="button"
-                  className="eval-field-remove"
-                  aria-label={`Remove ${k}`}
-                  title="Remove field"
-                  onClick={() => props.onRemove(childPath)}
-                >
-                  ✕
-                </button>
-              ) : null}
-            </div>
-            {isObj ? (
-              <ObjectSection
-                obj={v as FieldObject}
-                path={childPath}
-                readOnlyKeys={props.readOnlyKeys}
-                onChange={props.onChange}
-                onRemove={props.onRemove}
-                depth={props.depth + 1}
-              />
-            ) : locked ? (
-              <span className="eval-field-locked">{String(v ?? "")}</span>
-            ) : (
-              <ScalarInput value={v as string | number | boolean | null} onChange={(nv) => props.onChange(nv, childPath)} />
-            )}
-          </div>
-        );
-      })}
-      <AddField onAdd={(key) => props.onChange("", [...path, key])} existing={obj} />
-    </div>
-  );
-}
-
-// Adds a new scalar (text) field. Nested objects come from the family templates, not this
-// control — the operator fills a shape, they don't build one field-by-field.
-function AddField(props: { onAdd: (key: string) => void; existing: FieldObject }): ReactNode {
-  return (
-    <div className="eval-field-add">
-      <button
-        type="button"
-        className="eval-link"
-        onClick={() => {
-          const key = window.prompt("New field name (snake_case):")?.trim();
-          if (!key) return;
-          if (key in props.existing) {
-            window.alert(`A field named "${key}" already exists.`);
-            return;
-          }
-          props.onAdd(key);
-        }}
-      >
-        + add field
-      </button>
-    </div>
-  );
-}
-
-export function StructuredFields(props: {
-  value: FieldObject;
-  readOnlyKeys?: string[];
-  onChange: (next: FieldObject) => void;
-}): ReactNode {
-  const readOnly = new Set(props.readOnlyKeys ?? []);
-  return (
-    <ObjectSection
-      obj={props.value}
-      path={[]}
-      readOnlyKeys={readOnly}
-      depth={0}
-      onChange={(next, path) => props.onChange(setAt(props.value, path, next))}
-      onRemove={(path) => props.onChange(removeAt(props.value, path))}
-    />
-  );
+/** Immutable field editing for the scalar, object, and list shapes in eval fixtures. */
+export function StructuredFields(props: { value: FieldObject; readOnlyKeys?: string[]; onChange: (next: FieldObject) => void }): ReactNode {
+  return <ObjectSection obj={props.value} path={[]} readOnlyKeys={props.readOnlyKeys ?? []} onChange={props.onChange} />;
 }

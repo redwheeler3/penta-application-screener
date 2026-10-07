@@ -110,12 +110,12 @@ it("keeps old output inspectable without a passing claim after a label save and 
 
 it.each(["a", "new"])("starts a fresh template when switching case %s to Add case", async (key) => {
   vi.mocked(api.fetchEvalCases).mockResolvedValue({ cases: [{ ...cases[0], key }], caseFingerprints: {} });
-  const { container } = setup();
+  setup();
   fireEvent.click(await screen.findByRole("button", { name: key }));
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   fireEvent.click(screen.getByRole("button", { name: "+ Add case" }));
   expect(screen.getByText("Add case", { selector: "strong" })).toBeInTheDocument();
-  expect(container.querySelector(".eval-editor input")).toHaveValue("");
+  expect(screen.getByRole("textbox", { name: "Key", exact: true })).toHaveValue("");
   expect(screen.queryByDisplayValue("Original A")).not.toBeInTheDocument();
 });
 
