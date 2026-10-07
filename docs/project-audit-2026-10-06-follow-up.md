@@ -1,16 +1,18 @@
 # Whole-project audit — 2026-10-06, post-implementation review
 
-**Status: complete through four independent domain reviews and a reconciliation/challenge pass;
-X01–X16 recommended, not implemented.** Original baseline `83bfd9e`; the independent reviews
+**Status: complete through both independent discovery rounds and fix-plan challenges;
+X01–X25 recommended, not implemented.** Original baseline `83bfd9e`; the first independent reviews
 started from clean `bc8e3ff`, twelve local commits ahead of the recorded `origin/main`.
-Application code is unchanged between these audit revisions. The completed W01–W07
+The latest three fresh reviewers started from `712e35c`. Application code is unchanged between
+these audit revisions. The completed W01–W07
 report remains at `83bfd9e:docs/project-audit-2026-10-06-follow-up.md`.
 
 ## Recommendation
 
-Prioritize the access-link identity defect (X07), cross-opening priority loss (X08), and
-retention/submission failures (X09–X12). The independent reviews below add ten findings to
-the original six; they are one combined implementation backlog, not separate implementation rounds.
+Prioritize access-link authority (X07), feedback privacy (X17), cross-opening priority loss
+(X08), and retention/submission failures (X09–X12/X24). The independent reviews below add ten findings to
+the original six; the latest fresh round adds nine more and strengthens two existing findings.
+They are one combined implementation backlog, with the authoritative sequence at the end.
 Then fix the dashboard loading race, the two fixture-contract gaps, and the disruptive trace refresh.
 Repair the two command-line experiment wrappers before relying on their next model comparison.
 These are bounded changes to existing owners. I do not recommend another architecture rewrite,
@@ -20,6 +22,11 @@ a general mutation framework, or additional production caching.
 | --- | --- | --- | --- |
 | X07 | P1, access control | Regeneration revives superseded access and cancelled email-change links | Actual anonymous regeneration/redemption restores access to a synthetic current profile |
 | X08 | P1, ranking integrity | Global criterion aliases erase another opening's effective priorities | Another opening's report retains `newer`, but reconciliation changes its positive tier to `older`; weight becomes zero |
+| X01 | P2 | Fixture family metadata can disagree with its owning file/endpoint | Save returns 200; Judge lists the wrong family; its Run request returns 404 and current fingerprints use a different identity |
+| X02 | P2, eval validity | Screening expectations admit unknown categories and inconsistent raw types | Misspelled forbidden flags weaken assertions; a string pet count validates but fails against the identical numeric count |
+| X03 | P2, operator tooling | Golden model bake-off retains invalid outcome rules and reloads inputs per model | Invalid contested output passes; all-error repeats report stable; later errors erase known usage; control/challenger can see different inputs |
+| X04 | P2, operator tooling | Full-rank copy experiment does not reliably capture its advertised inputs | Copied DB omits a committed WAL row; two visible openings fail before running; requested high reasoning leaves copied pass settings low |
+| X05 | P2 | A failed background dashboard refresh can strand initial loading | Both requests settle, but the real hook remains `loading`; reversing their completion order settles correctly |
 | X09 | P2, retention | Withdrawn participation misses the final-decision retention update | Four withdrawal/decision combinations remain without deadlines and survive an overdue purge |
 | X10 | P2, draft loss/retention | Private draft deadlines are stale or absent after saves/claims | Switching to a later opening leaves early expiry; empty-selection claim creates a nonexpiring Application |
 | X11 | P2, intake | Hidden archived openings demand address history the form removes | Form accepts August 2024 move-in; actual submit rejects it against hidden April 2024 cutoff |
@@ -27,13 +34,17 @@ a general mutation framework, or additional production caching.
 | X13 | P2, ranking coverage | Consolidation revives criteria without complete current scores | Run reports 4 scored/0 failed; final board and dashboard have only 3/4 coverage |
 | X14 | P2, operator writes | Subscription controls permit overlapping writes and obsolete acknowledgements | Same-normalized-address edit allows delete; earlier save then restores deleted subscription in UI |
 | X15 | P2, navigation | Feedback applicant links use the currently selected opening | Feedback for A invokes detail read for B, failing or displaying B's eligibility context |
-| X16 | P3, report clarity | Cost tables compare provider replies with cached result counts | Three fresh dimensions plus one cached displays uncached 1/cached 1, while cache-hit metric correctly says 25% |
-| X05 | P2 | A failed background dashboard refresh can strand initial loading | Both requests settle, but the real hook remains `loading`; reversing their completion order settles correctly |
-| X01 | P2 | Fixture family metadata can disagree with its owning file/endpoint | Save returns 200; Judge lists the wrong family; its Run request returns 404 and current fingerprints use a different identity |
-| X02 | P2, eval validity | Screening expectations admit unknown categories and inconsistent raw types | Misspelled forbidden flags weaken assertions; a string pet count validates but fails against the identical numeric count |
+| X17 | P2, privacy | Feedback submission discloses private-draft names to members | Supplying an unsubmitted applicant ID returns its name, although retained detail is forbidden |
+| X18 | P2, copy choice | Choosing the saved application can restore an unchosen local copy | Same-revision browser recovery overlays a third draft after explicit reconciliation |
+| X19 | P2, draft data loss | Private saves discard imported references while prerequisite answers are unknown | Preserved manager/current-landlord/previous-landlord values serialize as null |
+| X20 | P2, shared workflow | Another member's first ranking is invisible to an already-open workspace | Focus dashboard sees the new analysis; real workspace still offers no Ranking tab or Reload |
+| X21 | P2, failure recovery | Screening stream exceptions leave committed results unreconciled | A yielded item is already durable; body error triggers none of the existing view refreshes |
+| X22 | P2, delivery reporting | Failed email diagnostics substitute the current account address for the attempted recipient | Old-address security notice reports the new address |
+| X23 | P2, unnecessary retries | Unrelated writes immediately retry old provider failures | Three outbox drains produce three attempts in two seconds |
+| X24 | P2, retention reliability | Email configuration failure prevents the maintenance purge from starting | Valid runtime settings plus sender-construction error produce zero purge calls |
+| X25 | P2, action consistency | Selected households retain controls whose writes are always rejected | Real selected detail has enabled controls; override/star/shortlist endpoints reject them |
 | X06 | P3 | Passive trace refresh discards expanded operator content | An open discovery trace disappears during refresh and returns collapsed, even with identical data |
-| X03 | P2, operator tooling | Golden model bake-off retains invalid outcome rules and reloads inputs per model | Invalid contested output passes; all-error repeats report stable; later errors erase known usage; control/challenger can see different inputs |
-| X04 | P2, operator tooling | Full-rank copy experiment does not reliably capture its advertised inputs | Copied DB omits a committed WAL row; two visible openings fail before running; requested high reasoning leaves copied pass settings low |
+| X16 | P3, report clarity | Cost tables compare provider replies with cached result counts | Three fresh dimensions plus one cached displays uncached 1/cached 1, while cache-hit metric correctly says 25% |
 
 Preserve submission-time age, automatic cache reuse, committee judgment and unranked behavior,
 coverage-based workflow readiness, retained imported records, admin-only operator views,
@@ -312,7 +323,7 @@ This is repository-grounded source and synthetic-behavior coverage, not a claim 
 formal verification, production load testing, real-model judgment validation, or a new mobile/
 accessibility certification. Recovery was covered by isolated tests, not a production restore.
 
-## Final challenge and implementation sequence
+## Original pass closing challenge
 
 The closing challenge followed each finding into its sibling consumers and considered the
 smallest durable remedy. X01/X02 must align save, load, editor, and Judge identities/expectations;
@@ -321,10 +332,9 @@ preserve both failure recovery and existing read-scope protections. No proposed 
 new production infrastructure. After those expansions, no further material candidate remains
 unexamined in the planned scope.
 
-Suggested packages: X05 dashboard recovery; X01/X02 fixture contracts; X06 trace refresh;
-X03 golden-comparison reporting; X04 scoped SQLite experiment copy. Implement the first three
-packages for routine use. Complete the CLI repairs before using those tools for model choices;
-they are not prerequisites for ordinary applicant or committee use.
+These six items are incorporated into the single final implementation sequence below. Complete
+the CLI repairs before using those tools for model choices; they are not prerequisites for
+ordinary applicant or committee use.
 
 The process improvement from this pass is concrete: inventory **actual entrypoints wherever
 they live**, including `app/evals/*_bakeoff.py`, and run a shared-rule probe through every
@@ -415,6 +425,12 @@ issued before an intervening email change. Do not blanket-ban all stale links or
 in the route. Handle draft-bound and application-bound links consistently without weakening
 selected/withdrawn/expired application restrictions.
 
+Anonymous regeneration and durable outbox retry carry different authority. A temporary delivery
+failure deliberately revokes that attempt's token but leaves a valid queued intent. Do not apply
+the anonymous-regeneration rejection indiscriminately to `_build_magic_link_retry`; cancellation
+and consumption already invalidate queued authority. Test failed delivery followed by valid retry
+alongside cancelled proposal followed by rejected anonymous regeneration.
+
 **Acceptance:** both reproduced sequences; ordinary expired/current-address recovery;
 expired valid proposal; replaced/cancelled/completed proposals; intervening identity change;
 draft claim; existing single-use and session-revocation behavior. **Latency:** existing target
@@ -490,6 +506,14 @@ extension; submitted-copy deadline unchanged. **Latency:** existing close-date q
 private saves; no extra browser round trip. Keep expiry policy out of generic answer-copy code
 unless that owner is explicitly given the lifecycle context.
 
+The fresh round independently reproduced the empty-selection case for **both email and Google
+claims**, including actual purge 90 days later. Maintain deadlines in the existing write/revision
+transaction for every private selection change, including return-link saves and reconciliation.
+Choosing the already-saved reconciliation copy does not create a new retention lifetime. Avoid
+calling submitted-copy cleanup from private expiry maintenance: `refresh_application_retention`
+also discards working edits on finalized submitted records. Test a submitted applicant editing
+for a future opening while historical decisions exist.
+
 ### X11 — Hidden archived openings make valid-looking resubmissions impossible
 
 **Priority: P2.** `frontend/src/applicant/applicationDraft.ts:88` computes the residence cutoff
@@ -536,6 +560,10 @@ release on failure. Old-session completion must not release a new session's oper
 replace the hook with a general queue/state-machine library or discard the existing submitted
 snapshot rules. Review navigation during submission must preserve any permitted newer edits.
 
+Include pending-copy reconciliation (X18) in the same admission guard, keeping ownership through
+its authoritative restore. Nested helpers participate in the admitted operation rather than
+acquiring the guard again. This does not add a restore barrier to ordinary submit.
+
 **Acceptance:** rapid double click, both completion orders, rejection/network failure followed
 by retry, review/edit interaction, session change, newer draft preservation. **Latency:** block
 only a second conflicting mutation until the existing request settles; no additional work or
@@ -564,6 +592,12 @@ necessary even for coverage-safe merges.
 board/detail/dashboard agreement, truthful final summary, no hidden provider calls. **Latency:**
 bounded batched database lookup; no additional model latency. Consolidate the coverage predicate
 with existing cache ownership instead of adding another readiness definition.
+
+The consolidation audit currently marks model-confirmed pairs `merged` before persistence.
+Deferring a replacement must also make the recorded/presented outcome truthful: model confirmation
+is distinct from an applied merge. Validate coverage and frozen wording for the flattened terminal
+survivor before alias publication; verify report, tiers, aliases, audit counts and explanation
+together. Filtering mutations while leaving a `merged` audit entry would introduce another defect.
 
 ### X14 — Subscription writes lose ownership after a normalized email edit
 
@@ -599,9 +633,11 @@ applicant belongs to both, it opens B's eligibility context instead of the repor
 
 **Remedy / owner:** carry existing opening ID and retained-review mode through feedback's
 context and use existing explicit-opening/retained navigation. Replace the insufficient ID-only
-callback. Contextless older feedback can open the admin retained detail; do not guess its opening
-or build a second navigation system. Scope non-applicant feedback links using the same available
-context. Nullable context reflects feedback legitimately sent outside an opening, not a legacy
+callback. Contextless feedback can use retained detail only when existing retained-access rules
+allow that target; an ordinary undecided applicant can be visible in an opening but absent from
+retained-review scope. Preserve safe unavailable behavior or omit unsupported links; do not
+broaden access or guess an opening to make the fallback succeed. Scope non-applicant links using
+the same available context. Nullable context reflects feedback legitimately sent outside an opening, not a legacy
 shape adapter. Preserve existing access checks and safe missing/purged-target behavior.
 
 **Acceptance:** A feedback while B selected; applicant only in A or in both with different
@@ -654,18 +690,7 @@ accounting units at the final UI. It refined X11/X12's remedies rather than open
 unexamined candidate. For example, filtering archived selections wholesale would introduce a
 withdrawal defect, and a factory-local submit guard would reset on every render.
 
-Implement in cohesive commits within one authorized implementation phase:
-
-1. **X07:** access-link authority and purpose-aware renewal, with route-level adverse tests.
-2. **X09/X10:** separate durable retention membership from active outcomes; centralize private
-   expiry maintenance. Prepare any needed existing-data reconciliation for explicit review.
-3. **X11/X12:** align residence scope and preserve single-owner applicant writes.
-4. **X08/X13:** report-aware tier reconciliation and coverage-safe consolidation, tested together
-   across openings and the full run/board/readiness path.
-5. **X05/X06/X14:** bounded UI loading/refresh/write corrections, retaining existing hook ownership.
-6. **X15/X16:** feedback context and honest cost-count presentation through producers and consumers.
-7. **X01/X02:** fixture family/expectation boundaries, including the previous challenge cases.
-8. **X03/X04:** experiment wrappers before further model-comparison use.
+The findings from this round are included in the single final implementation sequence below.
 
 The intended net change is fewer competing policies: one link-authority policy, one private-draft
 expiry rule, one form-visible residence rule per language, one report-aware tier mapping, and
@@ -682,3 +707,291 @@ historical, retained). A broad passing suite is supporting evidence, not a subst
 counterexamples. Close when the coverage map is evidenced or explicitly limited and the final
 challenge leaves no material candidate unexplored. This extension meets that bounded stop rule;
 it does not promise that future review will find no defects.
+
+## Fresh discovery round — completed before implementation
+
+Baseline `712e35c`. Three new reviewers received separate assignments and did not read the
+current or prior audit reports during initial discovery. One performed the required lightweight
+memory-registry lookup for project context; no historical audit findings supplied its evidence.
+The coordinator reviewed API data boundaries and the proposed remedies separately. After initial
+reports, reviewers cross-checked the combined plan against source. Duplicate discoveries strengthen
+X03 and X10; nine distinct findings are X17–X25. No application implementation occurred.
+
+| Review | Coverage and perspective | Evidence / closure |
+| --- | --- | --- |
+| Fresh applicant/identity | Guest/authenticated intake, email/Google claims, remembered drafts, whole-copy reconciliation, supported imported shapes, submission/withdrawal | X10 independently reproduced through both claim methods and overdue purge; X18/X19 reproduced; ordinary late-session save guards retained |
+| Fresh committee/pipeline | Opening context, eligibility through every consumer, Screen/Rank partial completion, criteria observation, notes/overrides and permanent decisions | X20/X21/X25 reproduced; identical inputs agreed across list/detail/receipt/ranking/union; no additional rule duplication justified |
+| Fresh operations/data | Delivery/retry/cancellation/consent, maintenance order, retained aggregates, operator comparisons, backup/recovery/deployment source | X22–X24 reproduced; X03 independently reproduced; recovery/deployment received source review only |
+| Coordinator boundary review | Member feedback acknowledgement versus admin projection and private application visibility | X17 reproduced through actual routes; existing feedback tests exposed a misleading unsubmitted fixture assumption |
+| Cross-review of remedies | Identity renewal versus delivery retry; private expiry versus submitted cleanup; whole-copy restore versus remembered recovery; merge confirmation versus publication; retained context versus access | Concrete constraints incorporated into X07/X10/X12/X13/X15 and new findings; no unresolved material candidate left from planned coverage |
+
+### X17 — Feedback submission exposes names outside the caller's application scope
+
+**Priority: P2, privacy.** `backend/app/api/feedback.py:65` returns the admin-shaped `FeedbackOut`
+for a member's submission. `backend/app/services/feedback.py:56` enriches the client-supplied
+applicant ID without submitted/retention/visibility restrictions. An isolated actual-route probe
+as a normal member received a never-submitted private draft's name with status 201 by supplying
+only its ID; the retained-detail route returned 403. This requires an authenticated committee
+member, not anonymous access. The existing ten feedback tests pass, including a context test
+whose application fixture is unintentionally unsubmitted.
+
+**Remedy / owner:** the submission consumer (`FeedbackButton.tsx:59`) uses only `response.ok`.
+Return a narrow acknowledgement and remove its unnecessary name lookup. With X15, normalize
+optional applicant/opening/analysis context using existing ordinary/retained visibility rules.
+Keep the feedback body when context is missing, stale, private, purged or inaccessible; omit
+unusable references rather than rejecting the feedback or exposing an existence oracle. An
+untrusted retained-review flag cannot grant a member admin access. Scope the batched admin name
+projection to currently reviewable records too; `submitted_at` alone is not the entire rule.
+Reuse/extract the existing access predicates, not a new authorization framework.
+
+**Acceptance:** member and admin submitting a private-draft ID; accessible ordinary and retained
+targets; forged retained flag; mismatched opening/analysis/applicant; no context; purge between
+creation and reading. The submission acknowledgement never contains applicant enrichment.
+**Latency / simplification:** removes a lookup and admin-response dependency from submission;
+keep admin enrichment batched. Implement with X15.
+
+### X18 — An explicit saved-copy choice can restore an unchosen browser draft
+
+**Priority: P2.** `frontend/src/applicant/useApplicantPersistence.ts:300,401,426` uses ordinary
+remembered-draft recovery after reconciliation. `backend/app/api/applicant/application.py:100`
+does not increment revision when the applicant keeps the saved copy, correctly reflecting that
+no saved answers changed. `SPEC.md:235–242` promises a whole-copy choice.
+
+Reproduced with the real hook/storage reader: server copy A at revision 1, remembered unsaved C
+based on revision 1, and guest copy B from a collision. The comparison shows A versus B. Choosing
+**Keep my saved application** restores C, because its revision still matches. The desired-state
+probe observed `Third local dog` instead of `Saved cat`; the guest-choice control correctly
+restored `Guest bird` after its revision advanced.
+
+**Remedy / owner:** successful reconciliation must use an explicit server-authoritative restore
+policy within the existing restore implementation. Scope remembered-storage cleanup/replacement
+to the accepted identity and snapshot; retain ordinary remembered-draft recovery for startup
+and normal reload. Coordinate admission and restore with X12's stable write guard. Do not clear
+all storage, duplicate restoration code, or invent another draft identity.
+
+**Acceptance:** both choices with a third local copy; subsequent reload; failed reconciliation;
+rerender and session change during response/restore; no deletion of a newer storage snapshot.
+**Latency:** uses the existing reconciliation/restore requests; no added round trip.
+
+### X19 — Private draft serialization discards unresolved imported references
+
+**Priority: P2.** Supported imported-answer mapping at
+`backend/app/services/applications/answers.py:105–119,150–157` preserves references even where
+new prerequisite questions have no answer. `draftFromWorking` restores them, but
+`frontend/src/applicant/applicationDraft.ts:162,176,235–241` prunes them during private saving.
+
+Three producer-shaped probes reproduced loss: a known manager with unknown employment status;
+a current landlord with unknown current-home ownership (legacy combined real-estate Yes); and
+a previous landlord with unknown previous-residence dates/addresses. Each became null through
+`workingAnswers`. Employment rendering explicitly preserves the first shape in
+`ApplicantFormFields.tsx:144–155`, and backend mapping tests establish it. Saving replaces the
+working copy; a later server restore loses the known reference. Submitted evidence remains
+unchanged until submission, so this is private-copy loss rather than an immediate rewrite of
+committee-visible evidence.
+
+**Remedy / owner:** preserve known references in private working-answer serialization while
+prerequisite answers remain incomplete. Keep canonical submission validation/pruning separate.
+Check both applicants' employment and both landlord branches together. Distinguish unresolved
+imported fields from deliberate explicit parent-answer changes. Remove submission-oriented
+pruning from the private serializer instead of adding legacy flags or migration exceptions.
+
+**Acceptance:** imported mapping → editor → private save → restore for all three shapes and
+co-applicant manager; explicit status/ownership changes; canonical submission semantics unchanged.
+**Latency:** no additional requests or processing of consequence.
+
+### X20 — An opening's first ranking stays invisible to another open workspace
+
+**Priority: P2.** `frontend/src/hooks/useRanking.ts:159–167` observes a changed current analysis
+only when its local analysis ID is already non-null. `CommitteeWorkspace.tsx:263–267` refreshes
+only a displayed board alongside dashboard/list reads, while line 410 hides Ranking without a
+local `rankingRun`.
+
+A real workspace probe used the actual dashboard/ranking hooks: initial current analysis null;
+another member creates the first analysis; a focus refresh observes its non-null dashboard ID.
+Neither Ranking nor the Reload notification appears. The stale null also keeps `useAiRuns` from
+requesting the score-current estimate, despite existing criteria on the server.
+
+**Remedy / owner:** add the missing absent→present branch to observed-analysis reconciliation,
+using a scoped read or established Reload flow. Preserve loaded-ID equality, pending-mutation
+checks and the protection against a dashboard response captured before a newer board. Do not
+merely remove the non-null guard: normalize null/undefined and require a genuinely observed ID.
+
+**Acceptance:** focus and periodic observation of first criteria; still-empty opening; both
+initial-load completion orders; late dashboard after board adoption; pending mutation; changed
+opening/account. **Latency:** one conditional metadata/board read when criteria first appear,
+with no new polling, model calls, or synchronous UI lock.
+
+### X21 — Screening transport errors skip recovery of committed partial results
+
+**Priority: P2.** `frontend/src/hooks/useAiRuns.ts:178–189` reports a thrown stream/body error
+without reconciling results. Normal end-of-stream/error events do reconcile, as does Rank's
+exception branch at lines 303–309. Backend screening commits each successful item before yielding
+it (`backend/app/ai/analysis.py:304–317,550–557`).
+
+Reproduced: one progress event followed by a body exception causes zero dashboard/list/detail/
+ranking reconciliation callbacks. An independent in-memory backend probe read the yielded result
+through another Session and confirmed changed eligibility. A changed-opening control correctly
+suppressed callbacks. Lists may recover on periodic refresh; an open detail can retain obsolete
+findings indefinitely, and cache adoption need not help when those results are already consumed.
+
+**Remedy / owner:** reuse one scoped post-screen reconciliation helper after normal stream
+termination and uncertain transport failure. Keep error reporting truthful about unconfirmed
+completion, existing account/opening fences, and ranking pending-mutation protection. Avoid a
+blanket `finally` refresh for every definite pre-run rejection.
+
+**Acceptance:** complete, explicit partial error, truncated EOF, thrown body after committed
+progress, initial-request failure, changed opening/account, failing derived reads. **Latency:**
+existing fire-and-forget reads, no awaited completion barrier; consolidate recovery calls.
+
+### X22 — Delivery diagnostics show the account address instead of the attempted recipient
+
+**Priority: P2.** `backend/app/services/email/delivery.py:295` leaves `recipient_email` null
+for linked application messages. `backend/app/services/email/outbox.py:243` then substitutes the
+current application address; `EmailDeliveryPanel.tsx:148` presents it as the recipient.
+
+An actual synthetic delivery attempt sent the email-change security notice to `old@example.com`,
+while the issue report named `new@example.com`. Source review confirms the inverse mismatch for
+new-address confirmation, and that ordinary applicant notices rebuild against the current
+address on retry. Security notices instead retain `intent.old_email`; confirmations use the
+requested token address. Only the initial notice mismatch was executed in this round.
+
+**Remedy / owner:** record the actual attempted recipient in the existing `recipient_email`
+field while queued/failed; update it from the rebuilt message for each retry, retain acceptance
+clearing and aggregate purge, and project that value. Do not create an email-history store or
+persist rendered credentials. Mutable account identity cannot reconstruct every historical target.
+
+**Acceptance:** old-address notice, new-address confirmation, ordinary failure followed by email
+change, retry to changed address, accepted-delivery clearing, application purge. **Latency:** no
+network work or added query needed; retain the narrow issue projection.
+
+### X23 — Every post-write outbox drain retries old provider failures immediately
+
+**Priority: P2.** Application submissions, guest submissions, invitations and opening actions
+schedule `run_email_outbox` (`backend/app/api/applicant/application.py:249`, `guest.py:253`,
+`backend/app/services/maintenance.py:45`). `outbox.py:96` selects every queued intent, while
+`delivery.py:65` allows another attempt immediately when an error is present. This bypasses the
+daily failure-retry cadence in `SPEC.md:409,442` during ordinary unrelated actions.
+
+Synthetic reproduction: one temporary failure, followed by drains one and two seconds later,
+produced three provider attempts in two seconds. This was automatic draining, not manual retry.
+
+**Remedy / owner:** distinguish first delivery after a write from scheduled retry eligibility
+within the existing outbox selection. New confirmations still send promptly; previous failures
+wait for the intended maintenance cadence. Explicitly handle abandoned attempts whose leases
+expired. Keep lease/version ownership, credential cancellation, selected-applicant cancellation,
+and vacancy consent-generation checks. Do not add a queue framework or globally serialize writes.
+
+**Acceptance:** old failure plus unrelated new submission; new mail sends immediately, old mail
+waits; next eligible daily pass; quota failures; overlapping workers; expired crash leases;
+cancelled/consumed credentials and changed vacancy consent. **Latency / simplification:** reduces
+provider calls, token churn, sequential drain time and database writes. It delays only retries
+that the documented policy already schedules, not the first attempt.
+
+### X24 — Invalid email configuration prevents unrelated data purge
+
+**Priority: P2.** `backend/app/services/maintenance.py:36–40` constructs the sender before
+entering the leased sweep. Missing/invalid provider configuration raises before purge or failure
+recording. `Settings` accepts such configuration; startup reads settings/seeds admins and health
+checks only the DB (`backend/app/main.py:68–89`, `api/health.py:19`). The service can therefore
+keep serving while maintenance repeatedly fails before deleting expired data.
+
+Both reviewer and coordinator reproduced accepted production-mode Settings, sender-construction
+`EmailConfigurationError`, and zero calls to purge from the production maintenance entrypoint.
+Existing injected-sender tests bypass that boundary. `SPEC.md:737` explicitly says purge does not
+depend on email delivery; ordinary provider-send failures already occur after purge correctly.
+
+**Remedy / owner:** construct the sender lazily at the email stage, after purge and inside the
+existing lease/failure-receipt boundary. Preserve failure reporting and eligible retry after
+configuration repair; do not swallow the error or make privacy maintenance depend on startup mail
+validation. No production configuration change is authorized by this audit.
+
+**Acceptance:** bad sender configuration still purges due aggregates, records a failed sweep,
+and retains retryable email; repaired configuration permits the next eligible attempt; concurrent
+lease replacement remains safe. **Latency:** no added work or provider call.
+
+### X25 — Selected households retain controls whose writes cannot succeed
+
+**Priority: P2.** `CandidateDetail.tsx:106–117,144–181` and `ApplicationsList.tsx:191–203`
+show saved-list and override controls for ordinary selected-household views. Backend
+`backend/app/api/applications/routes.py:82–90` excludes selected applicants from every mutable
+application owner. Notes already honor `app.selected`; retained admin detail already has a
+separate read-only mode.
+
+Real component reproduction shows enabled Ineligible/favourite/shortlist controls. In-memory
+route checks reject override, favourite and shortlist writes. This is reachable when another
+non-selected participant keeps the opening visible. Source review confirms note writes are also
+rejected, but the notes UI already respects that rule.
+
+**Remedy / owner:** use local mutation eligibility (`!props.readOnly && !app.selected`) for the
+missing detail/list controls, retaining badges, evidence and read-only notes. Do not turn ordinary
+selected detail into retained-review mode: that also changes Back to list into Back to openings
+and hides notes. Keep the backend rejection. Reconcile old `SPEC.md:594` wording with the explicit
+selected-household read-only rule at `:1767`; the server and notes already follow the latter.
+
+**Acceptance:** selected ordinary list/detail issue no rejected writes; ordinary applicants stay
+editable; read-only notes/history and correct back navigation remain; retained view unchanged.
+**Latency / simplification:** removes futile requests; reuse the existing selected flag.
+
+### Evidence and final challenge for this round
+
+- Applicant reviewer: **62 existing focused frontend tests passed**. New probes reproduced the
+  third-copy restoration and three reference-loss shapes; actual email/Google claim and overdue
+  purge probes independently strengthened X10.
+- Committee reviewer: **79 existing backend tests plus 3 fresh in-memory checks passed;
+  76 existing frontend tests passed**. Real workspace/component/hook probes reproduced X20/X21/
+  X25; changed-opening recovery control passed. An identical-input check covered eligibility
+  list/detail/override/individual set/ranking/committee union consumers.
+- Operations reviewer: **39 existing tests passed** across retention, maintenance, email outbox,
+  eval completion and model bakeoff. X22–X24 used synthetic delivery or mocked configuration;
+  X03's invalid contested and all-error-stability cases were independently reproduced.
+- Coordinator: **10 existing feedback tests passed**; actual-route privacy probe confirmed X17;
+  independent production-entrypoint sender-failure probe confirmed X24. Source challenges also
+  checked all new remedies against their actual consumers.
+- Counts are attributed to each reviewer, not summed as unique suite coverage. Some discovery
+  probes intentionally asserted desired behavior and failed to demonstrate the defect; passing
+  existing suites do not cover those counterexamples. All temporary probes were removed.
+- No production, live applicant database, actual provider/email, or browser mutation was used.
+  No full-suite, production-scale, model-judgment, drag-gesture, or mobile-layout claim is made.
+  Backup/recovery/deployment received source review here; file-backed restore and multi-session
+  race execution were deferred. Latency implications are source-based estimates, not benchmarks.
+
+The closing challenge changed the plans in useful ways: preserve durable email-retry authority
+while fixing anonymous renewal; separate private expiry from submitted-copy cleanup; guard an
+explicit copy choice through restoration; record deferred consolidation honestly; keep feedback
+submission working when optional context is unusable; and separate selected mutation permission
+from retained-view navigation. These are now part of the relevant findings, not follow-up work
+left for a later audit.
+
+## Final combined implementation sequence
+
+This is the single current plan for X01–X25. Use cohesive commits within one implementation phase:
+
+1. **X07:** purpose-aware access renewal/redemption, including the legitimate outbox retry control.
+2. **X15/X17:** feedback context and privacy together; narrow submission acknowledgement and
+   scoped, batched admin enrichment.
+3. **X09/X10/X24:** durable participant retention, private expiry maintenance, and purge independent
+   of sender construction. Prepare existing-data reconciliation for explicit review; do not run
+   a production purge as part of a code change.
+4. **X11/X12/X18/X19:** visible residence policy, stable applicant mutation ownership, explicit
+   copy-choice restoration, and lossless private serialization of unresolved references.
+5. **X08/X13/X20:** report-aware tier mapping, coverage-safe consolidation with truthful audit,
+   and adoption of another member's first analysis.
+6. **X05/X06/X14/X21/X25:** dashboard loading, mounted trace refresh, subscription write ownership,
+   partial-screen recovery, and selected-household action consistency.
+7. **X22/X23/X16:** actual email recipients, scheduled retry eligibility, and comparable cost counts.
+8. **X01/X02:** fixture family and expectation boundaries.
+9. **X03/X04:** experiment outcome/input/snapshot repairs before further model comparisons.
+
+For each package, capture the reproduced failure as a focused regression, implement through the
+existing owner, prune assertions tied to superseded behavior, and check adjacent consumers.
+Run the normal backend/frontend checks appropriate to implemented changes, then a combined
+review emphasizing the intersections above. Reserve browser verification for interactions where
+component/contract tests cannot establish the result. Provider judgment changes would need their
+own real-output verification; none of these recommendations proposes changing prompts/models.
+
+I recommend moving to implementation after this round. All planned discovery rows now have
+evidence or an explicit limit, and cross-review left no unexamined material candidate. Another
+unbounded pre-implementation scan would delay confirmed access/privacy and data-loss fixes.
+Continue only concrete follow-up threads exposed by implementation or its final review. The
+independent reviewers and boundary comparisons reduced anchoring; they do not guarantee that
+future audits will find nothing.
