@@ -1,6 +1,6 @@
 # General audit: correctness and simplification — 2026-10-06
 
-**Status: W01–W07 implemented and automatically verified. W04 browser review remains unavailable while the local frontend is stopped.**
+**Status: W01–W07 implemented and verified, including W04's Chrome browser review.**
 Baseline: clean `main` at `c4c2ffc`, verified equal to `origin/main` after the authorized push.
 The completed V01–V03 audit and implementation evidence remain in
 `c4c2ffc:docs/project-audit-2026-10-06-follow-up.md`.
@@ -517,7 +517,7 @@ Implemented from `c055007` in seven cohesive commits:
   ancestors, and the existing newer-draft/save-order behavior. Server schemas remain authoritative.
 
 The final cross-consumer review found no further confirmed change worth expanding this
-implementation to address. The browser-review limitation below remains explicit.
+implementation to address. The browser review below closes the remaining verification item.
 
 ### Verification and net complexity
 
@@ -534,9 +534,19 @@ implementation to address. The browser-review limitation below remains explicit.
   with the same requested K; the collector retains errors rather than retrying. Production
   application cache behavior and user-facing save ordering are unchanged.
 
-**Remaining verification limit:** the local frontend was unreachable on port 5173 on both
-checks, and the available browser inventory had no existing project tab. The user was asked
-to start the server; no server was started automatically. W04's real-browser layout/interaction
-review is therefore pending, not claimed complete. Component tests and build passed. No real
-model/provider call, production operation, or applicant data change was made. These commits
-are local; this implementation turn did not request a push.
+**Browser verification — completed after the user started the dev server:** used the Chrome
+DevTools MCP and the existing signed-in local application tab. In the actual Evals screen,
+checked consolidation object-list editing, blank-item addition/removal, and decomposition's
+nested report lists. Typing from 60 to 61 characters retained focus in the note textarea;
+locked metadata/pass fields did not expose ancestor-removal controls. Field spacing was 10px.
+At 1920×855, the editor was 758px wide with no horizontal overflow. At 700×850 it switched to
+one column; the deepest observed fields remained about 563px wide with no horizontal overflow.
+The screenshot was inspected for clipping and alignment. No additional fix was needed.
+
+All edits in the signed-in app were cancelled, the original 1920×855 window size was restored,
+and Git confirmed that fixture files were unchanged. Before switching to signed-in Chrome, a
+temporary local preview importing the real editor had also verified a synthetic object-list
+save callback; that preview made no API writes and its files were removed. The browser check
+does not claim an additional persisted fixture-save test; existing component/API suites cover
+that boundary. No AI run, real provider call, applicant-data change, or production action was
+performed. Commits remain local; pushing has not been requested for this follow-up.
