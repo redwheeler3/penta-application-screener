@@ -340,7 +340,7 @@ async def test_claim_asks_owner_which_private_copy_to_keep(choice: str) -> None:
         draft = db.scalar(select(ApplicantDraft))
         assert draft is not None
         save_working_copy(
-            existing,
+            db, existing,
             WorkingApplicationAnswers.model_validate(
                 sample_answers(introduction="Existing working answers")
             ),

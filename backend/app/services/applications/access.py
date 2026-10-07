@@ -108,7 +108,7 @@ def claim_link_target(db: Session, link: MagicLinkToken) -> ClaimedApplicantLink
                 draft.intent,
                 reconciliation_draft=draft,
             )
-        _resolve_pending_draft(application, draft)
+        _resolve_pending_draft(db, application, draft)
         return ClaimedApplicantLink(application, draft.intent)
     if not new_applications_are_open(db):
         return ClaimedApplicantLink(None, state="unavailable")
@@ -157,7 +157,7 @@ def _claim_email_change(db: Session, link: MagicLinkToken) -> ClaimedApplicantLi
     if answers is not None:
         updated_applicant = answers.applicant.model_copy(update={"email": link.email})
         updated_answers = answers.model_copy(update={"applicant": updated_applicant})
-        save_working_copy(application, updated_answers, saved_at=datetime.now(UTC))
+        save_working_copy(db, application, updated_answers, saved_at=datetime.now(UTC))
     application.primary_email = link.email
     application.google_subject = None
     revoke_application_drafts(db, application.id, now=datetime.now(UTC))
@@ -181,12 +181,12 @@ def link_targets_other_application(
     return normalize_email(current.primary_email) != normalize_email(link.email)
 
 
-def _resolve_pending_draft(application: Application, draft: ApplicantDraft) -> None:
+def _resolve_pending_draft(db: Session, application: Application, draft: ApplicantDraft) -> None:
     """Resolve a pending copy that does not require an applicant choice."""
     answers = draft_answers(draft)
     if answers is not None and working_answers_for(application) is None:
         save_working_copy(
-            application,
+            db, application,
             answers,
             saved_at=as_utc(draft.saved_at),
             opening_ids=draft.working_opening_ids,

@@ -294,7 +294,7 @@ def request_applicant_access_link(
         require_matching_email(current, body.answers)
         validate_working_opening_selection(db, current, body.opening_ids, now=now)
         save_working_copy(
-            current,
+            db, current,
             body.answers,
             saved_at=now,
             opening_ids=body.opening_ids,

@@ -97,7 +97,7 @@ def refresh_draft_retention_for_opening(db: Session, opening_id: int) -> None:
         select(Application).where(Application.submitted_at.is_(None))
     ).all()
     for application in applications:
-        if opening_id in (application.working_opening_ids or []):
+        if not application.working_opening_ids or opening_id in application.working_opening_ids:
             refresh_application_retention(db, application)
 
     drafts = db.scalars(
@@ -107,7 +107,7 @@ def refresh_draft_retention_for_opening(db: Session, opening_id: int) -> None:
         )
     ).all()
     for draft in drafts:
-        if opening_id not in (draft.working_opening_ids or []):
+        if draft.working_opening_ids and opening_id not in draft.working_opening_ids:
             continue
         due_on = draft_expiry_for_opening_ids(db, draft.working_opening_ids or [])
         if due_on is not None:

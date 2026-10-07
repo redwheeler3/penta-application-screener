@@ -116,7 +116,7 @@ def reconcile_pending_copy(
             db, application, draft.working_opening_ids or [], now=datetime.now(UTC)
         )
         save_working_copy(
-            application,
+            db, application,
             answers,
             saved_at=datetime.now(UTC),
             opening_ids=draft.working_opening_ids,
@@ -215,7 +215,7 @@ def save_applicant_application(
     now = datetime.now(UTC)
     validate_working_opening_selection(db, application, body.opening_ids, now=now)
     save_working_copy(
-        application,
+        db, application,
         body.answers,
         saved_at=now,
         opening_ids=body.opening_ids,

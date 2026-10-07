@@ -160,7 +160,6 @@ def confirm_opening_selection(
             detail="This applicant has already been selected for another opening.",
         )
 
-    affected_applications: list[Application] = []
     for participation, application in participants:
         participation.outcome = (
             OpeningOutcome.SELECTED
@@ -168,13 +167,11 @@ def confirm_opening_selection(
             else OpeningOutcome.UNSUCCESSFUL
         )
         participation.unsuccessful_notified_at = None
-        affected_applications.append(application)
 
     opening.decided_at = now
     opening.decided_by_user_id = decided_by.id
     opening.no_household_selected = False
-    for application in affected_applications:
-        refresh_application_retention(db, application)
+    _refresh_participant_retention(db, opening.id)
     revoke_selected_applicant_access(db, application_id, now=now)
     try:
         queued = _queue_decision_notices(db, opening, now=now)
@@ -206,19 +203,25 @@ def confirm_no_household_selected(
     _require_selection_available(opening)
 
     now = now or datetime.now(UTC)
-    affected_applications: list[Application] = []
     for participation, application in active_opening_participants(db, opening):
         participation.outcome = OpeningOutcome.UNSUCCESSFUL
         participation.unsuccessful_notified_at = None
-        affected_applications.append(application)
     opening.decided_at = now
     opening.decided_by_user_id = decided_by.id
     opening.no_household_selected = True
-    for application in affected_applications:
-        refresh_application_retention(db, application)
+    _refresh_participant_retention(db, opening.id)
     queued = _queue_decision_notices(db, opening, now=now)
     db.commit()
     return queued
+
+
+def _refresh_participant_retention(db: Session, opening_id: int) -> None:
+    """A final decision starts retention for durable history, including withdrawals."""
+    db.flush()
+    applications = db.scalars(select(Application).join(ApplicationParticipation)
+        .where(ApplicationParticipation.opening_id == opening_id)).all()
+    for application in applications:
+        refresh_application_retention(db, application)
 
 
 def _queue_decision_notices(db: Session, opening: Opening, *, now: datetime | None) -> int:

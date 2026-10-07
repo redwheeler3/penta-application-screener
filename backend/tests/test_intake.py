@@ -250,6 +250,7 @@ def test_employment_start_date_cannot_be_in_the_future() -> None:
 
 
 def test_working_copy_does_not_replace_submitted_projection() -> None:
+    db = _session()
     saved_at = datetime(2026, 8, 23, tzinfo=UTC)
     application = Application(
         primary_email="avery@example.com",
@@ -259,7 +260,7 @@ def test_working_copy_does_not_replace_submitted_projection() -> None:
         normalized={"applicant_name": "Prior Applicant"},
     )
 
-    save_working_copy(application, _answers(), saved_at=saved_at)
+    save_working_copy(db, application, _answers(), saved_at=saved_at)
 
     assert application.raw_row == {"legacy": "submitted"}
     assert application.raw_row_hash == "submitted-hash"

@@ -25,7 +25,6 @@ from app.services.applications.locking import lock_application_identity
 from app.services.applications.purge import purge_expired_application
 from app.services.applications.retention import (
     current_retention_clause,
-    draft_expiry_for_opening_ids,
 )
 from app.services.applications.selected import application_is_selected
 from app.services.openings.participation import (
@@ -111,9 +110,6 @@ def claim_or_create_google_application(
                 _empty_working_answers(normalized_email),
                 saved_at=now,
                 opening_ids=[],
-            )
-            application.retention_due_on = draft_expiry_for_opening_ids(
-                db, available_opening_ids
             )
 
     application.google_subject = google_subject

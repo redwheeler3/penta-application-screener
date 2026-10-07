@@ -41,6 +41,7 @@ def content_hash(answers: dict[str, Any]) -> str:
 
 
 def save_working_copy(
+    db: Session,
     application: Application,
     answers: BaseModel,
     *,
@@ -53,6 +54,8 @@ def save_working_copy(
     application.working_saved_at = saved_at
     if opening_ids is not None:
         application.working_opening_ids = list(opening_ids)
+        if application.submitted_at is None:
+            application.retention_due_on = draft_expiry_for_opening_ids(db, opening_ids)
     application.working_revision = (application.working_revision or 0) + 1
 
 
@@ -82,13 +85,12 @@ def create_application(
         synthetic_data=get_settings().application_data_is_synthetic,
     )
     db.add(application)
-    if opening_ids:
-        application.retention_due_on = draft_expiry_for_opening_ids(db, opening_ids)
     save_working_copy(
+        db,
         application,
         answers,
         saved_at=saved_at,
-        opening_ids=opening_ids,
+        opening_ids=opening_ids or [],
     )
     db.flush()
     return application
@@ -106,6 +108,7 @@ def publish_working_copy(
     validate_residence_history(answers, openings)
     selected_opening_ids = [opening.id for opening in openings]
     save_working_copy(
+        db,
         application,
         answers,
         saved_at=submitted_at,

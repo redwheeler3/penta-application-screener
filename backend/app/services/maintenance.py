@@ -37,7 +37,7 @@ def run_due_maintenance() -> None:
     """Entry point for the request background task; failures remain retryable."""
     db = SessionLocal()
     try:
-        run_due_maintenance_with(db, get_email_sender())
+        run_due_maintenance_with(db)
     finally:
         db.close()
 
@@ -52,7 +52,7 @@ def run_email_outbox(sender: EmailSender | None = None) -> None:
 
 
 def run_due_maintenance_with(
-    db: Session, sender: EmailSender, *, now: datetime | None = None
+    db: Session, sender: EmailSender | None = None, *, now: datetime | None = None
 ) -> bool:
     """Claim today's lease and run the ordered, idempotent lifecycle sweep."""
     retry_time = now
@@ -63,7 +63,7 @@ def run_due_maintenance_with(
     try:
         purge_due_applicant_data(db, now=now)
         queue_due_unsuccessful_notices(db, now=now)
-        retry_queued_emails(db, sender, now=retry_time)
+        retry_queued_emails(db, sender or get_email_sender(), now=retry_time)
         purge_expired_vacancy_delivery_failures(db, now=now)
     except Exception as error:
         db.rollback()

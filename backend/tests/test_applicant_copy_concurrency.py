@@ -42,7 +42,7 @@ def comparison_records():
     now = datetime.now(UTC)
     with factory() as db:
         application = db.get(Application, ids[0])
-        save_working_copy(application, answers("Original"), saved_at=now, opening_ids=[opening_id])
+        save_working_copy(db, application, answers("Original"), saved_at=now, opening_ids=[opening_id])
         draft = ApplicantDraft(
             email=application.primary_email, intent=ApplicantDraftIntent.SAVE, application_id=application.id,
             draft_token_hash="synthetic", working_answers=answers("Guest copy").model_dump(mode="json"),
