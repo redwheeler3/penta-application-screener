@@ -7,6 +7,7 @@ export type EvalCaseStatus = "ok" | "fail" | "contested";
  * calls for review; it is not a failure of a label that permits either outcome. */
 export function evalCaseStatus(outcome: EvalCaseOutcome): EvalCaseStatus {
   const { mode, result } = outcome;
+  if (result.error) return "fail";
   switch (mode) {
     case "judge":
       if (result.marker === "[contested]" || result.contested) return "contested";
@@ -32,14 +33,22 @@ export function runSummary(run: EvalRunSummary, totalCases: number): string {
   const total = totalCases || outcomes.length;
   const passing = outcomes.filter((outcome) => evalCaseStatus(outcome) !== "fail").length;
   if (mode === "judge") {
-    const decisive = outcomes.filter((outcome) => evalCaseStatus(outcome) !== "contested");
+    const decisive = outcomes.filter((outcome) => !outcome.result.error && evalCaseStatus(outcome) !== "contested");
     const agreeing = decisive.filter((outcome) => evalCaseStatus(outcome) === "ok").length;
-    const contested = outcomes.length - decisive.length;
+    const errors = outcomes.filter((outcome) => !!outcome.result.error).length;
+    const contested = outcomes.length - decisive.length - errors;
     const missing = Math.max(0, total - outcomes.length);
     return [decisive.length ? `${agreeing}/${decisive.length} agree` : "No decisive results",
-      contested ? `${contested} contested` : "", missing ? `${missing} not run` : ""].filter(Boolean).join(" · ");
+      contested ? `${contested} contested` : "", errors ? `${errors} error${errors === 1 ? "" : "s"}` : "", missing ? `${missing} not run` : ""].filter(Boolean).join(" · ");
   }
   if (!total) return "";
   const stability = mode.endsWith("_stability") || mode === "stability";
-  return `${passing}/${total} ${stability ? "stable" : "passed"}`;
+  if (stability) {
+    const stable = outcomes.filter((outcome) => evalCaseStatus(outcome) === "ok").length;
+    const incomplete = outcomes.filter(({ result }) => "marker" in result && result.marker === "[incomplete]").length;
+    const split = outcomes.filter((outcome) => evalCaseStatus(outcome) === "contested").length;
+    return [`${stable}/${total} stable`, incomplete ? `${incomplete} incomplete` : "",
+      split ? `${split} contested split` : ""].filter(Boolean).join(" · ");
+  }
+  return `${passing}/${total} passed`;
 }

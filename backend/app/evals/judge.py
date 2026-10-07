@@ -131,6 +131,8 @@ class JudgeResult:
     def marker(self) -> str:
         """How to read this result. A contested case can't pass/fail on direction (both labels
         defensible) — it's always review material, so it never shows ``[ok]``."""
+        if self.reproduced.error:
+            return "[error]"
         if self.case.contested:
             return "[contested]"
         return "[ok]" if self.reproduced.agrees else "[review]"
@@ -141,75 +143,15 @@ def judge_case(provider, case: JudgeCase, *, model_id: str = DEFAULT_MODEL) -> J
     return JudgeResult(case=case, reproduced=_reproduce(provider, case, model_id=model_id), model_id=model_id)
 
 
-@dataclass(frozen=True)
-class StabilityReport:
-    """The outcome of auditing one case K times on FIXED inputs. The question is not "did the
-    judge agree with the label?" (one call answers that) but "does the SAME blind audit, on the
-    SAME given, return the SAME verdict every time?" A judge that flip-flops run-to-run on
-    identical input is the noise that would make its label-audit unreliable; a steady one is
-    trustworthy. Counting/marker delegate to the shared stability core."""
-
-    case: JudgeCase
-    # The GRADED stability token per run (e.g. "agrees" for scoring/screening, or the verdict for
-    # categorical) — what the flip math (majority/agreement/flipped/marker) tallies, so incidental
-    # noise inside one graded outcome doesn't read as a flip.
-    labels: list[str]
-    # The RAW reproduced label per run (a score, a verdict, or the actual flag set) — for DISPLAY,
-    # so each run still shows what the judge concretely produced, not just "agrees". Parallel to
-    # ``labels``/``details``.
-    displays: list[str]
-    details: list[str]  # the judge's reasoning per run (parallel to ``labels``) — explains a flip
-    total_cost_usd: float
-
-    @property
-    def runs(self) -> list[stability.RunDetail]:
-        """Per-run (display label, reasoning) pairs — same shape the other passes carry, so a judge
-        stability flip is as self-explaining as a live-pass one. Uses the RAW display label (the
-        actual score/verdict/flag set), NOT the graded token, so a screening run still shows
-        'fake_contact, internal_inconsistency' rather than a bare 'agrees'."""
-        return [stability.RunDetail(disp, detail) for disp, detail in zip(self.displays, self.details)]
-
-    @property
-    def majority(self) -> str:
-        return stability.majority(self.labels)
-
-    @property
-    def agreement(self) -> float:
-        return stability.agreement(self.labels)
-
-    @property
-    def flipped(self) -> bool:
-        return stability.flipped(self.labels)
-
-
-def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL, on_delta: stability.DeltaSink = None) -> StabilityReport:
-    """Audit ``case`` ``k`` times on identical input and report verdict stability. Every call
-    sees the exact same brief + given, so any variation is the judge model's own run-to-run
-    noise — the thing stability needs measured. The K calls run concurrently (independent
-    fixed-input requests); the tally is order-free.
-
-    ``on_delta``, if given, receives one ordered ``- run N: label — reasoning`` line per run
-    AFTER the pool completes — the same live narration the other passes' stability emits (via
-    the shared ``run_stability``), so the Judge tab's thinking box shows all K reasonings, not
-    just the summary line."""
-    from app.ai.analysis import run_in_pool
-
-    # run_in_pool yields as-completed; sort by submitted index for stable, deterministic run
-    # numbering (inputs are identical, so the order is only for legible narration).
-    packed = sorted(
-        run_in_pool(list(range(k)), call=lambda _i: judge_case(provider, case, model_id=model_id), max_workers=k),
-        key=lambda t: t[0],
-    )
-    results = [r for _i, r, err in packed if not err and r is not None]
-    for n, r in enumerate(results, 1):
-        stability.emit(on_delta, f"- run {n}: **{r.reproduced.judge_label}** — {r.reproduced.detail}\n")
-    return StabilityReport(
-        case=case,
-        labels=[_stability_token(case, r) for r in results],  # graded token → the flip math
-        displays=[r.reproduced.judge_label for r in results],  # raw label → per-run display
-        details=[r.reproduced.detail for r in results],  # keep each run's reasoning (explains a flip)
-        total_cost_usd=sum(r.cost_usd for r in results),
-    )
+def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL,
+                  on_delta: stability.DeltaSink = None) -> stability.StabilityReport:
+    """Use the shared repetition collector, retaining raw labels beside graded tokens."""
+    def run_once() -> stability.RunDetail:
+        result = judge_case(provider, case, model_id=model_id)
+        reproduced = result.reproduced
+        return stability.RunDetail(_stability_token(case, result), reproduced.detail,
+            error=reproduced.error, display=reproduced.judge_label, cost_usd=reproduced.cost_usd)
+    return stability.run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
 
 
 def _stability_token(case: JudgeCase, result: JudgeResult) -> str:

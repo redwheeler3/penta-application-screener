@@ -31,11 +31,18 @@ from app.ai.dimension_consolidation import SYSTEM_PROMPT, NominatedPair, build_p
 from app.ai.provider import AIProvider
 from app.ai.schemas import ConsolidationReport
 from app.evals._categorical import CategoricalResult as CaseResult
-from app.evals._categorical import emit_stability_summary, grade_verdict
+from app.evals._categorical import grade_verdict
 from app.evals.case_schema import validate_case
 from app.evals.fixture_files import read_json
 from app.evals.paths import CONSOLIDATION_GOLDEN_PATH
-from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
+from app.evals.stability import (
+    DeltaSink,
+    RunDetail,
+    StabilityReport,
+    emit,
+    emit_stability_summary,
+    run_stability,
+)
 
 # The two verdict strings a consolidation case can expect (the categorical label).
 MERGE, KEEP = "merge", "keep"
@@ -122,7 +129,8 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, backgro
     result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     verdict = result.output.verdict.value
     cost = cost_usd(result.model_id, result.usage)
-    return Reproduced(verdict, expected, verdict == expected, result.output.reason, cost)
+    error = None if verdict in (MERGE, KEEP) else f"model returned an invalid verdict: {verdict}"
+    return Reproduced(verdict, expected, verdict == expected, result.output.reason, cost, error=error)
 
 
 def run_case(
@@ -146,7 +154,7 @@ def run_case(
     verdict, reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
     if verdict is None:
         emit(on_delta, f"⚠️ Model returned no verdict for `{a['key']}` ~ `{b['key']}`.\n")
-        return CaseResult(case=case, verdict="?", reason="", failures=["model returned no verdict for the pair"])
+        return CaseResult(case=case, verdict="?", reason="", failures=["model returned no verdict for the pair"], error="model returned no verdict for the pair")
     return grade_verdict(case, verdict, reason, on_delta)
 
 
@@ -166,9 +174,10 @@ def stability_run(
     a, b = case.pair
     emit(on_delta, f"Consolidating **{a['name']}** ~ **{b['name']}** x{k} on `{consolidate_model}`…\n\n")
 
-    def run_once() -> tuple[str, str]:
+    def run_once() -> RunDetail:
         verdict, reason = _confirm_verdict(provider, case, consolidate_model=consolidate_model)
-        return verdict or "?", reason
+        return RunDetail(verdict or "error", reason or "model returned no verdict",
+                         error="model returned no verdict" if verdict is None else None)
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     emit_stability_summary(report, on_delta)

@@ -35,7 +35,14 @@ from app.ai.schemas import (
 from app.evals.case_schema import validate_case
 from app.evals.fixture_files import read_json
 from app.evals.paths import GOLDEN_PATH
-from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
+from app.evals.stability import (
+    DeltaSink,
+    RunDetail,
+    StabilityReport,
+    emit,
+    emit_stability_summary,
+    run_stability,
+)
 
 
 @dataclass(frozen=True)
@@ -205,7 +212,7 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: dict, backgr
     from app.ai.pricing import cost_usd
     cost = cost_usd(result.model_id, result.usage)
     if score is None:
-        return Reproduced("no score", band_str(expected), False, "judge returned no score", cost)
+        return Reproduced("no score", band_str(expected), False, "judge returned no score", cost, error="judge returned no score")
     agrees = not _check_expectations(score, expected)
     detail = f"judge scored {score.score:+.2f} ({score.confidence.value}): {score.rationale}"
     return Reproduced(f"{score.score:+.2f}", band_str(expected), agrees, detail, cost)
@@ -246,24 +253,24 @@ def stability_run(
     emit(on_delta, f"Scoring **{case.dimension.name}** x{k} on `{scoring_model}`…\n\n")
     scores: list[float | None] = []  # order-free: concurrent results only supply the range
 
-    def run_once() -> tuple[str, str]:
+    def run_once() -> RunDetail:
         score = _score_once(provider, case, scoring_model=scoring_model)
         if score is None:
             scores.append(None)
-            return "fail", "model returned no score"
+            return RunDetail("error", "model returned no score", error="model returned no score")
         scores.append(score.score)
         outcome = "fail" if _check_expectations(score, case.expected) else "pass"
         # Detail = the score + the model's rationale for it (the "why" behind a flip).
         detail = f"score {score.score:+.2f} ({score.confidence.value}): {score.rationale}"
-        return outcome, detail
+        return RunDetail(outcome, detail)
 
     # A scoring golden case has no "contested" notion; a pass/fail flip is always a real signal.
     report = run_stability(run_once, k=k, contested=False, on_delta=on_delta)
     out = ScoringStabilityResult(case=case, stability=report, scores=scores)
     lo, hi = out.score_spread
-    tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
     spread = f"score {lo:+.2f}..{hi:+.2f}" if lo is not None and hi is not None else "no scores returned"
-    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally} · {spread}\n")
+    emit_stability_summary(report, on_delta)
+    emit(on_delta, f"{spread}\n")
     return out
 
 

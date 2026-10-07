@@ -37,6 +37,7 @@ class EvalResult(ResponseModel):
 
 class EvalCaseResult(ResponseModel):
     input_fingerprint: str = ""
+    error: str | None = None
 
 
 # --- shared stability shapes ------------------------------------------------
@@ -48,6 +49,7 @@ class StabilityRun(ResponseModel):
     'why' otherwise lives nowhere). Shared by every live pass's stability response."""
 
     outcome: str  # the token this run produced (verdict / flag-set / pass|fail)
+    error: str | None = None
     detail: str = ""  # the model's reasoning for this run's outcome
 
 
@@ -74,7 +76,7 @@ class _CategoricalCaseOut(EvalCaseResult):
 
 class _CategoricalResponse(EvalResult):
     """A categorical live run's header: the prompt identity it exercised plus pass/total
-    (a contested case counts as passed by running, not by matching). Subclasses add ``cases``."""
+    (a valid contested verdict is accepted regardless of direction). Subclasses add ``cases``."""
 
     prompt_version: str
     model: str
@@ -86,15 +88,15 @@ class _CategoricalResponse(EvalResult):
 class _CategoricalStabilityCaseOut(EvalCaseResult):
     """One case across K stability runs: modal ``majority`` verdict, its ``agreement`` share,
     whether it ``flipped``, the full ``tally``, and per-run outcome+reasoning. ``marker`` is
-    "[stable]" | "[UNSTABLE]" | "[contested-split]"."""
+    "[stable]" | "[UNSTABLE]" | "[contested-split]" | "[incomplete]"."""
 
     key: str
     marker: str
-    majority: str
+    majority: str | None
     expected: str
     contested: bool
-    agreement: float
-    flipped: bool
+    agreement: float | None
+    flipped: bool | None
     tally: dict[str, int]
     runs: list[StabilityRun] = []
 
@@ -131,10 +133,10 @@ class ScoringResponse(EvalResult):
 
 class ScoringStabilityCaseOut(EvalCaseResult):
     key: str
-    marker: str  # "[stable]" | "[UNSTABLE]" (scoring cases are never contested)
-    agreement: float  # modal pass/fail outcome's share of K
-    flipped: bool  # the assertion pass/fail wandered across runs
-    tally: dict[str, int]  # "pass"/"fail" -> count
+    marker: str  # stable, unstable, or incomplete; scoring cases are never contested
+    agreement: float | None  # modal pass/fail outcome's share of K
+    flipped: bool | None  # the assertion pass/fail wandered across runs
+    tally: dict[str, int]  # graded outcome/error -> count
     score_min: FiniteFloat | None  # range of returned scores; null when every score is missing
     score_max: FiniteFloat | None
     runs: list[StabilityRun] = []  # per-run outcome + the model's reasoning (explains a flip)
@@ -228,11 +230,11 @@ class ScreeningResponse(_CategoricalResponse):
 class ScreeningStabilityCaseOut(EvalCaseResult):
     key: str
     marker: str
-    majority: str  # the modal flag-set token (e.g. "fake_contact" or "none")
-    agreement: float
-    flipped: bool
-    tally: dict[str, int]  # flag-set token -> count
-    runs: list[StabilityRun] = []  # per-run flag-set + the model's reasoning (explains a flip)
+    majority: str | None  # modal graded outcome; absent when incomplete
+    agreement: float | None
+    flipped: bool | None
+    tally: dict[str, int]  # graded outcome/error -> count
+    runs: list[StabilityRun] = []  # every attempt, including errors and reasoning
 
 
 class ScreeningStabilityResponse(_CategoricalStabilityResponse):
@@ -265,11 +267,11 @@ class JudgeRunResponse(EvalResult):
 class StabilityCaseOut(EvalCaseResult):
     key: str
     pass_name: str
-    marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]"
-    majority: str  # modal judge label over K
+    marker: str  # "[stable]" | "[UNSTABLE]" | "[contested-split]" | "[incomplete]"
+    majority: str | None  # absent for an incomplete measurement
     seed: str  # the case's human label/leaning
-    agreement: float  # modal label's share of K
-    flipped: bool
+    agreement: float | None  # modal label's share of K
+    flipped: bool | None
     tally: dict[str, int]  # judge label -> count
     runs: list[StabilityRun] = []  # per-run label + the judge's reasoning (explains a flip)
 

@@ -24,6 +24,7 @@ from typing import TypeVar
 STABLE = "[stable]"
 UNSTABLE = "[UNSTABLE]"
 CONTESTED_SPLIT = "[contested-split]"
+INCOMPLETE = "[incomplete]"
 
 T = TypeVar("T", bound=Hashable)
 
@@ -38,9 +39,7 @@ def emit(sink: DeltaSink, text: str) -> None:
     if sink is not None:
         sink(text)
 
-# --- the math, over any hashable outcome token (string verdict, typed enum, bool) -----------
-# Free functions so a pass with its own richer report (the judge: typed verdicts + cost) can
-# delegate the counting without adopting the string-native dataclass below.
+# Complete measurements share these small, deterministic statistics.
 
 
 def majority(outcomes: list[T]) -> T:
@@ -67,84 +66,86 @@ def marker(outcomes: list[T], *, contested: bool) -> str:
     return CONTESTED_SPLIT if contested else UNSTABLE
 
 
-# --- string-native convenience report (consolidation, scoring) ------------------------------
+# Every consumer uses the same attempt list and completeness rule.
 
 
 @dataclass(frozen=True)
 class RunDetail:
-    """One run within a stability check: its outcome token + the model's own reasoning for it
-    (the narrative, or a per-outcome reason). Kept per-run so a FLIP explains itself — the run
-    that disagreed shows what the model said that time, not just that it differed."""
+    """One attempt's graded token, explanation, optional display label, and known cost."""
 
     outcome: str
     detail: str = ""
+    error: str | None = None
+    display: str | None = None
+    cost_usd: float = 0.0
 
 
 @dataclass(frozen=True)
 class StabilityReport:
-    """K runs of one case on fixed input, plus whether the case is contested (which decides how
-    a flip is read). Each run keeps its outcome AND the model's reasoning (``runs``), so a flip
-    is legible; the read-outs delegate to the free functions above. A pass builds this from its
-    own ``run_once`` and reads ``marker``/``agreement`` uniformly. (The judge keeps its own
-    typed report and delegates to the same functions.)"""
+    """Every attempted repetition, in submission order. Failed attempts remain evidence."""
 
     runs: list[RunDetail]
     contested: bool = False
 
     @property
+    def complete(self) -> bool:
+        return bool(self.runs) and all(run.error is None for run in self.runs)
+
+    @property
     def outcomes(self) -> list[str]:
-        return [r.outcome for r in self.runs]
+        return [run.outcome for run in self.runs]
 
     @property
-    def majority(self) -> str:
-        return majority(self.outcomes)
+    def majority(self) -> str | None:
+        return majority(self.outcomes) if self.complete else None
 
     @property
-    def agreement(self) -> float:
-        return agreement(self.outcomes)
+    def agreement(self) -> float | None:
+        return agreement(self.outcomes) if self.complete else None
 
     @property
-    def flipped(self) -> bool:
-        return flipped(self.outcomes)
+    def flipped(self) -> bool | None:
+        return flipped(self.outcomes) if self.complete else None
 
     @property
     def marker(self) -> str:
-        return marker(self.outcomes, contested=self.contested)
+        return marker(self.outcomes, contested=self.contested) if self.complete else INCOMPLETE
 
     @property
     def tally(self) -> dict[str, int]:
-        """Outcome token -> count, most common first."""
-        return dict(Counter(self.outcomes).most_common())
+        return dict(Counter(run.outcome if run.error is None else "error" for run in self.runs).most_common())
+
+    @property
+    def total_cost_usd(self) -> float:
+        return sum(run.cost_usd for run in self.runs)
+
+
+def emit_stability_summary(report: StabilityReport, on_delta: DeltaSink) -> None:
+    measured = f"{report.agreement:.0%} agreement" if report.complete else "measurement incomplete"
+    tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
+    emit(on_delta, f"\n**{report.marker}** {measured} — {tally}\n")
 
 
 def run_stability(
-    run_once: Callable[[], tuple[str, str]],
-    *,
-    k: int,
-    contested: bool = False,
-    on_delta: DeltaSink = None,
+    run_once: Callable[[], RunDetail], *, k: int, contested: bool = False, on_delta: DeltaSink = None,
 ) -> StabilityReport:
-    """Call ``run_once`` ``k`` times (each a fresh model call on the SAME fixed input) and
-    collect the results into a StabilityReport. The caller's ``run_once`` is the only
-    pass-specific part — a PURE function that makes one production call and returns
-    ``(outcome_token, detail)`` (detail = the model's reasoning, so a flip is explainable). It
-    must NOT emit narration or hold run state; the K runs execute CONCURRENTLY (they're
-    identical independent calls), so ordering/emission is owned here.
+    """Run independent calls concurrently and retain every success/error in original order.
 
-    The K calls run in a bounded thread pool — stability was the slow part (K serial model
-    calls per case), and the calls are independent fixed-input requests, so this is a pure
-    latency win with no behaviour change (the tally is order-independent). ``on_delta``, if
-    given, receives one ordered ``- run N: outcome — detail`` line per run AFTER the pool
-    completes, so the live narration stays numbered and coherent despite out-of-order finishes.
+    Cancellation propagates through run_in_pool; it does not produce a completed report.
+    The callback owns grading and returns an explicit error for unusable model output.
     """
     from app.ai.analysis import run_in_pool
 
-    # k is small (≤10) and each item is one blocking model call; one worker per run.
-    results = list(run_in_pool(list(range(k)), call=lambda _i: run_once(), max_workers=k))
-    # run_in_pool yields as-completed; reassemble input order isn't meaningful (identical
-    # inputs), but sort by the submitted index for stable, deterministic run numbering.
-    ordered = [r for _i, r, _err in sorted(results, key=lambda t: t[0]) if r is not None]
-    runs = [RunDetail(*pair) for pair in ordered]
-    for n, rd in enumerate(runs, 1):
-        emit(on_delta, f"- run {n}: **{rd.outcome}** — {rd.detail}\n")
+    if k < 1:
+        raise ValueError("Stability requires at least one attempt")
+    packed = sorted(run_in_pool(list(range(k)), call=lambda _i: run_once(), max_workers=k), key=lambda item: item[0])
+    runs = []
+    for index, result, error in packed:
+        if error is not None:
+            message = f"{type(error).__name__}: {error}"
+            result = RunDetail("error", message, error=message)
+        if result is None:
+            raise RuntimeError("Stability attempt returned no outcome")
+        runs.append(result)
+        emit(on_delta, f"- run {index + 1}: **{result.display or result.outcome}** — {result.detail}\n")
     return StabilityReport(runs=runs, contested=contested)

@@ -31,13 +31,19 @@ from app.ai.schemas import DimensionMatchReport, PoolDimensionReport
 from app.evals._categorical import CategoricalResult as CaseResult
 from app.evals._categorical import (
     descriptor_to_dim,
-    emit_stability_summary,
     grade_verdict,
 )
 from app.evals.case_schema import validate_case
 from app.evals.fixture_files import read_json
 from app.evals.paths import MATCHING_GOLDEN_PATH
-from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
+from app.evals.stability import (
+    DeltaSink,
+    RunDetail,
+    StabilityReport,
+    emit,
+    emit_stability_summary,
+    run_stability,
+)
 
 MATCHES, MISMATCHES = "matches", "mismatches"
 
@@ -125,9 +131,10 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, backgro
     result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     verdict = result.output.verdict.value
     cost = cost_usd(result.model_id, result.usage)
+    error = None if verdict in (MATCHES, MISMATCHES) else f"model returned an invalid verdict: {verdict}"
     return Reproduced(
         verdict, expected, verdict == expected,
-        result.output.reason, cost,
+        result.output.reason, cost, error=error,
     )
 
 
@@ -160,8 +167,9 @@ def stability_run(
     p, n = case.prior[0], case.new[0]
     emit(on_delta, f"Matching new **{n['name']}** vs prior **{p['name']}** x{k} on `{match_model}`…\n\n")
 
-    def run_once() -> tuple[str, str]:
-        return _match_verdict(provider, case, match_model=match_model)
+    def run_once() -> RunDetail:
+        verdict, reason = _match_verdict(provider, case, match_model=match_model)
+        return RunDetail(verdict, reason)
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     emit_stability_summary(report, on_delta)

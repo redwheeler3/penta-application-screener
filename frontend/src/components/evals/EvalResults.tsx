@@ -87,13 +87,18 @@ function StabilityRuns({ runs }: { runs?: { outcome: string; detail: string }[] 
 
 export function EvalCaseResultView({ outcome, current = true }: { outcome: EvalCaseOutcome; current?: boolean }): ReactNode {
   const status = current ? evalCaseStatus(outcome) : "empty";
-  const heading = !current ? "not current" : status === "contested" ? "contested" : status === "ok" ? "passed" : "failed";
+  const incomplete = "marker" in outcome.result && outcome.result.marker === "[incomplete]";
+  const heading = outcome.result.error ? "error"
+    : incomplete ? "incomplete"
+      : !current ? "not current"
+        : status === "contested" ? "contested" : status === "ok" ? "passed" : "failed";
   return (
     <div className={`eval-case-result ${status}`}>
       <span className="eval-case-result-head">
         <span className={`eval-case-dot ${status}`} />
         {heading}
       </span>
+      {outcome.result.error ? <p className="eval-error">{outcome.result.error}</p> : null}
       <ResultBody {...outcome} />
     </div>
   );
@@ -142,7 +147,7 @@ function ResultBody({ mode, result }: EvalCaseOutcome): ReactNode {
     case "scoring_stability":
       return (
         <div className="eval-case-result-body">
-          <span className="eval-mono">{result.marker}</span> {Math.round(result.agreement * 100)}% agreement over K —{" "}
+          <span className="eval-mono">{result.marker}</span> {result.agreement === null ? "Measurement incomplete" : `${Math.round(result.agreement * 100)}% agreement over K`} —{" "}
           {Object.entries(result.tally).map(([v, n]) => `${v}×${n}`).join(", ")}
           <span className="eval-verdict">
             {" · "}{result.scoreMin === null || result.scoreMax === null
@@ -159,7 +164,7 @@ function ResultBody({ mode, result }: EvalCaseOutcome): ReactNode {
         <div className="eval-case-result-body">
           {result.contested ? "leaning" : "label"} <span className="eval-mono">{result.humanLabel}</span> → judge said{" "}
           <span className="eval-mono">{result.judgeLabel}</span>
-          {result.marker === "[ok]" ? "" : result.contested ? " (contested — both defensible)" : " (disagrees)"}
+          {result.marker === "[ok]" ? "" : result.error ? " (no valid result)" : result.contested ? " (contested — both defensible)" : " (disagrees)"}
           {result.detail ? <ModelText text={result.detail} className="eval-case-result-ev" /> : null}
           {/* Why the human chose this label — shown on a divergence, where it's the context
               for deciding whether the label or the judge is the one to trust. */}
@@ -171,7 +176,7 @@ function ResultBody({ mode, result }: EvalCaseOutcome): ReactNode {
     default:
       return (
         <div className="eval-case-result-body">
-          <span className="eval-mono">{result.marker}</span> {Math.round(result.agreement * 100)}% agreement over K —{" "}
+          <span className="eval-mono">{result.marker}</span> {result.agreement === null ? "Measurement incomplete" : `${Math.round(result.agreement * 100)}% agreement over K`} —{" "}
           {Object.entries(result.tally).map(([v, n]) => `${v}×${n}`).join(", ")}
           <StabilityRuns runs={result.runs} />
         </div>

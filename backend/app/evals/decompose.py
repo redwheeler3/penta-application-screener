@@ -24,6 +24,7 @@ from the AI Quality tab, never as part of pytest/CI.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,13 +34,19 @@ from app.ai.schemas import DecompositionReport, PoolDimensionReport
 from app.evals._categorical import CategoricalResult as CaseResult
 from app.evals._categorical import (
     descriptor_to_dim,
-    emit_stability_summary,
     grade_verdict,
 )
 from app.evals.case_schema import validate_case
 from app.evals.fixture_files import read_json
 from app.evals.paths import DECOMPOSITION_GOLDEN_PATH
-from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
+from app.evals.stability import (
+    DeltaSink,
+    RunDetail,
+    StabilityReport,
+    emit,
+    emit_stability_summary,
+    run_stability,
+)
 
 MERGE, KEEP = "merge", "keep"
 
@@ -96,6 +103,9 @@ def _decompose_verdict(provider: AIProvider, case: DecompositionCase, *, decompo
     # Which settled axes absorbed any of our source keys?
     landing = [a for a in result.output.dimensions if src & set(a.source_keys)]
     n = len(landing)
+    assignments = Counter(key for axis in landing for key in axis.source_keys if key in src)
+    if set(assignments) != src or any(count != 1 for count in assignments.values()):
+        return "?", "settled axes must assign every input key exactly once"
     # Detail = the model's own per-axis decision reasoning (why it folded/kept), not just the
     # derived count — that's the "why" a flip needs. Fall back to the narrative, then a summary.
     decisions = " | ".join(a.decision for a in landing if a.decision)
@@ -131,7 +141,8 @@ def judge_reproduce(provider: AIProvider, *, given: dict, expected: str, backgro
     result = provider.structured_output(model_id=model, schema=schema, prompt=prompt, system_prompt=background)
     verdict = result.output.verdict.value
     cost = cost_usd(result.model_id, result.usage)
-    return Reproduced(verdict, expected, verdict == expected, result.output.reason, cost)
+    error = None if verdict in (MERGE, KEEP) else f"model returned an invalid verdict: {verdict}"
+    return Reproduced(verdict, expected, verdict == expected, result.output.reason, cost, error=error)
 
 
 def run_case(
@@ -147,7 +158,7 @@ def run_case(
     verdict, reason = _decompose_verdict(provider, case, decompose_model=decompose_model)
     if verdict == "?":
         emit(on_delta, f"⚠️ {reason}\n")
-        return CaseResult(case=case, verdict="?", reason=reason, failures=["no verdict derivable from the settled set"])
+        return CaseResult(case=case, verdict="?", reason=reason, failures=[reason], error=reason)
     return grade_verdict(case, verdict, reason, on_delta)
 
 
@@ -164,8 +175,9 @@ def stability_run(
     pass-specific part is one decompose call producing one merge/keep token."""
     emit(on_delta, f"Decomposing {len(case._source_keys)} carvings x{k} on `{decompose_model}`…\n\n")
 
-    def run_once() -> tuple[str, str]:
-        return _decompose_verdict(provider, case, decompose_model=decompose_model)
+    def run_once() -> RunDetail:
+        verdict, reason = _decompose_verdict(provider, case, decompose_model=decompose_model)
+        return RunDetail(verdict, reason, error=reason if verdict == "?" else None)
 
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
     emit_stability_summary(report, on_delta)

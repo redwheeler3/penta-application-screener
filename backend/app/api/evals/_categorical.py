@@ -110,7 +110,7 @@ def run_categorical(
             prompt_version=version,
             model=model,
             reasoning_effort=reasoning_effort,
-            passed=sum(1 for result in results if result.case.contested or result.passed),
+            passed=sum(1 for result in results if not result.error and (result.case.contested or result.passed)),
             total=len(results),
             cases=[
                 spec.case_out(
@@ -120,7 +120,7 @@ def run_categorical(
                     expected=result.case.expected,
                     contested=result.case.contested,
                     reason=result.reason,
-                    failures=result.failures,
+                    failures=result.failures, error=result.error,
                 )
                 for result in results
             ],

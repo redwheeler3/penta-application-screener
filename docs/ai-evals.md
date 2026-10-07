@@ -99,6 +99,13 @@ missing metadata cannot certify a result. A delivered receipt preserves known va
 When validation fails or is unavailable, retained details remain inspectable as **not current**.
 Recovering metadata can restore coverage without another paid run.
 
+Stability retains every attempted repetition in submission order, including provider errors and
+unusable outputs. Incomplete measurements use `[incomplete]`, preserve successful details, and
+have null agreement/majority/flip statistics. A valid but consistently wrong answer can still
+be stable; a missing answer cannot. Contested policy applies only to valid outcomes. Live and
+Judge runs use the same collector. No automatic paid retry is added. Historical fingerprints
+include the eval grading revision so earlier harness output cannot regain a current success claim.
+
 The catalog supplies the repetition count: one for live evals and the default K for stability.
 Confirmations multiply it by the current case count, and requests send that same K. Metadata
 loading failure leaves paid controls unavailable with Retry. Judge brief text/counts come

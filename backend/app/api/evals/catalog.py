@@ -142,7 +142,7 @@ def last_run(
             result["cases"] = cases
             if "total" in result:
                 result["total"] = len(cases)
-                result["passed"] = sum(bool(case.get("passed") or case.get("contested")) for case in cases)
+                result["passed"] = sum(not case.get("error") and bool(case.get("passed") or case.get("contested")) for case in cases)
         runs.append(LastRun(
             run_id=newest.id,
             eval_key=newest.eval_key,

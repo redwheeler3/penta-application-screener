@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from app.ai.schemas import PoolDimension
-from app.evals.stability import DeltaSink, StabilityReport, emit
+from app.evals.stability import DeltaSink, emit
 
 
 class CategoricalCase(Protocol):
@@ -42,13 +42,12 @@ class CategoricalResult:
     verdict: str
     reason: str
     failures: list[str] = field(default_factory=list)
+    error: str | None = None
 
     @property
     def passed(self) -> bool:
-        # Raw direction-agreement. A CONTESTED case that diverges returns False here, but the
-        # endpoint counts contested as passed regardless (both verdicts defensible — it passes
-        # by running stably, not by matching the leaning); see the endpoint's `contested or r.passed`.
-        if self.failures:
+        # A missing/invalid verdict is an error even when valid disagreement is contested.
+        if self.error or self.failures:
             return False
         return self.verdict == self.case.expected
 
@@ -67,13 +66,6 @@ def grade_verdict(case: CategoricalCase, verdict: str, reason: str, on_delta: De
     else:
         emit(on_delta, "✓ Verdict matches the label.\n")
     return CategoricalResult(case=case, verdict=verdict, reason=reason, failures=failures)
-
-
-def emit_stability_summary(report: StabilityReport, on_delta: DeltaSink) -> None:
-    """The identical closing line all three categorical stability runs emit: marker, agreement,
-    and the per-verdict tally."""
-    tally = ", ".join(f"{v} x{n}" for v, n in report.tally.items())
-    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
 
 
 def descriptor_to_dim(d: dict[str, object]) -> PoolDimension:

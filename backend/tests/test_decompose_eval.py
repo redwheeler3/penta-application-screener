@@ -90,3 +90,16 @@ def test_contested_flip_reads_as_contested_split() -> None:
     rep = stability_run(provider, base, decompose_model="m", k=4)
     assert rep.flipped
     assert rep.marker == "[contested-split]"
+
+
+
+def test_partial_or_duplicate_source_coverage_is_not_a_merge_verdict():
+    case = replace(next(c for c in load_cases() if c.expected == "merge"), contested=True)
+    keys = sorted(case._source_keys)
+    for axes in ([_axis("partial", keys[:1])], [_axis("all", keys), _axis("duplicate", keys[:1])]):
+        provider = MockProvider()
+        provider.route("discovery_reports", DecompositionReport(dimensions=axes))
+        result = run_case(provider, case, decompose_model="m")
+        assert result.error
+        assert not result.passed
+        assert stability_run(provider, case, decompose_model="m", k=2).marker == "[incomplete]"

@@ -30,7 +30,9 @@ def test_missing_scores_have_no_numeric_value_or_range_and_keep_failure_reason()
     stable = stability_run(provider, case, scoring_model="m", k=2, on_delta=chunks.append)
     assert stable.scores == [None, None]
     assert stable.score_spread == (None, None)
-    assert stable.stability.tally == {"fail": 2}
+    assert stable.stability.tally == {"error": 2}
+    assert stable.stability.marker == "[incomplete]"
+    assert stable.stability.agreement is None
     assert all("no score" in run.detail for run in stable.stability.runs)
     assert "no scores returned" in "".join(chunks)
 

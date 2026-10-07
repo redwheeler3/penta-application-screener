@@ -27,7 +27,7 @@ export type EvalFixtureKey =
   | "scoring" | "consolidation" | "matching" | "decomposition" | "screening" | "judge";
 
 // Each mode owns its required case fields. UI outcomes carry the mode beside the payload.
-type EvalCaseBase = { key: string; passName?: string; inputFingerprint?: string };
+type EvalCaseBase = { key: string; passName?: string; inputFingerprint?: string; error?: string | null };
 
 export type ScoringEvalCaseResult = EvalCaseBase & {
   passed: boolean;
@@ -58,9 +58,9 @@ export type ScreeningEvalCaseResult = EvalCaseBase & {
 
 export type StabilityEvalCaseResult = EvalCaseBase & {
   marker: string;
-  agreement: number;
+  agreement: number | null;
   tally: Record<string, number>;
-  runs: { outcome: string; detail: string }[];
+  runs: { outcome: string; detail: string; error?: string | null }[];
 };
 
 export type ScoringStabilityEvalCaseResult = StabilityEvalCaseResult & {

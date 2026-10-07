@@ -9,7 +9,6 @@ reproduce a JudgeReport verdict — the simplest to drive deterministically.
 
 from app.ai.mock_provider import MockProvider
 from app.ai.schemas import JudgeReport, JudgeVerdict
-from app.evals import stability
 from app.evals.judge import (
     judge_case,
     load_cases,
@@ -85,12 +84,12 @@ def test_stability_reports_perfect_agreement_when_verdict_is_steady() -> None:
     narration: list[str] = []
     report = stability_run(provider, case, k=5, on_delta=narration.append)
 
-    assert len(report.labels) == 5
+    assert len(report.runs) == 5
     assert report.agreement == 1.0
     assert report.flipped is False
     assert report.majority == case.expected
     assert report.total_cost_usd > 0
-    assert stability.marker(report.labels, contested=report.case.contested) == "[stable]"
+    assert report.marker == "[stable]"
     # Every run retains reasoning parallel to its outcome label.
     assert len(report.runs) == 5
     assert all(r.outcome == case.expected for r in report.runs)
@@ -113,7 +112,7 @@ def test_stability_flags_a_flip_on_a_non_contested_case() -> None:
     assert report.flipped is True
     assert report.agreement == 0.6
     assert report.majority == a.value
-    assert stability.marker(report.labels, contested=report.case.contested) == "[UNSTABLE]"
+    assert report.marker == "[UNSTABLE]"
 
 
 def test_stability_marks_a_contested_flip_as_split_not_unstable() -> None:
@@ -124,7 +123,7 @@ def test_stability_marks_a_contested_flip_as_split_not_unstable() -> None:
     report = stability_run(provider, contested, k=3)
 
     assert report.flipped is True
-    assert stability.marker(report.labels, contested=True) == "[contested-split]"
+    assert report.marker == "[contested-split]"
 
 
 def test_scoring_stability_tokens_by_in_band_not_raw_score() -> None:
@@ -152,7 +151,7 @@ def test_scoring_stability_tokens_by_in_band_not_raw_score() -> None:
     steady = stability_run(provider, case, k=3)
     assert steady.agreement == 1.0
     assert steady.flipped is False
-    assert stability.marker(steady.labels, contested=steady.case.contested) == "[stable]"
+    assert steady.marker == "[stable]"
 
     # A score that leaves the band IS a real flip (agrees -> disagrees). Pick a valid (-1..1)
     # out-of-band value: just below lo, or just above hi if lo is at the floor.
@@ -163,7 +162,7 @@ def test_scoring_stability_tokens_by_in_band_not_raw_score() -> None:
     provider.queue(_report(mid))          # in band  -> agrees
     flipped = stability_run(provider, case, k=3)
     assert flipped.flipped is True
-    assert stability.marker(flipped.labels, contested=flipped.case.contested) == "[UNSTABLE]"
+    assert flipped.marker == "[UNSTABLE]"
 
 
 def test_screening_stability_tokens_by_graded_outcome_not_raw_flag_set() -> None:
@@ -186,11 +185,11 @@ def test_screening_stability_tokens_by_graded_outcome_not_raw_flag_set() -> None
     steady = stability_run(provider, case, k=3)
     assert steady.agreement == 1.0
     assert steady.flipped is False
-    assert stability.marker(steady.labels, contested=steady.case.contested) == "[stable]"
+    assert steady.marker == "[stable]"
     # The per-run DISPLAY still shows the actual flags produced (not a bare "agrees"), so the
     # detail pane stays informative even though the flip math tallies the graded token.
-    assert any("internal_inconsistency" in run.outcome for run in steady.runs)
-    assert all(run.outcome not in ("agrees", "disagrees") for run in steady.runs)
+    assert any("internal_inconsistency" in run.display for run in steady.runs)
+    assert all(run.display not in ("agrees", "disagrees") for run in steady.runs)
 
     # Dropping the required flag is a real graded flip (agrees -> disagrees).
     provider = MockProvider()
@@ -199,7 +198,7 @@ def test_screening_stability_tokens_by_graded_outcome_not_raw_flag_set() -> None
     provider.queue(_report(required))
     flipped = stability_run(provider, case, k=3)
     assert flipped.flipped is True
-    assert stability.marker(flipped.labels, contested=flipped.case.contested) == "[UNSTABLE]"
+    assert flipped.marker == "[UNSTABLE]"
 
 
 def test_prompt_version_tracks_the_briefs() -> None:

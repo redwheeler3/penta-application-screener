@@ -14,7 +14,7 @@ from app.evals.fixture_files import read_json
 from app.evals.paths import GOLDEN_FILES
 
 # Eval-only grading changes expire coverage without changing production AI cache keys.
-GRADING_VERSION = 1
+GRADING_VERSION = 2
 
 
 def case_identity(key: str, family: str = "") -> str:

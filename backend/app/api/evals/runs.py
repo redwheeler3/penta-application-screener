@@ -4,7 +4,6 @@ terminal summary, and persists an EvalRun row (see ``_shared.stream``)."""
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -371,13 +370,11 @@ def run_judge(
         def one_stability(c, case_delta) -> StabilityCaseOut:
             case_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
             rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL, on_delta=case_delta)
-            tally = dict(Counter(rep.labels).most_common())
-            marker = stability.marker(rep.labels, contested=c.contested)
-            case_delta(f"→ {marker} {rep.agreement:.0%}: {tally}\n")
+            stability.emit_stability_summary(rep, case_delta)
             return StabilityCaseOut(
-                key=c.key, pass_name=c.pass_name, marker=marker,
+                key=c.key, pass_name=c.pass_name, marker=rep.marker,
                 majority=rep.majority, seed=seed_str(c.expected),
-                agreement=rep.agreement, flipped=rep.flipped, tally=tally,
+                agreement=rep.agreement, flipped=rep.flipped, tally=rep.tally,
                 runs=runs_out(rep),  # per-run reasoning, like the other passes' stability
             )
 
@@ -404,7 +401,7 @@ def run_judge(
             JudgeCaseOut(
                 key=r.case.key, pass_name=r.case.pass_name, marker=r.marker,
                 human_label=r.reproduced.human_label, judge_label=r.reproduced.judge_label,
-                contested=r.case.contested, detail=r.reproduced.detail,
+                contested=r.case.contested, detail=r.reproduced.detail, error=r.reproduced.error,
                 label_rationale=r.case.label_rationale,
             )
             for r in results

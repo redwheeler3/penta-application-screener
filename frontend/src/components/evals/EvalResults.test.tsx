@@ -36,11 +36,13 @@ describe("eval result presentation", () => {
   });
 
   it("renders the live and saved all-missing stability shape without crashing", () => {
-    const result = { key: "missing", marker: "[stable]", agreement: 1, tally: { fail: 2 },
+    const result = { key: "missing", marker: "[incomplete]", agreement: null, tally: { error: 2 },
       scoreMin: null, scoreMax: null, runs: [{ outcome: "fail", detail: "model returned no score" }] };
     const saved = JSON.parse(JSON.stringify(result)) as typeof result;
     render(<EvalCaseResultView outcome={{ mode: "scoring_stability", result: saved }} />);
     expect(screen.getByText(/No scores returned/)).toBeInTheDocument();
+    expect(screen.getByText("incomplete")).toBeInTheDocument();
+    expect(screen.queryByText(/0%|100%/)).toBeNull();
     expect(screen.getByText("model returned no score")).toBeInTheDocument();
   });
   it("rejects mismatched modes and payloads in both live and saved run contracts", () => {
@@ -91,4 +93,19 @@ it("summarizes only decisive Judge results and reports contested/unrun cases sep
   expect(runSummary({ eval: "judge", result: { cases: [ok, disputed] } }, 3)).toBe("1/1 agree · 1 contested · 1 not run");
   expect(runSummary({ eval: "judge", result: { cases: [disputed] } }, 1)).toBe("No decisive results · 1 contested");
   expect(runSummary({ eval: "judge", result: { cases: [{ ...ok, marker: "[review]" }] } }, 1)).toBe("0/1 agree");
+});
+
+
+it("keeps invalid contested output out of successful summaries", () => {
+  const invalid = { ...contested, verdict: "?", error: "No verdict returned" };
+  expect(evalCaseStatus({ mode: "consolidation", result: invalid })).toBe("fail");
+  expect(runSummary({ eval: "consolidation", result: { cases: [invalid] } }, 1)).toBe("0/1 passed");
+});
+
+
+it("does not describe incomplete attempts or contested flips as stable", () => {
+  const incomplete = { key: "error", marker: "[incomplete]", agreement: null, tally: { error: 3 }, runs: [] };
+  const split = { ...incomplete, key: "split", marker: "[contested-split]", agreement: 0.5, tally: { keep: 1, merge: 1 } };
+  expect(runSummary({ eval: "matching_stability", result: { cases: [incomplete, split] } }, 2))
+    .toBe("0/2 stable · 1 incomplete · 1 contested split");
 });

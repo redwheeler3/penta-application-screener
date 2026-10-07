@@ -217,3 +217,21 @@ it("distinguishes a failed fixture read from an empty corpus and keeps accepted 
   expect(result.current.cases).toEqual([{ key: "saved" }]);
   expect(result.current.casesLoadState).toBe("ready");
 });
+
+
+it("retains unrecorded incomplete stability evidence through failed history refreshes", async () => {
+  api.fetchLastEvalRun.mockResolvedValueOnce({ runs: [], current: { scoring_stability: config } })
+    .mockRejectedValue(new Error("Offline"));
+  const evidence = { key: "a", inputFingerprint: "a1", marker: "[incomplete]", agreement: null,
+    scoreMin: 0.8, scoreMax: 0.8, tally: { pass: 1, error: 1 }, runs: [
+      { outcome: "pass", detail: "Paid output" }, { outcome: "error", detail: "Timeout", error: "Timeout" },
+    ] };
+  api.runEval.mockResolvedValue(new Response(JSON.stringify({ type: "summary", eval: "scoring_stability", storedRunId: null,
+    result: { scoringModel: config.modelId, scoringPromptVersion: config.promptVersion, cases: [evidence] } })));
+  const { result } = renderHook(() => useEvalRunner({ caseEvalKey: "scoring", runKeys: ["scoring_stability"] }));
+  await waitFor(() => expect(result.current.currentConfigurations.scoring_stability).toBeDefined());
+  await act(() => result.current.runMode({ ...mode, evalKey: "scoring_stability", repetitions: 2 }, "a"));
+  await act(() => result.current.refreshHistory());
+  expect(result.current.retainedResults.a.scoring_stability?.result).toEqual(evidence);
+  expect(api.runEval).toHaveBeenCalledOnce();
+});

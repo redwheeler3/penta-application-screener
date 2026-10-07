@@ -548,7 +548,9 @@ async def test_missing_scores_stay_nullable_in_live_and_saved_json(mode):
     if mode == "stability":
         assert result["scoreMin"] is None
         assert result["scoreMax"] is None
-        assert result["tally"] == {"fail": 2}
+        assert result["tally"] == {"error": 2}
+        assert result["marker"] == "[incomplete]"
+        assert result["agreement"] is None
     else:
         assert result["score"] is None
         assert not result["passed"]

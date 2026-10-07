@@ -63,7 +63,7 @@ def persist(db: Session, eval_key: str, prompt_version: str, result: ResponseMod
 def runs_out(report) -> list[StabilityRun]:
     """The per-run outcome+reasoning of a stability report, as wire shapes. Shared by every
     live pass so a flip carries the model's own 'why' for each of the K runs."""
-    return [StabilityRun(outcome=r.outcome, detail=r.detail) for r in report.runs]
+    return [StabilityRun(outcome=r.display or r.outcome, detail=r.detail, error=r.error) for r in report.runs]
 
 
 def stream(db: Session, eval_key: str, prompt_version: str, work, *, case_fingerprints: dict[str, str] | None = None) -> StreamingResponse:

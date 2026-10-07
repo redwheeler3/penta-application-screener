@@ -30,6 +30,7 @@ class Reproduced:
     agrees: bool
     detail: str
     cost_usd: float
+    error: str | None = None
 
 
 def build_judge_prompt(given: dict, instruction: str) -> str:

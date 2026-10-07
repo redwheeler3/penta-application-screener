@@ -30,7 +30,14 @@ from app.ai.screening import SYSTEM_PROMPT, build_prompt
 from app.evals.case_schema import validate_case
 from app.evals.fixture_files import read_json
 from app.evals.paths import SCREENING_GOLDEN_PATH
-from app.evals.stability import DeltaSink, StabilityReport, emit, run_stability
+from app.evals.stability import (
+    DeltaSink,
+    RunDetail,
+    StabilityReport,
+    emit,
+    emit_stability_summary,
+    run_stability,
+)
 
 
 @dataclass(frozen=True)
@@ -315,7 +322,7 @@ def stability_run(
     name = case.fields.get("applicant_name", case.key)
     emit(on_delta, f"Screening **{name}** x{k} on `{screening_model}`…\n\n")
 
-    def run_once() -> tuple[str, str]:
+    def run_once() -> RunDetail:
         cats, pets, detail = _screen(provider, case, screening_model=screening_model)
         # Grade normally against the case's expectation (fires/absent/pets): met → pass, else
         # fail. A contested case's failure is the expected/defensible kind, so token it
@@ -325,12 +332,11 @@ def stability_run(
             outcome = "fail (contested)" if case.contested else "fail"
         else:
             outcome = "pass"
-        return outcome, detail
+        return RunDetail(outcome, detail)
 
     # A contested case's failure is expected/defensible, so a run-to-run flip reads
     # [contested-split] (informational), not [UNSTABLE] (a regression) — same as the
     # categorical passes' contested bool.
     report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
-    tally = ", ".join(f"[{v}] x{n}" for v, n in report.tally.items())
-    emit(on_delta, f"\n**{report.marker}** {report.agreement:.0%} agreement — {tally}\n")
+    emit_stability_summary(report, on_delta)
     return report

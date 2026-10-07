@@ -115,6 +115,11 @@ Retained details and current coverage are derived separately from that same stat
 requires matching validation metadata and the visible case's fingerprint. Case-save acknowledgements
 carry those fingerprints; Judge-brief saves invalidate configuration until the free refresh succeeds.
 Missing metadata never makes historical output current, and a delivered receipt does not erase it.
+Live and Judge stability share one ordered attempt report in `evals/stability.py`. Errors remain
+in that report; incomplete measurements have null statistics and do not count as stable successes.
+Judge grade counts are derived from case results, with contested and errored cases separate.
+The fixture editor recursively preserves objects/lists/scalars and does not replace text controls
+as their contents grow.
 Each eval family has its own mounted workspace. The case editor owns its draft, pending save,
 and inline error; it closes only when the current draft still matches the acknowledged submission.
 Fixture saves are ordered because responses contain the full case list. Accepted saves invalidate
