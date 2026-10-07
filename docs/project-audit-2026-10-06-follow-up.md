@@ -4,7 +4,14 @@
 The discovery evidence below describes the pre-fix baseline (`e4922a9`, application code unchanged
 through the earlier audit-only revisions). It is retained as the rationale and regression checklist,
 not a list of still-open code recommendations. Production data repair is a separate reviewed
-operation described at the end; no production action or push was performed.
+operation described at the end; no production changes or push were performed.
+
+**Production preview — 2026-10-07:** a subsequent authorized read-only check assessed all 233
+applications. All stored deadlines match the corrected calculation: 232 expire September 23,
+2027, and the selected household expires September 23, 2033. No record is overdue, no temporary
+drafts exist, and no repair is indicated for that snapshot. See the
+[preview evidence](retention-preview-2026-10-07.md) and
+[before/after behavior summary](audit-fix-behavior-summary-2026-10-07.md).
 
 ## Implementation and verification
 
@@ -1275,6 +1282,10 @@ not reasons to introduce broad infrastructure. The discovery record is now paire
 
 
 ## Existing-data reconciliation — review before production deployment
+
+The October 7 [production preview](retention-preview-2026-10-07.md) found **zero differences**.
+No repair is currently proposed. The procedure below is retained for a future preview that does
+identify discrepancies; it is not an outstanding backfill for the assessed records.
 
 The code corrects future writes and decisions. It does not silently rewrite stored production
 retention dates or infer committee priorities already altered by an earlier alias reconciliation.
