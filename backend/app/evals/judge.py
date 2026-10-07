@@ -144,14 +144,14 @@ def judge_case(provider, case: JudgeCase, *, model_id: str = DEFAULT_MODEL) -> J
 
 
 def stability_run(provider, case: JudgeCase, *, k: int = 5, model_id: str = DEFAULT_MODEL,
-                  on_delta: stability.DeltaSink = None) -> stability.StabilityReport:
+                  on_delta: stability.DeltaSink = None, max_workers: int | None = None) -> stability.StabilityReport:
     """Use the shared repetition collector, retaining raw labels beside graded tokens."""
     def run_once() -> stability.RunDetail:
         result = judge_case(provider, case, model_id=model_id)
         reproduced = result.reproduced
         return stability.RunDetail(_stability_token(case, result), reproduced.detail,
             error=reproduced.error, display=reproduced.judge_label, cost_usd=reproduced.cost_usd)
-    return stability.run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
+    return stability.run_stability(run_once, k=k, max_workers=max_workers, contested=case.contested, on_delta=on_delta)
 
 
 def _stability_token(case: JudgeCase, result: JudgeResult) -> str:

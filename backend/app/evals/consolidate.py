@@ -164,6 +164,7 @@ def stability_run(
     *,
     consolidate_model: str,
     k: int = 5,
+    max_workers: int | None = None,
     on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Run the REAL confirm prompt ``k`` times on the case's fixed pair and report verdict
@@ -179,6 +180,6 @@ def stability_run(
         return RunDetail(verdict or "error", reason or "model returned no verdict",
                          error="model returned no verdict" if verdict is None else None)
 
-    report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
+    report = run_stability(run_once, k=k, max_workers=max_workers, contested=case.contested, on_delta=on_delta)
     emit_stability_summary(report, on_delta)
     return report

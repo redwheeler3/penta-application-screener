@@ -168,6 +168,7 @@ def stability_run(
     *,
     decompose_model: str,
     k: int = 5,
+    max_workers: int | None = None,
     on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Run the REAL decompose prompt ``k`` times on the case's fixed carvings and report
@@ -179,6 +180,6 @@ def stability_run(
         verdict, reason = _decompose_verdict(provider, case, decompose_model=decompose_model)
         return RunDetail(verdict, reason, error=reason if verdict == "?" else None)
 
-    report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
+    report = run_stability(run_once, k=k, max_workers=max_workers, contested=case.contested, on_delta=on_delta)
     emit_stability_summary(report, on_delta)
     return report

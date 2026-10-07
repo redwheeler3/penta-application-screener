@@ -31,6 +31,7 @@ export function runSummary(run: EvalRunSummary, totalCases: number): string {
   const { eval: mode } = run;
   const outcomes = caseOutcomes(run);
   const total = totalCases || outcomes.length;
+  if (!total) return "No cases · 0 attempts";
   const passing = outcomes.filter((outcome) => evalCaseStatus(outcome) !== "fail").length;
   if (mode === "judge") {
     const decisive = outcomes.filter((outcome) => !outcome.result.error && evalCaseStatus(outcome) !== "contested");
@@ -41,7 +42,6 @@ export function runSummary(run: EvalRunSummary, totalCases: number): string {
     return [decisive.length ? `${agreeing}/${decisive.length} agree` : "No decisive results",
       contested ? `${contested} contested` : "", errors ? `${errors} error${errors === 1 ? "" : "s"}` : "", missing ? `${missing} not run` : ""].filter(Boolean).join(" · ");
   }
-  if (!total) return "";
   const stability = mode.endsWith("_stability") || mode === "stability";
   if (stability) {
     const stable = outcomes.filter((outcome) => evalCaseStatus(outcome) === "ok").length;
@@ -50,5 +50,6 @@ export function runSummary(run: EvalRunSummary, totalCases: number): string {
     return [`${stable}/${total} stable`, incomplete ? `${incomplete} incomplete` : "",
       split ? `${split} contested split` : ""].filter(Boolean).join(" · ");
   }
-  return `${passing}/${total} passed`;
+  const errors = outcomes.filter((outcome) => !!outcome.result.error).length;
+  return [`${passing}/${total} passed`, errors ? `${errors} incomplete` : ""].filter(Boolean).join(" · ");
 }

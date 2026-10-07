@@ -19,6 +19,7 @@ from app.api.evals._shared import (
     select,
     stream,
 )
+from app.evals._categorical import CategoricalResult
 from app.evals.dataset import load_dataset
 from app.schemas.settings import effective_reasoning_effort
 from app.services.settings import get_app_settings
@@ -67,7 +68,7 @@ def run_categorical(
         def one(item, case_delta):
             case_delta(f"\n\n### {item.key} (x{k})\n")
             report = spec.stability_run(
-                configured_provider, item, model, k=k, on_delta=case_delta
+                configured_provider, item, model, k=k, on_delta=case_delta, max_workers=min(k, settings.ai.max_workers)
             )
             return spec.stability_out(
                 key=item.key,
@@ -104,7 +105,8 @@ def run_categorical(
 
     def work(on_delta):
         results = over_cases(
-            cases, one, on_delta=on_delta, max_workers=case_workers(settings)
+            cases, one, on_delta=on_delta, max_workers=case_workers(settings),
+            on_error=lambda case, error: CategoricalResult(case=case, verdict="?", reason="", failures=[error], error=error),
         )
         return spec.run_response(
             prompt_version=version,

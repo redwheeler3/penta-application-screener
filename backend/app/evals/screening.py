@@ -27,7 +27,11 @@ from pathlib import Path
 from app.ai.provider import AIProvider
 from app.ai.schemas import PetFacts, ScreeningReport
 from app.ai.screening import SYSTEM_PROMPT, build_prompt
-from app.evals.case_schema import validate_case
+from app.evals.case_schema import (
+    normalize_fires,
+    normalize_flag_category,
+    validate_case,
+)
 from app.evals.fixture_files import read_json
 from app.evals.paths import SCREENING_GOLDEN_PATH
 from app.evals.stability import (
@@ -85,35 +89,18 @@ class CaseResult:
     reason: str = ""  # the model's reasoning + per-flag evidence (explains a fire or a miss)
     failures: list[str] = field(default_factory=list)
 
+    error: str | None = None
+
     @property
     def passed(self) -> bool:
-        return not self.failures
-
-
-def _normalize_fires(fires: list[str | list[str]] | str) -> list[str | list[str]]:
-    """Accept pipe-input sugar for an any-of group: a ``fires`` entry that is a string
-    containing ``|`` (the same delimiter the eval DISPLAYS an any-of group with — see
-    ``fire_label``) becomes a list, so what you see is what you can type. A plain string
-    (no pipe) stays a must-fire string; a list stays a list. Prevents the footgun of typing
-    the displayed "a | b" form back into the data as a bare string the grader can't iterate.
-
-    Also tolerates the whole ``fires`` value being a bare string (``"a|b|c"`` typed instead of
-    ``["a|b|c"]``) — the exact mistake that broke the Evals render once — by wrapping it."""
-    if isinstance(fires, str):
-        fires = [fires]
-    normalized: list[str | list[str]] = []
-    for entry in fires:
-        if isinstance(entry, str) and "|" in entry:
-            normalized.append([part.strip() for part in entry.split("|") if part.strip()])
-        else:
-            normalized.append(entry)
-    return normalized
+        return self.error is None and not self.failures
 
 
 def _case_from_expected(key: str, given: dict, expected: dict, *, contested: bool = False, note: str = "") -> ScreeningCase:
     """Both live and blind reproduction consume the same expectation shapes."""
     return ScreeningCase(key=key, fields=given["fields"], essays=given["essays"],
-        fires=_normalize_fires(expected.get("fires", [])), absent=expected.get("absent", []),
+        fires=normalize_fires(expected.get("fires", [])),
+        absent=[normalize_flag_category(category) for category in expected.get("absent", [])],
         expected_pets=expected.get("pets"), contested=contested, note=note)
 
 
@@ -308,6 +295,7 @@ def stability_run(
     *,
     screening_model: str,
     k: int = 5,
+    max_workers: int | None = None,
     on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Run the REAL screening prompt ``k`` times on the case's fixed applicant and report
@@ -337,6 +325,6 @@ def stability_run(
     # A contested case's failure is expected/defensible, so a run-to-run flip reads
     # [contested-split] (informational), not [UNSTABLE] (a regression) — same as the
     # categorical passes' contested bool.
-    report = run_stability(run_once, k=k, contested=case.contested, on_delta=on_delta)
+    report = run_stability(run_once, k=k, max_workers=max_workers, contested=case.contested, on_delta=on_delta)
     emit_stability_summary(report, on_delta)
     return report

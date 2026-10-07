@@ -80,19 +80,22 @@ async def test_judge_pair_identity_selects_and_restores_both_families(tmp_path, 
     for family in ("matching", "consolidation"):
         path = GOLDEN_FILES[family]
         data = json.loads(path.read_text(encoding="utf-8"))
-        data["cases"][0]["key"] = "same-key"
+        data["cases"][0]["key"] = "même-clé"
         path.write_text(json.dumps(data), encoding="utf-8")
     app, _db, provider = setup_app()
     provider.route("", JudgeReport(verdict=JudgeVerdict.KEEP, reason="Synthetic decision"))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.post("/evals/judge?case=same-key")).status_code == 422
+        listed = (await client.get("/evals/cases/judge")).json()
+        assert {case["metadata"]["pass"] for case in listed["cases"] if case["key"] == "même-clé"} == {"matching", "consolidation"}
+        assert (await client.post("/evals/judge?case=même-clé")).status_code == 422
         for family in ("matching", "consolidation"):
-            events = await _stream_events(client, f"/evals/judge?mode={mode}&k=2&case=same-key&passName={family}")
-            assert [(case["passName"], case["key"]) for case in events[-1]["result"]["cases"]] == [(family, "same-key")]
+            events = await _stream_events(client, f"/evals/judge?mode={mode}&k=2&case=même-clé&passName={family}")
+            assert [(case["passName"], case["key"]) for case in events[-1]["result"]["cases"]] == [(family, "même-clé")]
+            assert events[-1]["result"]["cases"][0]["inputFingerprint"] == listed["caseFingerprints"][case_identity("même-clé", family)]
         key = "stability" if mode == "stability" else "judge"
         restored = (await client.get(f"/evals/last-run?keys={key}")).json()["runs"][0]
         assert {(case["passName"], case["key"]) for case in restored["result"]["cases"]} == {
-            ("matching", "same-key"), ("consolidation", "same-key"),
+            ("matching", "même-clé"), ("consolidation", "même-clé"),
         }
 
 

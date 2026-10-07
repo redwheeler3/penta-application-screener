@@ -41,7 +41,7 @@ def list_cases(eval_key: str) -> list[dict]:
         for pass_name in _BACKGROUND_PASSES:
             for c in _read_fixture(pass_name).get("cases", []):
                 if isinstance(c, dict) and "key" in c:
-                    c.setdefault("metadata", {}).setdefault("pass", pass_name)
+                    c.setdefault("metadata", {})["pass"] = pass_name
                     out.append(c)
         return out
     if eval_key not in _FIXTURES:

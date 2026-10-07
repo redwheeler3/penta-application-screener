@@ -64,9 +64,11 @@ class CaseResult:
     evidence: str
     failures: list[str] = field(default_factory=list)  # deterministic band/confidence breaches
 
+    error: str | None = None
+
     @property
     def passed(self) -> bool:
-        return not self.failures
+        return self.error is None and not self.failures
 
 
 def load_golden(path: Path = GOLDEN_PATH, *, data: dict | None = None) -> tuple[GoldenCase, ...]:
@@ -157,6 +159,7 @@ def run_case(
         return CaseResult(
             case=case, score=None, confidence="?", evidence="",
             failures=[f"model returned no score for {case.dimension.key}"],
+            error=f"model returned no score for {case.dimension.key}",
         )
 
     emit(
@@ -243,6 +246,7 @@ def stability_run(
     *,
     scoring_model: str,
     k: int = 5,
+    max_workers: int | None = None,
     on_delta: DeltaSink = None,
 ) -> ScoringStabilityResult:
     """Score one golden case K times on fixed input and report whether its PASS/FAIL held.
@@ -265,7 +269,7 @@ def stability_run(
         return RunDetail(outcome, detail)
 
     # A scoring golden case has no "contested" notion; a pass/fail flip is always a real signal.
-    report = run_stability(run_once, k=k, contested=False, on_delta=on_delta)
+    report = run_stability(run_once, k=k, max_workers=max_workers, contested=False, on_delta=on_delta)
     out = ScoringStabilityResult(case=case, stability=report, scores=scores)
     lo, hi = out.score_spread
     spread = f"score {lo:+.2f}..{hi:+.2f}" if lo is not None and hi is not None else "no scores returned"

@@ -99,7 +99,7 @@ it("summarizes only decisive Judge results and reports contested/unrun cases sep
 it("keeps invalid contested output out of successful summaries", () => {
   const invalid = { ...contested, verdict: "?", error: "No verdict returned" };
   expect(evalCaseStatus({ mode: "consolidation", result: invalid })).toBe("fail");
-  expect(runSummary({ eval: "consolidation", result: { cases: [invalid] } }, 1)).toBe("0/1 passed");
+  expect(runSummary({ eval: "consolidation", result: { cases: [invalid] } }, 1)).toBe("0/1 passed · 1 incomplete");
 });
 
 
@@ -108,4 +108,10 @@ it("does not describe incomplete attempts or contested flips as stable", () => {
   const split = { ...incomplete, key: "split", marker: "[contested-split]", agreement: 0.5, tally: { keep: 1, merge: 1 } };
   expect(runSummary({ eval: "matching_stability", result: { cases: [incomplete, split] } }, 2))
     .toBe("0/2 stable · 1 incomplete · 1 contested split");
+});
+
+it("describes an empty measurement as zero attempts", () => {
+  expect(runSummary({ eval: "matching", result: { cases: [] } }, 0)).toBe("No cases · 0 attempts");
+  expect(runSummary({ eval: "matching_stability", result: { cases: [] } }, 0)).toBe("No cases · 0 attempts");
+  expect(runSummary({ eval: "judge", result: { cases: [] } }, 0)).toBe("No cases · 0 attempts");
 });

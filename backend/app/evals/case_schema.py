@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.ai.schemas import PetFacts
+from app.ai.schemas import FlagCategory
 
 
 class CaseValidationError(ValueError):
@@ -86,10 +86,37 @@ class _ScreeningGiven(_StoredModel):
     essays: dict[str, object]
 
 
+def normalize_flag_category(value: str) -> str:
+    """Trim fixture input and reject names the production output cannot produce."""
+    category = value.strip()
+    if category not in {item.value for item in FlagCategory}:
+        raise ValueError(f"unknown screening flag category: {value!r}")
+    return category
+
+
+def normalize_fires(fires: list[str | list[str]] | str) -> list[str | list[str]]:
+    """Each entry requires one category or any one category in a list/pipe group."""
+    entries = [fires] if isinstance(fires, str) else fires
+    normalized = []
+    for entry in entries:
+        group = entry.split("|") if isinstance(entry, str) else entry
+        if not group:
+            raise ValueError("an any-of flag group needs at least one category")
+        categories = [normalize_flag_category(item) for item in group]
+        normalized.append(categories[0] if isinstance(entry, str) and len(categories) == 1 else categories)
+    return normalized
+
+
+class _PetExpected(_StoredModel):
+    dogs: Annotated[int, Field(ge=0)] = 0
+    cats: Annotated[int, Field(ge=0)] = 0
+    other_pets: list[str] = []
+
+
 class _ScreeningExpected(_StoredModel):
     fires: list[str | list[str]] | str = []
     absent: list[str] = []
-    pets: PetFacts | None = None
+    pets: _PetExpected | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -100,9 +127,15 @@ class _ScreeningExpected(_StoredModel):
 
     @field_validator("fires")
     @classmethod
-    def nonempty_groups(cls, value):
-        if isinstance(value, list) and any(isinstance(item, list) and not item for item in value):
-            raise ValueError("an any-of flag group needs at least one category")
+    def valid_required_flags(cls, value):
+        normalize_fires(value)
+        return value
+
+    @field_validator("absent")
+    @classmethod
+    def valid_forbidden_flags(cls, value):
+        for category in value:
+            normalize_flag_category(category)
         return value
 
 
@@ -130,6 +163,9 @@ _SCHEMAS = {
 
 def validate_case(eval_key: str, case: dict) -> None:
     """Reject malformed inputs before either publication or reader flattening."""
+    metadata = case.get("metadata")
+    if isinstance(metadata, dict) and "pass" in metadata and metadata["pass"] != eval_key:
+        raise CaseValidationError(f"metadata.pass must match owning family {eval_key!r}")
     try:
         _SCHEMAS[eval_key].model_validate(case)
     except ValidationError as exc:

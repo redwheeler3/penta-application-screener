@@ -1,5 +1,7 @@
 """Incomplete measurements retain evidence without claiming stable coverage."""
 
+import copy
+import time
 from dataclasses import replace
 from threading import Event, Lock
 
@@ -109,3 +111,165 @@ async def test_contested_missing_verdict_is_not_counted_as_passed_in_live_or_his
     assert result["passed"] == 0
     assert saved["passed"] == 0
     assert result["cases"][0]["error"]
+
+
+@pytest.mark.parametrize("error_first", [False, True])
+def test_case_collection_preserves_both_completion_orders_and_narration(error_first):
+    from app.api.evals._shared import over_cases
+
+    finished = Event()
+    narration = []
+    first = "error" if error_first else "success"
+    def flush(text):
+        narration.append(text)
+        if text == f"Started {first}":
+            finished.set()
+    def one(case, delta):
+        delta(f"Started {case}")
+        if case != first:
+            assert finished.wait(2)
+        if case == "error":
+            raise TimeoutError("Synthetic timeout")
+        return case
+    result = over_cases(["success", "error"], one, on_delta=flush,
+        max_workers=2, on_error=lambda case, error: (case, error))
+    assert result == ["success", ("error", "TimeoutError: Synthetic timeout")]
+    assert "Started error" in narration
+    assert "Started success" in narration
+    assert narration[0] == f"Started {first}"
+
+
+@pytest.mark.parametrize("family", ["scoring", "screening", "matching", "consolidation", "decomposition", "judge"])
+@pytest.mark.parametrize("successes", [0, 1])
+@pytest.mark.anyio
+async def test_ordinary_partial_batch_persists_every_case(monkeypatch, family, successes):
+    from app.ai.provider import AIResult, Usage
+    from app.ai.schemas import (
+        DimensionMatchReport,
+        DimensionScore,
+        DimensionScoringReport,
+        ScreeningReport,
+    )
+    from app.api.evals import _categorical, runs
+    from app.evals import decompose, scoring
+    from app.evals.dataset import DatasetSnapshot, load_dataset
+    from app.schemas.settings import AppSettings
+    from app.services.settings import save_app_settings
+    from tests.test_consolidate_eval import _mock_confirm
+    from tests.test_decompose_eval import _mock_merge
+
+    source_family = "consolidation" if family == "judge" else family
+    data = copy.deepcopy(load_dataset(source_family).families[source_family])
+    data["cases"] = [copy.deepcopy(data["cases"][0]) for _ in range(2)]
+    for i, case in enumerate(data["cases"]):
+        case["key"] = f"synthetic-{i}"
+        case["metadata"]["contested"] = True
+    families = {source_family: data}
+    if family == "judge":
+        families = copy.deepcopy(load_dataset().families)
+        for contents in families.values():
+            contents["cases"] = []
+        families[source_family] = data
+    snapshot = DatasetSnapshot(families)
+    monkeypatch.setattr(runs, "load_dataset", lambda *_: snapshot)
+    monkeypatch.setattr(_categorical, "load_dataset", lambda *_: snapshot)
+    from app.api.evals import catalog
+    monkeypatch.setattr(catalog, "load_dataset", lambda *_: snapshot)
+    app, db, provider = setup_app()
+    settings = AppSettings()
+    settings.ai.max_workers = 1
+    save_app_settings(db, settings)
+    if family == "scoring":
+        case = scoring.load_golden(data=data)[0]
+        output = DimensionScoringReport(scores=[DimensionScore(dimension_key=case.dimension.key,
+            score=0, confidence="low", rationale="Synthetic", evidence="Synthetic")])
+    elif family == "screening":
+        output = ScreeningReport()
+    elif family == "matching":
+        output = DimensionMatchReport(matches=[])
+    elif family == "judge":
+        output = JudgeReport(verdict=JudgeVerdict.KEEP, reason="Synthetic")
+    elif family == "consolidation":
+        output = next(iter(_mock_confirm(consolidate.load_cases(data=data)[0], same_concept=False).routed.values())).output
+    else:
+        output = next(iter(_mock_merge(decompose.load_cases(data=data)[0]).routed.values())).output
+    attempts = 0
+    def call(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts > successes:
+            raise TimeoutError("Synthetic timeout")
+        return AIResult(output=output, usage=Usage(100, 20), model_id=kwargs["model_id"])
+    monkeypatch.setattr(provider, "structured_output", call)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        events = await _stream_events(client, f"/evals/{family}")
+        result = next(event for event in events if event["type"] == "summary")["result"]
+        saved = (await client.get(f"/evals/last-run?keys={family}")).json()["runs"][0]["result"]
+    assert attempts == 2
+    assert len(result["cases"]) == 2
+    assert sum(case["error"] is None for case in result["cases"]) == successes
+    assert saved["cases"] == result["cases"]
+    assert all(not case.get("passed") for case in result["cases"] if case["error"])
+
+
+@pytest.mark.parametrize(("limit", "k", "cases"), [(1, 5, 2), (3, 5, 2), (10, 5, 3)])
+def test_nested_repetition_budget_retains_all_attempts(limit, k, cases):
+    from app.api.evals._shared import case_workers, over_cases
+    from app.schemas.settings import AppSettings
+
+    settings = AppSettings()
+    settings.ai.max_workers = limit
+    lock = Lock()
+    active = peak = attempts = 0
+    def repeat():
+        nonlocal active, peak, attempts
+        with lock:
+            attempts += 1
+            number = attempts
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.01)
+        with lock:
+            active -= 1
+        if number % 4 == 0:
+            raise TimeoutError("Synthetic bounded attempt failure")
+        return RunDetail("pass")
+    results = over_cases(list(range(cases)), lambda _case, delta: run_stability(
+        repeat, k=k, max_workers=min(k, limit), on_delta=delta), on_delta=lambda _: None,
+        max_workers=case_workers(settings, fan_out=k))
+    assert attempts == cases * k
+    assert sum(len(report.runs) for report in results) == attempts
+    assert sum(run.error is not None for report in results for run in report.runs) == attempts // 4
+    assert peak <= limit
+    assert peak >= min(k, limit)
+
+
+def test_case_recovery_does_not_catch_cancellation_or_missing_output():
+    from app.api.evals._shared import over_cases
+    cancelled = Event()
+    cancelled.set()
+    with cancellation_scope(cancelled), pytest.raises(WorkCancelled):
+        over_cases([1], lambda *_: None, on_delta=lambda _: None, max_workers=1,
+            on_error=lambda *_: pytest.fail("Cancellation became a result"))
+    result = over_cases([1], lambda *_: None, on_delta=lambda _: None, max_workers=1,
+        on_error=lambda _case, error: error)
+    assert result == ["RuntimeError: Eval case returned no outcome"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("family", ["scoring", "judge"])
+async def test_empty_ordinary_batch_has_no_results_or_provider_calls(monkeypatch, family):
+    from app.api.evals import runs
+    from app.evals.dataset import load_dataset
+    snapshot = load_dataset()
+    for data in snapshot.families.values():
+        data["cases"] = []
+    monkeypatch.setattr(runs, "load_dataset", lambda *_: snapshot)
+    app, _db, provider = setup_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        events = await _stream_events(client, f"/evals/{family}")
+    result = events[-1]["result"]
+    assert result["cases"] == []
+    if family == "scoring":
+        assert result["passed"] == result["total"] == 0
+    assert provider.calls == []

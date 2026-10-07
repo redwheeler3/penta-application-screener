@@ -127,7 +127,7 @@ def emit_stability_summary(report: StabilityReport, on_delta: DeltaSink) -> None
 
 
 def run_stability(
-    run_once: Callable[[], RunDetail], *, k: int, contested: bool = False, on_delta: DeltaSink = None,
+    run_once: Callable[[], RunDetail], *, k: int, max_workers: int | None = None, contested: bool = False, on_delta: DeltaSink = None,
 ) -> StabilityReport:
     """Run independent calls concurrently and retain every success/error in original order.
 
@@ -138,7 +138,7 @@ def run_stability(
 
     if k < 1:
         raise ValueError("Stability requires at least one attempt")
-    packed = sorted(run_in_pool(list(range(k)), call=lambda _i: run_once(), max_workers=k), key=lambda item: item[0])
+    packed = sorted(run_in_pool(list(range(k)), call=lambda _i: run_once(), max_workers=min(k, max_workers) if max_workers is not None else k), key=lambda item: item[0])
     runs = []
     for index, result, error in packed:
         if error is not None:

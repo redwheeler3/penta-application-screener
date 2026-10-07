@@ -6,6 +6,15 @@ import { StructuredFields, type FieldObject } from "./StructuredFields";
 import type { EvalFixtureKey } from "../../types";
 
 const dimension = { key: "axis", name: "Axis", definition: "Meaning", high_end: "High", low_end: "Low" };
+
+it("keeps the owning family fixed while adding a case", () => {
+  render(<EvalCaseEditor evalKey="matching" existing={null}
+    onSave={vi.fn()} onSaved={vi.fn()} onCancel={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: "Remove pass" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Remove metadata" })).toBeNull();
+  expect(screen.queryByDisplayValue("matching")).toBeNull();
+  expect(screen.getByText("matching")).toBeInTheDocument();
+});
 const examples: [EvalFixtureKey, FieldObject, FieldObject][] = [
   ["scoring", { applicant: { facts: { pets: "Original" } }, dimension }, { applicant: { facts: { pets: "Edited" } }, dimension }],
   ["consolidation", { pair: [{ key: "first", name: "First", definition: "Original" }, { key: "second", name: "Second", definition: "Second" }] }, { pair: [{ key: "first", name: "First", definition: "Edited" }, { key: "second", name: "Second", definition: "Second" }] }],

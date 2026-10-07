@@ -32,7 +32,9 @@ from app.ai.provider import AIProvider, AIResult, DeltaSink, SchemaT
 from app.ai.screening import screening_prompt_version
 from app.ai.strands_provider import StrandsProvider
 from app.core.config import get_settings
+from app.core.work_cancellation import WorkCancelled
 from app.evals import consolidate, decompose, matching, scoring, screening
+from app.evals.stability import RunDetail, StabilityReport
 
 DEFAULT_OPENAI_REASONING_EFFORT = "low"
 
@@ -139,8 +141,9 @@ def run_bakeoff(
             pass_models.append(models[spec.control_model])
         if include_challenger:
             pass_models.append(models[spec.challenger_model])
+        cases = spec.load()
         for model in pass_models:
-            for case in spec.load():
+            for case in cases:
                 for repeat in range(1, repeats + 1):
                     jobs.append((spec, model, case, repeat))
 
@@ -183,6 +186,7 @@ def run_bakeoff(
             "strands-agents": version("strands-agents"),
             "openai": version("openai"),
         },
+        "status": "no_cases" if not rows else "incomplete" if any(row["error"] for row in rows) else "complete",
         "results": rows,
         "case_summary": _summarize_cases(rows),
         "summary": _summarize(rows),
@@ -212,28 +216,25 @@ def _run_one(
     }
     try:
         result = spec.run(measured, case, model)
-        contested = base["contested"]
-        return base | {
-            "passed": bool(result.passed) or contested,
-            "outcome": _outcome(result),
+        error = result.error
+        outcome = {
+            "passed": error is None and (bool(result.passed) or base["contested"]),
+            "outcome": "error" if error else _outcome(result),
             "failures": list(result.failures),
-            "calls": len(measured.results),
-            "input_tokens": sum(r.usage.input_tokens for r in measured.results),
-            "output_tokens": sum(r.usage.output_tokens for r in measured.results),
-            "cost_usd": sum(cost_usd(r.model_id, r.usage) for r in measured.results),
-            "elapsed_seconds": time.perf_counter() - started,
+            "error": error,
         }
+    except WorkCancelled:
+        raise
     except Exception as exc:
-        return base | {
-            "passed": False,
-            "outcome": "error",
-            "failures": [f"{type(exc).__name__}: {exc}"],
-            "calls": len(measured.results),
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cost_usd": 0.0,
-            "elapsed_seconds": time.perf_counter() - started,
-        }
+        error = f"{type(exc).__name__}: {exc}"
+        outcome = {"passed": False, "outcome": "error", "failures": [error], "error": error}
+    return base | outcome | {
+        "calls": len(measured.results),
+        "input_tokens": sum(r.usage.input_tokens for r in measured.results),
+        "output_tokens": sum(r.usage.output_tokens for r in measured.results),
+        "cost_usd": sum(cost_usd(r.model_id, r.usage) for r in measured.results),
+        "elapsed_seconds": time.perf_counter() - started,
+    }
 
 
 def _outcome(result: Any) -> str:
@@ -259,7 +260,7 @@ def _summarize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "reasoning_effort": group[0]["reasoning_effort"],
             "passed": sum(1 for row in group if row["passed"]),
             "total": len(group),
-            "errors": sum(1 for row in group if row["outcome"] == "error"),
+            "errors": sum(1 for row in group if row["error"] is not None),
             "input_tokens": sum(row["input_tokens"] for row in group),
             "output_tokens": sum(row["output_tokens"] for row in group),
             "cost_usd": sum(row["cost_usd"] for row in group),
@@ -274,10 +275,7 @@ def _summarize_cases(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         groups.setdefault((row["pass"], row["model"], row["case"]), []).append(row)
     summary = []
     for (pass_name, model, case), group in groups.items():
-        outcomes: dict[str, int] = {}
-        for row in group:
-            outcomes[row["outcome"]] = outcomes.get(row["outcome"], 0) + 1
-        majority_outcome, majority_count = max(outcomes.items(), key=lambda item: item[1])
+        measurement = StabilityReport([RunDetail(row["outcome"], error=row["error"]) for row in group])
         summary.append({
             "pass": pass_name,
             "model": model,
@@ -286,11 +284,12 @@ def _summarize_cases(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "contested": group[0]["contested"],
             "passed": sum(1 for row in group if row["passed"]),
             "total": len(group),
-            "grade_stable": len({row["passed"] for row in group}) == 1,
-            "outcome_stable": len(outcomes) == 1,
-            "majority_outcome": majority_outcome,
-            "majority_agreement": majority_count / len(group),
-            "outcomes": outcomes,
+            "complete": measurement.complete,
+            "grade_stable": len({row["passed"] for row in group}) == 1 if measurement.complete else None,
+            "outcome_stable": not measurement.flipped if measurement.complete else None,
+            "majority_outcome": measurement.majority,
+            "majority_agreement": measurement.agreement,
+            "outcomes": measurement.tally,
         })
     return summary
 

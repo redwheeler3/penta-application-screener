@@ -38,13 +38,16 @@ from app.evals.decompose import load_cases as load_decomposition_cases
 from app.evals.decompose import run_case as run_decomposition_case
 from app.evals.decompose import stability_run as decomposition_stability_run
 from app.evals.judge import DEFAULT_MODEL as JUDGE_MODEL
-from app.evals.judge import judge_case, load_cases, stability_run
+from app.evals.judge import JudgeResult, judge_case, load_cases, stability_run
 from app.evals.judge import prompt_version as judge_prompt_version
 from app.evals.matching import load_cases as load_matching_cases
 from app.evals.matching import run_case as run_matching_case
 from app.evals.matching import stability_run as matching_stability_run
+from app.evals.reproduce import Reproduced
+from app.evals.scoring import CaseResult as ScoringResult
 from app.evals.scoring import load_golden, run_case
 from app.evals.scoring import stability_run as scoring_stability_run
+from app.evals.screening import CaseResult as ScreeningResult
 from app.evals.screening import fire_label as screening_fire_label
 from app.evals.screening import load_cases as load_screening_cases
 from app.evals.screening import run_case as run_screening_case
@@ -117,7 +120,7 @@ def run_scoring(
             case_delta(f"\n\n### {c.key} (x{k})\n")
             res = scoring_stability_run(
                 configured_provider, c, scoring_model=scoring_model, k=k,
-                on_delta=case_delta,
+                on_delta=case_delta, max_workers=min(k, settings.ai.max_workers),
             )
             lo, hi = res.score_spread
             return ScoringStabilityCaseOut(
@@ -143,7 +146,9 @@ def run_scoring(
         )
 
     def work(on_delta) -> ScoringResponse:
-        results = over_cases(golden, one, on_delta=on_delta, max_workers=case_workers(settings))
+        results = over_cases(golden, one, on_delta=on_delta, max_workers=case_workers(settings),
+            on_error=lambda case, error: ScoringResult(case=case, score=None, confidence="?",
+                evidence="", failures=[error], error=error))
         return ScoringResponse(
             scoring_prompt_version=SCORING_PROMPT_VERSION,
             scoring_model=scoring_model,
@@ -153,7 +158,7 @@ def run_scoring(
             cases=[
                 ScoringCaseOut(
                     key=r.case.key, passed=r.passed, score=r.score, confidence=r.confidence,
-                    evidence=r.evidence, failures=r.failures,
+                    evidence=r.evidence, failures=r.failures, error=r.error,
                 )
                 for r in results
             ],
@@ -169,8 +174,8 @@ CONSOLIDATION_EVAL = CategoricalPass(
     run_case=lambda provider, item, model, on_delta: run_consolidation_case(
         provider, item, consolidate_model=model, on_delta=on_delta
     ),
-    stability_run=lambda provider, item, model, *, k, on_delta: consolidation_stability_run(
-        provider, item, consolidate_model=model, k=k, on_delta=on_delta
+    stability_run=lambda provider, item, model, *, k, on_delta, max_workers: consolidation_stability_run(
+        provider, item, consolidate_model=model, k=k, on_delta=on_delta, max_workers=max_workers
     ),
     case_out=ConsolidationCaseOut,
     run_response=ConsolidationResponse,
@@ -185,8 +190,8 @@ MATCHING_EVAL = CategoricalPass(
     run_case=lambda provider, item, model, on_delta: run_matching_case(
         provider, item, match_model=model, on_delta=on_delta
     ),
-    stability_run=lambda provider, item, model, *, k, on_delta: matching_stability_run(
-        provider, item, match_model=model, k=k, on_delta=on_delta
+    stability_run=lambda provider, item, model, *, k, on_delta, max_workers: matching_stability_run(
+        provider, item, match_model=model, k=k, on_delta=on_delta, max_workers=max_workers
     ),
     case_out=MatchingCaseOut,
     run_response=MatchingResponse,
@@ -201,8 +206,8 @@ DECOMPOSITION_EVAL = CategoricalPass(
     run_case=lambda provider, item, model, on_delta: run_decomposition_case(
         provider, item, decompose_model=model, on_delta=on_delta
     ),
-    stability_run=lambda provider, item, model, *, k, on_delta: decomposition_stability_run(
-        provider, item, decompose_model=model, k=k, on_delta=on_delta
+    stability_run=lambda provider, item, model, *, k, on_delta, max_workers: decomposition_stability_run(
+        provider, item, decompose_model=model, k=k, on_delta=on_delta, max_workers=max_workers
     ),
     case_out=DecompositionCaseOut,
     run_response=DecompositionResponse,
@@ -295,7 +300,7 @@ def run_screening(
             case_delta(f"\n\n### {c.key} (x{k})\n")
             rep = screening_stability_run(
                 configured_provider, c, screening_model=model, k=k,
-                on_delta=case_delta,
+                on_delta=case_delta, max_workers=min(k, settings.ai.max_workers),
             )
             return ScreeningStabilityCaseOut(
                 key=c.key, marker=rep.marker, majority=rep.majority,
@@ -319,7 +324,8 @@ def run_screening(
         )
 
     def work(on_delta) -> ScreeningResponse:
-        results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings))
+        results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings),
+            on_error=lambda case, error: ScreeningResult(case=case, categories=[], failures=[error], error=error))
         return ScreeningResponse(
             prompt_version=version, model=model, reasoning_effort=reasoning_effort,
             passed=sum(1 for r in results if r.passed), total=len(results),
@@ -328,7 +334,7 @@ def run_screening(
                     key=r.case.key, passed=r.passed, categories=r.categories,
                     fires=[screening_fire_label(f) for f in r.case.fires],
                     absent=r.case.absent, contested=r.case.contested,
-                    reason=r.reason, failures=r.failures,
+                    reason=r.reason, failures=r.failures, error=r.error,
                 )
                 for r in results
             ],
@@ -369,7 +375,7 @@ def run_judge(
 
         def one_stability(c, case_delta) -> StabilityCaseOut:
             case_delta(f"\n\n### [{c.pass_name}] {c.key} (x{k})\n")
-            rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL, on_delta=case_delta)
+            rep = stability_run(provider, c, k=k, model_id=JUDGE_MODEL, on_delta=case_delta, max_workers=min(k, settings.ai.max_workers))
             stability.emit_stability_summary(rep, case_delta)
             return StabilityCaseOut(
                 key=c.key, pass_name=c.pass_name, marker=rep.marker,
@@ -396,7 +402,10 @@ def run_judge(
         return r
 
     def work(on_delta) -> JudgeRunResponse:
-        results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings))
+        results = over_cases(cases, one, on_delta=on_delta, max_workers=case_workers(settings),
+            on_error=lambda case, error: JudgeResult(case=case, model_id=JUDGE_MODEL,
+                reproduced=Reproduced(judge_label="error", human_label=seed_str(case.expected),
+                    agrees=False, detail=error, cost_usd=0.0, error=error)))
         case_out = [
             JudgeCaseOut(
                 key=r.case.key, pass_name=r.case.pass_name, marker=r.marker,

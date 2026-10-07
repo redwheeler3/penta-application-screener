@@ -124,12 +124,13 @@ def case_workers(settings, *, fan_out: int = 1) -> int:
     """How many cases to run concurrently. Governed by the SAME ``settings.max_workers`` knob
     Rank already runs at (default 50) — the system's proven ceiling — so there's one concurrency
     dial, not a second. ``fan_out`` is the per-case inner concurrency: a STABILITY case fans out
-    K model calls of its own, so we divide by K to keep TOTAL in-flight calls (cases × K) under
-    the ceiling; a plain run (one call per case) passes fan_out=1 and gets the full width."""
+    up to min(K, max_workers) calls. Dividing the outer budget by K (minimum one
+    case) and bounding each inner pool to max_workers keeps total calls under the ceiling.
+    A plain run (one call per case) passes fan_out=1 and gets the full width."""
     return max(1, settings.ai.max_workers // max(1, fan_out))
 
 
-def over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list:
+def over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int, on_error=None) -> list:
     """Run ``run_case_fn(case, case_on_delta)`` for each case CONCURRENTLY (bounded by
     ``max_workers`` — see ``case_workers``), returning results in the ORIGINAL case order. Each
     case gets its own buffered ``case_on_delta``; when a case finishes, its whole buffer is
@@ -143,13 +144,26 @@ def over_cases(cases: list, run_case_fn, *, on_delta, max_workers: int) -> list:
     Block order is therefore completion order, not case order; that's fine because nothing
     downstream depends on narration order (each block is self-labelled with its case key) and the
     returned RESULTS are still re-sorted to case order below (the frontend keys per-case output by
-    ``key``, and agreement is an order-independent aggregate — so results order is only tidiness)."""
+    ``key``, and agreement is an order-independent aggregate — so results order is only tidiness).
+    Ordinary runs supply ``on_error(case, message)`` to retain unusable attempts in their family
+    result shape. Stability handles errors per repetition. Cancellation always propagates."""
     from app.ai.analysis import run_in_pool
 
     def work(indexed):
         i, c = indexed
         buf: list[str] = []
-        result = run_case_fn(c, buf.append)
+        try:
+            result = run_case_fn(c, buf.append)
+            if result is None:
+                raise RuntimeError("Eval case returned no outcome")
+        except WorkCancelled:
+            raise
+        except Exception as exc:
+            if on_error is None:
+                raise
+            message = f"{type(exc).__name__}: {exc}"
+            result = on_error(c, message)
+            buf.append(f"\n**Error:** {message}\n")
         return i, result, buf
 
     slots: dict[int, object] = {}
