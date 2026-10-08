@@ -120,20 +120,6 @@ it("acknowledges saved guest answers even if their access email fails", async ()
   expect(result.current.persistence.hasUnsavedChanges).toBe(false);
 });
 
-it("does not acknowledge edits made while requesting a return access link", async () => {
-  const emailed = deferred<Response>();
-  vi.mocked(api.requestReturnAccessLink).mockReturnValue(emailed.promise);
-  const { result } = renderPersistence();
-  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
-  let request!: Promise<boolean>;
-  act(() => { request = result.current.persistence.emailReturnLink(); });
-  act(() => result.current.setDraft((draft) => ({ ...draft, pets: "A cat" })));
-  await act(async () => {
-    emailed.resolve(Response.json({ currentAnswersSaved: true, workingRevision: 2, emailStatus: "sent" })); await request;
-  });
-  expect(result.current.persistence.hasUnsavedChanges).toBe(true);
-  expect(result.current.persistence.workingRevision).toBe(2);
-});
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it.each(["signOut", "withdrawApplication"] as const)("finishes confirmed %s when browser cleanup fails and reports the remaining copy", async (action) => {
@@ -162,20 +148,6 @@ it("retains a saved guest draft when its discard is not acknowledged", async () 
   expect(api.deletePendingDraft).toHaveBeenCalledTimes(2);
 });
 
-it.each(["sent", "recent", "failed"])("acknowledges the return-link save when email status is %s", async (emailStatus) => {
-  vi.mocked(api.requestReturnAccessLink).mockResolvedValue(Response.json({
-    currentAnswersSaved: true, workingRevision: 2, emailStatus,
-  }));
-  vi.mocked(api.saveApplication).mockResolvedValue(Response.json(application(3)));
-  const { result } = renderPersistence();
-  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
-  act(() => result.current.setDraft((draft) => ({ ...draft, pets: "A cat" })));
-  await act(() => result.current.persistence.emailReturnLink());
-  expect(result.current.persistence.workingRevision).toBe(2);
-  expect(result.current.persistence.hasUnsavedChanges).toBe(false);
-  await act(() => result.current.persistence.start("save"));
-  expect(vi.mocked(api.saveApplication).mock.calls[0][2]).toBe(2);
-});
 
 it("requesting entry with another email does not mutate the application draft", async () => {
   vi.mocked(api.requestReturnAccessLink).mockResolvedValue(Response.json({ emailStatus: "sent" }));
@@ -743,6 +715,24 @@ it.each([403, 500])("failed comparison recovery HTTP %s remains retryable", asyn
   expect(result.current.persistence.pendingCopy).not.toBeNull();
   expect(result.current.persistence.phase).toBe("error");
   expect(result.current.persistence.busy).toBe(false);
+});
+
+it.each([
+  [null, "failed"], ["first-new@example.com", "failed"],
+  [null, "sent"], ["first-new@example.com", "sent"],
+  [null, "recent"], ["first-new@example.com", "recent"],
+] as const)("reports an email-change %s replacement with delivery status %s", async (previous, emailStatus) => {
+  vi.mocked(api.fetchApplication).mockImplementation(async () => Response.json({ ...application(), pendingEmailChange: previous }));
+  const pendingEmail = emailStatus === "failed" ? previous : "second-new@example.com";
+  vi.mocked(api.requestEmailChange).mockResolvedValue(Response.json({
+    emailSent: emailStatus === "sent", emailStatus, pendingEmail,
+  }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  await act(() => result.current.persistence.beginEmailChange("second-new@example.com"));
+  expect(result.current.persistence.pendingEmailChange).toBe(pendingEmail);
+  expect(result.current.persistence.emailChangeStatus).toBe(emailStatus === "failed" ? "error" : "sent");
+  if (emailStatus === "failed") expect(result.current.persistence.emailChangeMessage).not.toMatch(/Check your inbox|Check your email/);
 });
 
 it("admits the saved application and pending comparison together in one read", async () => {

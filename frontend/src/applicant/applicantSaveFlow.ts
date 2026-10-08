@@ -40,7 +40,7 @@ export function createApplicantSaveFlow({
   api,
   stateRef, draftRef, updatePersistence: dispatch, invalidateReads, captureSession, fail, runMutation,
 }: SaveFlowDependencies) {
-  const { checkGuestSubmission, requestReturnAccessLink, saveApplication, savePendingDraft, submitApplication, submitGuestApplication } = api;
+  const { checkGuestSubmission, saveApplication, savePendingDraft, submitApplication, submitGuestApplication } = api;
   const inSession = captureSession();
   const updatePersistence: UpdateApplicantPersistence = (patch) => {
     if (inSession()) dispatch(patch);
@@ -191,34 +191,6 @@ export function createApplicantSaveFlow({
     return inSession();
   }
 
-  async function emailReturnLink(): Promise<boolean> {
-    if (!inSession()) return false;
-    const { openingIds, workingRevision } = stateRef.current;
-    invalidateReads();
-    const snapshot = workingSnapshot(draftRef.current, openingIds);
-    const response = await requestReturnAccessLink(
-      workingAnswers(draftRef.current),
-      openingIds,
-      workingRevision,
-    );
-    if (!inSession()) return false;
-    if (!response.ok) {
-      await fail(response);
-      return false;
-    }
-    const body = (await response.json()) as {
-      currentAnswersSaved: boolean;
-      workingRevision: number | null;
-      emailStatus: EmailSendStatus;
-    };
-    if (!inSession()) return false;
-    if (body.currentAnswersSaved) {
-      invalidateReads();
-      updatePersistence({ savedAnswers: snapshot, workingRevision: body.workingRevision });
-    }
-    return body.emailStatus !== "failed";
-  }
-
   async function requestEntryLink(email: string): Promise<boolean> {
     if (!inSession()) return false;
     const { openingIds } = stateRef.current;
@@ -265,7 +237,6 @@ export function createApplicantSaveFlow({
     start: (intent: DraftIntent) => recoverSave(() => start(intent), undefined),
     saveForReview: () => recoverSave(saveForReview, false),
     prepareGuestReview: () => recoverSave(prepareGuestReview, false),
-    emailReturnLink: () => recoverSave(emailReturnLink, false),
     requestEntryLink: (email: string) => recoverSave(() => requestEntryLink(email), false),
     emailSessionAccessLink: () => recoverSave(emailSessionAccessLink, undefined),
     resendCurrentIntent: () => recoverSave(resendCurrentIntent, undefined),

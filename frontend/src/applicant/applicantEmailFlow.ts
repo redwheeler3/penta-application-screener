@@ -48,7 +48,7 @@ export function createApplicantEmailFlow({
       pendingEmail: string | null;
     };
     updatePersistence({ pendingEmailChange: body.pendingEmail });
-    if (body.pendingEmail === null) {
+    if (body.emailStatus === "failed" || body.pendingEmail === null) {
       updatePersistence({ emailChangeMessage: TECH_SUPPORT_ERROR_MESSAGE, emailChangeStatus: "error" });
       return;
     }

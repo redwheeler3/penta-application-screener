@@ -89,7 +89,7 @@ export function ApplicationReview(props: {
       </ReviewSection>
       <ReviewSection title="Current housing">
         <ReviewRow label="Address" value={`${d.currentAddress.street}, ${d.currentAddress.city}, ${d.currentAddress.provinceOrState}`} />
-        <ReviewRow label="Current landlord" value={d.currentLandlord.name} />
+        {d.ownsCurrentHome === "no" ? <ReviewRow label="Current landlord" value={d.currentLandlord.name} /> : null}
       </ReviewSection>
       <ReviewSection title="Employment">
         <ReviewRow label="Primary applicant" value={reviewEmployment(d.applicantEmployment)} />

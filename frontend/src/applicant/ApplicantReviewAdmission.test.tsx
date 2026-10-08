@@ -2,7 +2,9 @@ import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@t
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { deferred } from "../testSupport";
 import { ApplicantApp } from "./ApplicantApp";
-import { emptyApplicantDraft, workingAnswers } from "./applicationDraft";
+import { ApplicationReview } from "./ApplicantReview";
+import { canonicalAnswers, emptyApplicantDraft, workingAnswers } from "./applicationDraft";
+import { loadApplicationDraft, saveApplicationDraft, setRememberDevice } from "./draftStorage";
 import type { PendingCopy } from "./applicantPersistence";
 
 vi.mock("../hooks/useEmailDeliveryStatus", () => ({ useEmailDeliveryStatus: () => false }));
@@ -12,7 +14,7 @@ beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { callback(0); return 0; });
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 function completeDraft() {
   const draft = emptyApplicantDraft();
@@ -69,6 +71,52 @@ function fixture(mode: "authenticated" | "guest" | "link", draft = completeDraft
 }
 
 const essay = () => screen.getByRole("textbox", { name: /Why does your household want to live in a co-op/ });
+
+it.each(["focus", "visibilitychange"])("a passive %s refresh preserves another tab's newer remembered answers", async (trigger) => {
+  vi.useFakeTimers();
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  let tail = Promise.resolve();
+  vi.stubGlobal("navigator", { locks: { request: (_name: string, operation: () => unknown) => {
+    const result = tail.then(operation);
+    tail = result.then(() => {}, () => {});
+    return result;
+  } } });
+  const consent = (await setRememberDevice(true))!;
+  const older = completeDraft();
+  older.pets = "Older tab B answers";
+  await act(async () => { fixture("authenticated", older); });
+  await act(() => vi.advanceTimersByTimeAsync(350));
+  expect(loadApplicationDraft(7)?.draft.pets).toBe(older.pets);
+  await act(async () => { await saveApplicationDraft(7, { ...older, pets: "Newer tab A answers" }, [1], 1, consent); });
+  act(() => window.dispatchEvent(new StorageEvent("storage", { key: "penta-application-drafts-v5", storageArea: localStorage })));
+  await act(async () => (trigger === "focus" ? window : document).dispatchEvent(new Event(trigger)));
+  await act(() => vi.advanceTimersByTimeAsync(350));
+  expect(loadApplicationDraft(7)?.draft.pets).toBe("Newer tab A answers");
+  // An explicit edit still persists this tab's answers, with no cross-tab merge.
+  fireEvent.change(screen.getByRole("textbox", { name: /What pets/ }), { target: { value: "Edited in B" } });
+  await act(() => vi.advanceTimersByTimeAsync(350));
+  expect(loadApplicationDraft(7)?.draft.pets).toBe("Edited in B");
+  fireEvent.click(screen.getByRole("checkbox", { name: /Move-in/ }));
+  await act(() => vi.advanceTimersByTimeAsync(350));
+  expect(loadApplicationDraft(7)?.openingIds).toEqual([]);
+});
+
+it("omits an inapplicable landlord after the applicant changes from renter to owner", () => {
+  const draft = completeDraft();
+  draft.ownsCurrentHome = "no";
+  draft.currentLandlord = { name: "Synthetic rental contact", phone: "604-555-0199", email: "landlord@example.com" };
+  const props = { draft, openings: [], selectedOpeningIds: [], declarationAccepted: false,
+    persistencePhase: "idle", persistenceMessage: "", onRetry: vi.fn(), onReload: vi.fn(),
+    onDeclarationChange: vi.fn(), onSubmit: vi.fn(), onEdit: vi.fn() };
+  const { rerender } = render(<ApplicationReview {...props} />);
+  expect(screen.getByText(draft.currentLandlord.name)).toBeInTheDocument();
+  const owner = { ...draft, ownsCurrentHome: "yes" as const };
+  rerender(<ApplicationReview {...props} draft={owner} />);
+  expect(canonicalAnswers(owner).currentLandlord).toBeNull();
+  expect(screen.queryByText("Current landlord")).toBeNull();
+  expect(screen.queryByText(draft.currentLandlord.name)).toBeNull();
+  expect(screen.getByRole("heading", { name: "Current housing" })).toBeInTheDocument();
+});
 
 it.each(["answer", "opening"])("keeps editing when the validated %s changes during a save", async (change) => {
   const { saving, savedRequests, acknowledgement } = fixture("authenticated");

@@ -149,11 +149,14 @@ export function validBrowserOpeningIds(
   openings: ApplicantOpening[],
 ): number[] {
   const stored = new Set(storedIds);
-  return openings
+  const valid = openings
     .filter((opening) => (
       opening.phase === "archived"
         ? opening.selected
         : stored.has(opening.id)
     ))
     .map((opening) => opening.id);
+  // Opening metadata refreshes do not edit the applicant's choices. Preserve
+  // their order and identity so a passive refresh cannot trigger a browser save.
+  return valid.length === storedIds.length && valid.every((id) => stored.has(id)) ? storedIds : valid;
 }
