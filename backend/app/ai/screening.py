@@ -48,7 +48,7 @@ _INSTRUCTIONS_TEMPLATE = f"""\
 Review this housing co-op application. Do two things: (1) return any data-integrity screening flags, and (2) extract a neutral inventory of the household's pets. Flag ONLY clear, concrete problems — if you are not totally sure, do not flag; it is correct and expected for most applications to have zero flags. Pet extraction is separate from flagging: report the pets present, never whether they are allowed.
 
 ## Inputs
-The applicant's normalized form fields in the `<fields>` block, and their essay answers in the `<essays>` block, below.
+The applicant's normalized form fields in the `<fields>` block, and their essay answers in the `<essays>` block, below. Structured fields include submission-time ages and names for integrity checks, without birth dates.
 
 ## How to judge (flags)
 Flag these when clearly present:

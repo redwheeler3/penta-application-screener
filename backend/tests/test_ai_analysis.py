@@ -560,9 +560,10 @@ def test_cache_identity_uses_only_frozen_submission_facts_consumed_by_the_pass()
     assert key("dimension_scoring:example") == score
     application.normalized = {**application.normalized, "applicant_age": 31}
     db.commit()
-    assert key("screening") == screen  # screening does not consume adult ages
+    assert key("screening") != screen
     assert key("dimension_scoring:example") != score
     assert pool_fingerprint(db, current_opening_id(db), applications=[application]) != pool
+    screen = key("screening")
     application.normalized = {**application.normalized, "child_details": [{"age": 11}]}
     assert key("screening") != screen
 
@@ -595,5 +596,5 @@ def test_unchanged_answers_refresh_age_only_when_published_again() -> None:
     db.commit()
     assert application.raw_row_hash == raw_hash
     assert application.normalized["applicant_age"] == 36
-    assert key("screening") == screen
+    assert key("screening") != screen
     assert key("dimension_scoring:example") != score

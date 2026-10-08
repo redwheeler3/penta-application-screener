@@ -104,12 +104,12 @@ Alongside the structured flags, the provider also captures the model's free-text
 A full run over ~300 applicants would be wasteful if every run re-analyzed everything. So each result is cached.
 
 ```py
-cache_key = sha256(raw_row_hash + kind + model_identity + reasoning + prompt_version)
+cache_key = sha256(input_fingerprint(raw_row_hash, normalized, kind) + kind + model_identity + reasoning + prompt_version)
 ```
 
 The key combines:
 
-- **`raw_row_hash`** — the application content. Edit the application, miss the cache.
+- **`input_fingerprint`** — submitted application content plus the facts consumed by that pass. Adult and child ages are frozen at submission; a birthday alone does not change the cache. Both Screen and Rank omit structured birth dates. Screen retains household names for integrity checks; Rank's structured facts omit them. Essay text is not redacted.
 - **`kind`** — the analysis type (`screening`), so different passes don't collide.
 - **`model_identity`** — the catalog's provider-neutral identity for the actual pinned model. Equivalent Bedrock and direct routes share it, so changing only the transport preserves the cache; changing models misses it. It is never sent to a provider.
 - **`reasoning`** — the applicable reasoning level. Changing it misses the cache.

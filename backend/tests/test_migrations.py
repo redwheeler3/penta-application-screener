@@ -677,8 +677,12 @@ def test_cache_evidence_migration_preserves_proven_hits_and_uncertain_history(mo
         migration["upgrade"]()
         connection.exec_driver_sql("ALTER TABLE application_ai_results RENAME COLUMN application_id TO producer_application_id")
     db.expire_all()
-    assert result.cache_key == (old_key if ambiguous else cache_key(application=application,
-        kind="screening", model_id=AppSettings().ai.screening_model, prompt_version="v"))
+    # This migration freezes its own historical input schema. Current projections
+    # can change without rewriting the meaning of already migrated evidence.
+    migrated_key = "e84360248cc9f3fa6afe0e41751636c07971780cbc7e1ff7c9d087c0e6b674ce"
+    assert result.cache_key == (old_key if ambiguous else migrated_key)
+    assert result.cache_key != cache_key(application=application,
+        kind="screening", model_id=AppSettings().ai.screening_model, prompt_version="v")
     assert result.output == {"flags": []}
     assert result.cost_usd == 0.123
     assert result.input_tokens == 100

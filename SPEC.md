@@ -497,8 +497,10 @@ removed. They do not show an applicant-removal link.
   co-applicant, and child ages are collected as dates of birth so the application can calculate age
   on the last submitted edit instead of becoming stale. Trusted committee detail shows birth dates
   alongside those calculated ages and retains access to the submitted source answers. Structured
-  discovery/scoring facts omit adult birth dates; child details include names, birth dates and
-  submission-time ages under the full-application-context AI policy. Existing submitted integer ages
+  Screen and Rank inputs include submission-time ages for adults and children, with no birth dates.
+  Screen retains household names for integrity checks; discovery/scoring structured facts omit
+  adult and child names. Essay text remains unredacted and can contain identifying information.
+  Existing submitted integer ages
   remain unchanged in their historical snapshots; they are never converted into invented birth
   dates. A returning applicant must provide the missing birth dates in the working copy before
   submitting for another opening.
