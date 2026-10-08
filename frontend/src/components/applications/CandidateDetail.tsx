@@ -45,7 +45,7 @@ export function CandidateDetail(props: {
   app: ApplicationDetail;
   openings: CommitteeOpening[];
   onBack: () => void;
-  onOverrideStatus: (id: number, status: AppStatus) => void;
+  onOverrideStatus: (id: number, status: AppStatus, reviewedFingerprint: string) => void;
   onClearOverride: (id: number) => void;
   privateNoteEditor: PrivateNoteEditor | null;
   onAddCommitteeNote: (id: number, body: string, creationKey: string) => Promise<CommitteeActionResult>;
@@ -147,7 +147,7 @@ export function CandidateDetail(props: {
           <div className="identity-decision-panel">
             <p className="status-source-line">{SOURCE_DESCRIPTIONS[app.statusSource]}</p>
             {app.stale ? (
-              <p className="stale-note">New AI findings since this was last reviewed — you may want to look again.</p>
+              <p className="stale-note">New findings since this was last reviewed — you may want to look again.</p>
             ) : null}
             {/* The toggle is source ownership: "Automatic" (machine-decided) vs. a
                 human-pinned status. Automatic clears the override; the helper line
@@ -168,8 +168,8 @@ export function CandidateDetail(props: {
                   type="button"
                   className="segment"
                   aria-pressed={isHuman && app.status === "eligible"}
-                  disabled={app.selected || (isHuman && app.status === "eligible")}
-                  onClick={() => props.onOverrideStatus(app.id, "eligible")}
+                  disabled={app.selected || (isHuman && app.status === "eligible" && !app.stale)}
+                  onClick={() => props.onOverrideStatus(app.id, "eligible", app.findingsFingerprint)}
                 >
                   Eligible
                 </button>
@@ -177,8 +177,8 @@ export function CandidateDetail(props: {
                   type="button"
                   className="segment"
                   aria-pressed={isHuman && app.status === "ineligible"}
-                  disabled={app.selected || (isHuman && app.status === "ineligible")}
-                  onClick={() => props.onOverrideStatus(app.id, "ineligible")}
+                  disabled={app.selected || (isHuman && app.status === "ineligible" && !app.stale)}
+                  onClick={() => props.onOverrideStatus(app.id, "ineligible", app.findingsFingerprint)}
                 >
                   Ineligible
                 </button>

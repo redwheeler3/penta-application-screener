@@ -221,7 +221,7 @@ export function ApplicationsList(props: {
                       </span>
                     )}
                     {app.stale ? (
-                      <span className="stale-badge" title="New AI findings since last review">
+                      <span className="stale-badge" title="New findings since last review">
                         stale
                       </span>
                     ) : null}

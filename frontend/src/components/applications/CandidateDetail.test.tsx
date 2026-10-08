@@ -6,7 +6,7 @@ import { CandidateDetail } from "./CandidateDetail";
 import { ApplicationsList } from "./ApplicationsList";
 
 const application: ApplicationDetail = {
-  id: 1,
+  id: 1, findingsFingerprint: "1".repeat(64),
   primaryEmail: "alex@example.com",
   applicantName: "Alex Chen",
   coApplicantName: null,
@@ -148,4 +148,22 @@ it.each([false, true])("only permits list saved-list writes for non-selected app
   fireEvent.click(shortlist);
   expect(onToggleStar).toHaveBeenCalledTimes(selected ? 0 : 1);
   expect(onToggleShortlist).toHaveBeenCalledTimes(selected ? 0 : 1);
+});
+
+it.each(["eligible", "ineligible"] as const)("lets a member reaffirm a stale %s decision against displayed findings", (status) => {
+  const onOverrideStatus = vi.fn();
+  const props = {
+    app: { ...application, status, statusSource: "human" as const, stale: true }, openings,
+    onBack: vi.fn(), onOverrideStatus, onClearOverride: vi.fn(), privateNoteEditor: noteEditor,
+    onAddCommitteeNote: vi.fn().mockResolvedValue("saved"), onUpdateCommitteeNote: vi.fn().mockResolvedValue(true),
+    onDeleteCommitteeNote: vi.fn().mockResolvedValue(true), onToggleStar: vi.fn(), onToggleShortlist: vi.fn(),
+  };
+  const { rerender } = render(<CandidateDetail {...props} />);
+  const name = status === "eligible" ? "Eligible" : "Ineligible";
+  expect(screen.getByText(/New findings since/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name }));
+  expect(onOverrideStatus).toHaveBeenCalledExactlyOnceWith(application.id, status, application.findingsFingerprint);
+  rerender(<CandidateDetail {...props} app={{ ...props.app, stale: false }} />);
+  expect(screen.getByRole("button", { name })).toBeDisabled();
 });

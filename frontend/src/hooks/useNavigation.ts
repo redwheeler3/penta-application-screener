@@ -39,6 +39,16 @@ function pushLocation(location: BrowserLocation) {
   }
 }
 
+function applyReceipt(detail: ApplicationDetail, update: ApplicationUpdate): ApplicationDetail {
+  if (update.status !== undefined && update.findingsFingerprint !== undefined
+    && update.findingsFingerprint !== detail.findingsFingerprint) {
+    // The decision is saved, but newer reasons must arrive with their full answers.
+    const statusSource = update.statusSource ?? detail.statusSource;
+    return { ...detail, status: update.status, statusSource, stale: statusSource === "human" };
+  }
+  return { ...detail, ...update };
+}
+
 export function useNavigation(options: {
   openingId: number | null;
   selectOpening: (openingId: number, isCurrent: RequestIsCurrent) => Promise<boolean>;
@@ -52,10 +62,10 @@ export function useNavigation(options: {
   const [selectedApplication, setSelectedApplication] = useState<ApplicationDetail | null>(null);
   const [selectedApplicationReadOnly, setSelectedApplicationReadOnly] = useState(false);
   const requests = useRequestScope();
-  const current = useRef({ ...options, activeTab, selectedApplication });
-  current.current = { ...options, activeTab, selectedApplication };
+  const current = useRef({ ...options, activeTab, selectedApplication, selectedApplicationReadOnly });
+  current.current = { ...options, activeTab, selectedApplication, selectedApplicationReadOnly };
   const pendingLocation = useRef<BrowserLocation | null>(null);
-  const pendingDetail = useRef<{ location: BrowserLocation; receipts: ApplicationUpdate } | null>(null);
+  const pendingDetail = useRef<{ location: BrowserLocation; receipts: ApplicationUpdate; isCurrent: RequestIsCurrent; addHistory: boolean } | null>(null);
   const requestedOpening = useRef(options.openingId);
   const renderedOpening = useRef(options.openingId);
   if (renderedOpening.current !== options.openingId) {
@@ -82,10 +92,10 @@ export function useNavigation(options: {
   const loadLocation = useCallback(async (location: BrowserLocation, addHistory: boolean): Promise<boolean> => {
     requestedOpening.current = location.openingId;
     pendingLocation.current = location;
-    const reading = location.applicantId === undefined ? null
-      : { location, receipts: { id: location.applicantId } as ApplicationUpdate };
-    pendingDetail.current = reading;
     const isCurrent = requests.begin();
+    const reading = location.applicantId === undefined ? null
+      : { location, receipts: { id: location.applicantId } as ApplicationUpdate, isCurrent, addHistory };
+    pendingDetail.current = reading;
     const openingChanged = location.openingId !== current.current.openingId;
     setSelectedApplication(null);
     setSelectedApplicationReadOnly(false);
@@ -110,7 +120,7 @@ export function useNavigation(options: {
       if (detail && location.openingId !== null) {
         current.current.onApplicationLoaded?.(detail, location.openingId, Boolean(location.retainedApplicant));
       }
-      setSelectedApplication(detail && reading ? { ...detail, ...reading.receipts } : detail);
+      setSelectedApplication(detail && reading ? applyReceipt(detail, reading.receipts) : detail);
       if (pendingDetail.current === reading) pendingDetail.current = null;
       setSelectedApplicationReadOnly(Boolean(location.retainedApplicant));
       // Opening changes refresh ranking after React installs the new scoped hooks.
@@ -210,19 +220,53 @@ export function useNavigation(options: {
     replaceLocation({ screenerLocation: true, tab: current.current.activeTab, openingId: current.current.openingId });
   }
 
+  async function refreshApplication(applicationId: number, openingId: number): Promise<void> {
+    const displayed = current.current;
+    if (displayed.selectedApplication?.id !== applicationId || displayed.openingId !== openingId
+      || displayed.selectedApplicationReadOnly || pendingLocation.current) return;
+    const isCurrent = requests.begin();
+    const reading = { location: { screenerLocation: true, tab: displayed.activeTab, openingId,
+      applicantId: applicationId } as BrowserLocation, receipts: { id: applicationId } as ApplicationUpdate, isCurrent, addHistory: false };
+    pendingDetail.current = reading;
+    try {
+      const detail = await api.fetchApplication(applicationId, openingId);
+      if (!isCurrent()) return;
+      current.current.onApplicationLoaded?.(detail, openingId, false);
+      setSelectedApplication(applyReceipt(detail, reading.receipts));
+    } catch {
+      if (isCurrent()) current.current.onError("Your decision is saved. Could not refresh the application; please reopen it to review newer findings.");
+    } finally {
+      if (pendingDetail.current === reading) pendingDetail.current = null;
+    }
+  }
+
   return {
     activeTab, selectedApplication, selectedApplicationReadOnly,
     updateSelectedApplication: (update: ApplicationUpdate, openingId?: number) => {
       // Acknowledgements are not navigation; don't cancel another applicant's read.
       const reading = pendingDetail.current;
-      if (reading && pendingLocation.current === reading.location && reading.location.applicantId === update.id
-        && (openingId === undefined || openingId === reading.location.openingId)) {
+      const matchesRead = reading?.isCurrent() && reading.location.applicantId === update.id
+        && (openingId === undefined || openingId === reading.location.openingId);
+      const displayed = current.current.selectedApplication;
+      const matchesDisplayed = displayed?.id === update.id
+        && (openingId === undefined || openingId === current.current.openingId);
+      if (update.status !== undefined && reading && matchesRead) {
+        // A status receipt supersedes the evidence that an earlier read captured.
+        // Restart only this applicant's read, retaining navigation's history intent.
+        if (pendingLocation.current === reading.location) void loadLocation(reading.location, reading.addHistory);
+        else if (reading.location.openingId !== null) void refreshApplication(update.id, reading.location.openingId);
+      } else if (reading && matchesRead) {
         reading.receipts = { ...reading.receipts, ...update };
       }
       setSelectedApplication((value) => value?.id === update.id
-        && (openingId === undefined || openingId === current.current.openingId) ? { ...value, ...update } : value);
+        && (openingId === undefined || openingId === current.current.openingId) ? applyReceipt(value, update) : value);
+      if (!matchesRead && matchesDisplayed && update.findingsFingerprint !== undefined
+        && update.findingsFingerprint !== displayed.findingsFingerprint && current.current.openingId !== null) {
+        void refreshApplication(update.id, current.current.openingId);
+      }
     },
     clearSelectedApplication,
+    refreshApplication,
     viewApplication, viewRetainedApplication, changeOpening, backToList, navigateToView,
     onOpeningRankingLoaded,
   };

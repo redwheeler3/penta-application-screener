@@ -20,6 +20,7 @@ from app.db.models import (
     User,
     UserRole,
 )
+from app.services.eligibility.status import findings_fingerprint
 from tests.application_support import current_opening_id
 from tests.committee_app_support import (
     add_eligible_application as add_eligible,
@@ -37,8 +38,8 @@ from tests.committee_app_support import (
     ("PUT", "shortlist", None, {"id", "shortlisted"}),
     ("DELETE", "shortlist", None, {"id", "shortlisted"}),
     ("POST", "committee-notes", {"body": "Synthetic context", "creationKey": "00000000-0000-4000-8000-000000000001"}, {"id", "committeeNotes"}),
-    ("PATCH", "status", {"status": "eligible"}, {
-        "id", "status", "statusSource", "stale", "autoStatus", "autoStatusSource", "hardFilterReasons",
+    ("PATCH", "status", {"status": "eligible", "reviewedFingerprint": findings_fingerprint([], [])}, {
+        "id", "status", "statusSource", "stale", "autoStatus", "autoStatusSource", "hardFilterReasons", "findingsFingerprint",
     }),
 ])
 async def test_mutations_acknowledge_only_owned_fields_without_rebuilding_detail(
@@ -410,3 +411,39 @@ async def test_deleted_note_creation_stays_deleted_on_replay_and_receipts_are_sc
     db.delete(application)
     db.commit()
     assert db.scalar(select(ApplicationCommitteeNote.id).where(ApplicationCommitteeNote.id == note_id)) is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("creation_key", [None, "00000000-0000-4000-8000-000000000006"])
+async def test_note_delete_retry_preserves_empty_author_owned_receipt_for_both_stored_shapes(creation_key):
+    app, db, _ = setup_app(role=UserRole.MEMBER)
+    db.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
+    db.commit()
+    application = add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    member = db.scalar(select(User))
+    note = ApplicationCommitteeNote(application_id=application.id, author_user_id=member.id,
+        body="Synthetic text to erase", creation_key=creation_key)
+    db.add(note)
+    db.commit()
+    note_id = note.id
+    url = f"/applications/{application.id}/committee-notes/{note_id}"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        # Lose the first receipt; a repeated DELETE must confirm the same removal.
+        assert (await client.delete(url)).status_code == 200
+        retry = await client.delete(url)
+        assert retry.status_code == 200
+        assert retry.json()["application"]["committeeNotes"] == []
+        detail = (await client.get(f"/applications/{application.id}")).json()["application"]
+        assert detail["committeeNotes"] == []
+        assert (await client.patch(url, json={"body": "Cannot revive"})).status_code == 404
+        receipt = db.get(ApplicationCommitteeNote, note_id, populate_existing=True)
+        assert receipt.body == ""
+        assert receipt.deleted_at is not None
+        other = User(email="other@example.com", display_name="Other member", role=UserRole.MEMBER, is_active=True)
+        db.add(other)
+        db.commit()
+        app.dependency_overrides[require_current_user] = lambda: other
+        assert (await client.delete(url)).status_code == 403
+    db.delete(application)
+    db.commit()
+    assert db.get(ApplicationCommitteeNote, note_id, populate_existing=True) is None

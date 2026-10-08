@@ -140,6 +140,8 @@ export type DimensionScoringTrace = {
 };
 
 export type ApplicationDetail = ApplicationSummary & {
+  // The findings actually shown, sent back when this member reviews them.
+  findingsFingerprint: string;
   // What the machine would decide from the current findings — i.e. the result of
   // clearing a human override. Lets the status control show the automatic verdict.
   autoStatus: AppStatus;
@@ -171,7 +173,7 @@ export type ApplicationDetail = ApplicationSummary & {
 };
 
 export type ApplicationUpdate = Pick<ApplicationDetail, "id"> & Partial<Pick<ApplicationDetail,
-  "status" | "statusSource" | "stale" | "autoStatus" | "autoStatusSource" | "hardFilterReasons"
+  "status" | "statusSource" | "stale" | "autoStatus" | "autoStatusSource" | "hardFilterReasons" | "findingsFingerprint"
   | "privateNote" | "committeeNotes" | "starredByMe" | "shortlisted"
 >>;
 

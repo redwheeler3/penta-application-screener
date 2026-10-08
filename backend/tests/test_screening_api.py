@@ -259,7 +259,8 @@ async def test_human_override_is_sticky_and_snapshots_fingerprint() -> None:
         # Human restores to eligible.
         patched = (
             await client.patch(
-                f"/applications/{flagged.id}/status", json={"status": "eligible"}
+                f"/applications/{flagged.id}/status", json={"status": "eligible",
+                    "reviewedFingerprint": (await client.get(f"/applications/{flagged.id}")).json()["application"]["findingsFingerprint"]}
             )
         ).json()["application"]
         assert patched["status"] == "eligible"
@@ -307,7 +308,8 @@ async def test_clear_override_restores_machine_status() -> None:
         # Human overrides the AI flag back to eligible.
         patched = (
             await client.patch(
-                f"/applications/{flagged.id}/status", json={"status": "eligible"}
+                f"/applications/{flagged.id}/status", json={"status": "eligible",
+                    "reviewedFingerprint": (await client.get(f"/applications/{flagged.id}")).json()["application"]["findingsFingerprint"]}
             )
         ).json()["application"]
         assert patched["statusSource"] == "human"
@@ -350,7 +352,8 @@ async def test_member_can_override_status() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.patch(
-            f"/applications/{application.id}/status", json={"status": "ineligible"}
+            f"/applications/{application.id}/status", json={"status": "ineligible",
+                    "reviewedFingerprint": (await client.get(f"/applications/{application.id}")).json()["application"]["findingsFingerprint"]}
         )
         assert response.status_code == 200
         patched = response.json()["application"]
@@ -373,7 +376,8 @@ async def test_status_overrides_are_scoped_to_the_current_member() -> None:
         # First member forces it ineligible.
         first = (
             await client.patch(
-                f"/applications/{application.id}/status", json={"status": "ineligible"}
+                f"/applications/{application.id}/status", json={"status": "ineligible",
+                    "reviewedFingerprint": (await client.get(f"/applications/{application.id}")).json()["application"]["findingsFingerprint"]}
             )
         ).json()["application"]
         assert first["status"] == "ineligible"
@@ -392,7 +396,8 @@ async def test_status_overrides_are_scoped_to_the_current_member() -> None:
         # The second member holds the OPPOSITE override on the same applicant.
         second = (
             await client.patch(
-                f"/applications/{application.id}/status", json={"status": "eligible"}
+                f"/applications/{application.id}/status", json={"status": "eligible",
+                    "reviewedFingerprint": (await client.get(f"/applications/{application.id}")).json()["application"]["findingsFingerprint"]}
             )
         ).json()["application"]
         assert second["status"] == "eligible"

@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
+from pydantic import Field
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -60,9 +61,6 @@ from app.services.eligibility.evaluation import (
 from app.services.eligibility.rules import (
     hard_filter_reasons_for,
     rules_config_for,
-)
-from app.services.eligibility.status import (
-    findings_fingerprint,
 )
 from app.services.openings.catalog import opening_phase
 
@@ -206,6 +204,7 @@ def get_retained_application(
 
 class StatusOverride(RequestModel):
     status: ApplicationStatus
+    reviewed_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 @router.patch("/{application_id}/status", response_model=EligibilityResponse)
@@ -219,23 +218,13 @@ def override_status(
     """This member's human override of an application's eligibility.
 
     Any committee member may set their own status. Upserts a ``MemberEligibility`` row
-    (the row's existence IS the human override) and snapshots the current findings
-    fingerprint, so later runs that change the findings mark the override stale. The
+    (the row's existence IS the human override) and records the displayed findings
+    fingerprint, so unseen changes keep the override stale. The
     override is per-member — it never changes the shared machine baseline or anyone
     else's view.
     """
     opening_id = resolve_visible_opening_id(db, opening_id)
     application = _lock_mutable_application_or_404(db, opening_id, application_id)
-    rules_config = rules_config_for(db, user.id, opening_id)
-    flags_by_app, facts_by_app = screening_findings_by_app(db, [application_id])
-    flags = active_flags(flags_by_app.get(application_id), rules_config.disabled_checks)
-    pet_facts = facts_by_app.get(application_id)
-    reasons = hard_filter_reasons_for(
-        rules_config,
-        application,
-        pet_facts=pet_facts,
-    )
-    fingerprint = findings_fingerprint(reasons, flags)
     override = db.scalar(
         select(MemberEligibility).where(
             MemberEligibility.application_id == application_id,
@@ -249,12 +238,12 @@ def override_status(
             user_id=user.id,
             opening_id=opening_id,
             status=body.status,
-            reviewed_fingerprint=fingerprint,
+            reviewed_fingerprint=body.reviewed_fingerprint,
         )
         db.add(override)
     else:
         override.status = body.status
-        override.reviewed_fingerprint = fingerprint
+        override.reviewed_fingerprint = body.reviewed_fingerprint
     db.commit()
 
     return EligibilityResponse(application=eligibility_update(application, db, user, opening_id))
@@ -407,9 +396,7 @@ def delete_committee_note(
     _lock_mutable_application_or_404(db, opening_id, application_id)
     note = _committee_note_or_404(db, application_id, note_id, include_deleted=True)
     _require_committee_note_author(note, user)
-    if note.creation_key is None:
-        db.delete(note)
-    elif note.deleted_at is None:
+    if note.deleted_at is None:
         note.body = ""
         note.deleted_at = datetime.now(UTC)
     db.commit()

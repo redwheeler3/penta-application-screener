@@ -81,8 +81,8 @@ export function useCandidateActions(options: CandidateActionsOptions) {
     if (views.rankingLoaded) void views.loadRanking();
   }
 
-  async function overrideStatus(id: number, status: AppStatus): Promise<void> {
-    if ((await mutate(id, "status", (opening) => api.overrideStatus(id, opening, status), "Could not update eligibility.")) === "saved") {
+  async function overrideStatus(id: number, status: AppStatus, reviewedFingerprint: string): Promise<void> {
+    if ((await mutate(id, "status", (opening) => api.overrideStatus(id, opening, status, reviewedFingerprint), "Could not update eligibility.")) === "saved") {
       refreshEligibilityViews();
     }
   }

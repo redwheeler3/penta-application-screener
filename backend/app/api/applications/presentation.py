@@ -51,6 +51,7 @@ from app.services.eligibility.rules import (
 )
 from app.services.eligibility.status import (
     effective_status,
+    findings_fingerprint,
     override_is_stale,
     resolve_machine_status,
 )
@@ -158,6 +159,7 @@ def eligibility_update(app: Application, db: Session, user: User, opening_id: in
     automatic, automatic_source = resolve_machine_status(reasons=reasons, has_ai_flags=bool(flags))
     return EligibilityUpdate(
         id=app.id, status=status.value, status_source=source.value,
+        findings_fingerprint=findings_fingerprint(reasons, flags),
         stale=override_is_stale(override, reasons, flags), hard_filter_reasons=reasons,
         auto_status=automatic.value, auto_status_source=automatic_source.value,
     )
@@ -235,6 +237,7 @@ def serialize_detail(
     )
     return ApplicationDetail(
         **summary.model_dump(),
+        findings_fingerprint=findings_fingerprint(reasons, flags),
         auto_status=auto_status.value,
         auto_status_source=auto_source.value,
         first_submitted_at=utc_isoformat(first_submitted_at or app.submitted_at),

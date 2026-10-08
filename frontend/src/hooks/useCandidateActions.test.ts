@@ -15,8 +15,9 @@ vi.mock("../api/applications", () => ({
   createApi: () => api,
 }));
 
+const fingerprint = "1".repeat(64);
 const detail = (id: number): ApplicationDetail => ({
-  id, primaryEmail: "synthetic@example.com", applicantName: "Synthetic", coApplicantName: null,
+  id, findingsFingerprint: fingerprint, primaryEmail: "synthetic@example.com", applicantName: "Synthetic", coApplicantName: null,
   status: "eligible", statusSource: "untouched", stale: false, hardFilterReasons: [],
   childCount: 0, householdIncome: null, flagCount: 0, flagCategories: [],
   starredByMe: false, shortlisted: false, selected: false, openingIds: [1],
@@ -42,7 +43,7 @@ it.each(["shortlist", "eligibility"])("orders one %s record across A to B to A w
   send.mockReturnValueOnce(pendingA.promise).mockResolvedValue(Response.json({ application: detail(7) }));
   const initial = options();
   const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
-  const change = () => field === "shortlist" ? result.current.toggleShortlist(7, true) : result.current.overrideStatus(7, "eligible");
+  const change = () => field === "shortlist" ? result.current.toggleShortlist(7, true) : result.current.overrideStatus(7, "eligible", fingerprint);
   let first!: Promise<void>;
   await act(async () => { first = change(); });
   rerender({ ...initial, openingId: 2 });
@@ -76,12 +77,28 @@ it("refreshes every eligibility surface after a successful override", async () =
   const initial = options();
   vi.mocked(api.overrideStatus).mockResolvedValue(Response.json({ application: detail(7) }));
   const { result } = renderHook(() => useCandidateActions(initial));
-  await act(() => result.current.overrideStatus(7, "eligible"));
-  expect(api.overrideStatus).toHaveBeenCalledWith(7, 1, "eligible");
+  await act(() => result.current.overrideStatus(7, "eligible", fingerprint));
+  expect(api.overrideStatus).toHaveBeenCalledWith(7, 1, "eligible", fingerprint);
   expect(initial.onApplicationUpdated).toHaveBeenCalledWith(detail(7), 1);
   expect(initial.refreshDashboard).toHaveBeenCalledOnce();
   expect(initial.reloadApplications).toHaveBeenCalledOnce();
   expect(initial.loadRanking).toHaveBeenCalledOnce();
+});
+
+it("sends the viewed fingerprint and forwards the server evidence receipt to its view owner", async () => {
+  const initial = options();
+  const receipt = {
+    id: 7, status: "eligible", statusSource: "human", stale: true,
+    findingsFingerprint: "2".repeat(64),
+    autoStatus: "ineligible", autoStatusSource: "rules",
+    hardFilterReasons: [{ code: "income_below_range", message: "New unseen income", details: {} }],
+  };
+  api.overrideStatus.mockResolvedValueOnce(Response.json({ application: receipt }));
+  const { result } = renderHook(() => useCandidateActions(initial));
+  await act(() => result.current.overrideStatus(7, "eligible", fingerprint));
+  expect(api.overrideStatus).toHaveBeenCalledExactlyOnceWith(7, 1, "eligible", fingerprint);
+  expect(initial.onApplicationUpdated).toHaveBeenCalledExactlyOnceWith(receipt, 1);
+  expect(initial.refreshDashboard).toHaveBeenCalledOnce();
 });
 
 it("ignores a completed write after switching openings", async () => {
@@ -90,7 +107,7 @@ it("ignores a completed write after switching openings", async () => {
   const initial = options();
   const { result, rerender } = renderHook((props) => useCandidateActions(props), { initialProps: initial });
   let save!: Promise<void>;
-  act(() => { save = result.current.overrideStatus(7, "eligible"); });
+  act(() => { save = result.current.overrideStatus(7, "eligible", fingerprint); });
   rerender({ ...initial, openingId: 2 });
   await act(async () => { pending.resolve(Response.json({ application: detail(7) })); await save; });
   expect(initial.onApplicationUpdated).not.toHaveBeenCalled();
@@ -134,7 +151,7 @@ it("lets independent fields save concurrently without rolling back newer state",
   let overriding!: Promise<void>;
   await act(async () => {
     saving = result.current.addCommitteeNote(7, "Synthetic note", "synthetic-creation-key");
-    overriding = result.current.overrideStatus(7, "ineligible");
+    overriding = result.current.overrideStatus(7, "ineligible", fingerprint);
     await overriding;
   });
   expect(api.overrideStatus).toHaveBeenCalledOnce();

@@ -23,11 +23,11 @@ export function createApi(client: ApiClient) {
       .then((payload) => payload.application);
   }
 
-  function overrideStatus(id: number, openingId: number, status: string): Promise<Response> {
+  function overrideStatus(id: number, openingId: number, status: string, reviewedFingerprint: string): Promise<Response> {
     return request(`/applications/${id}/status?opening_id=${openingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, reviewedFingerprint }),
     });
   }
 

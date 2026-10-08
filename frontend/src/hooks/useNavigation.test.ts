@@ -52,6 +52,51 @@ it("confirms note authority only for an accepted fresh detail read", async () =>
   expect(accepted).toHaveBeenCalledOnce();
 });
 
+it("refreshes displayed evidence in place and retains acknowledgements received during the read", async () => {
+  const original = { ...detail(7), normalized: { household_income: 80000 }, privateNote: "Original" };
+  const reply = deferred<ApplicationDetail>();
+  api.fetchApplication.mockResolvedValueOnce(original).mockReturnValueOnce(reply.promise);
+  const accepted = vi.fn();
+  const { result } = renderHook(() => useNavigation({ openingId: 1, selectOpening: vi.fn(),
+    loadRanking: vi.fn(), onError: vi.fn(), onApplicationLoaded: accepted }));
+  await act(() => result.current.viewApplication(7));
+  let reading!: Promise<void>;
+  act(() => { reading = result.current.refreshApplication(7, 1); });
+  expect(result.current.selectedApplication).toEqual(original);
+  act(() => result.current.updateSelectedApplication({ id: 7, privateNote: "New saved note" }, 1));
+  await act(async () => { reply.resolve({ ...original, normalized: { household_income: 100 } }); await reading; });
+  expect(result.current.selectedApplication?.normalized.household_income).toBe(100);
+  expect(result.current.selectedApplication?.privateNote).toBe("New saved note");
+  expect(accepted).toHaveBeenCalledTimes(2);
+});
+
+it("fences background evidence refresh when the member navigates away", async () => {
+  const reply = deferred<ApplicationDetail>();
+  api.fetchApplication.mockResolvedValueOnce({ id: 7 } as ApplicationDetail).mockReturnValueOnce(reply.promise);
+  const accepted = vi.fn();
+  const { result } = renderHook(() => useNavigation({ openingId: 1, selectOpening: vi.fn(),
+    loadRanking: vi.fn(), onError: vi.fn(), onApplicationLoaded: accepted }));
+  await act(() => result.current.viewApplication(7));
+  let reading!: Promise<void>;
+  act(() => { reading = result.current.refreshApplication(7, 1); });
+  act(() => result.current.navigateToView("adminSettings"));
+  await act(async () => { reply.resolve({ id: 7 } as ApplicationDetail); await reading; });
+  expect(result.current.selectedApplication).toBeNull();
+  expect(result.current.activeTab).toBe("adminSettings");
+  expect(accepted).toHaveBeenCalledOnce();
+});
+
+it("retains the saved decision and older evidence when background refresh fails", async () => {
+  const original = { id: 7, status: "eligible", statusSource: "human", stale: true } as ApplicationDetail;
+  api.fetchApplication.mockResolvedValueOnce(original).mockRejectedValueOnce(new Error("Synthetic timeout"));
+  const onError = vi.fn();
+  const { result } = renderHook(() => useNavigation({ openingId: 1, selectOpening: vi.fn(), loadRanking: vi.fn(), onError }));
+  await act(() => result.current.viewApplication(7));
+  await act(() => result.current.refreshApplication(7, 1));
+  expect(result.current.selectedApplication).toEqual(original);
+  expect(onError).toHaveBeenCalledWith(expect.stringContaining("Your decision is saved"));
+});
+
 it("preserves a deliberate cross-opening detail request as React renders the selected opening", async () => {
   const response = deferred<ApplicationDetail>();
   vi.mocked(api.fetchApplication).mockReturnValue(response.promise);
@@ -79,7 +124,15 @@ it("does not cancel navigation when an earlier applicant's note acknowledgement 
 });
 
 const pool = (selectedOpeningId: number): ApplicationsResponse => ({ selectedOpeningId, applications: [], openings: [] });
-const detail = (id: number) => ({ id, privateNote: "" }) as ApplicationDetail;
+const detail = (id: number): ApplicationDetail => ({
+  id, primaryEmail: "synthetic@example.com", applicantName: "Synthetic", coApplicantName: null,
+  status: "eligible", statusSource: "untouched", stale: false, hardFilterReasons: [],
+  childCount: 0, householdIncome: 80000, flagCount: 0, flagCategories: [],
+  starredByMe: false, shortlisted: false, selected: false, openingIds: [1],
+  findingsFingerprint: "1".repeat(64), autoStatus: "eligible", autoStatusSource: "untouched",
+  firstSubmittedAt: null, lastSubmittedAt: null, submissionVersionCount: 1,
+  normalized: {}, essays: [], flags: [], privateNote: "", committeeNotes: [],
+});
 
 async function workspace() {
   vi.mocked(api.fetchApplications).mockImplementation(async (id) => pool(id ?? 1));
@@ -265,7 +318,7 @@ it("keeps a ranking applicant restoration when its independent criteria refresh 
   expect(result.current.selectedApplication?.id).toBe(42);
 });
 
-it("reconciles successful writes with an overlapping same-app detail read", async () => {
+it("reconciles note receipts with an overlapping same-app navigation read", async () => {
   const response = deferred<ApplicationDetail>();
   vi.mocked(api.fetchApplication).mockReturnValue(response.promise);
   const { result } = renderHook(() => useNavigation({ openingId: 1,
@@ -274,7 +327,6 @@ it("reconciles successful writes with an overlapping same-app detail read", asyn
   act(() => { reading = result.current.viewApplication(7); });
   act(() => {
     result.current.updateSelectedApplication({ id: 7, privateNote: "Confirmed" });
-    result.current.updateSelectedApplication({ id: 7, status: "ineligible" }, 1);
     result.current.updateSelectedApplication({ id: 7, shortlisted: true }, 2);
   });
   await act(async () => {
@@ -282,7 +334,52 @@ it("reconciles successful writes with an overlapping same-app detail read", asyn
     await reading;
   });
   expect(result.current.selectedApplication).toMatchObject({ privateNote: "Confirmed",
-    status: "ineligible", shortlisted: false });
+    status: "eligible", shortlisted: false });
+});
+
+it("keeps unseen eligibility evidence out of detail while refreshing it in the background", async () => {
+  const original = detail(7);
+  const reply = deferred<ApplicationDetail>();
+  api.fetchApplication.mockResolvedValueOnce(original).mockReturnValueOnce(reply.promise);
+  const { result } = renderHook(() => useNavigation({ openingId: 1, selectOpening: vi.fn(), loadRanking: vi.fn(), onError: vi.fn() }));
+  await act(() => result.current.viewApplication(7));
+  const newer = { ...original, statusSource: "human" as const, stale: true, findingsFingerprint: "2".repeat(64),
+    normalized: { household_income: 100 }, hardFilterReasons: [{ code: "income_below_range", message: "New income", details: {} }] };
+  act(() => result.current.updateSelectedApplication({ id: 7, status: "eligible", statusSource: "human", stale: true,
+    findingsFingerprint: newer.findingsFingerprint, hardFilterReasons: newer.hardFilterReasons }, 1));
+  expect(result.current.selectedApplication?.statusSource).toBe("human");
+  expect(result.current.selectedApplication?.stale).toBe(true);
+  expect(result.current.selectedApplication?.findingsFingerprint).toBe(original.findingsFingerprint);
+  expect(result.current.selectedApplication?.hardFilterReasons).toEqual([]);
+  await act(async () => reply.resolve(newer));
+  expect(result.current.selectedApplication?.findingsFingerprint).toBe(newer.findingsFingerprint);
+  expect(result.current.selectedApplication?.normalized.household_income).toBe(100);
+});
+
+it.each(["navigation", "background"])("supersedes older captured findings after a later status receipt (%s)", async (mode) => {
+  const original = detail(7);
+  const olderRead = deferred<ApplicationDetail>();
+  const latestRead = deferred<ApplicationDetail>();
+  api.fetchApplication.mockResolvedValueOnce(original).mockReturnValueOnce(olderRead.promise).mockReturnValueOnce(latestRead.promise);
+  const { result } = renderHook(() => useNavigation({ openingId: 1, selectOpening: vi.fn(), loadRanking: vi.fn(), onError: vi.fn() }));
+  await act(() => result.current.viewApplication(7));
+  if (mode === "navigation") act(() => result.current.navigateToView("applications"));
+  let reading!: Promise<void>;
+  act(() => { reading = mode === "navigation" ? result.current.viewApplication(7) : result.current.refreshApplication(7, 1); });
+  act(() => result.current.updateSelectedApplication({ id: 7, status: "eligible", statusSource: "human", stale: false,
+    findingsFingerprint: original.findingsFingerprint, autoStatus: "eligible", autoStatusSource: "untouched", hardFilterReasons: [] }, 1));
+  await act(async () => {
+    olderRead.resolve({ ...original, findingsFingerprint: "2".repeat(64),
+      hardFilterReasons: [{ code: "income_below_range", message: "Superseded finding", details: {} }] });
+    await reading;
+  });
+  expect(result.current.selectedApplication?.findingsFingerprint).not.toBe("2".repeat(64));
+  expect(api.fetchApplication).toHaveBeenCalledTimes(3);
+  await act(async () => latestRead.resolve({ ...original, statusSource: "human", stale: false }));
+  expect(result.current.selectedApplication?.findingsFingerprint).toBe(original.findingsFingerprint);
+  expect(result.current.selectedApplication?.hardFilterReasons).toEqual([]);
+  expect(result.current.selectedApplication?.stale).toBe(false);
+  expect(window.history.state.applicantId).toBe(7);
 });
 
 

@@ -5,7 +5,7 @@ import { buildDetailSections } from "./applicationDetailSections";
 
 function application(overrides: Partial<ApplicationDetail>): ApplicationDetail {
   return {
-    id: 1,
+    id: 1, findingsFingerprint: "1".repeat(64),
     primaryEmail: "alex@example.com",
     applicantName: "Alex Chen",
     coApplicantName: null,

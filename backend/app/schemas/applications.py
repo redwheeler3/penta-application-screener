@@ -128,6 +128,7 @@ class ApplicationSummary(ResponseModel):
 
 
 class ApplicationDetail(ApplicationSummary):
+    findings_fingerprint: str
     auto_status: str
     auto_status_source: str
     first_submitted_at: str | None = None
@@ -152,6 +153,7 @@ class ApplicationDetail(ApplicationSummary):
 
 class EligibilityUpdate(ResponseModel):
     id: int
+    findings_fingerprint: str
     status: str
     status_source: str
     stale: bool
