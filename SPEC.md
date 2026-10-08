@@ -495,8 +495,10 @@ removed. They do not show an applicant-removal link.
 
 - The form preserves the field-reference questions and required/optional behavior. Applicant,
   co-applicant, and child ages are collected as dates of birth so the application can calculate age
-  on the last submitted edit instead of becoming stale. Committee and AI views receive the
-  calculated age needed for screening, not the raw birth date. Existing submitted integer ages
+  on the last submitted edit instead of becoming stale. Trusted committee detail shows birth dates
+  alongside those calculated ages and retains access to the submitted source answers. Structured
+  discovery/scoring facts omit adult birth dates; child details include names, birth dates and
+  submission-time ages under the full-application-context AI policy. Existing submitted integer ages
   remain unchanged in their historical snapshots; they are never converted into invented birth
   dates. A returning applicant must provide the missing birth dates in the working copy before
   submitting for another opening.
@@ -1144,6 +1146,13 @@ A human flipping the status never deletes these records — an applicant can be 
 **Clearing an override:** a human override can be removed, handing the decision back to the machine. Clearing recomputes the status from the *current* findings (rules then AI) and resets `status_source` to the machine source. The detail view models this as source ownership: a segmented **Decided by** control over `Automatic | Eligible | Ineligible`, where "Automatic" is selected whenever `status_source != human` and selecting it clears the override. The detail payload carries `autoStatus`/`autoStatusSource` (what the machine would decide right now). Clearing is idempotent.
 
 **Staleness nudge:** because human decisions are sticky, a re-run can surface new findings on an application a human already cleared. When the machine records change after a human's review, the application is marked stale ("new findings since last review") so the reviewer can re-decide. Status does not move; staleness compares the current finding reason codes and flag categories with the fingerprint recorded when the human reviewed them.
+
+An eligibility override carries the fingerprint from the displayed detail, so a save cannot silently
+record unseen findings as reviewed. The member's decision still saves when newer findings exist;
+it remains stale, and the detail refreshes in the background without delaying acknowledgement or
+mixing newer reasons into older answers. A failed refresh preserves the decision and stale nudge.
+Members can explicitly reaffirm the same Eligible/Ineligible decision after reviewing current
+findings. The nudge says **New findings**, covering deterministic rules as well as AI flags.
 
 ### AI Screening (Integrity Flags)
 
