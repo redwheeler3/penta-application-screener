@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from app.ai.dimension_scoring import score_dimensions
 from app.api.ranking import shortlist
 from app.db.models import Analysis, ApplicationAIResult, User, UserRole
+from app.schemas.ranking import ProposalUpdate, TierLayoutUpdate
 from app.schemas.settings import AppSettings
 from app.services.cached_results import refresh_cached_results
 from app.services.ranking.analysis import create_analysis
@@ -126,3 +127,47 @@ async def test_board_does_not_rank_cached_ignored_scores_as_missing_selected_sco
         board = (await client.get("/ranking/board")).json()
         assert board["ranking"]["scoredCount"] == 0
         assert board["ranking"]["candidates"] == []
+
+
+def test_tier_save_acknowledges_its_layout_when_another_tab_saves_after_commit(monkeypatch):
+    _app, db, _provider = setup_app(UserRole.MEMBER)
+    first = add_eligible(db, email="first@example.com", raw_hash="first")
+    second = add_eligible(db, email="second@example.com", raw_hash="second")
+    user = db.scalar(select(User))
+    user_id, opening_id = user.id, current_opening_id(db)
+    analysis_id = seed_analysis(db, user, a_pattern_report()).id
+    for application, participation, skills in [(first, -0.8, 0.9), (second, 0.9, -0.8)]:
+        for key, score in [("participation_commitment", participation), ("skills_offered", skills)]:
+            add_selected_result(db, ApplicationAIResult(producer_application_id=application.id,
+                kind=f"dimension_scoring:{key}", cache_key=f"synthetic-{application.id}-{key}",
+                model_id="synthetic", prompt_version="synthetic", output={"score": score}))
+    db.commit()
+    factory = sessionmaker(bind=db.get_bind(), autoflush=False)
+    layout_a = TierLayoutUpdate(analysisId=analysis_id,
+        tiers=[{"id": "a", "label": "Skills", "dimensionKeys": ["skills_offered"]}])
+    layout_b = TierLayoutUpdate(analysisId=analysis_id,
+        tiers=[{"id": "b", "label": "Participation", "dimensionKeys": ["participation_commitment"]}])
+    with factory() as tab_a:
+        commit = tab_a.commit
+        other_receipts = []
+
+        def commit_then_save_in_other_tab():
+            commit()
+            with factory() as tab_b:
+                member = tab_b.get(User, user_id)
+                shortlist.update_proposal(ProposalUpdate(analysisId=analysis_id, operation="add",
+                    text="Synthetic next-run proposal"), opening_id, member, tab_b)
+                other_receipts.append(shortlist.update_tiers(layout_b, opening_id, member, tab_b))
+
+        monkeypatch.setattr(tab_a, "commit", commit_then_save_in_other_tab)
+        acknowledged = shortlist.update_tiers(layout_a, opening_id, tab_a.get(User, user_id), tab_a)
+    assert len(other_receipts) == 1
+    assert acknowledged.weights == {"participation_commitment": 0.0, "skills_offered": 1.0}
+    assert [candidate.application_id for candidate in acknowledged.candidates] == [first.id, second.id]
+    assert other_receipts[0].weights == {"participation_commitment": 1.0, "skills_offered": 0.0}
+    with factory() as reader:
+        board = shortlist.ranking_board(opening_id, reader.get(User, user_id), reader)
+    assert board.ranking.weights == other_receipts[0].weights
+    assert [candidate.application_id for candidate in board.ranking.candidates] == [second.id, first.id]
+    assert board.tiers[0].label == "Participation"
+    assert board.run.proposed_dimensions == ["Synthetic next-run proposal"]

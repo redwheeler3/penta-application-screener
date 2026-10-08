@@ -481,7 +481,10 @@ def set_tiers(
     acknowledged_keys: list[str] | None = None,
     acknowledged_requested_keys: list[str] | None = None,
 ) -> MemberRanking:
-    """Persist this member's new tier layout (weights are derived from it, never stored).
+    """Set this member's tier layout in the caller's transaction.
+
+    The caller captures the response before commit so another tab's priorities cannot
+    replace the acknowledgement. Weights derive from tiers and are never stored.
 
     Validates that every placed key is a real dimension of the shared analysis. Only working
     tiers are stored — the UI's Ignore zone is dropped before persisting (an empty layout just
@@ -542,6 +545,5 @@ def set_tiers(
         "new_dimension_keys": surviving,
         "acknowledged_requested_keys": ack_requested,
     }
-    db.commit()
-    db.refresh(member_ranking)
+    db.flush()
     return member_ranking

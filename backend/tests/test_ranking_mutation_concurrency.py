@@ -61,8 +61,10 @@ def test_stale_member_snapshots_preserve_independent_writes(proposals_first):
         if proposals_first:
             change_proposal(proposals, p, operation="add", text="Saved suggestion")
             set_tiers(tiers, t, layout)
+            tiers.commit()
         else:
             set_tiers(tiers, t, layout)
+            tiers.commit()
             change_proposal(proposals, p, operation="add", text="Saved suggestion")
     with factory() as db:
         state = db.get(MemberRanking, member_id).run_state

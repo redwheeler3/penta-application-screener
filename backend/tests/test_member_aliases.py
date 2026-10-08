@@ -208,6 +208,7 @@ def test_resurfaced_priority_is_identical_before_and_after_first_view(prior_igno
              "dimension_keys": [unrelated.key]},
         ]
         set_tiers(db, get_or_reconcile_member_ranking(db, prior, user), layouts[user.id])
+        db.commit()
     if alias_chain:
         db.add(DimensionAlias(alias_key="middle", canonical_key="older"))
         db.commit()
@@ -232,6 +233,7 @@ def test_resurfaced_priority_is_identical_before_and_after_first_view(prior_igno
         ignored = [{**tier, "dimension_keys": [key for key in tier["dimension_keys"] if key != "older"]}
                    for tier in layouts[user.id]]
         set_tiers(db, view, ignored)
+        db.commit()
         for _ in range(2):
             reread = get_or_reconcile_member_ranking(db, current, user)
             assert dimension_weights(reread)["older"] == 0.0
@@ -327,6 +329,7 @@ def test_member_read_returns_coherent_criteria_priorities_and_flags_during_conso
     if merge_at != "after-first-view-commit":
         view = get_or_reconcile_member_ranking(writer, current, other)
         set_tiers(writer, view, [{"id": "top", "label": "Personal priority", "dimension_keys": ["newer"]}])
+        writer.commit()
         if merge_at == "after-reconcile-commit":
             writer.add(DimensionAlias(alias_key="prior_alias", canonical_key="newer"))
             view.run_state = {**view.run_state,
@@ -394,6 +397,7 @@ def test_resurfaced_review_flags_match_late_views_and_preserve_explicit_acknowle
         set_tiers(db, get_or_reconcile_member_ranking(db, prior, user), [
             {"id": "top", "label": "Personal priority", "dimension_keys": [] if prior_ignored else ["older"]},
         ])
+        db.commit()
     gap = create_analysis(db, user=initiator, opening_id=opening_id,
         report=PoolDimensionReport(dimensions=[unrelated]), inputs_fingerprint="gap", narrative=None)
     for user in [eager, late]:
@@ -407,6 +411,7 @@ def test_resurfaced_review_flags_match_late_views_and_preserve_explicit_acknowle
     db.commit()
     if acknowledged:
         set_tiers(db, eager_view, eager_view.run_state["tiers"], acknowledged_keys=["newer"])
+        db.commit()
     apply_consolidation(db, current, get_or_reconcile_member_ranking(db, current, initiator),
         merges={"newer": "older"}, audit=[], narrative=None, settings=AppSettings())
     for user in [eager, late]:
@@ -420,6 +425,7 @@ def test_resurfaced_review_flags_match_late_views_and_preserve_explicit_acknowle
         assert view.run_state["proposed_dimensions"] == (["Personal proposal"] if user == eager else [])
         set_tiers(db, view, [{"id": "top", "label": "Personal priority", "dimension_keys": []}],
             acknowledged_keys=["older"])
+        db.commit()
         for _ in range(2):
             reread = get_or_reconcile_member_ranking(db, current, user)
             assert ranking_payload(db, reread, user).new_dimension_keys == []

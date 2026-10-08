@@ -358,6 +358,7 @@ def test_apply_consolidation_transfers_tier_placement_off_a_merged_key() -> None
     # the survivor sits in Ignore (unplaced).
     set_tiers(db, mr, [{"id": "tier-s", "label": "Critical",
                         "dimension_keys": ["financial_stewardship"]}])
+    db.commit()
 
     apply_consolidation(
         db, analysis, mr,
@@ -444,6 +445,7 @@ def test_apply_consolidation_flattens_an_in_run_chain() -> None:
     mr = get_or_reconcile_member_ranking(db, analysis, user)
     # Place ONLY the innermost link C in a working tier; A and B sit in Ignore.
     set_tiers(db, mr, [{"id": "tier-s", "label": "Critical", "dimension_keys": ["c_newest"]}])
+    db.commit()
 
     apply_consolidation(
         db, analysis, mr,

@@ -135,7 +135,9 @@ def update_tiers(
         )
     except ValueError as exc:
         raise Problem("unknown_dimension_key", detail=str(exc)) from exc
-    return ranking_payload(db, member_ranking, user)
+    acknowledged = ranking_payload(db, member_ranking, user)
+    db.commit()
+    return acknowledged
 
 
 # --- Discovery seeds ---------------------------------------------------------
