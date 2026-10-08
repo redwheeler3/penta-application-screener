@@ -88,11 +88,7 @@ def queue_due_unsuccessful_notices(
 
 def record_unsuccessful_delivery(db: Session, delivery: EmailDelivery) -> None:
     """Record acceptance with the same transaction as the delivery ledger update."""
-    prefix = f"application-unsuccessful:{delivery.application_id}:"
-    key = delivery.idempotency_key or ""
-    if not key.startswith(prefix):
-        raise ValueError("Invalid unsuccessful-notice identity")
-    opening_ids = [int(value) for value in key.removeprefix(prefix).split(",")]
+    opening_ids = _delivery_opening_ids(delivery)
     db.execute(update(ApplicationParticipation).where(
         ApplicationParticipation.application_id == delivery.application_id,
         ApplicationParticipation.opening_id.in_(opening_ids),
@@ -101,8 +97,23 @@ def record_unsuccessful_delivery(db: Session, delivery: EmailDelivery) -> None:
     ).values(unsuccessful_notified_at=delivery.last_attempt_at))
 
 
-def unsuccessful_notice_is_available(db: Session, application: Application, *, now: datetime | None = None) -> bool:
-    return retention_is_current(application, now=now) and application.withdrawn_at is None and _is_unsuccessful_and_final(_active_participations(db, application.id))
+def _delivery_opening_ids(delivery: EmailDelivery) -> tuple[int, ...]:
+    """The durable notice identity already records the outcomes this message covers."""
+    prefix = f"application-unsuccessful:{delivery.application_id}:"
+    key = delivery.idempotency_key or ""
+    if not key.startswith(prefix):
+        raise ValueError("Invalid unsuccessful-notice identity")
+    return tuple(int(value) for value in key.removeprefix(prefix).split(","))
+
+
+def unsuccessful_notice_is_available(db: Session, delivery: EmailDelivery, *, now: datetime | None = None) -> bool:
+    """Retry only the current due set, not an older subset or already accepted outcomes."""
+    application = delivery.application
+    if (application is None or application.submitted_at is None
+        or application.withdrawn_at is not None or not retention_is_current(application, now=now)):
+        return False
+    due = _due_opening_ids(_active_participations(db, application.id))
+    return bool(due) and due == _delivery_opening_ids(delivery)
 
 
 def _due_unsuccessful_notices(
@@ -127,18 +138,9 @@ def _due_unsuccessful_notices(
         by_application[participation.application_id].append((participation, opening))
     for application in applications:
         participations = by_application[application.id]
-        if not _is_unsuccessful_and_final(participations):
+        opening_ids = _due_opening_ids(participations)
+        if not opening_ids:
             continue
-        unnotified = [
-            participation
-            for participation, _ in participations
-            if participation.unsuccessful_notified_at is None
-        ]
-        if not unnotified:
-            continue
-        opening_ids = tuple(
-            sorted(participation.opening_id for participation in unnotified)
-        )
         labels = [
             _opening_label(opening)
             for participation, opening in participations
@@ -166,18 +168,23 @@ def _active_participations(
                 ApplicationParticipation.withdrawn_at.is_(None),
             )
             .order_by(Opening.move_in_date, Opening.id)
+            .execution_options(populate_existing=True)
         ).all()
     )
 
 
-def _is_unsuccessful_and_final(
+def _due_opening_ids(
     participations: list[tuple[ApplicationParticipation, Opening]],
-) -> bool:
-    return bool(participations) and all(
+) -> tuple[int, ...]:
+    """One policy for the producer and retries: all final, then only unnotified outcomes."""
+    if not participations or not all(
         participation.outcome == OpeningOutcome.UNSUCCESSFUL
         and opening_phase(opening) == OpeningPhase.ARCHIVED
         for participation, opening in participations
-    )
+    ):
+        return ()
+    return tuple(sorted(participation.opening_id for participation, _ in participations
+                        if participation.unsuccessful_notified_at is None))
 
 
 def _opening_label(opening: Opening) -> str:

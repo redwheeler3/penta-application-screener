@@ -378,7 +378,7 @@ def _build_retry(
             None,
         )
     if intent["type"] == "application_unsuccessful":
-        if not unsuccessful_notice_is_available(db, application, now=now):
+        if not unsuccessful_notice_is_available(db, delivery, now=now):
             delivery.last_error_code = "OutcomeNoLongerDue"
             return None
         return PreparedRetry(
