@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   appMachine,
+  hostRecovered,
+  hostUnavailable,
   needsRestart,
   nextPollAt,
   POLL_INTERVAL_MS,
@@ -32,12 +34,29 @@ describe("watchdog decisions", () => {
       incomplete_config: healthy.config,
       checks: undefined,
     };
-    expect(() => appMachine([unreachable])).toThrow(/host.*unreachable/);
-    expect(() => appMachine([{ ...unreachable, host_status: "unknown" }])).toThrow(/host.*unknown/);
+    expect(appMachine([unreachable])).toBe(unreachable);
+    expect(hostUnavailable(unreachable)).toBe(true);
+    expect(hostUnavailable({ ...unreachable, host_status: "unknown" })).toBe(true);
   });
 
   it("reports unreachable hosts even when their last state was running", () => {
-    expect(() => appMachine([{ ...healthy, host_status: "unreachable" }])).toThrow(/host.*unreachable/);
+    expect(hostUnavailable({ ...healthy, host_status: "unreachable" })).toBe(true);
+  });
+
+  it("confirms recovery only with explicit host and machine health evidence", () => {
+    const reachable = { ...healthy, host_status: "ok" };
+    expect(hostRecovered(reachable)).toBe(true);
+    expect(hostRecovered({ ...reachable, state: "suspended", checks: undefined })).toBe(true);
+    for (const host_status of [undefined, "unknown", "unreachable"]) {
+      expect(hostRecovered({ ...reachable, host_status })).toBe(false);
+    }
+    for (const state of ["starting", "stopped", "stopping"]) {
+      expect(hostRecovered({ ...reachable, state })).toBe(false);
+    }
+    for (const checks of [undefined, [], [{ status: "warning" }], [{ status: "critical" }],
+      [{ status: "passing" }, { status: "warning" }]]) {
+      expect(hostRecovered({ ...reachable, checks })).toBe(false);
+    }
   });
 
   it("reports missing or ambiguous app machines instead of silently skipping recovery", () => {

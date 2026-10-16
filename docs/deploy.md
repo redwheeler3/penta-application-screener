@@ -294,6 +294,10 @@ only restores the persisted alarm if needed.
 
 The watchdog restarts failed processes on reachable hosts. It alerts on `unreachable` or
 `unknown` hosts, including suspended Machines, and on missing or ambiguous app Machines.
+Host outages produce one notification, then one recovery notification after two consecutive
+confirmed recovery observations. Notification state persists across watchdog restarts and
+deployments. A suspended recovery message confirms host reachability without claiming the
+website was tested. Failed notification delivery is retried; polling and logging continue.
 An unavailable host also makes its attached SQLite volume unavailable; restarting or keeping
 the Machine always on cannot fix that failure. Check [Fly's status page](https://status.flyio.net/)
 and `flyctl incidents hosts list`, then inspect `flyctl machine list --json` and
@@ -315,6 +319,9 @@ reporting the real outage; TypeScript checks and all 16 watchdog tests passed. A
 restore of the 11:10 UTC snapshot passed SQLite integrity and foreign-key checks, then its
 temporary Machine and volume were removed. Production data was not rolled back; Jeff chose
 to wait for Fly recovery rather than change hosting or promote the snapshot.
+Fly subsequently restored the original host: it reported `host_status: ok`, its service check
+passed, both application hostnames returned HTTP 200 on their public checks, and an empty
+vacancy-signup POST returned the expected validation error without creating a subscription.
 
 To temporarily pause recovery, from `ops/fly-watchdog/` run:
 

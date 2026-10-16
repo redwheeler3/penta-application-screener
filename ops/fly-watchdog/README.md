@@ -23,8 +23,18 @@ It calls the Fly Machines API only; it never sends an HTTP request to Penta.
   is still required.
 - Public Worker and preview URLs are disabled. Recovery attempts are recorded in Cloudflare
   Worker logs. `ALERT_WEBHOOK_URL` is optional for a Discord webhook.
-- Every polling error is logged. Successfully delivered error alerts have a five-minute
-  cooldown; failed webhook delivery is retried on the next poll.
+- Host outages send one successfully delivered notification per continuous outage. `unknown`
+  and `unreachable` are the same outage; persisted notification state survives object restarts
+  and deployments. Polling and error logs continue while repeat host notifications are suppressed.
+- After two consecutive observations of the same Machine on an explicitly `ok` host, send one
+  recovery notification. The Machine must be suspended or running with all reported service
+  checks passing (at least one check is required). Startup, stopped, warning, failed lookup,
+  and paused-watchdog observations reset the confirmation count. Suspended recovery says
+  **Fly host reachable again** and explicitly does not claim the website has been tested.
+- Failed outage or recovery delivery is retried on later polls. A new host-outage alert is
+  armed after confirmed recovery and successful recovery notification; an outage that was
+  never successfully announced clears after confirmed recovery without an unpaired recovery
+  message. Other watchdog errors retain their five-minute alert cooldown.
 
 ## Routine commands
 

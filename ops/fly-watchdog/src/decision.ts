@@ -31,15 +31,19 @@ export function appMachine(machines: FlyMachine[]): FlyMachine {
   if (candidates.length !== 1) {
     throw new Error(`Expected one Fly app machine; found ${candidates.length}. Check Fly production configuration.`);
   }
-  const machine = candidates[0];
-  if (machine.host_status === "unreachable" || machine.host_status === "unknown") {
-    throw new Error(
-      `Fly host for machine ${machine.id} is ${machine.host_status} (last state: ${machine.state}). ` +
-        "Restart cannot repair an unavailable host. Check Fly incidents/support; " +
-        "database snapshot recovery requires operator approval.",
-    );
-  }
-  return machine;
+  return candidates[0];
+}
+
+export function hostUnavailable(machine: FlyMachine): boolean {
+  return machine.host_status === "unreachable" || machine.host_status === "unknown";
+}
+
+export function hostRecovered(machine: FlyMachine): boolean {
+  if (machine.host_status !== "ok") return false;
+  if (machine.state === "suspended") return true;
+  const checks = machine.checks ?? [];
+  return machine.state === "started" && checks.length > 0 &&
+    checks.every((check) => check.status === "passing");
 }
 
 export function needsRestart(machine: FlyMachine | undefined, now: number, lastRestartAt: number | null): boolean {

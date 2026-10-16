@@ -2,6 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 
 import {
   appMachine,
+  hostRecovered,
+  hostUnavailable,
   needsRestart,
   nextPollAt,
   shouldRetryLookupStatus,
@@ -20,9 +22,16 @@ export interface Env {
 
 const LAST_RESTART_AT_KEY = "last_restart_at";
 const LAST_ERROR_ALERT_AT_KEY = "last_error_alert_at";
+const HOST_OUTAGE_KEY = "host_outage";
 const FLY_REQUEST_TIMEOUT_MS = 10_000;
 const FLY_LOOKUP_RETRY_DELAY_MS = 1_000;
 const ERROR_ALERT_COOLDOWN_MS = 5 * 60_000;
+
+type HostOutage = {
+  alertDelivered: boolean;
+  recoveryChecks: number;
+  recoveryMachineId: string | null;
+};
 
 function errorDetail(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
@@ -41,6 +50,7 @@ function flyRequest(url: string, token: string, init?: RequestInit): Promise<Res
 export class FlyWatchdog extends DurableObject<Env> {
   async fetch(): Promise<Response> {
     if (!watchdogEnabled(this.env.WATCHDOG_ENABLED)) {
+      await this.resetHostRecoveryChecks();
       await this.ctx.storage.deleteAlarm();
       return new Response(null, { status: 204 });
     }
@@ -51,14 +61,16 @@ export class FlyWatchdog extends DurableObject<Env> {
 
   async alarm(): Promise<void> {
     if (!watchdogEnabled(this.env.WATCHDOG_ENABLED)) {
+      await this.resetHostRecoveryChecks();
       await this.ctx.storage.deleteAlarm();
       return;
     }
 
     const pollStartedAt = Date.now();
     try {
-      await this.restartIfUnhealthy();
+      await this.pollMachine();
     } catch (error) {
+      await this.resetHostRecoveryChecks();
       await this.notifyError(error);
       throw error;
     } finally {
@@ -74,7 +86,7 @@ export class FlyWatchdog extends DurableObject<Env> {
     }
   }
 
-  private async restartIfUnhealthy(): Promise<void> {
+  private async pollMachine(): Promise<void> {
     let response: Response;
     try {
       response = await retryOnce(
@@ -100,6 +112,11 @@ export class FlyWatchdog extends DurableObject<Env> {
     }
 
     const machine = appMachine((await response.json()) as FlyMachine[]);
+    if (hostUnavailable(machine)) {
+      await this.notifyHostOutage(machine);
+      return;
+    }
+    await this.notifyHostRecovery(machine);
     const lastRestartAt = await this.ctx.storage.get<number>(LAST_RESTART_AT_KEY);
     if (!needsRestart(machine, Date.now(), lastRestartAt ?? null)) return;
 
@@ -127,6 +144,56 @@ export class FlyWatchdog extends DurableObject<Env> {
     const message = `Restarted unhealthy Fly machine ${machine.id}.`;
     console.log(message);
     await this.sendAlert(message);
+  }
+
+  private async notifyHostOutage(machine: FlyMachine): Promise<void> {
+    const message = `Fly host for machine ${machine.id} is ${machine.host_status} ` +
+      `(last state: ${machine.state}). Restart cannot repair an unavailable host. ` +
+      "Check Fly incidents/support; database snapshot recovery requires operator approval.";
+    console.error(message);
+    const outage = await this.ctx.storage.get<HostOutage>(HOST_OUTAGE_KEY) ?? {
+      alertDelivered: false, recoveryChecks: 0, recoveryMachineId: null,
+    };
+    outage.recoveryChecks = 0;
+    outage.recoveryMachineId = null;
+    await this.ctx.storage.put(HOST_OUTAGE_KEY, outage);
+    if (!outage.alertDelivered && await this.sendAlert(message)) {
+      outage.alertDelivered = true;
+      await this.ctx.storage.put(HOST_OUTAGE_KEY, outage);
+      console.log("Host outage alert delivered.");
+    }
+  }
+
+  private async resetHostRecoveryChecks(): Promise<void> {
+    const outage = await this.ctx.storage.get<HostOutage>(HOST_OUTAGE_KEY);
+    if (outage && outage.recoveryChecks > 0) {
+      outage.recoveryChecks = 0;
+      outage.recoveryMachineId = null;
+      await this.ctx.storage.put(HOST_OUTAGE_KEY, outage);
+    }
+  }
+
+  private async notifyHostRecovery(machine: FlyMachine): Promise<void> {
+    const outage = await this.ctx.storage.get<HostOutage>(HOST_OUTAGE_KEY);
+    if (!outage) return;
+    if (!hostRecovered(machine)) {
+      await this.resetHostRecoveryChecks();
+      return;
+    }
+    outage.recoveryChecks = outage.recoveryMachineId === machine.id
+      ? Math.min(outage.recoveryChecks + 1, 2) : 1;
+    outage.recoveryMachineId = machine.id;
+    await this.ctx.storage.put(HOST_OUTAGE_KEY, outage);
+    if (outage.recoveryChecks < 2) return;
+
+    const message = `Fly host reachable again for machine ${machine.id}. ` +
+      (machine.state === "suspended"
+        ? "Machine is suspended; website availability has not been tested."
+        : "Machine is running and Fly service checks are passing.");
+    if (!outage.alertDelivered || await this.sendAlert(message)) {
+      await this.ctx.storage.delete(HOST_OUTAGE_KEY);
+      if (outage.alertDelivered) console.log("Host recovery alert delivered.");
+    }
   }
 
   private async notifyError(error: unknown): Promise<void> {
