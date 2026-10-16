@@ -101,7 +101,7 @@ export class FlyWatchdog extends DurableObject<Env> {
 
     const machine = appMachine((await response.json()) as FlyMachine[]);
     const lastRestartAt = await this.ctx.storage.get<number>(LAST_RESTART_AT_KEY);
-    if (!machine || !needsRestart(machine, Date.now(), lastRestartAt ?? null)) return;
+    if (!needsRestart(machine, Date.now(), lastRestartAt ?? null)) return;
 
     let restart: Response;
     try {
@@ -130,12 +130,14 @@ export class FlyWatchdog extends DurableObject<Env> {
   }
 
   private async notifyError(error: unknown): Promise<void> {
+    const detail = errorDetail(error);
+    console.error(`Fly watchdog error: ${detail}`);
     const lastAlertAt = await this.ctx.storage.get<number>(LAST_ERROR_ALERT_AT_KEY);
     if (lastAlertAt && Date.now() - lastAlertAt < ERROR_ALERT_COOLDOWN_MS) return;
 
-    const detail = errorDetail(error);
-    await this.ctx.storage.put(LAST_ERROR_ALERT_AT_KEY, Date.now());
-    await this.sendAlert(`Fly watchdog error: ${detail}`);
+    if (await this.sendAlert(`Fly watchdog error: ${detail}`)) {
+      await this.ctx.storage.put(LAST_ERROR_ALERT_AT_KEY, Date.now());
+    }
   }
 
   private async sendAlert(message: string): Promise<boolean> {

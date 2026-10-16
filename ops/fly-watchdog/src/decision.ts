@@ -14,7 +14,9 @@ export function shouldRetryLookupStatus(status: number): boolean {
 export type FlyMachine = {
   id: string;
   state: string;
-  config?: { metadata?: Record<string, string> };
+  host_status?: string;
+  config?: { metadata?: Record<string, string> } | null;
+  incomplete_config?: { metadata?: Record<string, string> } | null;
   checks?: Array<{ status: string }>;
 };
 
@@ -22,8 +24,22 @@ export function watchdogEnabled(value: string | undefined): boolean {
   return value !== "false";
 }
 
-export function appMachine(machines: FlyMachine[]): FlyMachine | undefined {
-  return machines.find((machine) => machine.config?.metadata?.fly_process_group === "app");
+export function appMachine(machines: FlyMachine[]): FlyMachine {
+  const candidates = machines.filter((machine) =>
+    (machine.config ?? machine.incomplete_config)?.metadata?.fly_process_group === "app",
+  );
+  if (candidates.length !== 1) {
+    throw new Error(`Expected one Fly app machine; found ${candidates.length}. Check Fly production configuration.`);
+  }
+  const machine = candidates[0];
+  if (machine.host_status === "unreachable" || machine.host_status === "unknown") {
+    throw new Error(
+      `Fly host for machine ${machine.id} is ${machine.host_status} (last state: ${machine.state}). ` +
+        "Restart cannot repair an unavailable host. Check Fly incidents/support; " +
+        "database snapshot recovery requires operator approval.",
+    );
+  }
+  return machine;
 }
 
 export function needsRestart(machine: FlyMachine | undefined, now: number, lastRestartAt: number | null): boolean {

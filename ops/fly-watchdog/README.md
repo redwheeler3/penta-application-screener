@@ -10,12 +10,21 @@ It calls the Fly Machines API only; it never sends an HTTP request to Penta.
   or recovery; it does not determine the health-check cadence.
 - Suspended, stopped, startup, and `warning` Machines are ignored. A `started` Machine with an
   explicitly `critical` service check is restarted, at most once every two minutes.
+- Host availability is checked before the Machine's last state. An `unreachable` or `unknown`
+  host raises an operator alert even when the Machine was suspended. Fly returns partial
+  metadata in `incomplete_config` for unavailable hosts; that metadata identifies the app
+  Machine. Missing or multiple app Machines also raise an alert instead of silently skipping.
+- A host outage cannot be repaired by restarting its Machine. Its local database volume is
+  also unavailable: check Fly incidents/support, then choose between waiting for the host and
+  an approved snapshot restore. The watchdog never restores a database automatically.
 - A timed-out or transient HTTP-failed Machine lookup is retried once after one second before
   alerting. Restart requests are never retried inside the same poll; after an ambiguous
   transport failure, the next poll re-checks Machine state before deciding whether recovery
   is still required.
 - Public Worker and preview URLs are disabled. Recovery attempts are recorded in Cloudflare
   Worker logs. `ALERT_WEBHOOK_URL` is optional for a Discord webhook.
+- Every polling error is logged. Successfully delivered error alerts have a five-minute
+  cooldown; failed webhook delivery is retried on the next poll.
 
 ## Routine commands
 

@@ -292,6 +292,30 @@ The Cloudflare Durable Object watchdog is maintained separately in
 making an HTTP request to Penta, so an idle Machine remains suspended. Its once-per-minute Cron
 only restores the persisted alarm if needed.
 
+The watchdog restarts failed processes on reachable hosts. It alerts on `unreachable` or
+`unknown` hosts, including suspended Machines, and on missing or ambiguous app Machines.
+An unavailable host also makes its attached SQLite volume unavailable; restarting or keeping
+the Machine always on cannot fix that failure. Check [Fly's status page](https://status.flyio.net/)
+and `flyctl incidents hosts list`, then inspect `flyctl machine list --json` and
+`flyctl volumes list --json`. A global incident may be absent from the app-specific incident list.
+
+For a sustained host outage, prepare a separate encrypted Toronto volume from the newest
+snapshot and validate its database before changing production. Obtain explicit approval for
+the snapshot timestamp and possible lost writes before switching traffic. Preserve the original
+volume for reconciliation when its host returns; never attach two independent SQLite copies
+to public app Machines simultaneously. Snapshot restore is disaster recovery, not automatic
+failover. Preventing host outages from interrupting service requires replicated data and
+multiple hosts, rather than an additional Machine with an independent SQLite database.
+
+On 2026-10-16, during Fly's platform-wide rolling host reboots, production's Toronto Machine
+and volume reported `host_status: unreachable`; proxy logs reported `PU03` and the vacancy
+signup endpoint also failed. The watchdog's app selector had silently ignored
+`incomplete_config` since its July introduction. The host-alert fix was deployed and observed
+reporting the real outage; TypeScript checks and all 16 watchdog tests passed. An isolated
+restore of the 11:10 UTC snapshot passed SQLite integrity and foreign-key checks, then its
+temporary Machine and volume were removed. Production data was not rolled back; Jeff chose
+to wait for Fly recovery rather than change hosting or promote the snapshot.
+
 To temporarily pause recovery, from `ops/fly-watchdog/` run:
 
 ```powershell

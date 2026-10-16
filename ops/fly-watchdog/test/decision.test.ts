@@ -23,6 +23,29 @@ describe("watchdog decisions", () => {
     expect(appMachine([{ ...healthy, config: { metadata: { fly_process_group: "worker" } } }, healthy])).toBe(healthy);
   });
 
+  it("recognizes Fly's partial configuration when the host is unavailable", () => {
+    const unreachable = {
+      ...healthy,
+      state: "suspended",
+      host_status: "unreachable",
+      config: null,
+      incomplete_config: healthy.config,
+      checks: undefined,
+    };
+    expect(() => appMachine([unreachable])).toThrow(/host.*unreachable/);
+    expect(() => appMachine([{ ...unreachable, host_status: "unknown" }])).toThrow(/host.*unknown/);
+  });
+
+  it("reports unreachable hosts even when their last state was running", () => {
+    expect(() => appMachine([{ ...healthy, host_status: "unreachable" }])).toThrow(/host.*unreachable/);
+  });
+
+  it("reports missing or ambiguous app machines instead of silently skipping recovery", () => {
+    expect(() => appMachine([])).toThrow(/found 0/);
+    expect(() => appMachine([{ ...healthy, config: null }])).toThrow(/found 0/);
+    expect(() => appMachine([healthy, { ...healthy, id: "other" }])).toThrow(/found 2/);
+  });
+
   it("ignores suspended, starting, healthy, and warning machines", () => {
     expect(needsRestart({ ...healthy, state: "suspended" }, 1, null)).toBe(false);
     expect(needsRestart({ ...healthy, state: "starting" }, 1, null)).toBe(false);
