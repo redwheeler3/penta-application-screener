@@ -292,12 +292,18 @@ The Cloudflare Durable Object watchdog is maintained separately in
 making an HTTP request to Penta, so an idle Machine remains suspended. Its once-per-minute Cron
 only restores the persisted alarm if needed.
 
-The watchdog restarts failed processes on reachable hosts. It alerts on `unreachable` or
-`unknown` hosts, including suspended Machines, and on missing or ambiguous app Machines.
-Host outages produce one notification, then one recovery notification after two consecutive
+The watchdog immediately attempts recovery of failed processes on reachable hosts and reports
+every restart attempt, including rejected requests and unknown outcomes. It alerts after two
+unavailable-host observations (`unreachable` or `unknown`), including suspended Machines.
+Transient lookup failures alert after two consecutive failed polls, each with one retry;
+authentication/configuration errors, including missing or ambiguous app Machines, alert immediately.
+Polls normally occur 30 seconds apart. Host and lookup outages each produce one notification,
+then one recovery notification after two consecutive
 confirmed recovery observations. Notification state persists across watchdog restarts and
 deployments. A suspended recovery message confirms host reachability without claiming the
-website was tested. Failed notification delivery is retried; polling and logging continue.
+website was tested; lookup recovery confirms monitoring visibility only. Unannounced transient
+failures clear silently. Failed outage/recovery notification delivery is retried; polling and
+logging continue. All Discord messages use the `Fly watchdog:` prefix and report what happened.
 An unavailable host also makes its attached SQLite volume unavailable; restarting or keeping
 the Machine always on cannot fix that failure. Check [Fly's status page](https://status.flyio.net/)
 and `flyctl incidents hosts list`, then inspect `flyctl machine list --json` and
