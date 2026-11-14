@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { DateInput, localDateToday } from "../components/shared/DateInput";
 
 import type {
   ApplicantDraft,
@@ -72,26 +73,12 @@ export function DateField(props: {
   return (
     <label className="applicant-field">
       <span>{props.label}{props.required ? <Required /> : null}</span>
-      <input
-        type="text"
-        inputMode="numeric"
+      <DateInput
         autoComplete={props.autoComplete}
-        data-date="true"
-        data-not-future={props.notFuture ? "true" : undefined}
-        placeholder="YYYY-MM-DD"
         value={props.value}
         required={props.required}
-        maxLength={10}
-        onInput={(event) => event.currentTarget.setCustomValidity("")}
-        onChange={(event) => {
-          const inputEvent = event.nativeEvent as InputEvent;
-          if (insertedNonDigit(inputEvent)) return;
-          const value = formatIsoDate(
-            event.currentTarget.value,
-            inputEvent.inputType.startsWith("delete"),
-          );
-          props.onChange(value);
-        }}
+        notFuture={props.notFuture}
+        onChange={props.onChange}
       />
     </label>
   );
@@ -295,22 +282,6 @@ function formatPhone(value: string, deleting: boolean): string {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
-function formatIsoDate(value: string, deleting: boolean): string {
-  if (
-    /^[0-9]{0,3}$/.test(value) ||
-    /^[0-9]{4}-[0-9]?$/.test(value) ||
-    /^[0-9]{4}-[0-9]{2}-[0-9]{0,2}$/.test(value)
-  ) {
-    return value;
-  }
-  if (/^[0-9]{4}$/.test(value)) return deleting ? value : `${value}-`;
-  if (/^[0-9]{4}-[0-9]{2}$/.test(value)) return deleting ? value : `${value}-`;
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 4) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
-  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
-}
-
 function isValidIsoDate(value: string): boolean {
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
@@ -320,12 +291,7 @@ export function validateFormFields(form: HTMLFormElement | null): void {
   form?.querySelectorAll<HTMLInputElement>("input[data-email]").forEach(validateEmailField);
   form?.querySelectorAll<HTMLInputElement>("input[data-date]").forEach((input) => {
     const value = input.value;
-    const today = new Date();
-    const localToday = [
-      today.getFullYear(),
-      String(today.getMonth() + 1).padStart(2, "0"),
-      String(today.getDate()).padStart(2, "0"),
-    ].join("-");
+    const localToday = localDateToday();
     input.setCustomValidity(
       value && !isValidIsoDate(value)
         ? "Enter a valid date in YYYY-MM-DD format."

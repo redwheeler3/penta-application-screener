@@ -150,7 +150,8 @@ describe("OpeningsPanel modes", () => {
     await user.click(screen.getByRole("button", { name: "Create opening" }));
     expect(api.createOpening).toHaveBeenCalledOnce();
     expect(api.previewOpening).not.toHaveBeenCalled();
-    expect(await screen.findByText(/Opening created/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "New opening" })).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("updates an existing opening without publishing or reviewing an audience", async () => {

@@ -535,7 +535,9 @@ removed. They do not show an applicant-removal link.
   decision archives the opening; the calendar closes intake without deciding its outcome.
 - The monthly housing charge starts blank for a new opening and is required before saving.
   Editing an existing opening shows its saved charge, including an explicitly saved zero.
-  Editable opening dates use a four-digit year limit so typing a complete year advances to the month.
+- Opening and applicant dates share the native date control: keyboard entry and calendar selection,
+  a four-digit year limit, and existing required/future-date restrictions.
+- Creating an opening returns to its visible card without a redundant success message.
 - Opening-management introductory and success copy describes creating and managing available homes.
   Retention protection is an edge case explained in the policy and relevant action confirmations.
 - **Preparing** is the initial stage of a new opening. Creation records home details and a required

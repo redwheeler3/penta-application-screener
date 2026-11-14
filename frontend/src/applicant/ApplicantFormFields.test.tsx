@@ -1,14 +1,15 @@
+import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { validateFormFields } from "./ApplicantFormFields";
+import { DateField, validateFormFields } from "./ApplicantFormFields";
 
 describe("applicant form date validation", () => {
   it("rejects future dates only for fields marked as not future", () => {
-    const form = document.createElement("form");
-    form.innerHTML = `
-      <input data-date="true" data-not-future="true" value="2999-01-01" />
-      <input data-date="true" value="2999-01-01" />
-    `;
+    const { container } = render(<form>
+      <DateField label="Birth date" value="2999-01-01" notFuture onChange={() => {}} />
+      <DateField label="Unrestricted date" value="2999-01-01" onChange={() => {}} />
+    </form>);
+    const form = container.querySelector("form")!;
     const [birthDate, unrestrictedDate] = Array.from(
       form.querySelectorAll<HTMLInputElement>("input"),
     );

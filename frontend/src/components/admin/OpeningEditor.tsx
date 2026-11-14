@@ -5,6 +5,7 @@ import * as openingsApi from "../../api/openings";
 import { problemMessage, readProblemBody } from "../../api/problems";
 import { useRequestScope } from "../../hooks/useRequestScope";
 import type { Opening, OpeningCreate, OpeningCommit, OpeningDetails, OpeningUpdated, OpeningWrite } from "../../types";
+import { DateInput } from "../shared/DateInput";
 import { NumberInput } from "../shared/NumberInput";
 
 type OpeningDraft = {
@@ -85,9 +86,7 @@ export function OpeningEditor(props: {
     }
     const created = (await response.json()) as OpeningCommit;
     if (!isCurrent()) return;
-    props.onSaved(created.openings,
-      "Opening created. You can open applications when you’re ready.",
-    );
+    props.onSaved(created.openings, "");
   }
 
   async function update(values: OpeningWrite): Promise<void> {
@@ -229,16 +228,16 @@ function OpeningForm(props: {
         {props.editing && props.draft.applicationOpenDate ? (
           <label>
             <span>Applications opened</span>
-            <input type="date" value={props.draft.applicationOpenDate} readOnly />
+            <DateInput value={props.draft.applicationOpenDate} readOnly />
           </label>
         ) : null}
         <label>
           <span>Applications close</span>
-          <input type="date" max="9999-12-31" disabled={props.fieldsDisabled} required value={props.draft.applicationCloseDate} onChange={(event) => set({ applicationCloseDate: event.target.value })} />
+          <DateInput disabled={props.fieldsDisabled} required value={props.draft.applicationCloseDate} onChange={(applicationCloseDate) => set({ applicationCloseDate })} />
         </label>
         <label>
           <span>Move-in date</span>
-          <input type="date" max="9999-12-31" disabled={props.fieldsDisabled} required value={props.draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
+          <DateInput disabled={props.fieldsDisabled} required value={props.draft.moveInDate} onChange={(moveInDate) => set({ moveInDate })} />
         </label>
       </div>
       <div className="opening-form-actions">

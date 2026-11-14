@@ -201,6 +201,8 @@
   scroll-margin-top: 110px;
 }
 
+.applicant-field input[type="date"] { height: calc(1.35em + 24px); min-width: 0; }
+
 .applicant-field textarea { resize: vertical; min-height: 126px; }
 .applicant-field.compact textarea { min-height: 78px; }
 .applicant-field input:focus,
