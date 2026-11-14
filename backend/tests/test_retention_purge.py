@@ -17,13 +17,12 @@ from app.db.models import (
     User,
     UserRole,
 )
-from app.schemas.openings import DirectSelectionOpeningCreate
 from app.services.applications import purge
 from app.services.applications.locking import lock_application
 from app.services.applications.purge import purge_due_applicant_data
-from app.services.openings.direct_selection import create_direct_selection_opening
 from tests.application_support import current_opening
 from tests.db_support import memory_session
+from tests.opening_support import create_direct_selection_opening
 from tests.test_write_concurrency import request_sessions
 
 
@@ -138,10 +137,8 @@ def test_selection_after_sweep_read_preserves_new_retention(monkeypatch) -> None
 
     def select_before_lock(db, application_id):
         with factory() as other:
-            create_direct_selection_opening(other, DirectSelectionOpeningCreate(
-                applicationId=application_id, unitSizeBedrooms=2, housingChargeCents=100_000,
-                moveInDate=today + timedelta(days=30),
-            ), decided_by=other.get(User, admin_id), now=now)
+            create_direct_selection_opening(other, application_id,
+                move_in_date=today + timedelta(days=30), decided_by=other.get(User, admin_id), now=now)
         return lock_application(db, application_id)
 
     monkeypatch.setattr(purge, "lock_application", select_before_lock)

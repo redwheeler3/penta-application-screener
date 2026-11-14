@@ -530,32 +530,28 @@ removed. They do not show an applicant-removal link.
   action unless that acceptance accompanies it, and the immutable application version records the
   submission time.
 - Every opening records its intake mode, move-in date, unit size, and monthly housing charge. An
-  **Open applications** opening also records its application open and close dates. Creating one is
-  the application-open event: its open date is that day and the confirmed notification audience is
-  durably queued in the same transaction. Its later phase is derived from the dates rather than
-  maintained with manual Open and Close actions. The dates may be equal but cannot run backward:
-  open is on or before close, which is on or before move-in. A committee decision, not a calendar
-  date, archives the opening.
-  Opening announcements are prepared only while the opening is published and accepting
-  applications. Application recipients are rechecked against the current notification-audience
-  policy before an access credential is issued; obsolete notices are discarded without consuming
-  an unsent notification-list request.
-  Publication carries a unique request identity and its original facts. Retrying an uncertain
-  response returns that opening without queueing notifications again; separate identities allow
-  legitimate openings with identical facts. An uncertain publication keeps its form facts fixed
-  until the saved result is confirmed.
-- **Fill from previous applicants** is a separate production intake mode for a home offered to
-  someone from a retained prior pool. An administrator searches by name or email across submitted,
-  non-withdrawn, non-selected applications that still have a prior participation and have not
-  reached their purge date. The retained pool remains absent from Applications, Screen, Rank, and
-  AI; this narrow admin-only search is its sole candidate-discovery exception. After confirming the
-  applicant's interest outside the system, the administrator enters the home details and chooses
-  that applicant. The opening and selected participation are committed atomically. No application
-  period is invented, no other applicant participates or becomes unsuccessful, no vacancy audience
-  is calculated or consumed, and no email is queued. The selected application immediately leaves
-  ordinary committee and AI scope and is retained for seven years after the decision date.
-- A direct-selection opening is archived immediately and never appears in applicant opening
-  choices. Its confirmed selection is permanent.
+  opening also records a planned application deadline. Its actual application open date remains
+  unset until an administrator opens applications. The deadline is on or before move-in. A committee
+  decision archives the opening; the calendar closes intake without deciding its outcome.
+- **Preparing** is the initial stage of a new opening. Creation records home details and a required
+  planned application deadline, sends no email, and does not expose the opening to applicants.
+  It captures currently retained submitted, non-withdrawn, non-selected applications for temporary
+  retention protection. This administrative association is separate from applicant participation.
+- **Open applications** explicitly publishes a Preparing opening, records that day's actual open
+  date, and queues the confirmed current notification audience in the same transaction. The saved
+  details and audience are revalidated. Repeating publication cannot queue duplicate announcements.
+  An elapsed deadline must be extended before publication. Opening creation is independently
+  retry-safe through its creation request identity and original facts.
+- **Fill from previous applicants** finalizes an existing Preparing opening after the administrator
+  confirms the household's interest outside the system. Name/email search finds available retained
+  submitted applications with prior participation, excluding withdrawn and selected households.
+  The selected participation and opening decision are committed atomically. No other applicant is
+  enrolled or recorded unsuccessful, no notification-list request is consumed, and no mail is queued.
+  The selected application is retained for seven years after the decision and its access is revoked.
+- A Preparing opening can be cancelled by recording a permanent no-household decision without
+  applicant participation or outcome email. Filling or cancelling releases that opening's protection.
+- A direct-selection opening is archived immediately, never appears in applicant choices and has
+  a permanent decision. Its planned deadline remains historical opening information.
 - Application-close timing does not prevent an existing application's information from being
   reused for a later opening. Each opening has a separate participation record that says the
   applicant affirmatively wants their one application considered for that opening. Participation
@@ -713,6 +709,19 @@ one-year period begins after the last decision. Move-in dates do not change rete
 
 The public privacy policy explains these retention periods and the restricted legal-hold behavior;
 the ordinary applicant interface does not restate that policy in the **Delete my profile** confirmation.
+
+A Preparing or accepting opening temporarily protects the available submitted pool through its
+application deadline, inclusive in Pacific time. The latest applicable deadline across protecting
+openings applies. The original decision-based retention date is preserved. Shortening a deadline,
+filling or cancelling the opening releases its protection immediately; a record already past its
+ordinary expiry becomes unavailable and due for deletion unless another opening still protects it.
+Extending, creating or publishing an opening captures only currently available records under the
+SQLite writer lock and cannot revive expired data awaiting purge. Protection does not enroll an
+applicant, create unsuccessful outcomes, or restart a year. Submitting for the opening establishes
+normal participation and retention through the final decision, then one year if unsuccessful or
+seven years if selected. Authentication, committee scope, notifications and purge use the same
+protection-aware retention boundary. Migration preserves existing openings and captures currently
+available applications for existing undecided openings whose deadlines have not elapsed.
 
 The Pacific purge date is the first unavailable day. Reads, authentication, writes, direct
 selection and email preparation enforce that boundary even before daily maintenance runs.

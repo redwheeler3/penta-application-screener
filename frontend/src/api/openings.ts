@@ -1,6 +1,5 @@
 import { type ApiClient } from "./client";
 import type {
-  DirectSelectionOpeningCreate,
   Opening,
   OpeningCreate,
   OpeningPreview,
@@ -33,13 +32,12 @@ export function createApi(client: ApiClient) {
 
   function createOpening(
     opening: OpeningCreate,
-    expectedAudienceCount: number,
-    publicationRequestId: string,
+    creationRequestId: string,
   ): Promise<Response> {
     return request("/openings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...opening, expectedAudienceCount, publicationRequestId }),
+      body: JSON.stringify({ ...opening, creationRequestId }),
     });
   }
 
@@ -66,13 +64,13 @@ export function createApi(client: ApiClient) {
     });
   }
 
-  function createDirectSelectionOpening(
-    opening: DirectSelectionOpeningCreate,
+  function selectPreviousApplicant(
+    openingId: number, applicationId: number,
   ): Promise<Response> {
-    return request("/openings/direct-selection", {
+    return request(`/openings/${openingId}/direct-selection`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(opening),
+      body: JSON.stringify({ applicationId }),
     });
   }
 
@@ -86,9 +84,14 @@ export function createApi(client: ApiClient) {
 
   const confirmNoHouseholdSelected = (id: number) =>
     request(`/openings/${id}/selection/no-household`, { method: "POST" });
+  function openApplications(id: number, original: OpeningWrite, expectedAudienceCount: number): Promise<Response> {
+    return request(`/openings/${id}/open`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ original, expectedAudienceCount }) });
+  }
   return {
+    openApplications,
     fetchOpenings, fetchOpeningEmailUsage, previewOpening, createOpening, updateOpening,
-    fetchOpeningSelection, searchPreviousApplicants, createDirectSelectionOpening,
+    fetchOpeningSelection, searchPreviousApplicants, selectPreviousApplicant,
     confirmOpeningSelection, confirmNoHouseholdSelected,
   };
 }

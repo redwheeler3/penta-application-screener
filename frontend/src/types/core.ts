@@ -37,14 +37,14 @@ export type DeniedSignInAttempt = {
   count: number;
 };
 
-export type OpeningPhase = "upcoming" | "open" | "closed" | "archived";
+export type OpeningPhase = "preparing" | "upcoming" | "open" | "closed" | "archived";
 export type OpeningIntakeMode = "applications" | "direct_selection";
 
 export type OpeningDetails = {
   id: number;
   unitSizeBedrooms: number;
   housingChargeCents: number;
-  applicationOpenDate: string;
+  applicationOpenDate: string | null;
   applicationCloseDate: string;
   moveInDate: string;
 };
@@ -130,13 +130,6 @@ export type OpeningSelection = {
   noHouseholdSelected: boolean;
   activeParticipantCount: number;
   candidates: OpeningSelectionCandidate[];
-};
-
-export type DirectSelectionOpeningCreate = {
-  unitSizeBedrooms: number;
-  housingChargeCents: number;
-  moveInDate: string;
-  applicationId: number;
 };
 
 // A member's feedback item. Members submit body + context; identity/version/time are

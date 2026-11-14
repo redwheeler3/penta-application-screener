@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderCommittee as render, deferred } from "../../testSupport";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
-import type { Opening, OpeningPreview, SocketLabsUsage } from "../../types";
+import type { Opening, OpeningPreview } from "../../types";
 import { OpeningEditor } from "./OpeningEditor";
 
 const api = vi.hoisted(() => ({
@@ -40,34 +40,14 @@ it("retries an uncertain publication with the original identity and frozen facts
   const { onSaved } = setup(null);
   fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
   fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Review opening and emails" })); });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open applications and queue 0 emails" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Create opening" })); });
   expect(screen.getByLabelText("Move-in date")).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Open applications and queue 0 emails" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Create opening" })).toBeEnabled();
   const first = vi.mocked(api.createOpening).mock.calls[0];
-  expect(first[2]).toMatch(/^[0-9a-f-]{36}$/);
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Open applications and queue 0 emails" })); });
+  expect(first[1]).toMatch(/^[0-9a-f-]{36}$/);
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Create opening" })); });
   expect(vi.mocked(api.createOpening).mock.calls[1]).toEqual(first);
   expect(onSaved).toHaveBeenCalledOnce();
-});
-
-it("shows the audience and enables publication while provider usage is pending", async () => {
-  const usage = deferred<SocketLabsUsage>();
-  vi.mocked(api.fetchOpeningEmailUsage).mockReturnValue(usage.promise);
-  vi.mocked(api.previewOpening).mockResolvedValue({ audienceCount: 3, subscriberOnlyCount: 3,
-    applicationOnlyCount: 0, overlapCount: 0, variants: [] });
-  setup(null);
-  fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
-  fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Review opening and emails" })); });
-  expect(screen.getByText("Ready to open applications")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Open applications and queue 3 emails" })).toBeEnabled();
-  expect(screen.getByText(/Checking current email usage/)).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Unit size"), { target: { value: "3" } });
-  await act(async () => usage.resolve({ available: true, retrievedAt: null, billingPeriodStart: null,
-    billingPeriodEnd: null, messagesUsed: 100, messageAllowance: 200, messagesUsedPercent: 50,
-    allowOverages: false, projectedMessagesUsed: 103 }));
-  expect(screen.queryByText(/SocketLabs usage will move/)).toBeNull();
 });
 
 it("preserves later edits and advances only the acknowledged opening snapshot", async () => {

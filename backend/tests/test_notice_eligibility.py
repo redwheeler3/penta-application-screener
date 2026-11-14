@@ -19,13 +19,13 @@ from app.db.models import (
 from app.schemas.openings import OpeningCreate
 from app.services.email.outbox import email_queue_status, retry_queued_emails
 from app.services.email.sender import CapturedEmailSender
-from app.services.openings.catalog import create_opening
 from app.services.openings.subscriptions import save_subscription
 from app.services.openings.vacancy_notifications import (
     opening_audience,
     queue_opening_notifications,
 )
 from tests.db_support import memory_engine
+from tests.opening_support import create_published_opening as create_opening
 
 
 def opening_values(today):

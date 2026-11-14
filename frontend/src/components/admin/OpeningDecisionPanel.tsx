@@ -25,7 +25,7 @@ export function OpeningDecisionPanel(props: {
 }): ReactNode {
   const api = useCommitteeApi(openingsApi);
 
-  const [choice, setChoice] = useState<DecisionChoice>({ kind: "candidates" });
+  const [choice, setChoice] = useState<DecisionChoice>({ kind: props.selection.phase === "preparing" ? "no-household" : "candidates" });
   const { busy, setBusy } = props;
   const requests = useRequestScope(props.selection.openingId);
   const [unconfirmed, setUnconfirmed] = useState(false);
@@ -56,6 +56,10 @@ export function OpeningDecisionPanel(props: {
         throw new Error("Decision acknowledgement is incomplete.");
       }
       if (!isCurrent()) return;
+      if (props.selection.phase === "preparing") {
+        props.onSaved(saved.openings, "Opening cancelled. Its retention protection has ended. No email was sent.");
+        return;
+      }
       const prefix = choice.kind === "candidate" ? "Successful applicant selected." : "Opening decision recorded.";
       const message = saved.queuedNotificationCount > 0
         ? `${prefix} ${saved.queuedNotificationCount} outcome ${saved.queuedNotificationCount === 1 ? "email is" : "emails are"} queued. Check Email delivery for status.`
@@ -84,15 +88,19 @@ export function OpeningDecisionPanel(props: {
     const count = props.selection.activeParticipantCount;
     return (
       <section className="opening-selection-panel">
-        <h4>Confirm no household selected</h4>
+        <h4>{props.selection.phase === "preparing" ? "Cancel this opening?" : "Confirm no household selected"}</h4>
         <p>
-          No household will be selected for this opening. {count} {count === 1 ? "application" : "applications"} will be recorded as unsuccessful.
+          {props.selection.phase === "preparing"
+            ? "This opening will end without accepting applications or selecting a household."
+            : `No household will be selected for this opening. ${count} ${count === 1 ? "application" : "applications"} will be recorded as unsuccessful.`}
         </p>
         <p className="panel-hint">
-          This decision is permanent. Eligible outcome emails will be queued and sent in the background.
+          {props.selection.phase === "preparing"
+            ? "This is permanent and sends no email. Its retention protection ends immediately; applications past their original expiry may be deleted unless another opening protects them."
+            : "This decision is permanent. Eligible outcome emails will be queued and sent in the background."}
         </p>
         <div className="opening-form-actions">
-          <button className="secondary-button" type="button" onClick={() => setChoice({ kind: "candidates" })} disabled={busy}>Back</button>
+          <button className="secondary-button" type="button" onClick={() => props.selection.phase === "preparing" ? props.onClose() : setChoice({ kind: "candidates" })} disabled={busy}>Back</button>
           <button className="primary-button" type="button" onClick={() => void confirm()} disabled={busy}>
             <UserX size={15} /> {busy ? "Saving decision…" : "Confirm decision"}
           </button>

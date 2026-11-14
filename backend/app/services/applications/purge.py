@@ -22,6 +22,10 @@ from app.services.applications.result_retention import (
     application_result_ids,
     prune_unowned_results,
 )
+from app.services.applications.retention import (
+    current_retention_clause,
+    retention_is_current,
+)
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,7 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
         .where(
             Application.retention_due_on.is_not(None),
             Application.retention_due_on <= today,
+            ~current_retention_clause(now=now),
         )
         .order_by(Application.id)
     ).all()
@@ -89,7 +94,7 @@ def purge_due_applicant_data(db: Session, *, now: datetime | None = None) -> Pur
 def purge_expired_application(db: Session, application: Application, *, now: datetime) -> bool:
     """Remove one expired identity under its writer lock in the caller's transaction."""
     application = lock_application(db, application.id)
-    if application is None or application.retention_due_on is None or application.retention_due_on > pacific_today(now=now):
+    if application is None or retention_is_current(application, now=now):
         return False
     _record_deletion(db, record_kind="application", record_id=application.id,
                      retention_rule=_application_retention_rule(db, application),

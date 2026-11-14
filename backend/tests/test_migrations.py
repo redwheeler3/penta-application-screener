@@ -243,12 +243,12 @@ def test_publication_migration_preserves_openings_and_enforces_request_identity(
         command.upgrade(config, "head")
         engine = create_engine(url)
         with engine.begin() as connection:
-            row = connection.exec_driver_sql("SELECT housing_charge_cents, publication_request_id, publication_request FROM openings").one()
+            row = connection.exec_driver_sql("SELECT housing_charge_cents, creation_request_id, creation_request FROM openings").one()
             assert row == (125000, None, None)
-            connection.exec_driver_sql("UPDATE openings SET publication_request_id = 'synthetic-publication'")
+            connection.exec_driver_sql("UPDATE openings SET creation_request_id = 'synthetic-publication'")
         with pytest.raises(IntegrityError), engine.begin() as connection:
             connection.exec_driver_sql("INSERT INTO openings (unit_size_bedrooms, housing_charge_cents, "
-                "application_open_date, application_close_date, move_in_date, intake_mode, publication_request_id, created_at, updated_at) "
+                "application_open_date, application_close_date, move_in_date, intake_mode, creation_request_id, created_at, updated_at) "
                 "VALUES (2, 125000, '2026-10-01', '2026-10-31', '2026-11-30', 'applications', 'synthetic-publication', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
         engine.dispose()
     finally:

@@ -221,15 +221,12 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
         other.id,
     }
 
-    move_in_date = today + timedelta(days=90)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        prepared_id = _prepared(db).id
         response = await client.post(
-            "/openings/direct-selection",
+            f"/openings/{prepared_id}/direct-selection",
             json={
-                "unitSizeBedrooms": 3,
-                "housingChargeCents": 145_000,
-                "moveInDate": move_in_date.isoformat(),
                 "applicationId": candidate.id,
             },
         )
@@ -242,7 +239,7 @@ async def test_direct_selection_is_atomic_and_sends_no_email() -> None:
     )
     assert direct["phase"] == "archived"
     assert direct["applicationOpenDate"] is None
-    assert direct["applicationCloseDate"] is None
+    assert direct["applicationCloseDate"] is not None
     assert direct["publishedAt"] is None
     assert direct["selectedApplicationId"] == candidate.id
     assert direct["id"] not in {
@@ -289,12 +286,10 @@ async def test_direct_selection_revalidates_the_previous_applicant() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        prepared_id = _prepared(db).id
         response = await client.post(
-            "/openings/direct-selection",
+            f"/openings/{prepared_id}/direct-selection",
             json={
-                "unitSizeBedrooms": 2,
-                "housingChargeCents": 135_000,
-                "moveInDate": (today + timedelta(days=90)).isoformat(),
                 "applicationId": candidate.id,
             },
         )
@@ -323,12 +318,10 @@ async def test_direct_selection_is_permanent_immediately() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        prepared_id = _prepared(db).id
         created = await client.post(
-            "/openings/direct-selection",
+            f"/openings/{prepared_id}/direct-selection",
             json={
-                "unitSizeBedrooms": 2,
-                "housingChargeCents": 135_000,
-                "moveInDate": (today + timedelta(days=90)).isoformat(),
                 "applicationId": candidate.id,
             },
         )
@@ -340,3 +333,13 @@ async def test_direct_selection_is_permanent_immediately() -> None:
 
     assert removed.status_code == 405
     assert db.get(Opening, direct_id) is not None
+
+
+def _prepared(db):
+    from app.schemas.openings import OpeningCreate
+    from app.services.openings.catalog import create_opening
+    today = pacific_today()
+    opening = create_opening(db, OpeningCreate(unitSizeBedrooms=2, housingChargeCents=100000,
+        applicationCloseDate=today+timedelta(days=30), moveInDate=today+timedelta(days=90)))
+    db.commit()
+    return opening

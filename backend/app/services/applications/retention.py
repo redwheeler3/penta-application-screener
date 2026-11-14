@@ -2,8 +2,8 @@
 
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, or_, select
+from sqlalchemy.orm import Session, object_session
 
 from app.core.time import as_utc, pacific_today
 from app.db.models import (
@@ -13,16 +13,37 @@ from app.db.models import (
     Opening,
     OpeningIntakeMode,
     OpeningOutcome,
+    OpeningRetentionProtection,
 )
 
 
 def retention_is_current(application: Application, *, now: datetime | None = None) -> bool:
     """The Pacific purge date is the first day retained data is unavailable."""
-    return application.retention_due_on is None or application.retention_due_on > pacific_today(now=now)
+    if application.retention_due_on is None or application.retention_due_on > pacific_today(now=now):
+        return True
+    db = object_session(application)
+    return db is not None and bool(db.scalar(select(Application.id).where(
+        Application.id == application.id, _opening_protection_clause(pacific_today(now=now)))))
 
 
-def current_retention_clause(*, now: datetime | None = None):
-    return or_(Application.retention_due_on.is_(None), Application.retention_due_on > pacific_today(now=now))
+def current_retention_clause(*, now: datetime | None = None, today: date | None = None):
+    today = today or pacific_today(now=now)
+    return or_(Application.retention_due_on.is_(None),
+               Application.retention_due_on > today, _opening_protection_clause(today))
+
+
+def _opening_protection_clause(today: date):
+    selected = exists(select(ApplicationParticipation.id).where(
+        ApplicationParticipation.application_id == Application.id,
+        ApplicationParticipation.outcome == OpeningOutcome.SELECTED,
+    )).correlate(Application)
+    return exists(select(OpeningRetentionProtection.application_id).join(
+        Opening, Opening.id == OpeningRetentionProtection.opening_id).where(
+        OpeningRetentionProtection.application_id == Application.id,
+        Application.submitted_at.is_not(None), Application.withdrawn_at.is_(None), ~selected,
+        Opening.decided_at.is_(None),
+        Opening.application_close_date >= today,
+    )).correlate(Application)
 
 
 def one_year_after(value: date) -> date:

@@ -45,7 +45,10 @@ export function Introduction() {
           We share your information only as needed with authorized Penta representatives and service
           providers, or with the general membership if you appeal a Board decision. We keep
           submitted applications for one year after the committee’s final decision, or seven years
-          if a household is selected. Read our{" "}
+          if a household is selected. A new opening may temporarily extend retention through its
+          application deadline. This extension ends if the opening is filled or cancelled, and
+          follows any change to its deadline. You must submit for a new opening to be considered.
+          Read our{" "}
           <a href="https://www.pentacoop.com/privacy.html" target="_blank" rel="noopener noreferrer">
             Privacy Policy for details
           </a>.

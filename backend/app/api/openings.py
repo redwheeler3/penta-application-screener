@@ -1,6 +1,7 @@
 """Admin-only opening configuration and lifecycle endpoints."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.exc import IntegrityError
@@ -9,14 +10,14 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_admin
 from app.core.problems import Problem
 from app.core.time import pacific_today
-from app.db.models import Opening, User
+from app.db.models import Opening, OpeningPhase, User
 from app.db.session import get_db
 from app.schemas.openings import (
-    DirectSelectionOpeningCreate,
     OpeningCommitOut,
     OpeningCreate,
-    OpeningCreateConfirmation,
+    OpeningCreationRequest,
     OpeningDetailsOut,
+    OpeningLaunchRequest,
     OpeningNotificationVariantOut,
     OpeningOut,
     OpeningPreviewOut,
@@ -40,15 +41,19 @@ from app.services.email.socketlabs_usage import (
 from app.services.maintenance import get_outbox_runner
 from app.services.openings.catalog import (
     create_opening,
+    created_request,
+    creation_facts,
     list_openings,
     opening_phase,
-    publication_facts,
-    published_request,
+    publish_opening,
     update_opening,
 )
 from app.services.openings.direct_selection import (
-    create_direct_selection_opening,
     search_previous_applicants,
+    select_previous_applicant,
+)
+from app.services.openings.protection import (
+    lock_openings,
 )
 from app.services.openings.selection import (
     confirm_no_household_selected,
@@ -101,9 +106,10 @@ def _opening_out(opening: Opening, submission_count: int, selected: tuple[int, s
         selected_applicant_name=selected[1] if selected is not None else None,
         no_household_selected=opening.no_household_selected,
         needs_decision=(
-            opening.move_in_date <= pacific_today()
-            and not decision_exists
-            and submission_count > 0
+            not decision_exists and (
+                (phase == OpeningPhase.PREPARING and opening.application_close_date < pacific_today())
+                or (opening.move_in_date <= pacific_today() and submission_count > 0)
+            )
         ),
         created_at=as_utc(opening.created_at),
         updated_at=as_utc(opening.updated_at),
@@ -131,13 +137,14 @@ def find_previous_applicants(
     )
 
 
-@router.post("/direct-selection", response_model=OpeningsResponse)
+@router.post("/{opening_id}/direct-selection", response_model=OpeningsResponse)
 def add_direct_selection_opening(
-    body: DirectSelectionOpeningCreate,
+    opening_id: int,
+    body: OpeningSelectionRequest,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> OpeningsResponse:
-    create_direct_selection_opening(db, body, decided_by=admin)
+    select_previous_applicant(db, _opening(db, opening_id), body.application_id, decided_by=admin)
     return _response(db)
 
 
@@ -183,47 +190,64 @@ def read_opening_email_usage(
 
 @router.post("", response_model=OpeningCommitOut)
 def add_opening(
-    body: OpeningCreateConfirmation,
-    background_tasks: BackgroundTasks,
+    body: OpeningCreationRequest,
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
+) -> OpeningCommitOut:
+    lock_openings(db)
+    require_admin_write(db, _admin.id)
+    opening = created_request(db, body)
+    if opening is not None:
+        return OpeningCommitOut(openings=_response(db).openings,
+            queued_notification_count=0)
+    try:
+        opening = create_opening(db, body,
+            creation_request_id=str(body.creation_request_id),
+            creation_request=creation_facts(body))
+    except IntegrityError:
+        db.rollback()
+        # Reconcile a competing creation with the same request identity.
+        opening = created_request(db, body)
+        if opening is None:
+            raise
+        return OpeningCommitOut(openings=_response(db).openings,
+            queued_notification_count=0)
+    db.commit()
+    response = _response(db)
+    return OpeningCommitOut(
+        openings=response.openings,
+        queued_notification_count=0,
+    )
+
+
+@router.post("/{opening_id}/open", response_model=OpeningCommitOut)
+def open_applications(
+    opening_id: int, body: OpeningLaunchRequest, background_tasks: BackgroundTasks,
+    admin: User = Depends(require_admin), db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
     outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
 ) -> OpeningCommitOut:
-    require_admin_write(db, _admin.id)
-    opening = published_request(db, body)
-    if opening is not None:
-        background_tasks.add_task(outbox_runner, sender)
-        return OpeningCommitOut(openings=_response(db).openings,
-            queued_notification_count=body.expected_audience_count)
-    audience = opening_audience(db, body.unit_size_bedrooms)
+    lock_openings(db)
+    require_admin_write(db, admin.id)
+    opening = _opening(db, opening_id)
+    db.refresh(opening)
+    if opening.decided_at is not None:
+        raise Problem("invalid_settings", detail="This opening already has a final decision.")
+    if opening.published_at is not None:
+        return OpeningCommitOut(openings=_response(db).openings, queued_notification_count=0)
+    if any(getattr(opening, field) != value for field, value in body.original.model_dump().items()):
+        raise Problem("stale_opening", detail="This opening changed. Review its saved details before opening applications.")
+    now = datetime.now(UTC)
+    if opening.application_close_date < pacific_today(now=now):
+        raise Problem("invalid_settings", detail="Extend the application deadline before opening applications.")
+    audience = opening_audience(db, opening.unit_size_bedrooms)
     if audience.total != body.expected_audience_count:
-        raise Problem(
-            "opening_audience_changed",
-            detail="The audience changed while you were reviewing it. Preview the opening again.",
-            audienceCount=audience.total,
-        )
-    try:
-        opening = create_opening(db, body,
-            publication_request_id=str(body.publication_request_id),
-            publication_request=publication_facts(body))
-    except IntegrityError:
-        db.rollback()
-        # A concurrent retry may have published this request while we checked the audience.
-        opening = published_request(db, body)
-        if opening is None:
-            raise
-        background_tasks.add_task(outbox_runner, sender)
-        return OpeningCommitOut(openings=_response(db).openings,
-            queued_notification_count=body.expected_audience_count)
+        raise Problem("opening_audience_changed", detail="The audience changed. Preview the opening again.", audienceCount=audience.total)
+    publish_opening(db, opening, now=now)
     queue_opening_notifications(db, opening, audience)
     db.commit()
-    response = _response(db)
     background_tasks.add_task(outbox_runner, sender)
-    return OpeningCommitOut(
-        openings=response.openings,
-        queued_notification_count=audience.total,
-    )
+    return OpeningCommitOut(openings=_response(db).openings, queued_notification_count=audience.total)
 
 
 @router.put("/{opening_id}", response_model=OpeningUpdatedOut)
@@ -233,6 +257,7 @@ def edit_opening(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> OpeningUpdatedOut:
+    lock_openings(db)
     require_admin_write(db, _admin.id)
     update_opening(db, _opening(db, opening_id), body)
     return OpeningUpdatedOut(

@@ -17,14 +17,13 @@ from app.db.models import (
     User,
     UserRole,
 )
-from app.schemas.openings import DirectSelectionOpeningCreate
 from app.schemas.settings import AppSettings, EligibilityRules
 from app.schemas.vacancy_subscriptions import VacancySubscriptionLookup
-from app.services.openings.direct_selection import create_direct_selection_opening
 from app.services.openings.selection import (
     confirm_no_household_selected,
     confirm_opening_selection,
 )
+from tests.opening_support import create_direct_selection_opening
 from tests.test_write_concurrency import request_sessions
 
 
@@ -53,8 +52,8 @@ def test_authority_is_rechecked_before_mutation(operation, change):
             elif operation == "no_household":
                 confirm_no_household_selected(admitted, opening, decided_by=actor)
             elif operation == "direct":
-                create_direct_selection_opening(admitted, DirectSelectionOpeningCreate(applicationId=application_ids[0],
-                    unitSizeBedrooms=2, housingChargeCents=100_000, moveInDate=pacific_today() + timedelta(days=30)), decided_by=actor)
+                create_direct_selection_opening(admitted, application_ids[0],
+                    move_in_date=pacific_today() + timedelta(days=30), decided_by=actor)
             elif operation == "feedback":
                 resolve_feedback(123, _admin=actor, db=admitted)
             else:

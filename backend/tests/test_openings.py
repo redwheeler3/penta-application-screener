@@ -67,7 +67,7 @@ def _opening_payload(**overrides) -> dict:
         "applicationCloseDate": (today + timedelta(days=14)).isoformat(),
         "moveInDate": (today + timedelta(days=30)).isoformat(),
         "expectedAudienceCount": 0,
-        "publicationRequestId": str(uuid4()),
+        "creationRequestId": str(uuid4()),
     }
     payload.update(overrides)
     return payload
@@ -95,7 +95,7 @@ async def test_opening_routes_are_admin_only() -> None:
 
 
 @pytest.mark.anyio
-async def test_admin_creation_opens_an_opening_immediately() -> None:
+async def test_admin_creation_prepares_an_opening_without_publication() -> None:
     app, db = _app_and_db(UserRole.ADMIN)
     payload = _opening_payload()
     transport = ASGITransport(app=app)
@@ -105,10 +105,10 @@ async def test_admin_creation_opens_an_opening_immediately() -> None:
         opening_id = opening["id"]
 
         assert created.status_code == 200
-        assert opening["phase"] == "open"
-        assert opening["applicationOpenDate"] == pacific_today().isoformat()
+        assert opening["phase"] == "preparing"
+        assert opening["applicationOpenDate"] is None
         assert opening["applicationCloseDate"] == payload["applicationCloseDate"]
-        assert opening["publishedAt"] is not None
+        assert opening["publishedAt"] is None
         assert opening["submissionCount"] == 0
 
         edited = await client.put(

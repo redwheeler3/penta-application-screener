@@ -44,6 +44,7 @@ class ApplicationStatus(StrEnum):
 
 
 class OpeningPhase(StrEnum):
+    PREPARING = "preparing"
     UPCOMING = "upcoming"
     OPEN = "open"
     CLOSED = "closed"
@@ -350,8 +351,8 @@ class Opening(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    publication_request_id: Mapped[str | None] = mapped_column(String(36), unique=True)
-    publication_request: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    creation_request_id: Mapped[str | None] = mapped_column(String(36), unique=True)
+    creation_request: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     intake_mode: Mapped[OpeningIntakeMode] = mapped_column(
         Enum(OpeningIntakeMode, values_callable=enum_values),
         default=OpeningIntakeMode.APPLICATIONS,
@@ -363,8 +364,8 @@ class Opening(TimestampMixin, Base):
     application_open_date: Mapped[date | None] = mapped_column(Date)
     application_close_date: Mapped[date | None] = mapped_column(Date)
     move_in_date: Mapped[date] = mapped_column(Date, nullable=False)
-    # Application-intake openings are published immediately. Calendar dates determine their
-    # pre-decision phase; a recorded committee decision archives the opening.
+    # Publication ends preparation and starts applicant intake. A recorded decision
+    # archives the opening and releases its temporary retention protection.
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
@@ -377,6 +378,15 @@ class Opening(TimestampMixin, Base):
     no_household_selected: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+
+
+class OpeningRetentionProtection(Base):
+    """Administrative consideration, separate from affirmative participation."""
+
+    __tablename__ = "opening_retention_protections"
+    __table_args__ = {"sqlite_autoincrement": False}
+    opening_id: Mapped[int] = mapped_column(ForeignKey("openings.id", ondelete="CASCADE"), primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), primary_key=True, index=True)
 
 
 class OpeningRules(TimestampMixin, Base):

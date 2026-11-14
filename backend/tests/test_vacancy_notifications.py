@@ -115,7 +115,7 @@ def _opening_payload(expected: int | None = None) -> dict:
     }
     if expected is not None:
         payload["expectedAudienceCount"] = expected
-        payload["publicationRequestId"] = str(uuid4())
+        payload["creationRequestId"] = str(uuid4())
     return payload
 
 
@@ -126,18 +126,18 @@ async def test_publication_replay_preserves_one_opening_and_one_notification() -
     payload = _opening_payload(expected=1)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        first = await client.post("/openings", json=payload)
+        first = await _prepare_and_open(client, payload)
         assert first.status_code == 200
         # Delivery consumed the subscription, so a fresh audience calculation would differ.
         assert opening_audience(db, 2).total == 0
-        replayed = await client.post("/openings", json=payload)
+        replayed = await _prepare_and_open(client, payload)
         assert replayed.status_code == 200
-        assert replayed.json()["queuedNotificationCount"] == 1
+        assert replayed.json()["queuedNotificationCount"] == 0
         assert len(replayed.json()["openings"]) == 1
         assert len(sender.messages) == 1
-        changed = await client.post("/openings", json={**payload, "housingChargeCents": 200_000})
+        changed = await _prepare_and_open(client, {**payload, "housingChargeCents": 200_000})
         assert changed.status_code == 409
-        assert changed.json()["code"] == "opening_publication_changed"
+        assert changed.json()["code"] == "opening_creation_changed"
         assert db.scalar(select(func.count()).select_from(Opening)) == 1
 
 
@@ -147,9 +147,9 @@ async def test_identical_facts_with_distinct_publication_ids_create_distinct_ope
     payload = _opening_payload(expected=0)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        assert (await client.post("/openings", json=payload)).status_code == 200
-        payload["publicationRequestId"] = str(uuid4())
-        assert (await client.post("/openings", json=payload)).status_code == 200
+        assert (await _prepare_and_open(client, payload)).status_code == 200
+        payload["creationRequestId"] = str(uuid4())
+        assert (await _prepare_and_open(client, payload)).status_code == 200
     assert db.scalar(select(func.count()).select_from(Opening)) == 2
 
 
@@ -245,7 +245,7 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/openings", json=_opening_payload(expected=3))
+        response = await _prepare_and_open(client, _opening_payload(expected=3))
 
     opening = db.scalar(select(Opening))
     deliveries = list(db.scalars(select(EmailDelivery).order_by(EmailDelivery.id)))
@@ -289,7 +289,7 @@ async def test_terminal_vacancy_failure_is_deleted_after_30_days() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/openings", json=_opening_payload(expected=1))
+        response = await _prepare_and_open(client, _opening_payload(expected=1))
 
     delivery = db.scalar(select(EmailDelivery))
     assert response.status_code == 200
@@ -329,7 +329,7 @@ async def test_create_keeps_subscription_and_intent_when_provider_is_temporary()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/openings", json=_opening_payload(expected=1))
+        response = await _prepare_and_open(client, _opening_payload(expected=1))
 
     delivery = db.scalar(select(EmailDelivery))
     assert response.status_code == 200
@@ -348,11 +348,11 @@ async def test_create_rejects_a_stale_audience_confirmation() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await client.post("/openings", json=_opening_payload(expected=0))
+        response = await _prepare_and_open(client, _opening_payload(expected=0))
 
     assert response.status_code == 409
     assert response.json()["audienceCount"] == 1
-    assert db.scalar(select(Opening)) is None
+    assert db.scalar(select(Opening)).published_at is None
 
 
 def test_selected_applications_are_not_notified() -> None:
@@ -393,3 +393,14 @@ def test_applications_due_for_retention_are_not_notified() -> None:
     from app.services.openings.vacancy_notifications import opening_audience
 
     assert opening_audience(db, 2).total == 0
+
+
+async def _prepare_and_open(client, payload):
+    prepared = await client.post("/openings", json=payload)
+    if prepared.status_code != 200:
+        return prepared
+    opening = prepared.json()["openings"][0]
+    facts = {field: opening[field] for field in (
+        "unitSizeBedrooms", "housingChargeCents", "applicationOpenDate", "applicationCloseDate", "moveInDate")}
+    return await client.post(f"/openings/{opening['id']}/open", json={
+        "original": facts, "expectedAudienceCount": payload["expectedAudienceCount"]})

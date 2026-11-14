@@ -6,21 +6,9 @@ import * as openingsApi from "../../api/openings";
 import { readProblem } from "../../api/problems";
 import type { Opening, OpeningSelectionCandidate } from "../../types";
 import { useRequestScope } from "../../hooks/useRequestScope";
-import { NumberInput } from "../shared/NumberInput";
-
-type DirectDraft = {
-  unitSizeBedrooms: number;
-  housingChargeDollars: number;
-  moveInDate: string;
-};
-
-const EMPTY_DRAFT: DirectDraft = {
-  unitSizeBedrooms: 2,
-  housingChargeDollars: 0,
-  moveInDate: "",
-};
 
 export function DirectSelectionOpeningForm(props: {
+  opening: Opening;
   onCancel: () => void;
   onCreated: (openings: Opening[], applicant: OpeningSelectionCandidate) => void;
   onUnconfirmed: () => Promise<void>;
@@ -30,7 +18,6 @@ export function DirectSelectionOpeningForm(props: {
 }): ReactNode {
   const api = useCommitteeApi(openingsApi);
 
-  const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<OpeningSelectionCandidate[] | null>(null);
   const [selected, setSelected] = useState<OpeningSelectionCandidate | null>(null);
@@ -72,12 +59,7 @@ export function DirectSelectionOpeningForm(props: {
     setSaving(true);
     props.onSavingChange?.(true);
     try {
-      const response = await api.createDirectSelectionOpening({
-        unitSizeBedrooms: draft.unitSizeBedrooms,
-        housingChargeCents: Math.round(draft.housingChargeDollars * 100),
-        moveInDate: draft.moveInDate,
-        applicationId: selected.applicationId,
-      });
+      const response = await api.selectPreviousApplicant(props.opening.id, selected.applicationId);
       if (!isCurrent()) return;
       if (!response.ok) {
         if (response.status >= 500) { reconcileUnconfirmed(); return; }
@@ -104,11 +86,6 @@ export function DirectSelectionOpeningForm(props: {
     }
   }
 
-  const set = (patch: Partial<DirectDraft>) => {
-    setDraft((current) => ({ ...current, ...patch }));
-    setDecisionState("editing");
-  };
-
   return (
     <section className="opening-form direct-opening-form">
       <div className="opening-form-heading">
@@ -116,28 +93,6 @@ export function DirectSelectionOpeningForm(props: {
           <h4>Fill from previous applicants</h4>
           <span>Use this after the applicant has confirmed they are interested.</span>
         </div>
-      </div>
-
-      <div className="opening-form-grid">
-        <label>
-          <span>Unit size</span>
-          <select disabled={saving || unconfirmed} value={draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
-            <option value={1}>1 bedroom</option>
-            <option value={2}>2 bedrooms</option>
-            <option value={3}>3 bedrooms</option>
-          </select>
-        </label>
-        <label>
-          <span>Monthly housing charge</span>
-          <div className="opening-money-input">
-            <span>$</span>
-            <NumberInput disabled={saving || unconfirmed} min="0" step="0.01" required value={draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
-          </div>
-        </label>
-        <label>
-          <span>Move-in date</span>
-          <input disabled={saving || unconfirmed} type="date" required value={draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
-        </label>
       </div>
 
       <form className="direct-applicant-search" onSubmit={(event) => void search(event)}>
@@ -208,16 +163,17 @@ export function DirectSelectionOpeningForm(props: {
         </div>
       ) : decisionState === "confirming" && selected ? (
         <div className="opening-launch-preview direct-opening-confirmation" role="alertdialog" aria-label="Confirm direct selection">
-          <h5>Create this filled opening?</h5>
+          <h5>Confirm this household?</h5>
           <p>
             Selecting <strong>{selected.applicantName ?? selected.primaryEmail}</strong> removes them
             from the active pool and retains their application for seven years after this decision.
           </p>
           <p>No vacancy or applicant email will be sent.</p>
+          <p>This opening's retention protection will end. Other previous applications may become due for deletion.</p>
           <div className="opening-form-actions">
             <button className="secondary-button" type="button" onClick={() => setDecisionState("editing")} disabled={saving || unconfirmed}>Back</button>
             <button className="primary-button" type="button" onClick={() => void create()} disabled={saving || unconfirmed}>
-              {saving ? "Saving…" : "Create opening and select applicant"}
+              {saving ? "Saving…" : "Select applicant and finalize opening"}
             </button>
           </div>
         </div>
@@ -227,7 +183,7 @@ export function DirectSelectionOpeningForm(props: {
           <button
             className="primary-button"
             type="button"
-            disabled={!selected || !draft.moveInDate || saving || unconfirmed}
+            disabled={!selected || saving || unconfirmed}
             onClick={() => setDecisionState("confirming")}
           >
             Review direct selection

@@ -138,7 +138,7 @@
 .opening-card-title h4 { margin: 0; }
 .opening-card-main > p { margin: 0.55rem 0 0; color: var(--muted); line-height: 1.45; }
 .opening-status { padding: 0.18rem 0.48rem; border-radius: 999px; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
-.opening-status-upcoming { color: #1e40af; background: #dbeafe; }
+.opening-status-upcoming, .opening-status-preparing { color: #1e40af; background: #dbeafe; }
 .opening-status-open { color: var(--success-text); background: var(--success-bg); }
 .opening-status-closed { color: #92400e; background: #fef3c7; }
 .opening-status-archived { color: #6b7280; background: #f3f4f6; }

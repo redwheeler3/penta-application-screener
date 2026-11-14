@@ -10,12 +10,14 @@ import type { Opening, OpeningSelection } from "../../types";
 import { RetryLoadError } from "../shared/RetryLoadError";
 import { DirectSelectionOpeningForm } from "./DirectSelectionOpeningForm";
 import { OpeningDecisionPanel } from "./OpeningDecisionPanel";
+import { OpeningLaunchPanel } from "./OpeningLaunchPanel";
 import { OpeningEditor } from "./OpeningEditor";
 
 type OpeningPanelMode =
   | { kind: "list" }
   | { kind: "form"; opening: Opening | null }
-  | { kind: "direct" }
+  | { kind: "direct"; opening: Opening }
+  | { kind: "launch"; opening: Opening }
   | { kind: "selection"; selection: OpeningSelection };
 
 export function OpeningsPanel(props: {
@@ -47,14 +49,14 @@ export function OpeningsPanel(props: {
     setMessage("");
   }
 
-  function beginDirectSelection(): void {
-    changeMode({ kind: "direct" });
+  function beginDirectSelection(opening: Opening): void {
+    changeMode({ kind: "direct", opening });
     setMessage("");
   }
 
   function beginEdit(opening: Opening): void {
     if (opening.intakeMode !== "applications"
-      || opening.applicationOpenDate === null || opening.applicationCloseDate === null) return;
+      || opening.applicationCloseDate === null) return;
     changeMode({ kind: "form", opening });
     setMessage("");
   }
@@ -93,15 +95,11 @@ export function OpeningsPanel(props: {
         <div>
           <h3>Openings</h3>
           <p className="panel-hint">
-            Open applications and notify the matching audience, or fill a home from previous
-            applicants.
+            Create a vacancy to protect the previous applicant pool. Then open applications or select a previous applicant.
           </p>
         </div>
         {mode.kind === "list" ? (
           <div className="opening-header-actions">
-            <button className="secondary-button" type="button" onClick={beginDirectSelection}>
-              <UserCheck size={16} /> Fill from previous applicants
-            </button>
             <button className="primary-button" type="button" onClick={beginCreate}>
               <Plus size={16} /> New opening
             </button>
@@ -111,6 +109,7 @@ export function OpeningsPanel(props: {
 
       {mode.kind === "direct" ? (
         <DirectSelectionOpeningForm
+          opening={mode.opening}
           onCancel={() => changeMode({ kind: "list" })}
           onSavingChange={setBusy}
           onUnconfirmed={() => { props.onPoolChanged(); return openingsResource.reload(); }}
@@ -125,6 +124,11 @@ export function OpeningsPanel(props: {
         />
       ) : null}
 
+      {mode.kind === "launch" ? <OpeningLaunchPanel opening={mode.opening}
+        busy={busy} setBusy={setBusy}
+        onSaved={(items, message) => { completeWorkflow(items, message); props.onPoolChanged(); }}
+        onCancel={() => { changeMode({ kind: "list" }); void openingsResource.reload(); }} onError={props.onError} /> : null}
+
       {mode.kind === "form" ? (
         <OpeningEditor
           key={mode.opening?.id ?? "new"}
@@ -133,7 +137,10 @@ export function OpeningsPanel(props: {
             changeMode({ kind: "list" });
             void openingsResource.reload();
           }}
-          onSaved={completeWorkflow}
+          onSaved={(items, message, closeEditor) => {
+            completeWorkflow(items, message, closeEditor);
+            props.onPoolChanged();
+          }}
           busy={busy}
           setBusy={setBusy}
           onError={props.onError}
@@ -179,6 +186,8 @@ export function OpeningsPanel(props: {
               opening={opening}
               busy={busy}
               onEdit={() => beginEdit(opening)}
+              onLaunch={() => changeMode({ kind: "launch", opening })}
+              onDirect={() => beginDirectSelection(opening)}
               onManageSelection={() => void manageSelection(opening)}
               onReviewSelected={() => {
                 if (opening.selectedApplicationId !== null) {
@@ -197,6 +206,8 @@ function OpeningCard(props: {
   opening: Opening;
   busy: boolean;
   onEdit: () => void;
+  onLaunch: () => void;
+  onDirect: () => void;
   onManageSelection: () => void;
   onReviewSelected: () => void;
 }): ReactNode {
@@ -221,6 +232,7 @@ function OpeningCard(props: {
           ) : (
             <div><dt>Applications</dt><dd>Not opened</dd></div>
           )}
+          {opening.phase === "preparing" && opening.applicationCloseDate ? <div><dt>Application deadline</dt><dd>{formatDateOnly(opening.applicationCloseDate)}</dd></div> : null}
           <div><dt>Move-in</dt><dd>{formatDateOnly(opening.moveInDate)}</dd></div>
           {opening.intakeMode === "applications" ? (
             <div><dt>Submissions</dt><dd>{opening.submissionCount}</dd></div>
@@ -235,10 +247,17 @@ function OpeningCard(props: {
           ) : null}
         </dl>
         {opening.needsDecision ? (
-          <p className="opening-selection-needed">An opening decision is required.</p>
+          <p className="opening-selection-needed">{opening.phase === "preparing"
+            ? "The planned deadline has passed and this opening's retention protection has ended. Extend the deadline, fill the opening, or cancel it."
+            : "An opening decision is required."}</p>
         ) : null}
       </div>
       <div className="opening-card-actions">
+        {opening.phase === "preparing" ? <>
+          <button className="primary-button" disabled={props.busy} onClick={props.onLaunch}>Open applications</button>
+          <button className="secondary-button" disabled={props.busy} onClick={props.onDirect}>Fill from previous applicants</button>
+          <button className="secondary-button" disabled={props.busy} onClick={props.onManageSelection}>Cancel opening</button>
+        </> : null}
         {opening.intakeMode === "applications" ? (
           <button className="secondary-button" type="button" onClick={props.onEdit} disabled={props.busy}>
             <Pencil size={15} /> Edit

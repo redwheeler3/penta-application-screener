@@ -192,7 +192,8 @@ consolidation audits expose captured configuration where it was recorded.
 | --- | --- | --- | --- |
 | GET | `/openings` | Read Openings | Admin |
 | POST | `/openings` | Add Opening | Admin |
-| POST | `/openings/direct-selection` | Add Direct Selection Opening | Admin |
+| POST | `/openings/{opening_id}/direct-selection` | Select Previous Applicant | Admin |
+| POST | `/openings/{opening_id}/open` | Open Applications and Queue Announcements | Admin |
 | GET | `/openings/email-usage` | Read Opening Email Usage | Admin |
 | POST | `/openings/preview` | Preview Opening | Admin |
 | POST | `/openings/previous-applicants/search` | Find Previous Applicants | Admin |
@@ -252,3 +253,18 @@ consolidation audits expose captured configuration where it was recorded.
 | POST | `/vacancy-subscriptions/admin/delete` | Delete For Support | Admin |
 | POST | `/vacancy-subscriptions/admin/lookup` | Lookup | Admin |
 | GET | `/vacancy-subscriptions/report` | Report | Admin |
+
+
+### Preparing and publishing an opening
+
+`POST /openings` takes vacancy facts and `creationRequestId`. It creates a Preparing opening,
+protects the retained pool through the planned deadline and queues no email. Replaying the same
+identity and facts returns the saved result; different facts conflict.
+
+`POST /openings/{id}/open` takes `original` saved facts and `expectedAudienceCount`. It validates
+both, opens applications and atomically queues announcements. Replays do not queue more mail.
+
+`POST /openings/{id}/direct-selection` takes `applicationId` and permanently fills a Preparing
+opening without email. `POST /openings/{id}/selection/no-household` can cancel a Preparing opening.
+Both release its retention protection. Editing its deadline changes protection immediately;
+expired records cannot be revived by extending it. Protection never implies participation.

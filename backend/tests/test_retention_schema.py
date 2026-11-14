@@ -3,6 +3,7 @@
 from app.db.models import Base
 
 APPLICATION_OWNED_FOREIGN_KEYS = {
+    ("opening_retention_protections", "application_id", "applications"),
     ("application_participations", "application_id", "applications"),
     ("application_versions", "application_id", "applications"),
     ("applicant_drafts", "application_id", "applications"),

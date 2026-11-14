@@ -28,8 +28,8 @@ from app.services.applications.scope import (
 )
 from app.services.applications.shared_shortlist import is_shortlisted
 from app.services.eligibility.rules import committee_default_rules
-from app.services.openings.catalog import create_opening
 from app.services.ranking.analysis import all_known_dimensions, get_current_analysis
+from tests.opening_support import create_published_opening as create_opening
 
 
 def make_db() -> Session:

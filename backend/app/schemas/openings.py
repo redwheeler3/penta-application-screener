@@ -24,11 +24,11 @@ class OpeningCreate(RequestModel):
 
 
 class OpeningWrite(OpeningCreate):
-    application_open_date: date
+    application_open_date: date | None
 
     @model_validator(mode="after")
     def open_date_precedes_close_date(self) -> "OpeningWrite":
-        if self.application_open_date > self.application_close_date:
+        if self.application_open_date is not None and self.application_open_date > self.application_close_date:
             raise ValueError("Application open date must be on or before the close date.")
         return self
 
@@ -38,16 +38,15 @@ class OpeningUpdate(RequestModel):
     changes: OpeningWrite
 
 
-class OpeningCreateConfirmation(OpeningCreate):
-    publication_request_id: UUID
-    expected_audience_count: int = Field(ge=0)
+class OpeningCreationRequest(OpeningCreate):
+    creation_request_id: UUID
 
 
 class OpeningDetailsOut(ResponseModel):
     id: int
     unit_size_bedrooms: int
     housing_charge_cents: int
-    application_open_date: date
+    application_open_date: date | None
     application_close_date: date
     move_in_date: date
 
@@ -140,8 +139,6 @@ class PreviousApplicantSearchOut(ResponseModel):
     candidates: list[OpeningSelectionCandidateOut]
 
 
-class DirectSelectionOpeningCreate(RequestModel):
-    unit_size_bedrooms: int = Field(ge=1, le=3)
-    housing_charge_cents: int = Field(ge=0)
-    move_in_date: date
-    application_id: int = Field(gt=0)
+class OpeningLaunchRequest(RequestModel):
+    original: OpeningWrite
+    expected_audience_count: int = Field(ge=0)

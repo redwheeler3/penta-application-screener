@@ -28,13 +28,14 @@ from app.services.applications.retention import (
     retention_is_current,
 )
 from app.services.email.sender import EmailConfigurationError
-from app.services.openings.catalog import create_opening, update_opening
+from app.services.openings.catalog import update_opening
 from app.services.openings.selection import (
     confirm_no_household_selected,
     confirm_opening_selection,
 )
 from tests.applicant.support import sample_answers
 from tests.db_support import memory_session
+from tests.opening_support import create_published_opening as create_opening
 
 
 def opening(db, days):

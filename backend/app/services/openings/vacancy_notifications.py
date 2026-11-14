@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.text import normalize_email
-from app.core.time import pacific_today
 from app.db.models import (
     Application,
     ApplicationParticipation,
@@ -17,6 +16,7 @@ from app.db.models import (
     PasswordlessIdentityKind,
     VacancySubscription,
 )
+from app.services.applications.retention import current_retention_clause
 from app.services.email.delivery import queue_email
 from app.services.email.retry_intents import (
     ApplicationOpeningRetryIntent,
@@ -147,7 +147,8 @@ def _notifiable_applications_query(*, today: date | None = None) -> Select[tuple
         .where(
             Application.submitted_at.is_not(None),
             Application.withdrawn_at.is_(None),
-            Application.retention_due_on > (today or pacific_today()),
+            Application.retention_due_on.is_not(None),
+            current_retention_clause(today=today),
             not_(selected),
         )
         .order_by(Application.id)

@@ -99,44 +99,26 @@ describe("OpeningsPanel modes", () => {
     await act(async () => pending.resolve(selection));
     expect(screen.getByLabelText("Move-in date")).toHaveValue("2026-12-01");
     expect(screen.queryByRole("heading", { name: "Opening decision" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Review opening and emails" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Create opening" })).toBeEnabled();
   });
   it("uses the same busy flag for a workflow and the opening list", async () => {
     vi.mocked(api.fetchOpenings).mockResolvedValue([closedOpening]);
-    const pending = deferred<OpeningPreview>();
-    vi.mocked(api.previewOpening).mockReturnValueOnce(pending.promise);
+    const pending = deferred<Response>();
+    vi.mocked(api.createOpening).mockReturnValueOnce(pending.promise);
     const user = userEvent.setup();
     render(<OpeningsPanel {...props} />);
     await user.click(await screen.findByRole("button", { name: "New opening" }));
     fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
     fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
-    await user.click(screen.getByRole("button", { name: "Review opening and emails" }));
+    await user.click(screen.getByRole("button", { name: "Create opening" }));
     expect(screen.getByRole("button", { name: "Working…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Record decision" })).toBeDisabled();
 
     await act(async () => pending.reject(new Error("Preview unavailable")));
-    expect(screen.getByRole("button", { name: "Review opening and emails" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Create opening" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Edit" })).toBeEnabled();
-    expect(props.onError).toHaveBeenCalledWith("Could not preview the opening and notification audience.");
-  });
-
-  it("does not restore an outdated audience confirmation when the draft changes during preview", async () => {
-    const pending = deferred<OpeningPreview>();
-    vi.mocked(api.previewOpening).mockReturnValueOnce(pending.promise);
-    const user = userEvent.setup();
-    render(<OpeningsPanel {...props} />);
-    await user.click(await screen.findByRole("button", { name: "New opening" }));
-    fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
-    fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
-    await user.click(screen.getByRole("button", { name: "Review opening and emails" }));
-    fireEvent.change(screen.getByLabelText("Unit size"), { target: { value: "3" } });
-    await act(async () => pending.resolve(preview));
-
-    expect(screen.getByLabelText("Unit size")).toHaveValue("3");
-    expect(screen.queryByText("Ready to open applications")).toBeNull();
-    expect(screen.getByRole("button", { name: "Review opening and emails" })).toBeEnabled();
-    expect(api.createOpening).not.toHaveBeenCalled();
+    expect(props.onError).toHaveBeenCalledWith("Could not confirm opening creation. Retry to check the saved result safely.");
   });
 
   it("requires confirmation before recording that no household was selected", async () => {
@@ -156,26 +138,17 @@ describe("OpeningsPanel modes", () => {
     expect(props.onPoolChanged).toHaveBeenCalledOnce();
   });
 
-  it("requires a fresh audience review after an opening draft changes", async () => {
-    vi.mocked(api.previewOpening).mockResolvedValue(preview);
-    vi.mocked(api.createOpening).mockResolvedValue(Response.json({
-      openings: [closedOpening], queuedNotificationCount: 2,
-    }));
+  it("creates a Preparing opening without previewing or sending announcements", async () => {
+    api.createOpening.mockResolvedValue(Response.json({ openings: [], queuedNotificationCount: 0 }));
     const user = userEvent.setup();
     render(<OpeningsPanel {...props} />);
     await user.click(await screen.findByRole("button", { name: "New opening" }));
-    fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
-    fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
-    await user.click(screen.getByRole("button", { name: "Review opening and emails" }));
-    expect(await screen.findByText("Ready to open applications")).toBeInTheDocument();
-    expect(api.createOpening).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByLabelText("Unit size"), { target: { value: "3" } });
-    expect(screen.queryByText("Ready to open applications")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Review opening and emails" }));
-    await user.click(await screen.findByRole("button", { name: "Open applications and queue 2 emails" }));
-    expect(api.createOpening).toHaveBeenCalledWith(expect.objectContaining({ unitSizeBedrooms: 3 }), 2, expect.any(String));
-    expect(await screen.findByText("Applications are open and 2 emails are queued.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2027-11-01" } });
+    fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2027-12-01" } });
+    await user.click(screen.getByRole("button", { name: "Create opening" }));
+    expect(api.createOpening).toHaveBeenCalledOnce();
+    expect(api.previewOpening).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Opening created/)).toBeInTheDocument();
   });
 
   it("updates an existing opening without publishing or reviewing an audience", async () => {
@@ -205,6 +178,7 @@ describe("OpeningsPanel modes", () => {
   });
 
   it("keeps direct selection mutually exclusive with the opening form", async () => {
+    api.fetchOpenings.mockResolvedValue([{ ...closedOpening, phase: "preparing", applicationOpenDate: null, publishedAt: null }]);
     const user = userEvent.setup();
     render(<OpeningsPanel {...props} />);
 

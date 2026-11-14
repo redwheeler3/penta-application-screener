@@ -244,7 +244,7 @@ def _lock_opening_decision(db: Session, opening: Opening) -> None:
 
 def _require_selection_available(opening: Opening) -> None:
     phase = opening_phase(opening)
-    if phase != OpeningPhase.CLOSED:
+    if phase not in {OpeningPhase.CLOSED, OpeningPhase.PREPARING}:
         raise Problem(
             "invalid_settings",
             detail="Select the successful applicant after applications close.",
