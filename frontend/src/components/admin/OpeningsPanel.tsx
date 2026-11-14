@@ -95,7 +95,7 @@ export function OpeningsPanel(props: {
         <div>
           <h3>Openings</h3>
           <p className="panel-hint">
-            Create a vacancy to protect the previous applicant pool. Then open applications or select a previous applicant.
+            Create and manage openings for available homes.
           </p>
         </div>
         {mode.kind === "list" ? (

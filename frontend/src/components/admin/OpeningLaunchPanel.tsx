@@ -48,7 +48,7 @@ export function OpeningLaunchPanel(props: {
       if (isCurrent()) setBusy(false);
     }
   }
-  return <section className="opening-form">
+  return <section className="opening-form opening-launch-panel">
     {preview.data ? <OpeningLaunchPreview preview={preview.data} /> : <p>Loading the notification audience…</p>}
     {preview.state === "error" ? <button type="button" onClick={() => void preview.reload()}>Retry preview</button> : null}
     <p>Applicants must review and submit their application for this opening before its deadline.</p>

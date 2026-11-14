@@ -533,6 +533,8 @@ removed. They do not show an applicant-removal link.
   opening also records a planned application deadline. Its actual application open date remains
   unset until an administrator opens applications. The deadline is on or before move-in. A committee
   decision archives the opening; the calendar closes intake without deciding its outcome.
+- Opening-management introductory and success copy describes creating and managing available homes.
+  Retention protection is an edge case explained in the policy and relevant action confirmations.
 - **Preparing** is the initial stage of a new opening. Creation records home details and a required
   planned application deadline, sends no email, and does not expose the opening to applicants.
   It captures currently retained submitted, non-withdrawn, non-selected applications for temporary

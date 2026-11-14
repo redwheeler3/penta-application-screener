@@ -86,7 +86,7 @@ export function OpeningEditor(props: {
     const created = (await response.json()) as OpeningCommit;
     if (!isCurrent()) return;
     props.onSaved(created.openings,
-      "Opening created. Previous applications are protected through its deadline. Applications have not opened.",
+      "Opening created. You can open applications when you’re ready.",
     );
   }
 

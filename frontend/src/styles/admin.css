@@ -132,8 +132,8 @@
 .openings-empty { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; padding: 2.5rem 1rem; color: var(--muted); text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
 .openings-empty strong { color: var(--ink); }
 .opening-list { display: grid; gap: 0.85rem; }
-.opening-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
-.opening-card-main { flex: 1; min-width: 0; }
+.opening-card { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.opening-card-main { flex: 1; min-width: min(18rem, 100%); }
 .opening-card-title { display: flex; align-items: center; gap: 0.65rem; }
 .opening-card-title h4 { margin: 0; }
 .opening-card-main > p { margin: 0.55rem 0 0; color: var(--muted); line-height: 1.45; }
@@ -146,8 +146,11 @@
 .opening-facts div { display: grid; gap: 0.08rem; }
 .opening-facts dt { color: var(--muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; }
 .opening-facts dd { margin: 0; font-size: 0.88rem; font-weight: 650; }
-.opening-card-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
+.opening-card-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; max-width: 100%; margin-left: auto; }
 .opening-form { margin-bottom: 1rem; padding: 1rem; border: 1px solid #bfe5ce; border-radius: 10px; background: #f5fbf7; }
+.opening-launch-panel { display: grid; gap: 1rem; }
+.opening-launch-panel > .opening-launch-preview,
+.opening-launch-panel > .opening-form-actions { margin-top: 0; }
 .opening-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
 .opening-form-heading h4 { margin: 0 0 0.2rem; }
 .opening-form-heading span { color: var(--muted); font-size: 0.82rem; }
@@ -235,7 +238,7 @@
   .opening-card-actions { width: 100%; }
   .opening-header-actions { width: 100%; }
   .opening-header-actions button { flex: 1; }
-  .opening-card-actions button { flex: 1; }
+  .opening-card-actions button { flex: 1 1 10rem; }
   .opening-form-grid { grid-template-columns: 1fr; }
   .opening-candidate-row { align-items: stretch; flex-direction: column; }
   .direct-applicant-search > label > div { align-items: stretch; flex-direction: column; }
