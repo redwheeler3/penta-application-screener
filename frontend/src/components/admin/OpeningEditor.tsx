@@ -9,7 +9,7 @@ import { NumberInput } from "../shared/NumberInput";
 
 type OpeningDraft = {
   unitSizeBedrooms: number;
-  housingChargeDollars: number;
+  housingChargeDollars: number | null;
   applicationOpenDate: string;
   applicationCloseDate: string;
   moveInDate: string;
@@ -17,7 +17,7 @@ type OpeningDraft = {
 
 const EMPTY_DRAFT: OpeningDraft = {
   unitSizeBedrooms: 2,
-  housingChargeDollars: 0,
+  housingChargeDollars: null,
   applicationOpenDate: "",
   applicationCloseDate: "",
   moveInDate: "",
@@ -60,21 +60,21 @@ export function OpeningEditor(props: {
   const [reloading, setReloading] = useState(false);
   const [conflict, setConflict] = useState(false);
 
-  function payload(): OpeningWrite {
+  function payload(housingChargeDollars: number): OpeningWrite {
     return {
       unitSizeBedrooms: draft.unitSizeBedrooms,
-      housingChargeCents: Math.round(draft.housingChargeDollars * 100),
+      housingChargeCents: Math.round(housingChargeDollars * 100),
       applicationOpenDate: draft.applicationOpenDate || null,
       applicationCloseDate: draft.applicationCloseDate,
       moveInDate: draft.moveInDate,
     };
   }
 
-  async function create(): Promise<void> {
+  async function create(values: OpeningWrite): Promise<void> {
     const isCurrent = requests.capture();
     setCreating(true);
     creationRequestId.current ??= crypto.randomUUID();
-    const response = await api.createOpening(createPayload(payload()), creationRequestId.current);
+    const response = await api.createOpening(createPayload(values), creationRequestId.current);
     if (!isCurrent()) return;
     if (!response.ok) {
       const problem = await readProblemBody(response);
@@ -90,11 +90,11 @@ export function OpeningEditor(props: {
     );
   }
 
-  async function update(): Promise<void> {
+  async function update(values: OpeningWrite): Promise<void> {
     if (!props.opening || !accepted.current) return;
     const isCurrent = requests.capture();
     const snapshot = JSON.stringify(draft);
-    const response = await api.updateOpening(props.opening.id, accepted.current, payload());
+    const response = await api.updateOpening(props.opening.id, accepted.current, values);
     if (!isCurrent()) return;
     if (!response.ok) {
       const problem = await readProblemBody(response);
@@ -139,12 +139,17 @@ export function OpeningEditor(props: {
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (busy || pending.current || conflict) return;
+    if (draft.housingChargeDollars === null) {
+      props.onError("Enter a monthly housing charge.");
+      return;
+    }
+    const values = payload(draft.housingChargeDollars);
     const isCurrent = requests.capture();
     pending.current = true;
     setBusy(true);
     try {
-      if (props.opening) await update();
-      else await create();
+      if (props.opening) await update(values);
+      else await create(values);
     } catch {
       if (isCurrent()) {
         if (!props.opening && creationRequestId.current !== null) setCreationUnconfirmed(true);
@@ -218,7 +223,7 @@ function OpeningForm(props: {
           <span>Monthly housing charge</span>
           <div className="opening-money-input">
             <span>$</span>
-            <NumberInput disabled={props.fieldsDisabled} min="0" step="0.01" required value={props.draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value ?? 0 })} />
+            <NumberInput disabled={props.fieldsDisabled} min="0" step="0.01" required value={props.draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value })} />
           </div>
         </label>
         {props.editing && props.draft.applicationOpenDate ? (
@@ -229,11 +234,11 @@ function OpeningForm(props: {
         ) : null}
         <label>
           <span>Applications close</span>
-          <input type="date" disabled={props.fieldsDisabled} required value={props.draft.applicationCloseDate} onChange={(event) => set({ applicationCloseDate: event.target.value })} />
+          <input type="date" max="9999-12-31" disabled={props.fieldsDisabled} required value={props.draft.applicationCloseDate} onChange={(event) => set({ applicationCloseDate: event.target.value })} />
         </label>
         <label>
           <span>Move-in date</span>
-          <input type="date" disabled={props.fieldsDisabled} required value={props.draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
+          <input type="date" max="9999-12-31" disabled={props.fieldsDisabled} required value={props.draft.moveInDate} onChange={(event) => set({ moveInDate: event.target.value })} />
         </label>
       </div>
       <div className="opening-form-actions">

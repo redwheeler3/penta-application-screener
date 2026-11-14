@@ -38,6 +38,7 @@ it("retries an uncertain publication with the original identity and frozen facts
   vi.mocked(api.createOpening).mockRejectedValueOnce(new Error("Synthetic lost response"))
     .mockResolvedValueOnce(Response.json({ openings: [], queuedNotificationCount: 0 }));
   const { onSaved } = setup(null);
+  fireEvent.change(screen.getByRole("textbox", { name: /Monthly housing charge/ }), { target: { value: "1250" } });
   fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
   fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Create opening" })); });

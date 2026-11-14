@@ -108,6 +108,7 @@ describe("OpeningsPanel modes", () => {
     const user = userEvent.setup();
     render(<OpeningsPanel {...props} />);
     await user.click(await screen.findByRole("button", { name: "New opening" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /Monthly housing charge/ }), { target: { value: "1250" } });
     fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2026-11-01" } });
     fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2026-12-01" } });
     await user.click(screen.getByRole("button", { name: "Create opening" }));
@@ -143,6 +144,7 @@ describe("OpeningsPanel modes", () => {
     const user = userEvent.setup();
     render(<OpeningsPanel {...props} />);
     await user.click(await screen.findByRole("button", { name: "New opening" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /Monthly housing charge/ }), { target: { value: "1250" } });
     fireEvent.change(screen.getByLabelText("Applications close"), { target: { value: "2027-11-01" } });
     fireEvent.change(screen.getByLabelText("Move-in date"), { target: { value: "2027-12-01" } });
     await user.click(screen.getByRole("button", { name: "Create opening" }));

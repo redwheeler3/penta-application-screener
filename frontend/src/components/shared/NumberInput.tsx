@@ -12,13 +12,13 @@ import { type InputHTMLAttributes, useEffect, useState } from "react";
 //      we keep exactly what you type and normalize ".7" → "0.7" (and "-.5" → "-0.5") on the way
 //      out, so ".7" just works.
 //
-// The parent owns a numeric `value`; we keep a local DRAFT string while focused so intermediate
+// The parent owns a number or null for blank; we keep a local DRAFT string while focused so intermediate
 // states ("", "-", ".", "0.") don't get stomped by re-parsing every keystroke. onChange fires
 // with the parsed number (or null when the field is blank/only a sign/dot — the parent decides
 // what a blank means, e.g. 0). Non-numeric characters are dropped so it stays a number field.
 
 type Props = {
-  value: number;
+  value: number | null;
   onChange: (value: number | null) => void;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type" | "inputMode">;
 
@@ -49,13 +49,13 @@ function toNumber(s: string): number | null {
 }
 
 export function NumberInput({ value, onChange, ...rest }: Props) {
-  const [draft, setDraft] = useState<string>(String(value));
+  const [draft, setDraft] = useState<string>(String(value ?? ""));
   const [focused, setFocused] = useState(false);
 
   // While unfocused, mirror the parent's value (a programmatic change should show). While the
   // user is typing we leave the draft alone so mid-edit states survive.
   useEffect(() => {
-    if (!focused) setDraft(String(value));
+    if (!focused) setDraft(String(value ?? ""));
   }, [value, focused]);
 
   return (
