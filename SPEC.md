@@ -761,7 +761,8 @@ deletion-preserving restore ledger. The built-in local restore path does reapply
 hard-purge ledger. Local restoration uses SQLite's backup API so leftover WAL pages cannot
 override the selected snapshot, retains a pre-restore recovery point, and checks the reopened
 database's integrity. Only a non-identifying audit fact that a record was deleted under a named
-retention rule may remain in the live database.
+retention rule may remain in the live database. Audit finding 2 below records the current gap
+for pool-level AI prose that is not erased with an applicant.
 
 Integer record IDs use persistent, monotonic SQLite allocation. Existing IDs remain unchanged;
 future allocation skips the legacy range and remains representable by browser numbers. Local
@@ -976,10 +977,10 @@ draft links recognizable but unusable. If the browser also contains a different 
 copy, the existing saved-versus-guest comparison appears after Google sign-in; Google credential
 state never carries applicant answers or other PII.
 
-If a different applicant session is already active in the browser, Google authentication does not
-silently replace it. The app shows both email identities and requires **Stay signed in as ...** or
-**Sign in as ...**, matching email-link conflict handling. Cancelling Google, an OAuth/provider
-failure, an unverified email, or a refused collision leaves the existing applicant session intact.
+If a different applicant session is already active in the browser, Google authentication preserves
+it and asks the applicant to sign out before continuing with the other Google account. Email-link
+conflicts use the explicit keep/switch choice described above. Cancelling Google, an OAuth/provider
+failure, an unverified email, or a refused collision leaves the existing session intact.
 
 ### Changing the primary email
 
@@ -1186,7 +1187,7 @@ findings change. A human override takes precedence in either direction until exp
 There is no third status. The UI surfaces the `status_source = ai` group as an "AI Flagged" view, composed client-side as a filter over the real columns. This keeps status binary while distinguishing high-trust deterministic exclusions from AI exclusions. The labeling is deliberately factual ("AI Flagged" — what happened), not prescriptive. The backend returns derived status/source counts and filters, faceted so impossible combinations
 read zero; these are response fields rather than `Application` columns.
 
-**The "why" is kept separately as immutable records**, never mutated by a human:
+**Findings are separate from human decisions.** Members do not edit machine evidence:
 
 - deterministic **filter reasons** (e.g. `Household gross income ($164,000) is above $150,000.`)
 - **AI screening flags** (category, summary, evidence)
@@ -1319,7 +1320,9 @@ The pipeline makes real, non-deterministic model judgments, so it is instrumente
   - **Live per-pass evals** — each pass's golden cases fed through the *real* production prompt and graded by a grader matched to the output shape (categorical → exact-match; scoring → a band; screening → per-category), with a `?mode=stability` K-repeat run measuring verdict flips. See ADR 0008.
   - **Judge** — a blind label-auditor: an independent model reproduces each pass's output from an editable per-pass brief + the case's input, blind to the label; the harness grades it against the human label with that pass's own grader. Decisive-case agreement and separate contested counts summarize the corpus; a consistent disagreement flags the *label*. Run occasionally, not per-run. See ADR 0002.
 
-Applicant-facing eval cases are protected by persisted synthetic provenance: `require_synthetic_pool` refuses any analysis unless every application in its pool was explicitly stamped synthetic. Fixtures are PII-safe (opaque column indices; narratives/`why_it_differentiates` stripped). Golden sets are grown with the harvest scripts under `backend/scripts/` (co-authored, then labelled by hand).
+Applicant-facing eval cases are protected by persisted synthetic provenance: `require_synthetic_pool` refuses any analysis unless every application in its pool was explicitly stamped synthetic. Fixtures must be PII-safe. Opaque column indices and removal of top-level narratives and
+`why_it_differentiates` reduce exposure, but nested prose and current-cohort export guards have
+known gaps recorded in audit finding 1 below. Golden sets are grown with the harvest scripts under `backend/scripts/` (co-authored, then labelled by hand).
 
 ### Operator access and versioned eval data
 
@@ -1511,22 +1514,18 @@ latency measurements for those receipts remain unknown. Calls still running at c
 billing without returned usage require provider reconciliation; cleanup does not await providers.
 Failure logs retain operation and exception class without provider traceback text or criterion keys.
 
-Local synthetic measurements (2026-10-04, auth/network/provider time excluded): screening
-preparation for 100 applicants fell from 15 to 9 SELECTs (ten-sample median 9.65 to 5.32 ms).
-Persisting 20 candidates with 15 dimensions on SQLite WAL/FULL fell from 300 to 20 commits
-(three-sample median 415.56 to 194.53 ms). These isolate local overhead, not production latency.
-
-Local synthetic measurement (2026-10-03, SQLite WAL/FULL, 15 repetitions, median):
-100 applicants × 15 dimensions with 30,000 historical rows read in 5.7 ms versus
-37.1 ms with newest-row selection. Switching 1,500 references and committing took
-8.0 ms; unchanged references took 3.0 ms. A fresh result's existing commit grew from
-0.72 to 1.05 ms. These isolate database overhead and are not production latency promises.
-
-**How cost stays low (the payoff).** The score cache keys on `(raw_row_hash, dimension_key, model_identity, reasoning, prompt_version)` with no member id, opening id, or provider route, so sharing rides on *applicant and criterion identity*, not pool identity. An applicant scored once is free for another member or opening when matching inputs recur, and the same pinned model can reuse that work after moving between Bedrock and its direct API. **Staleness is per-opening and per-member**, and reduces to a cache-gap check: a member sees "re-rank needed" only when their eligible view references an applicant not yet in that opening's analysis. Member A marking applicant X eligible ambers only A's badge in that opening; once A runs it, X grounds discovery + gets scored, and B — including X later in the same opening — rides the cache with no new spend. Pool-specific discovery still runs for each opening. A new dimension surfaced by one member's Rank lands on every member's board for that opening at **weight 0** (inert until that member tiers it), so it costs others nothing until they opt in. **Screening is shared within an opening:** its scope is the union of applications that pass at least one member's deterministic rules, and one cached integrity/pet-fact result serves every member when application content, model, reasoning, and prompt version match. Eligibility-rule changes can change that union, but rule values do not enter the screening prompt or its version. Staleness is detectable when an application enters the union without a matching cached result — the amber signal shows uncached work waiting before any run.
+**Sharing and readiness:** caches have no member or opening ID; identical submitted evidence,
+canonical criterion, model identity, reasoning and prompt reuse the same result. Pool discovery
+remains opening-specific. New criteria enter each member's Ignore zone at zero weight. Screening
+uses the union of deterministic rules plus forced-eligible overrides, with one reusable integrity
+and pet-fact result. Rule thresholds do not enter its prompt/version. The readiness and reuse
+rules above determine amber/green; analysis membership alone does not establish currentness.
 
 **Dimension survival on re-rank:** an opening's shared set keeps any dimension in **any** member's working tier for that opening; a dimension drops only when no member has it working-tiered there.
 
-**Committee-proposed seeds** feed the selected opening's shared discovery (the resulting axis is shared within that opening), but the "you requested this" badge shows only for the requesting member (`from_committee_request` provenance is already per-run).
+**Committee-proposed seeds** feed the selected opening's shared discovery. The resulting axis
+and Requested provenance are shared; each member may dismiss that badge independently. There
+is no deterministic proposal-to-requester attribution.
 
 **Out of scope:** merged ranking, disagreement flags, criteria comparison, and visibility into
 another member's private ranking or favourites. The Shared shortlist is a single explicit
@@ -1581,42 +1580,29 @@ check on focus. New analysis IDs keep the Reload notice; pending edits and this 
 AI work retain ownership of their displayed state. Refresh failures preserve the last board.
 Settings saves trigger free cache adoption and background application/dashboard refreshes.
 
-**Automatic cache reuse and workflow confirmations:** the account/opening-scoped committee
-workspace adopts valid saved screening findings and scores in the background on entry and
-intake/focus refresh. It does not delay initial reads, generate output, claim an AI run or
-record AI spend. Cached references are rechecked under a short writer; active AI runs and
-finalized openings are left alone. A cache miss preserves the last consumed result until
-explicit analysis. Complete current score coverage makes retained criteria ready. Discovery provenance is
-kept intact and does not determine button colour. Rank confirmation uses the action heading “Run ranking?” and concise action/cost summaries; it makes no blanket freshness claim. The workflow indicator carries freshness.
-Keep the distinct paid actions for scoring missing applicants against existing criteria and
-discovering criteria. Cache-only Screen has an up-to-date message and a dismiss button.
+**Automatic cache reuse:** the account/opening-scoped workspace adopts valid saved screening
+findings and scores in the background on entry and intake/focus refresh. This does not delay
+initial reads, call a provider, claim a run, or record spend. References are rechecked under a
+short writer; active AI runs and finalized openings are left alone. A miss preserves the last
+consumed result until explicit analysis. Readiness follows current cache coverage and pending
+proposals, independently of discovery provenance or fingerprint format. Ignored criteria are not
+pending proposals. Discovery-only changes leave retained scores ready; screening/scoring model,
+effective reasoning, or prompt changes require a matching cache. Certified-equivalent routes
+reuse valid work; AI never runs automatically.
 
-Screen/Rank confirmations use concise action and cost copy. Rank uses “Run ranking?” for
-all states, omits redundant score coverage and freshness verdicts, and summarizes the
-discovery tier behavior in one sentence. Cache-only Screen shows “Screening is up to date.”
-and its dismiss button without an additional explanation. Paid action choices and cost caps
-remain visible.
+**Confirmations:** both Rank modes use **Run ranking?**, brief action/cost copy, and the discovery
+tier-retention sentence in the same paragraph. The workflow indicator owns freshness; the
+confirmation adds no blanket freshness verdict or redundant coverage summary. Keep scoring missing
+applicants and discovering criteria as distinct paid actions, with visible cost caps. Cache-only
+Screen shows **Screening is up to date.** and a dismiss button. Active workflow buttons omit generic
+staleness hover text; disabled/archived buttons explain why they are unavailable.
 
-Active Screen/Rank buttons do not use generic staleness hover text. Disabled/archived
-buttons retain the explanation of why the action is unavailable.
-
-Readiness is independent of stored fingerprint format or unknown discovery history. A
-complete current cache makes Screen/Rank green without repeating paid work or rewriting
-recorded provenance. A workspace that first observes criteria created by another member offers
-the existing Reload action. Consolidation preserves member priorities on keys still owned by
-each report, including intermediate alias survivors. Existing and first-after member views
-restore the same personal history and presence-gap review flags, preserving explicit acknowledgements
-and later Ignore choices. Personal priorities and their report are read as one coherent snapshot.
-It adopts proven reusable survivor scores
-atomically with the report change; incomplete/stale survivors defer the merge, with confirmation
-and actual application distinguished in the audit. Rank also becomes amber for free-text proposed criteria awaiting
-discovery; existing criteria in Ignore are not pending. Confirmation uses “Run ranking?”,
-brief action/cost text and the discovery tier-retention sentence in the same paragraph.
-
-Discovery-only model/prompt/strategy changes leave existing scored criteria ready. Changing
-a screening/scoring model, effective reasoning or prompt requires a matching cache for that
-configuration; otherwise that step becomes amber while last-consumed results remain visible.
-Certified-equivalent routes share model identity and reuse valid work. No AI runs automatically.
+**Consolidation and personal history:** new analyses offer Reload. Merges preserve each member's
+priorities on keys still owned by their report, including intermediate alias survivors. Existing
+and first-after member views restore the same personal history and presence-gap flags, preserving
+explicit acknowledgements and later Ignore choices. Personal priorities and report are read as one
+snapshot. Proven reusable survivor scores are adopted atomically with report changes; incomplete
+or stale survivors defer the merge. The audit distinguishes model confirmation from application.
 
 ## Users, Roles, And Authentication
 
@@ -1747,3 +1733,295 @@ The following remain deliberate limits, not unfinished milestones:
 Delivered milestones, migration evidence, bake-off measurements, and superseded delivery checklists
 are preserved in [the completed milestone archive](docs/archive/spec-milestones.md). The current
 provider catalog and configured runtime settings take precedence over historical model availability.
+
+## Ponytail audit — November 24, 2026
+
+**Status: discovery complete; implementation has not started.** Recommendations below are for
+discussion, not an approved roadmap or claims of fixes. Application baseline:
+`220a3b60c72f8438b48d3c18f8e60ec986963dc5`. All passes used unchanged application code.
+
+**What this repo does:** Penta collects and retains housing applications, manages opening outcomes
+and mail, and helps committee members screen and rank candidates using shared AI evidence and
+personal priorities. Expected load is one Fly process, approximately five committee members,
+300 applications, and 1,500 vacancy subscriptions. Overlapping applicant requests, committee work,
+and background email/maintenance are normal; the public intake boundary must also withstand abuse.
+
+### Passes and stopping evidence
+
+| Pass | Perspective and result |
+| --- | --- |
+| 1 — user journeys | Traced guest/email/Google access, saved vs submitted answers, opening publication/decisions, notices and applicant recovery. Found unthrottled public intake, broken frontend verification, and the native income widget (4, 8, 11). |
+| 2 — data transformations | Compared eligibility consumers and traced criterion identity, cache reuse, export provenance and aggregate deletion. Confirmed the three larger privacy/identity findings (1–3); the 24 list/detail comparisons and union/Screen/Rank scope checks agreed. |
+| 3 — adverse sequences | Challenged partial discovery failure, a later ordinary applicant entering a synthetic analysis's opening, corrupted browser storage, leases/disconnects, selection/purge overlap and email consent generations. Added proposal loss, recovery failure and missing failure counts (5, 6, 9); strengthened finding 1 with a second reproduction. |
+| 4 — simplification and contracts | Reviewed actual call sites, schema/prompt meanings, nested editor shapes, deployment/build/scripts and the watchdog. Added only smaller prompt/editor/dead-helper recommendations (10, 12, 13); no new high-impact defect. |
+| 5 — request-lifetime challenge | Repeated a guest collision using a separate session for each HTTP request. Found a real rollback hidden by the existing test's shared session (7). Followed the shared mail helper through both collision consumers. |
+| 6 — closing challenge | Checked every magic-link sender caller and the alternate sent/failed/coalesced branches; ordinary draft/access saves explicitly commit their suppressed-mail paths. Rechecked all findings against consumers, existing success tests and documented limits; revisited every coverage row. No further material issue remained unexamined within this bounded coverage. |
+
+Returns diminished after the broad passes: pass 4 added only small contract/tooling cleanup,
+pass 5 found one substantive transaction defect, and the focused follow-through/final challenge
+added none. That late defect was followed to closure in the audit rather than ignored to meet a
+stopping target. Stopping also depends on the coverage map and explicit gaps, not a finding count. This is a bounded audit, not a claim that every line or defect was found.
+
+### Coverage and evidence
+
+For each row, review covered correctness, failure/concurrency, supported value shapes, consumer
+agreement, unnecessary work and readability. `Read` means source tracing; `Test` means existing
+checks actually executed; `Probe` means a separate synthetic reproduction. Tests are not treated
+as proof of model judgment, browser gestures, production state, or the absence of other bugs.
+Backend paths in this table are relative to `backend/app/`.
+
+| Area | Source and scenario coverage | Executed evidence and limits |
+| --- | --- | --- |
+| Applicant intake | Read `api/applicant/{guest,application,google}.py`, `services/applications/{intake,drafts,access}.py`, answer/submission schemas and frontend save/review/lifecycle/storage owners. Followed collisions, incomplete drafts, stale revisions, closed/archived choices and primary-email authority. | Test: applicant, submission, identity and copy-concurrency suites. Probe: 12 same-source unique submissions plus 12 same-address draft saves; corrupted stored record; corrected-selector copy of guest-review tests; repeated collision with separate request sessions. Found 4, 6, 7, 8, 11. No live mailbox, Google round trip or browser date-entry test. |
+| Identity and authority | Read dependencies, cookie identity binding, passwordless/applicant/committee resolvers, admin writer guard, browser API factories and session refresh. Checked host-only cookie policy, active allowlist, revocation and queued-work identity capture; kept one session model. | Test: auth/passwordless, identity concurrency, admin-write authority, operator access, frontend identity/client/session tests. No live OAuth configuration or dependency-advisory check; no claim about external provider availability. |
+| Openings and mail | Read catalog, participation, selection, protection, notice/audience/subscription ownership, delivery reservation/outbox/sender and admin opening workflows. Traced preparing → publication → decision, whole-consent consumption, failure/retry, current recipient and ambiguous acknowledgement. | Test: opening edit/write/selection concurrency, decision outbox, notice eligibility, email and vacancy-consent suites; frontend opening/decision tests. Reviewed acceptance-before-consumption and absence of provider I/O under the send writer. No actual messages or 1,500-recipient load run. |
+| Retention and recovery | Read retention clauses, purge, result ownership, maintenance, backup service and root backup/restore wrappers. Checked Pacific expiry, legal hold/selection, WAL-safe restore, deletion bounds, allocation high-water marks and restored authority. | Test: retention transitions/purge/protection/schema, result retention, migrations, backup and maintenance suites. Probe: a purged participant's marker remains in its opening's analysis/audit prose (2). No local real DB reset/restore and no production snapshot rehearsal. |
+| Eligibility and pool consistency | Read pure filters/status, per-member rules/union, list/detail presentation, opening scope, submitted facts and ranking assembly. Examined income/age/child/pet/employment/property boundaries, muted flags, an override, selection and missing-score semantics. | Probe: identical 12 synthetic households under two policies; all 24 list/detail comparisons matched, individual eligibility matched list output, union matched scoring, and pre-screen scope matched its rule union. Existing ranking/age/cache tests also passed. No claim of statistical fairness or model accuracy. |
+| AI and ranking | Read cached/fresh publication, provider adapter, discovery/decomposition/matching/scoring/consolidation, selected-result references, cost meters, rank persistence/member history and run lease/stream lifetime. Checked no-priority and partial-score behavior, timeout/storage failure, aliases and tier ownership. | Test: AI/scoring/identity/tier/pool/cost/metrics, lease-renewal, cancellation and HTTP-disconnect suites; frontend ranking/run tests. Probe: same label/different definition with a model returning no match (3); seeded-worker failure/proposal clearing and zero persisted failure count (5, 8). No paid calls; prompt judgment and latency remain unmeasured. |
+| Evals and observability | Read fixture export/synthetic guard, both applicant harvesters, categorical/stability/Judge collectors, history/result presentation and nested editor. Traced errors vs contested cases, attempted repetitions, local-write/admin gates, nullable values and provenance. | Test: eval completion/experiments/history/cases, stability/Judge and editor suites. Probe: non-synthetic baseline would publish nested marker prose; later non-synthetic applicant passes historical analysis guard (1); nested scalar/object/list controls and null-to-string editing (11). File write was intercepted; committed eval data was not changed. |
+| Browser and operations | Read API deadlines/stream parser, request scopes, navigation, note queues, settings/board refresh, applicant persistence, print/report ownership, Docker/Fly config, backup wrappers and all three watchdog source modules. Checked acknowledgement ordering, scope changes, cancellation, watchdog restart/host/lookup recovery and pause. | Test: frontend suite/build/lint; watchdog tests/type check; backend deployment/stream/backup tests. The current workflow already uses short writes, shared helpers and bounded worker pools. No full visual/accessibility/print walkthrough, gesture test, deployed watchdog check or production load profile. |
+
+Verification results against the unchanged baseline:
+
+- Backend: **1,330 passed, 1 skipped**; complete Ruff check passed. The first sandboxed pytest run
+  hit the established temporary-directory permissions issue; the successful run used the same
+  configured directory outside the sandbox. No application failure was attributed to that run.
+- Frontend: **474 passed, 2 failed** across 54 files; build passed. Lint failed on the unused
+  `preview` in `OpeningsPanel.test.tsx:58`. Both failed tests stop at the obsolete date-field query
+  in `ApplicantReviewAdmission.test.tsx:157`, before reaching their intended adverse sequence.
+- Temporary probes: **13 frontend checks passed** in the copied guest-review/shape probes, plus
+  **1 storage reproduction passed**. The copied review suite passes with label-based field lookup;
+  its original file remains unchanged. Python boundary/privacy/failure and separate-request-session probes reproduced the
+  documented outcomes using isolated in-memory SQLite and captured providers/mail only.
+- Watchdog: **43 tests passed** and TypeScript check passed. All temporary probe files were removed.
+
+### Must fix
+
+1. **Exports can label ordinary applicant evidence as safe synthetic data.**
+   - **What this is:** `evals/fixture.py:168` writes the baseline; `_harvest_common.py:33` trusts an
+     analysis stamp before the scoring/screening harvesters read today's candidates.
+   - **Problem:** Baseline recording accepts a non-synthetic analysis and retains nested prose.
+     A later non-synthetic applicant can also enter an originally synthetic opening and be harvested
+     under its old stamp. Both synthetic-marker probes reproduced the unsafe boundary; no real leak
+     was inspected or claimed. `docs/ai-evals.md` already warns about these limits.
+   - **Fix:** Enforce the synthetic boundary at every export over the actual exported inputs and
+     source analysis/history; preserve provenance from the pool captured before calls, rather than
+     recomputing it later. Refuse unknown/mixed evidence before publishing a file or printing cases.
+   - **If we skip it:** An operator can follow the advertised harvesting/re-baseline workflow and
+     put real applicant text into a Git-tracked fixture.
+   - **Owner/check/cost:** `services/ranking/{pipeline,analysis}.py`, `evals/{fixture,synthetic_guard}.py`
+     and both harvesters. Check non-synthetic baseline refusal, late arrival, withdrawal during
+     discovery, inherited non-synthetic criterion prose and unchanged destination on refusal. Reuse
+     existing provenance/guards; remove duplicate weaker assumptions. Only bounded local reads;
+     no extra provider call or waiting on the applicant path.
+
+2. **Applicant purge leaves pool-level AI text behind.**
+   - **What this is:** `services/applications/purge.py:155` erases application aggregates; an opening's
+     `Analysis`/`AnalysisAudit` owns separate narratives and pool justifications.
+   - **Problem:** Purging a participant leaves its synthetic identifying marker in discovery
+     narrative, fan-out prose and `why_it_differentiates`. These free-text fields can quote applicants;
+     their lifetime is not tied to the source applicant. Hiding an opening does not erase its rows.
+   - **Fix:** Include applicant-bearing pool text in the retention boundary. Prefer conservative
+     cleanup by the existing opening/participation scope over a paragraph-level tracking system;
+     retain only demonstrably non-identifying criterion identity and numeric expense facts.
+   - **If we skip it:** The stated aggregate-deletion guarantee is incomplete even when direct
+     applicant rows, credentials and per-applicant cache results disappear correctly.
+   - **Owner/check/cost:** Purge/result-retention owners plus ranking audit/report persistence.
+     Before implementation, agree what historical prose must be removed when source lifetimes differ.
+     Seed markers in every copied/nested prose destination, purge through normal and restore paths,
+     and check that unrelated retained applicants and numeric costs survive. Consolidate cleanup in
+     aggregate erasure; no new live-read polling or provider cost. Historical trace detail may shrink.
+
+3. **A fresh criterion can silently become an unrelated old criterion.**
+   - **What this is:** `ai/dimension_matching.py:158` forces every shared key to self-match;
+     `services/ranking/identity.py:8` then restores the prior criterion wholesale.
+   - **Problem:** Fresh discovery also invents snake-case keys. Two different definitions called
+     `community_skills` are therefore forced together even when the matching model explicitly
+     returns no match. The probe replaced conflict-resolution skill with the older gardening skill.
+   - **Fix:** Distinguish proven carried-forward keys from fresh model labels. Rename a colliding
+     fresh key before matching, and reserve forced self-matches for established input identity.
+     Preserve frozen wording/scores once a genuine identity match has been established.
+   - **If we skip it:** New concepts disappear, and the committee sees old tiers and scores instead
+     of the distinct criterion discovery found.
+   - **Owner/check/cost:** Discovery/criteria/matching and key adoption; trace cache/tier/audit consumers
+     together. Check same label/different meaning/no match, proven kept-key survival, equivalent
+     renamed match and cached-score reuse. Replace the overbroad self-match assumption; no schema
+     rewrite or automatic history rewrite. Correctly distinct criteria may require fresh scoring.
+
+4. **Public intake can create records and send mail without a source-level limit.**
+   - **What this is:** `api/applicant/guest.py:155,201,273` accepts anonymous draft, submission and
+     access requests. Existing mail throttling largely follows the recipient address.
+   - **Problem:** One synthetic client submitted 12 different addresses and received 12 successes
+     and 12 captured confirmations; it also created 12 drafts for one address despite email coalescing.
+     There is no equivalent of the public vacancy-signup source limiter on these paths.
+   - **Fix:** Reuse `PublicRateLimiter` and the existing trusted ingress-key rule before anonymous
+     record creation/mail staging, covering submission checks, drafts, submissions and access requests.
+     Keep mailbox coalescing as well; authenticated revision saves must retain their normal behavior.
+   - **If we skip it:** A single source can fill the live pool/draft store and consume the shared
+     email allowance. Changing recipient addresses bypasses the present mailbox limits.
+   - **Owner/check/cost:** Applicant public boundary, `services/auth/rate_limit.py` and the existing
+     vacancy ingress-key owner. Check rotating addresses, repeated drafts, forged forwarding headers,
+     ordinary retries and authenticated saves. Share the ingress policy rather than copy it. Constant
+     in-memory work, no extra network call; use a threshold that accommodates shared household access.
+
+5. **A failed proposal-seeded discovery worker consumes unevaluated proposals.**
+   - **What this is:** Only worker 0 receives proposals (`ai/dimension_discovery.py:223`);
+     `services/ranking/analysis.py:98` starts the next member view with no pending proposals.
+   - **Problem:** If worker 0 fails and a blind worker succeeds, the run can publish successfully.
+     The proposal guard sees no proposed axes in the surviving reports and the new view clears the
+     original request. The synthetic “Conflict mediation” request vanished in this exact sequence.
+   - **Fix:** Do not publish new criteria when the sole proposal-bearing worker fails. Use the
+     existing failed-run path to keep the prior board/proposals; retain tolerance for blind-worker
+     failures. A deliberate model decision to skip a non-varying proposal remains valid.
+   - **If we skip it:** Human input looks consumed even though the model never assessed it.
+   - **Owner/check/cost:** Discovery/criteria pipeline, new-analysis creation and proposal UI refresh.
+     Check seeded failure with blind success, the reverse order, no proposals and valid deliberate
+     omission. Remove the claim that downstream guards recover failed seed input. No automatic paid
+     retry; a failed attempt retains known spend and a user may choose another run.
+
+6. **Malformed browser recovery data can block valid server answers.**
+   - **What this is:** `frontend/src/applicant/draftStorage.ts:67,217` casts parsed storage to the
+     draft type; `useApplicantPersistence.ts:315` loads it before applying server answers.
+   - **Problem:** Valid JSON with a current timestamp and `draft: null` throws `TypeError` in
+     `loadApplicationDraft`. Nested malformed fields can also escape into rendering; parsing JSON
+     successfully is not proof of a usable draft.
+   - **Fix:** Treat an invalid individual remembered record as unavailable and continue restoring
+     the server copy. Validate the used record's structure and clear only that captured bad record
+     under the existing storage lock, preserving another tab's newer copy.
+   - **If we skip it:** A returning applicant can be stuck during restoration until site data is
+     cleared, despite a healthy saved application on the server.
+   - **Owner/check/cost:** Browser draft storage and restore flow. Check null/missing/nested malformed
+     data, invalid opening IDs/revision, valid sibling drafts and concurrent replacement, through
+     actual restore. Reuse existing storage fencing; no compatibility framework or dependency.
+     Local validation only; never delay server recovery on provider work.
+
+7. **Email coalescing rolls back the latest guest collision answers.**
+   - **What this is:** `api/applicant/guest.py:123` saves a comparison copy and delegates delivery
+     to `services/email/transactional.py:67`. Both pre-review checks and submission collisions use it.
+   - **Problem:** `send_magic_link` returns `RECENT` before committing when a prior email is still
+     recent or its request quota is reached. The caller also returns/raises without committing the
+     new copy, so request-session close rolls it back. With realistic per-request sessions, the
+     first response was `sent`, the second `recent`, and stored answers remained the first copy.
+   - **Fix:** Make the collision owner explicitly commit the preserved copy independently of whether
+     another email is sent. Keep the existing mailbox coalescing and authenticate before any change
+     to the applicant's saved working/submitted application.
+   - **If we skip it:** Returning through the already-sent link can present older guest answers while
+     the applicant believes the latest answers were preserved for comparison.
+   - **Owner/check/cost:** Shared collision helper, both HTTP consumers and
+     `tests/applicant/test_guest.py:171`. That existing regression shares one Session across requests
+     via `tests/applicant/support.py:41`, allowing a later link-open to commit the previous request's
+     pending update. Give the regression real request-session lifetimes; test sent, coalesced,
+     quota-limited and failed delivery and the 409 submission path. Reuse the existing transaction;
+     no extra provider call, duplicated draft store or network wait is needed.
+
+### Should fix
+
+8. **Frontend verification is already red.**
+   - **What this is:** Guest-review admission tests and the opening-panel test fixture.
+   - **Problem:** Two tests query native date controls as textboxes; lint also rejects a never-used
+     `preview` fixture. The concurrency assertions are not reached by the failing tests.
+   - **Fix:** Use accessible label queries for the date fields and delete the unused preview/import.
+     The temporary copied review suite already passes with label lookup.
+   - **If we skip it:** Routine frontend checks remain noisy and those review races lack a working test.
+   - **Owner/check/cost:** `ApplicantReviewAdmission.test.tsx:157`, `OpeningsPanel.test.tsx:58`.
+     Full frontend suite/lint/build must pass after repair. Delete the obsolete fixture; no runtime
+     code, dependency or latency change is needed.
+
+9. **Degraded discovery records zero failed calls.**
+   - **What this is:** `ai/dimension_discovery.py:280` tracks `failed_count` separately from `PassCost`;
+     criteria persistence, the run ledger and `services/metrics.py` consume the latter.
+   - **Problem:** One failed worker plus one successful worker produces a visible degradation
+     warning but `discovery_cost.failed_calls == 0`. The normal ledger loses that failure fact.
+   - **Fix:** Carry failed worker counts into the existing pass accounting, without guessing token
+     usage or billing for responses never returned. Keep successful replies and failed attempts distinct.
+   - **If we skip it:** Failure trends and the warning describe different versions of the same run.
+   - **Owner/check/cost:** Fan-out result accounting → criteria → ledger → metrics/UI. Test partial
+     success, all-fail and all-success and inspect the persisted pass row, not only the warning.
+     Consolidate counts in the existing result/cost objects; no provider call or extra hot-path query.
+
+10. **Discovery defines a different score scale from the scorer.**
+   - **What this is:** `ai/schemas.py:107,357` defines the low pole as near zero; discovery instructions
+     (`ai/dimension_discovery.py:72`) still describe a 0..1 score.
+   - **Problem:** Scoring and ranking use −1..+1, with zero reserved for neutral/no evidence. The
+     producer of the pole definition and its consumer assign different meanings to the same zero.
+     This is a confirmed contract contradiction, not a measured claim of model error frequency.
+   - **Fix:** Align both dimension schemas and discovery instructions with the signed scale and
+     neutral-zero rule. Keep one clear meaning for the low pole in production and eval inputs.
+   - **If we skip it:** The model receives conflicting instructions at the point where criteria
+     definitions become scores and committee explanations.
+   - **Owner/check/cost:** Shared AI schemas, discovery/decomposition, prompt versions and eval corpus.
+     Remove unsigned-scale wording; test prompt/schema consistency, then run bounded real-model
+     scoring/stability checks before shipping. Prompt changes rederive versions; no new pass or
+     workflow wait, though explicit rediscovery may produce different criteria.
+
+11. **Applicant income bypasses the shared safe number control.**
+    - **What this is:** `frontend/src/applicant/ApplicantFormFields.tsx:222` has a separate native
+      number input; the established `NumberInput` avoids accidental wheel changes.
+    - **Problem:** Income is an eligibility input on a long scrolling form, but this is the one
+      production numeric entry still using the widget the project explicitly excludes. Source and
+      rendering confirm it is native; its wheel gesture was not tested in a real browser here.
+    - **Fix:** Use the existing shared control, preserving blank vs zero and whole-dollar validation.
+    - **If we skip it:** The form retains the known risk of silently changing an income while scrolling.
+    - **Owner/check/cost:** MoneyField, draft conversion, validation and guest-review tests. Check blank,
+      zero, negative/fractional refusal and wheel behavior in Chrome. Delete the parallel widget;
+      no dependency or request/latency change.
+
+### Nice to have
+
+12. **The generic case editor cannot create or restore JSON null.**
+    - **What this is:** `frontend/src/components/evals/StructuredFields.tsx:9,49` supports nullable
+      fixture values but renders null as empty text and offers no null field type.
+    - **Problem:** Editing a null value to `2` produces the string `"2"`; clearing it produces `""`.
+      The scalar/list/object probe confirmed that ordinary shapes work, but null cannot be restored
+      through those controls. Missing, empty text and null can mean different things to a prompt.
+    - **Fix:** If editing such a case, provide an explicit null choice through the existing scalar
+      controls rather than adding a schema-driven editor. Preserve null on blank display alone.
+    - **If we skip it:** Operators must edit the JSON file directly for a null-valued case.
+    - **Owner/check/cost:** StructuredFields and case-save contract tests. Exercise null → text/number
+      → null, including inside lists, and verify the saved JSON type. No new dependency, provider
+      cost or network wait; optional ergonomics, not a production screening blocker.
+
+13. **A published-opening helper has no production caller.**
+    - **What this is:** `services/openings/catalog.py:60` duplicates a small published-opening query;
+      its only function reference outside its definition is one assertion/import in
+      `tests/test_preparing_openings.py`. The loader's same-named local variable is unrelated.
+    - **Problem:** It preserves and tests a query contract no route or service uses.
+    - **Fix:** Delete the helper and replace that one assertion with the real applicant-visible
+      opening projection; preserve the rest of the protection/publication test.
+    - **If we skip it:** A small amount of dead production surface remains to maintain.
+    - **Owner/check/cost:** Catalog and preparing-opening tests; whole-tree reference search already
+      checked imports, tests, scripts and docs. Recheck consumers, then run focused opening tests.
+      About 15 production lines can go, with zero runtime/dependency cost.
+
+### Proportionality, rejected rewrites and remaining gaps
+
+Recommended discussion order: **export safety and retention (1–2), criterion identity (3), public
+intake abuse (4), then proposal/recovery correctness (5–7)**. Restore green frontend checks (8)
+before implementing frontend fixes. Accounting and scale wording (9–10) are bounded follow-ups;
+11–13 are small shared-component/tooling cleanup. No finding above has been implemented.
+
+Keep the current FastAPI/SQLite/React architecture, the explicit pipeline, shared cached evidence,
+short write transactions and human priorities. The audit found no justification at this load for
+Postgres, a distributed job system, a new agent orchestrator, a generic provenance framework,
+another numeric component, or replacing the nested editor. The 1,151-line ORM model catalog stays
+cohesive as the schema map; splitting it merely to meet a line threshold would not fix these bugs.
+Do not add a committee-wide budget, automatic paid retries, cross-member ranking comparison or a
+new account model. Preserve the run lease, selected-result references, writer guards and synthetic
+boundary rather than deleting them as apparent abstraction overhead.
+
+Rejected suspected issues: editor typing does not invalidate captured write ownership
+(`useRequestScope.invalidate` affects ordered reads, and the existing acknowledgement test passes);
+unknown scores are not treated as neutral by the ranker; failed/contested eval outcomes are retained
+and use distinct summary rules; per-applicant shared-result deletion already waits for the last
+retained producer/consumer. None is an additional recommendation.
+
+**Verdict:** the core consumer/transaction design is well defended by tests, but close the
+privacy/export and identity gaps before broad cleanup. **Lean:** about 15 production lines and
+the unused preview fixture can be deleted; **0 dependencies** need adding or replacing.
+
+**Not checked:** live provider quality/prices/terms, dependency vulnerability advisories, public
+website code in the sibling repository, production mail/OAuth/Fly state, real-data load/latency,
+full browser accessibility/visual/print/drag behavior, and every migration/script/stylesheet line.
+Existing migration/script checks passed; that does not substitute for a production rehearsal.
+These are explicit limits, not silent green checks. Only synthetic inputs were used; real local
+or production applicant records were not inspected, changed, restored, emailed or exported.

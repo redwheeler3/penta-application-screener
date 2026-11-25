@@ -600,3 +600,16 @@ A systematic tab-by-tab, panel-by-panel walkthrough of the whole UI to find and 
 ### Eval golden ergonomics — pipe-input sugar for any-of `fires` (✅ done 2026-07-24)
 
 A screening golden's `fires` any-of group is stored as a nested list — `[["spam_essay", "minimal_essay"]]` = "at least one of these must fire" — but the eval *displays* it pipe-joined ("spam_essay | minimal_essay", see `fire_label`). That display↔input mismatch was a real footgun: hand-editing a golden, it's natural to type the pipe form back into the data, which is a bare string the grader can't iterate — and it killed the Evals page render once. Closed: `_normalize_fires` in `load_cases` (`app/evals/screening.py`) accepts a pipe-delimited string as sugar for an any-of group (`"a|b|c"` → `["a","b","c"]`, whitespace trimmed), and also tolerates the whole `fires` value being a bare string (the exact mistake) by wrapping it. Plain must-fire strings and existing nested lists pass through unchanged. Documented in `docs/eval-case-schema.md`; tested (`test_normalize_fires_accepts_pipe_input_sugar`).
+
+## Local database overhead measurements
+
+Local synthetic measurements (2026-10-04, auth/network/provider time excluded): screening
+preparation for 100 applicants fell from 15 to 9 SELECTs (ten-sample median 9.65 to 5.32 ms).
+Persisting 20 candidates with 15 dimensions on SQLite WAL/FULL fell from 300 to 20 commits
+(three-sample median 415.56 to 194.53 ms). These isolate local overhead, not production latency.
+
+Local synthetic measurement (2026-10-03, SQLite WAL/FULL, 15 repetitions, median):
+100 applicants × 15 dimensions with 30,000 historical rows read in 5.7 ms versus
+37.1 ms with newest-row selection. Switching 1,500 references and committing took
+8.0 ms; unchanged references took 3.0 ms. A fresh result's existing commit grew from
+0.72 to 1.05 ms. These isolate database overhead and are not production latency promises.
