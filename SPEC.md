@@ -2105,3 +2105,194 @@ viewport it was 366 px wide, with controls contained and an 8 px label-row gap. 
 was visually inspected. No applicant answer or fixture was saved by those checks, and the scratch
 tab was closed. Physical mouse-wheel, drag, complete application and print journeys remain outside
 this verification. No dev server was started and no production deployment performed.
+
+## Follow-up full-codebase audit — November 24, 2026
+
+**Status: discovery complete; seven findings verified. Jeff authorized implementation and push.**
+Baseline: `c19d4b6edd3f65e2c398fe68e920dc45e3184ea5`. Review current behavior across the full
+system, including areas unaffected by the previous fixes. Expected load remains one Fly process,
+about five committee members, 300 applicants and 1,500 vacancy subscribers. Only isolated synthetic
+data may be used in probes; do not mutate the real local database or send mail.
+
+Jeff additionally requested three more passes after the initial set because he switched from Sol
+to Astra. Record those separately, without restarting discovery or changing the application baseline.
+
+### Coverage plan
+
+Every row is challenged for correctness, adverse completion order/failure, supported input shapes,
+agreement between consumers, unnecessary work and readability. Source review, executed checks,
+synthetic probes and explicit gaps must be distinguished at closeout.
+
+| Area | Scenarios and source owners |
+| --- | --- |
+| Intake and applicant state | Guest/collision/Google/email, incomplete drafts, publication, cross-tab/browser copies, date/number validation; `api/applicant/`, application services/schemas and frontend applicant owners |
+| Identity and authority | Session expiry/switches, allowlist/admin boundaries, credential issuance/revocation and captured API identities; auth services/API dependencies and frontend session/client owners |
+| Openings and email | Preparation/publication/edit/selection/cancellation, audience and consent generations, delivery retries and uncertain acknowledgements; opening/email services and admin workflows |
+| Retention and recovery | Availability before sweep, source inheritance/erasure, selected/legal-hold records, physical purge, SQLite backup/restore and migrations |
+| Eligibility and ranking consumers | Same facts through list/detail/dashboard/union/Screen/Rank, override ownership, incomplete scores, criteria/tier/alias history and printed output |
+| AI execution and cost | Estimate/confirmation/execution consistency, captured inputs, failure and retry accounting, lease/cancellation and provider boundary; AI and rank/run services |
+| Evals and observability | Editor value shapes, case/history identity, attempted vs completed work, stability/Judge summaries, provenance and local/admin fixture boundaries |
+| Browser and operations | Navigation, draft/save/read completion order, visible refresh, API retry/deadline/stream handling, deployment/static serving, watchdog and operator scripts |
+
+Initial set: user journeys; data/consumer transformations; adverse sequences; simplification and
+closure. Additional requested set: independent trust-boundary challenge; workflow/completion-order
+challenge; cold-reader/operational challenge. Continue following any new material issue within scope.
+
+### Audit outcome and evidence
+
+What this repo does: Penta collects housing applications, applies deterministic eligibility rules,
+and gives committee members AI evidence and personal rankings. Human administrators own opening
+decisions. The review assumes the small production load above, including slow providers and
+ordinary requests arriving during background work.
+
+The initial four perspectives jointly produced six verified findings. The three additional passes
+requested after the Sol-to-Astra switch produced one more finding (confirmation against changed
+criteria), then zero and zero. The final challenge traced each issue through its producer, stored
+state and consumers, added negative controls, and found no further unexamined material issue.
+This is bounded coverage, not a claim that every line or possible execution was checked.
+
+| Area | Source review and exercised evidence | Remaining limit |
+| --- | --- | --- |
+| Intake and applicant state | Publication, working copies, browser restoration, lifecycle reads, canonical answer schemas and shared form controls. Synthetic resubmission and actual date-control/validator probes found findings 1 and 7. Applicant suites and frontend persistence/editor tests ran. | No new complete human application or physical input-device journey. |
+| Identity and authority | Cookie identity headers, committee allowlist/session revalidation, writer-time admin checks, local fixture gates and account-owned frontend requests/drafts. Auth/authority/session and adverse-order suites ran. Explicit identity mismatch remains refused. | No external Google sign-in or credential attack exercise. |
+| Openings and email | Publication audience, consent-generation reservation, direct selection, final decisions, retry preparation/acknowledgement and daily lease. Slow/short virtual-clock batches and withdrawn/active/decided controls found 3 and 6. | No actual email was sent; timeout timing is simulated. |
+| Retention and recovery | Retention predicates, history/protection, aggregate/result/pool erasure and local restore ledger/authority reset. Linked-feedback marker survives purge (2); restore/purge/migration suites ran. | No real local DB restore/reset or production snapshot rehearsal. |
+| Eligibility and ranking consumers | Shared machine/member/union rules, selected-applicant scope, chosen score rows, ranking arithmetic and list/detail/dashboard projections. Existing parity, partial-vector, query-count, scoring and concurrency tests ran. | No fresh production-sized timing benchmark or print interaction. |
+| AI execution and cost | Source capture, criteria worker/publication, estimate/run owners, scoring, measured costs, heartbeat and fenced commit/cleanup. Mock HTTP probes found 4 and 5; known failed spend remains accounted for. | No new paid provider run or prompt-quality claim in this audit. |
+| Evals and observability | Local/admin gates, captured dataset/fingerprint identity, attempted-run completeness, contested grading and browser summary/history. Completion-order, grading-parity, fixture-boundary and editor suites ran. | Previous real-model quality sensitivities above remain; no prompt retuning. |
+| Browser and operations | Scoped reloads, private-note acknowledgement, API deadlines/body/stream cancellation, static image/config, SQLite pragmas, backup/restore wrappers and watchdog decision/retry owners. Frontend build/lint and watchdog tests/typecheck passed. | No deployment, provider outage injection or third-party advisory scan. |
+
+Automated baseline: Ruff clean; **1,356 backend tests passed, 1 skipped**; frontend production build
+and lint passed; **43 watchdog tests passed** and TypeScript passed. The first frontend run had one
+failure in the pending-email visibility/permission refresh test; its focused rerun passed all 74
+tests and the complete rerun passed all **486**. This intermittent result is recorded, not promoted
+to a proven application defect or hidden behind the clean rerun.
+
+Synthetic probes used isolated in-memory databases, mock AI and captured/failing mail senders.
+No real applicant answers, credentials, mail or production services were used or changed. A temporary
+Vitest check exercised the actual date field and validator under `TZ=Asia/Tokyo`; it was removed
+after execution. Scratch scripts are ignored; the reproducible setups and measured outcomes are
+recorded below. The application baseline stayed unchanged throughout all seven passes.
+
+### Must fix
+
+1. **Replacement answers inherit a fictional-data stamp.**
+   - **What this is:** [`publish_working_copy`](backend/app/services/applications/intake.py)
+     replaces committee-visible answers; [`capture_rank_sources`](backend/app/services/ranking/provenance.py)
+     and the [export guard](backend/app/evals/synthetic_guard.py) trust `Application.synthetic_data`.
+   - **Problem:** Start with a fixture-stamped application, publish replacement answers while runtime
+     `application_data_is_synthetic=False`, then capture/export. The application and new Rank remain
+     stamped true, and the guard accepts the replacement text. A genuinely false input is refused
+     by the same guard, so publication is the missing boundary.
+   - **Fix:** Make publication refresh the submitted projection's assurance from trusted runtime
+     provenance. Keep private edits separate. Cover both stamp directions, ordinary creation,
+     publication and actual evidence exporters in intake/synthetic-guard tests.
+   - **If we skip it:** Ordinary personal answers can be exported as supposedly safe fictional evidence.
+   - **Owner/cost/deletion:** Shared intake owns the stamp; exporters remain defense in depth. No extra
+     request/model call, no new identity or dependency; remove the stale-stamp assumption.
+
+2. **Applicant quotes survive purge inside feedback.**
+   - **What this is:** [Feedback](backend/app/api/feedback.py) explicitly permits sensitive applicant
+     specifics and retains resolved items; [aggregate erasure](backend/app/services/applications/purge.py)
+     only nulls their applicant reference.
+   - **Problem:** Create feedback linked to a reviewable applicant with a fictional quote marker,
+     purge the applicant, then list admin feedback: the link is null but the complete marker survives.
+     Removing the link also loses the identity needed for a later cleanup.
+   - **Fix:** Delete the entire linked feedback item at applicant purge, including local restore
+     replay. Jeff explicitly accepted this tradeoff on November 24: preserve general product feedback,
+     sacrifice linked debugging history to honor applicant retention. Test resolved/unresolved linked
+     items, unrelated feedback and restore replay. Unlinked free text cannot be attributed reliably;
+     tell members to avoid applicant details in general feedback rather than inventing text detection.
+   - **If we skip it:** The live database retains identifying text after its source's retention ends.
+   - **Owner/cost/deletion:** Existing purge owner; replace reference-nulling with deletion. One bounded
+     SQL delete, no provider latency, no new retention subsystem.
+
+3. **Slow daily email work can acquire a second owner.**
+   - **What this is:** [Maintenance](backend/app/services/maintenance.py) leases ten minutes, then drains
+     [the outbox](backend/app/services/email/outbox.py) sequentially without renewal or ownership checks.
+   - **Problem:** A virtual-clock probe queues 100 fictional notices; each retryable send takes ten
+     seconds. Another ordinary request after minute ten reclaims maintenance while its predecessor
+     continues: 200 attempts, two maintenance acquisitions, all 100 intents retried on the same day.
+     At one second per send, the identical control makes 100 attempts and the second acquisition loses.
+     Existing completion fencing protects the final status, not the ongoing work.
+   - **Fix:** Renew the existing acquisition during work and stop dispatching when that acquisition
+     is replaced. Keep per-delivery claim/acknowledgement fencing. Test long batches, ownership loss,
+     failure and both old/replacement completion orders with virtual time.
+   - **If we skip it:** A provider slowdown can amplify retries and defeat the promised daily cadence.
+     The probe proves duplicate attempts, not that recipients necessarily receive duplicate mail.
+   - **Owner/cost/deletion:** Maintenance owns daily acquisition; the existing outbox loop supplies
+     progress checks. Short DB renewal writes; no lock across provider waits, new queue or scheduler.
+
+4. **Rank spends before rejecting already-expired inherited sources.**
+   - **What this is:** [Provenance](backend/app/services/ranking/provenance.py) unions historical source
+     IDs, and [analysis creation](backend/app/services/ranking/analysis.py) validates retention only
+     after discovery, decomposition and matching.
+   - **Problem:** Use a valid current pool and one older analysis whose captured source is already
+     expired but not swept. HTTP Rank makes seven mocked provider calls, then fails at criteria
+     persistence and creates no analysis. The ledger correctly records $0.03675 of simulated usage
+     at application prices. Such rows are possible between expiry/protection release and maintenance.
+   - **Fix:** Validate captured historical sources before paid work; fail with actionable recovery or
+     run the existing safe cleanup before proceeding. Preserve the late writer-time check for expiry
+     during work. Test both pre-existing expiry (zero provider calls) and mid-run expiry (no prose publish).
+   - **If we skip it:** Retrying the known-invalid inputs repeats paid work that cannot be published.
+   - **Owner/cost/deletion:** Rank/provenance owns preflight, analysis owns final fencing. One bounded
+     retention query before calls; consolidate the predicate, do not add another source registry.
+
+5. **Score-current confirmation can execute different criteria.**
+   - **What this is:** [The estimate and action](backend/app/api/ranking/score_current.py) independently
+     choose the newest analysis. [The browser action](frontend/src/hooks/useAiRuns.ts) sends only an
+     opening; its confirmation does not carry the displayed analysis identity.
+   - **Problem:** Estimate an analysis with two criteria, publish a newer one with one criterion as
+     another member, then confirm the original action. The endpoint makes a model call and reports
+     one executed criterion. The estimate has no `analysisId`; the stale-board toast is not a gate.
+   - **Fix:** Carry the existing analysis identity through the estimate, confirmation and action;
+     refuse a changed identity before model work and refresh the confirmation. Include UI stale-state
+     behavior and both analysis-change/confirmation orders. Ordinary token-cost variability remains
+     an estimate, not a new exact-cost approval protocol.
+   - **If we skip it:** A member approves one set of criteria and pays to apply another.
+   - **Owner/cost/deletion:** Score-current API/types/client and `useAiRuns`/confirmation own this.
+     Reuse `analysisId`; no new identifier, polling or additional successful-path round trip.
+
+6. **All withdrawals hide an overdue decision while retention stays unbounded.**
+   - **What this is:** [The overdue selector](backend/app/services/openings/selection.py) requires an
+     active participant; [retention](backend/app/services/applications/retention.py) waits for decisions
+     on all durable participations, including withdrawals.
+   - **Problem:** A published, undecided opening is past move-in and its last submitted participant
+     withdraws. The probe shows no retention deadline and zero overdue actions. Restoring the active
+     participation produces one action; recording a decision produces a deadline and no overdue action.
+   - **Fix:** Base the reminder on the outstanding published opening decision, including withdrawn
+     participation history. Keep an explicit human no-household decision and the existing retention
+     anchor. Test all-withdrawn, active, empty, decided and future openings through dashboard/admin consumers.
+   - **If we skip it:** Forgotten decisions can leave withdrawn applicants' retained records without
+     a deadline or the promised reminder. Manual admin opening management remains available.
+   - **Owner/cost/deletion:** Existing opening selection/dashboard projection; remove the active-only
+     reminder gate. No new table, background task or date change.
+
+### Should fix
+
+7. **Client and server disagree about today's allowed dates.**
+   - **What this is:** [`localDateToday`](frontend/src/components/shared/DateInput.tsx) supplies the
+     field maximum and [review validation](frontend/src/applicant/ApplicantFormFields.tsx); canonical
+     [answer validation](backend/app/schemas/applicant/answers.py) uses Penta's Pacific date.
+   - **Problem:** At `2026-11-25T02:00:00Z`, a Tokyo browser accepts an employment start of November 25
+     through the actual field and validator. Pacific is still November 24; the actual server schema
+     rejects the same value as future. Review passes, then saving/submission fails.
+   - **Fix:** Use the existing Pacific calendar policy consistently in shared date limits and form
+     validation. Cover both sides of Pacific midnight, another browser zone and unrestricted dates;
+     keep date-only values unchanged.
+   - **If we skip it:** Applicants outside Penta's time zone receive contradictory form instructions.
+   - **Owner/cost/deletion:** Shared frontend date helper and consumers; reuse the existing timezone
+     formatting pattern. Delete browser-local validation arithmetic; no network request or dependency.
+
+**Verdict:** Address the two evidence-retention gaps first, then acquisition ownership and paid-work
+preflight/confirmation. The existing layers can own all seven remedies.
+
+Rejected expansions: no new job system, source-ID registry, generalized approval fingerprint,
+database replacement, dependency, speculative cache or wholesale module split. The source review
+and existing query-count tests do not establish a new performance bottleneck at the expected load.
+Do not reopen the approved generic-criterion retention policy or retune unrelated goldens to hide
+the previously measured model variability. No additional smaller style findings were withheld.
+
+**Not checked:** Production deployment/snapshots, live Google/email flows, fresh paid-model judgment,
+physical drag/wheel/print journeys, third-party vulnerability advisories and a production-scale load
+test. One intermittent frontend test remains an explicit verification limit.
