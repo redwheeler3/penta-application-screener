@@ -67,27 +67,38 @@ export function observeRememberedStorage(onChange: () => void, onDraftChange: ()
 export function loadApplicationDraft(applicationId: number): LoadedDraft | null {
   const snapshot = captureApplicantStorage();
   const stored = snapshot.drafts[String(applicationId)];
-  if (!stored) return null;
-  const savedAt = new Date(stored.savedAt);
-  if (!Number.isFinite(savedAt.getTime())) {
+  if (stored === undefined) return null;
+  if (!validStoredDraft(stored)) {
     void clearApplicationDraft(applicationId, snapshot);
     return null;
   }
-  const defaults = emptyApplicantDraft();
   return {
-    draft: {
-      ...defaults,
-      ...stored.draft,
-      applicantEmployment: { ...defaults.applicantEmployment, ...stored.draft.applicantEmployment },
-      coApplicantEmployment: {
-        ...defaults.coApplicantEmployment,
-        ...stored.draft.coApplicantEmployment,
-      },
-    },
+    draft: stored.draft,
     openingIds: stored.openingIds,
     baseRevision: stored.baseRevision,
-    savedAt,
+    savedAt: new Date(stored.savedAt),
   };
+}
+
+function matchesShape(value: unknown, shape: unknown): boolean {
+  if (Array.isArray(shape)) return Array.isArray(value) && value.every((item) => matchesShape(item, shape[0]));
+  if (shape !== null && typeof shape === "object") {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      && Object.entries(shape).every(([key, expected]) => matchesShape((value as Record<string, unknown>)[key], expected));
+  }
+  return typeof value === typeof shape;
+}
+
+function validStoredDraft(value: unknown): value is StoredDraft {
+  if (value === null || typeof value !== "object") return false;
+  const stored = value as StoredDraft;
+  const defaults = emptyApplicantDraft();
+  const shape = { ...defaults, children: [{ id: "", firstName: "", lastName: "", birthDate: "" }],
+    previousResidences: [{ id: "", address: defaults.currentAddress, moveInDate: "" }] };
+  return typeof stored.savedAt === "string" && Number.isFinite(new Date(stored.savedAt).getTime())
+    && Number.isSafeInteger(stored.baseRevision) && stored.baseRevision >= 0
+    && Array.isArray(stored.openingIds) && stored.openingIds.every((id) => Number.isSafeInteger(id) && id > 0)
+    && matchesShape(stored.draft, shape);
 }
 
 export async function saveApplicationDraft(
@@ -131,7 +142,7 @@ export async function clearApplicationDraft(applicationId: number, snapshot = ca
       if (snapshot.scope === null || rememberedStorageScope() !== snapshot.scope) return;
       const drafts = readDrafts();
       const expected = snapshot.drafts[String(applicationId)];
-      if (!expected || JSON.stringify(drafts[String(applicationId)]) !== JSON.stringify(expected)) return;
+      if (!(String(applicationId) in snapshot.drafts) || JSON.stringify(drafts[String(applicationId)]) !== JSON.stringify(expected)) return;
       delete drafts[String(applicationId)];
       writeDrafts(drafts);
     });

@@ -158,7 +158,7 @@ async function fillGuest() {
   fireEvent.click(within(screen.getByRole("group", { name: /Do you own the home/ })).getByRole("radio", { name: "Yes" }));
   fireEvent.click(within(screen.getByRole("group", { name: /Do you own another/ })).getByRole("radio", { name: "No" }));
   fireEvent.change(screen.getByRole("combobox", { name: /^Employment status/ }), { target: { value: "unemployed" } });
-  fireEvent.change(screen.getByRole("spinbutton", { name: /^Primary applicant/ }), { target: { value: "80000" } });
+  fireEvent.change(screen.getByRole("textbox", { name: /^Primary applicant/ }), { target: { value: "80000" } });
 }
 
 it.each(["answer", "opening"])("keeps a changed guest %s out of review after an older mailbox check", async (change) => {

@@ -52,6 +52,36 @@ function renderPersistence(reactStrictMode = false) {
   }, { reactStrictMode });
 }
 
+it.each([
+  { draft: null }, { draft: { ...emptyApplicantDraft(), applicant: null } },
+  { draft: { ...emptyApplicantDraft(), children: [null] } },
+  { draft: { ...emptyApplicantDraft(), previousResidences: [{ id: "x", address: null, moveInDate: "" }] } },
+  { openingIds: ["1"] }, { baseRevision: -1 }, { savedAt: "invalid" },
+])("restores server answers when the remembered record is malformed: %j", async (invalid) => {
+  localStorage.setItem("penta-application-remember-device-v1", "synthetic-consent");
+  const valid = { savedAt: new Date().toISOString(), draft: emptyApplicantDraft(), openingIds: [], baseRevision: 1 };
+  localStorage.setItem("penta-application-drafts-v5", JSON.stringify({ "1": { ...valid, ...invalid }, "2": valid }));
+  const { result } = renderPersistence();
+  await waitFor(() => expect(result.current.persistence.authenticated).toBe(true));
+  expect(result.current.draft.applicant.email).toBe("review@example.com");
+  await waitFor(() => expect(JSON.parse(localStorage.getItem("penta-application-drafts-v5")!)["1"]).toBeUndefined());
+  expect(JSON.parse(localStorage.getItem("penta-application-drafts-v5")!)["2"]).toEqual(valid);
+});
+
+it("does not clear a newer draft while rejecting a malformed browser copy", async () => {
+  const locked = deferred<void>();
+  vi.stubGlobal("navigator", { locks: { request: async (_name: string, operation: () => unknown) => {
+    await locked.promise; return operation();
+  } } });
+  localStorage.setItem("penta-application-remember-device-v1", "synthetic-consent");
+  localStorage.setItem("penta-application-drafts-v5", JSON.stringify({ "1": { draft: null } }));
+  expect(loadApplicationDraft(1)).toBeNull();
+  const valid = { savedAt: new Date().toISOString(), draft: initialDraft(), openingIds: [], baseRevision: 2 };
+  localStorage.setItem("penta-application-drafts-v5", JSON.stringify({ "1": valid }));
+  await act(async () => locked.resolve());
+  expect(loadApplicationDraft(1)?.baseRevision).toBe(2);
+});
+
 beforeEach(() => {
   vi.resetAllMocks();
   window.localStorage.clear();

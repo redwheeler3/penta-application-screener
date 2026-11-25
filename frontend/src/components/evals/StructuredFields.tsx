@@ -4,10 +4,11 @@ import { NumberInput } from "../shared/NumberInput";
 export type FieldValue = string | number | boolean | null | FieldObject | FieldValue[];
 export type FieldObject = { [k: string]: FieldValue };
 type FieldContext = { path: string[]; readOnlyKeys: string[] };
-type NewFieldType = "text" | "number" | "boolean" | "object" | "list";
+type NewFieldType = "text" | "number" | "boolean" | "null" | "object" | "list";
 
 function emptyField(type: NewFieldType): FieldValue {
   switch (type) {
+    case "null": return null;
     case "number": return 0;
     case "boolean": return false;
     case "object": return {};
@@ -22,6 +23,7 @@ function label(key: string): string {
 
 /** New list entries keep the preceding entry's structure, without copying its answers. */
 function blankLike(value: FieldValue): FieldValue {
+  if (value === null) return null;
   if (Array.isArray(value)) return value.map(blankLike);
   if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, blankLike(v)]));
   if (typeof value === "number") return 0;
@@ -38,6 +40,13 @@ function FieldRow(props: FieldContext & {
   return <div className="eval-field-row">
     <div className="eval-field-labelrow">
       <span className="eval-field-label">{props.name}</span>
+      {!locked && (props.value === null || typeof props.value !== "object") ? <select
+        aria-label={`${props.path.map(label).join(" / ")} / Value type`}
+        value={props.value === null ? "null" : typeof props.value === "string" ? "text" : typeof props.value}
+        onChange={(event) => props.onChange(emptyField(event.target.value as NewFieldType))}>
+        <option value="text">Text</option><option value="number">Number</option>
+        <option value="boolean">Boolean</option><option value="null">Null</option>
+      </select> : null}
       {!locked && !containsLock ? <button type="button" className="eval-field-remove"
         aria-label={`Remove ${props.path.at(-1)}`} title="Remove field" onClick={props.onRemove}>✕</button> : null}
     </div>
@@ -56,7 +65,7 @@ function ValueInput(props: FieldContext & { value: FieldValue; onChange: (next: 
         onChange={(next) => onChange(value.map((entry, i) => i === index ? next : entry))}
         onRemove={() => onChange(value.filter((_entry, i) => i !== index))} />)}
       <div className="eval-field-add">
-        <button type="button" className="eval-link" onClick={() => onChange([...value, blankLike(value.at(-1) ?? "")])}>+ Add item</button>
+        <button type="button" className="eval-link" onClick={() => onChange([...value, blankLike(value.length ? value[value.length - 1] : "")])}>+ Add item</button>
         {value.length === 0 ? <>
           {" "}<button type="button" className="eval-link" onClick={() => onChange([{}])}>+ Add object</button>
           {" "}<button type="button" className="eval-link" onClick={() => onChange([[]])}>+ Add list</button>
@@ -67,6 +76,7 @@ function ValueInput(props: FieldContext & { value: FieldValue; onChange: (next: 
   if (value !== null && typeof value === "object") {
     return <ObjectSection obj={value} path={path} readOnlyKeys={readOnlyKeys} onChange={onChange} />;
   }
+  if (value === null) return <span className="eval-field-locked">null</span>;
   if (typeof value === "boolean") return <label className="eval-field-bool">
     <input type="checkbox" aria-label={name} checked={value} onChange={(event) => onChange(event.target.checked)} /> {String(value)}
   </label>;
@@ -101,6 +111,7 @@ function ObjectSection(props: FieldContext & { obj: FieldObject; onChange: (next
         <option value="text">Text</option>
         <option value="number">Number</option>
         <option value="boolean">Boolean</option>
+        <option value="null">Null</option>
         <option value="object">Object</option>
         <option value="list">List</option>
       </select>{" "}

@@ -7,6 +7,22 @@ import type { EvalFixtureKey } from "../../types";
 
 const dimension = { key: "axis", name: "Axis", definition: "Meaning", high_end: "High", low_end: "Low" };
 
+it("round-trips null through scalar controls, nested lists and the case save", () => {
+  const onSave = vi.fn().mockResolvedValue(null);
+  render(<EvalCaseEditor evalKey="screening" existing={{ key: "null-case", metadata: { pass: "screening", expected: { fires: [], absent: [] } },
+    given: { fields: { optional: null, nested: [null] }, essays: {} } }} onSave={onSave} onSaved={vi.fn()} onCancel={vi.fn()} />);
+  const type = screen.getByRole("combobox", { name: "Given / Fields / Optional / Value type" });
+  fireEvent.change(type, { target: { value: "number" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Given / Fields / Optional" }), { target: { value: "2" } });
+  fireEvent.change(type, { target: { value: "null" } });
+  const nestedType = screen.getByRole("combobox", { name: "Given / Fields / Nested / 0 / Value type" });
+  fireEvent.change(nestedType, { target: { value: "text" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Given / Fields / Nested / 0" }), { target: { value: "text" } });
+  fireEvent.change(nestedType, { target: { value: "null" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save case" }));
+  expect(onSave.mock.calls[0][0].given.fields).toEqual({ optional: null, nested: [null] });
+});
+
 it("keeps the owning family fixed while adding a case", () => {
   render(<EvalCaseEditor evalKey="matching" existing={null}
     onSave={vi.fn()} onSaved={vi.fn()} onCancel={vi.fn()} />);

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { DateInput, localDateToday } from "../components/shared/DateInput";
+import { NumberInput } from "../components/shared/NumberInput";
 
 import type {
   ApplicantDraft,
@@ -223,7 +224,7 @@ export function MoneyField(props: { label: string; value: string; required?: boo
   return (
     <label className="applicant-field money-field">
       <span>{props.label}{props.required ? <Required /> : null}</span>
-      <div><span>$</span><input type="number" step="any" inputMode="numeric" data-money="true" value={props.value} required={props.required} onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={(event) => props.onChange(event.target.value)} /></div>
+      <div><span>$</span><NumberInput data-money="true" value={props.value === "" ? null : Number(props.value)} required={props.required} onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={(value) => props.onChange(value === null ? "" : String(value))} /></div>
     </label>
   );
 }
