@@ -10,3 +10,5 @@ recorded in `docs/adr/` + `CHANGELOG.md`. Kept for the reasoning trail, not as c
   that grounded the eval case schema (the `given`/`produced` split, shared `descriptor`,
   and the "unify serialization, not verdict schemas" call). The decided outcomes live in
   `docs/eval-case-schema.md`.
+- [spec-milestones.md](spec-milestones.md) — completed delivery plans and point-in-time
+  validation evidence moved out of the current specification on November 24, 2026.
