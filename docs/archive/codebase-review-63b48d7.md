@@ -4,7 +4,8 @@ November 25, 2026. Four passes produced five findings on this baseline. All five
 
 ## Resolution
 
-The opening editor prefills editable child limits. Both blank bounds and explicit zeros survive
+After reviewing the form, Jeff chose **Minimum children** and **Maximum children**, with a blank
+minimum and a maximum of zero for new one-bedroom openings. Both blank bounds and explicit zeros survive
 save and publication. Published bounds supply applicant cards and both email variants. New
 committee defaults use the confirmed bounds. Existing published committee and personal rules
 were preserved in the additive migration. [Opening form](../images/opening-form-household.png)

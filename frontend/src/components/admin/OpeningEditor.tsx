@@ -19,7 +19,7 @@ type OpeningDraft = {
 };
 
 function childDefaults(bedrooms: number) {
-  return { minChildren: String(bedrooms - 1), maxChildren: bedrooms === 1 ? "0" : "" };
+  return bedrooms === 1 ? { minChildren: "", maxChildren: "0" } : { minChildren: String(bedrooms - 1), maxChildren: "" };
 }
 
 const EMPTY_DRAFT: OpeningDraft = {
@@ -156,7 +156,7 @@ export function OpeningEditor(props: {
     const values = payload(draft.housingChargeDollars);
     if ([values.minChildren, values.maxChildren].some(n => n !== null && (!Number.isSafeInteger(n) || n < 0))
       || (values.minChildren !== null && values.maxChildren !== null && values.maxChildren < values.minChildren)) {
-      props.onError("Enter whole numbers. Max children must be at least Min children.");
+      props.onError("Enter whole numbers. Maximum children must be at least Minimum children.");
       return;
     }
     const isCurrent = requests.capture();
@@ -250,11 +250,11 @@ function OpeningForm(props: {
             <NumberInput disabled={props.fieldsDisabled} min="0" step="0.01" required value={props.draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value })} />
           </div>
         </label>
-        <label><span>Min children</span>
+        <label><span>Minimum children</span>
           <NumberInput textValue={props.draft.minChildren} pattern="[0-9]+" disabled={props.fieldsDisabled || props.householdLocked}
             onChange={event => set({ minChildren: event.target.value })} />
         </label>
-        <label><span>Max children</span>
+        <label><span>Maximum children</span>
           <NumberInput textValue={props.draft.maxChildren} pattern="[0-9]+" disabled={props.fieldsDisabled || props.householdLocked}
             onChange={event => set({ maxChildren: event.target.value })} />
         </label>

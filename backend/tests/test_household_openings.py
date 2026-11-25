@@ -18,7 +18,8 @@ from tests.test_vacancy_notifications import _app_and_db, _opening_payload
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(("beds", "limits", "bounds", "sentence", "counts", "eligible"), [
-    (1, {}, (0, 0), "One or two adults and no children", [0, 1], [True, False]),
+    (1, {}, (None, 0), "One or two adults and no children", [0, 1], [True, False]),
+    (1, {"minChildren": 0}, (0, 0), "One or two adults and no children", [0, 1], [True, False]),
     (2, {}, (1, None), "One or two adults plus at least one child under 18", [0, 1, 5], [False, True, True]),
     (3, {}, (2, None), "One or two adults plus at least two children under 18", [1, 2, 5], [False, True, True]),
     (2, {"minChildren": None, "maxChildren": 2}, (None, 2), "One or two adults plus up to 2 children under 18", [0, 2, 3], [True, True, False]),
@@ -116,3 +117,17 @@ def test_eighteenth_birthday_and_personal_child_rules_leave_public_facts_intact(
     assert rules_config_for(db, user.id, o.id).min_children == 3
     assert record.rules["min_children"] == 1
     assert opening_email_details(o)["household_summary"] == "One or two adults plus at least one child under 18"
+
+
+@pytest.mark.anyio
+async def test_one_bedroom_replay_preserves_a_zero_minimum_receipt():
+    app, _, _ = _app_and_db()
+    payload = {**_opening_payload(), "unitSizeBedrooms": 1}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        saved = await client.post("/openings", json={**payload, "minChildren": 0})
+        assert saved.status_code == 200
+        replay = await client.post("/openings", json=payload)
+        assert replay.status_code == 200
+        assert replay.json()["openings"] == saved.json()["openings"]
+        changed = await client.post("/openings", json={**payload, "minChildren": None})
+        assert changed.status_code == 409

@@ -103,7 +103,14 @@ def created_request(db: Session, values: OpeningCreationRequest) -> Opening | No
     opening = db.scalar(select(Opening).where(
         Opening.creation_request_id == str(values.creation_request_id),
     ))
-    if opening is not None and opening.creation_request != creation_facts(values):
+    if opening is None:
+        return None
+    expected = creation_facts(values)
+    # An omitted one-bedroom minimum previously resolved to zero. Replay that receipt as saved.
+    if (values.unit_size_bedrooms == 1 and values.max_children == 0 and "min_children" not in values.model_fields_set
+            and (opening.creation_request or {}).get("min_children") == 0):
+        expected["min_children"] = 0
+    if opening.creation_request != expected:
         raise Problem("opening_creation_changed",
             detail="This opening creation was already saved with different facts. Reload the opening list before creating another opening.")
     return opening

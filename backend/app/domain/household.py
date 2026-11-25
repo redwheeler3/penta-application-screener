@@ -1,8 +1,8 @@
 """Public household requirements for an opening and its initial committee rules."""
 
 
-def default_child_limits(bedrooms: int) -> tuple[int, int | None]:
-    return bedrooms - 1, 0 if bedrooms == 1 else None
+def default_child_limits(bedrooms: int) -> tuple[int | None, int | None]:
+    return (None, 0) if bedrooms == 1 else (bedrooms - 1, None)
 
 
 def household_description(minimum: int | None, maximum: int | None) -> str:

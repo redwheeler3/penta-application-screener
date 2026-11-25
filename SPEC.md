@@ -48,14 +48,14 @@ The applicant/co-applicant section asks for applicant name, date of birth, phone
 co-applicant name, date of birth, relationship, phone, and email; and the children who will live in
 the unit. Ages are calculated from those birth dates as of the application's last submitted edit.
 
-The admin opening form prefills **Min children** and **Max children** by bedroom count. Either
+The admin opening form prefills **Minimum children** and **Maximum children** by bedroom count. Either
 bound may be blank. Zero is an explicit bound. The admin reviews the saved household sentence
 beside the housing charge and dates before publication. Applicant opening cards and both
 announcement emails use that sentence. Publication fixes the household limits for that opening.
 
 Household-size defaults for openings:
 
-- 1 bedroom: 1 or 2 adults and no children
+- 1 bedroom: 1 or 2 adults and no children (minimum blank, maximum 0)
 - 2 bedroom: 1 or 2 adults plus 1 or more children under 18
 - 3 bedroom: 1 or 2 adults plus 2 or more children under 18
 

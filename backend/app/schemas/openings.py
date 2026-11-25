@@ -22,7 +22,7 @@ class OpeningCreate(RequestModel):
     @model_validator(mode="after")
     def dates_are_chronological(self) -> "OpeningCreate":
         if self.min_children is not None and self.max_children is not None and self.min_children > self.max_children:
-            raise ValueError("Max children must be at least Min children.")
+            raise ValueError("Maximum children must be at least Minimum children.")
         if self.application_close_date > self.move_in_date:
             raise ValueError("Application close date must be on or before the move-in date.")
         return self

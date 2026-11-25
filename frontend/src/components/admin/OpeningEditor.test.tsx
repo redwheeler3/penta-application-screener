@@ -107,12 +107,12 @@ it("does not report a save into an editor that has been closed", async () => {
 it("seeds child limits by size and asks before replacing a custom limit", () => {
   setup(null);
   const size = screen.getByRole("combobox", { name: "Unit size" });
-  const min = screen.getByRole("textbox", { name: "Min children" });
-  const max = screen.getByRole("textbox", { name: "Max children" });
+  const min = screen.getByRole("textbox", { name: "Minimum children" });
+  const max = screen.getByRole("textbox", { name: "Maximum children" });
   expect(min).toHaveValue("1");
   expect(max).toHaveValue("");
   fireEvent.change(size, { target: { value: "1" } });
-  expect(min).toHaveValue("0");
+  expect(min).toHaveValue("");
   expect(max).toHaveValue("0");
   fireEvent.change(max, { target: { value: "3" } });
   fireEvent.change(size, { target: { value: "3" } });
