@@ -33,6 +33,8 @@ const api = applicantApi.createApi(publicClient);
 function initialDraft() {
   const draft = emptyApplicantDraft();
   draft.applicant.email = "review@example.com";
+  draft.applicantIncome = "80000";
+  draft.coApplicantIncome = "0";
   return draft;
 }
 

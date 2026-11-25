@@ -313,7 +313,7 @@ export function HousingSection(props: {
       />
       <div className="field-grid">
         <DateField
-          label="When did you move here?"
+          label="When did you move here?" residenceDate
           value={draft.currentAddressMoveInDate}
           required
           onChange={(currentAddressMoveInDate) => update((current) => ({
@@ -350,7 +350,7 @@ export function HousingSection(props: {
               />
               <div className="field-grid previous-residence-date">
                 <DateField
-                  label="When did you move there?"
+                  label="When did you move there?" residenceDate
                   value={residence.moveInDate}
                   required
                   onChange={(moveInDate) => setPreviousResidence(index, {
@@ -464,7 +464,7 @@ export function IncomeSection(props: { draft: ApplicantDraft; update: (fn: Draft
         ) : null}
         <div className="calculated-income">
           <span>Calculated household total</span>
-          <strong>{income.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}</strong>
+          <strong>{income?.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }) ?? "—"}</strong>
         </div>
       </div>
     </FormSection>

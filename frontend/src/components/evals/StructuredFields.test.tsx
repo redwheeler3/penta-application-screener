@@ -49,7 +49,7 @@ it.each(examples)("preserves the %s nested shape through the editor save boundar
     onSave={onSave} onSaved={vi.fn()} onCancel={vi.fn()} />);
   fireEvent.change(screen.getByDisplayValue("Original"), { target: { value: "Edited" } });
   fireEvent.click(screen.getByRole("button", { name: "Save case" }));
-  expect(onSave).toHaveBeenCalledWith({ key: "case", metadata, given: edited });
+  expect(onSave).toHaveBeenCalledWith({ key: "case", metadata, given: edited }, { key: "case", metadata, given });
 });
 
 function Editor({ initial, onSave }: { initial: FieldObject; onSave: (value: FieldObject) => void }) {
@@ -131,7 +131,7 @@ it("creates optional Boolean, object, numeric and list assertions through the ca
     metadata: { pass: "screening", note: "", contested: true,
       expected: { fires: [], absent: [], pets: { dogs: 2, other_pets: ["bird"] } } },
     given: { fields: { applicant_name: "", pets_text: "", applicant_email: "" }, essays: {} },
-  });
+  }, null);
   expect(screen.queryByRole("button", { name: "Remove pass" })).toBeNull();
   prompt.mockRestore();
 });

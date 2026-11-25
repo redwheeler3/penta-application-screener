@@ -200,3 +200,36 @@ it("waits for pending-copy choice and validates the incomplete chosen copy", asy
   expect(screen.queryByRole("button", { name: "Submit application" })).toBeNull();
   expect(essay()).toHaveValue("");
 });
+
+it.each(["spaces", "residences", "income"] as const)("blocks %s at review and accepts the corrected draft", async (scenario) => {
+  const draft = completeDraft();
+  if (scenario === "spaces") draft.essays.whyCoop = "   ";
+  if (scenario === "residences") {
+    draft.currentAddressMoveInDate = "2025-06-01";
+    draft.previousResidences = ["2025-08-01", "2024-01-01"].map((moveInDate, i) => ({
+      id: String(i), address: { ...draft.currentAddress }, moveInDate,
+    }));
+  }
+  const h = fixture("authenticated", draft);
+  const review = await screen.findByRole("button", { name: "Save and review" });
+  const field = scenario === "spaces" ? essay() : scenario === "residences"
+    ? screen.getAllByLabelText(/When did you move there/)[0]
+    : screen.getByRole("textbox", { name: /Primary applicant/ });
+  if (scenario === "income") {
+    fireEvent.change(field, { target: { value: "60,000–65,000" } });
+    fireEvent.blur(field);
+    expect(field).toHaveValue("60,000–65,000");
+  }
+  fireEvent.click(review);
+  expect((field as HTMLInputElement).checkValidity()).toBe(false);
+  expect(h.savedRequests).toHaveLength(0);
+  expect(screen.queryByRole("button", { name: "Submit application" })).toBeNull();
+  const corrected = scenario === "spaces" ? "A complete answer" : scenario === "residences" ? "2025-04-01" : "65,000.00";
+  fireEvent.change(field, { target: { value: corrected } });
+  fireEvent.blur(field);
+  fireEvent.click(review);
+  await waitFor(() => expect(h.savedRequests).toHaveLength(1));
+  if (scenario === "income") expect(h.savedRequests[0]).toMatchObject({ answers: { applicantIncome: 65000 } });
+  await act(async () => h.saving.resolve(h.acknowledgement()));
+  await screen.findByRole("button", { name: "Submit application" });
+});

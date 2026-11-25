@@ -16,11 +16,16 @@ partially written.
 from __future__ import annotations
 
 from app.evals.case_schema import CaseValidationError, validate_case
+from app.evals.dataset import fingerprint
 from app.evals.fixture_files import fixture_lock, read_json, write_json
 from app.evals.paths import GOLDEN_FILES
 
 # The allowlisted dataset files share one registry with their readers.
 _FIXTURES = GOLDEN_FILES
+
+class CaseEditConflict(CaseValidationError):
+    """The versioned case changed after the editor opened."""
+
 
 class UnknownEvalError(ValueError):
     """The eval key has no editable case fixture (e.g. invariants; or judge/stability, which
@@ -51,7 +56,7 @@ def list_cases(eval_key: str) -> list[dict]:
     return [c for c in _read_fixture(eval_key).get("cases", []) if isinstance(c, dict) and "key" in c]
 
 
-def save_case(eval_key: str, case: dict, *, create: bool = False) -> list[dict]:
+def save_case(eval_key: str, case: dict, *, create: bool = False, original: dict | None = None) -> list[dict]:
     """Save a new or existing case by key according to the editor intent,
     validate the family shape, and write the file back preserving other top-level keys.
     Returns the full updated case list. Refuses an invalid payload without writing.
@@ -59,15 +64,15 @@ def save_case(eval_key: str, case: dict, *, create: bool = False) -> list[dict]:
     The aggregated ``judge`` key owns no file, so a judge-tab save is ROUTED to the case's own
     pass file (by ``metadata.pass``) and the re-aggregated judge list is returned — so a case
     edited from the Judge tab lands in the same golden file its pass tab writes to."""
-    if eval_key == "judge":
+    judge_edit = eval_key == "judge"
+    if judge_edit:
         metadata = case.get("metadata")
         pass_name = metadata.get("pass") if isinstance(metadata, dict) else None
         if pass_name not in _BACKGROUND_PASSES:
             raise CaseValidationError(
                 f"judge case metadata.pass must name a known pass ({', '.join(_BACKGROUND_PASSES)}), got {pass_name!r}"
             )
-        save_case(pass_name, case, create=create)
-        return list_cases("judge")
+        eval_key = pass_name
     if eval_key not in _FIXTURES:
         raise UnknownEvalError(eval_key)
     validate_case(eval_key, case)
@@ -81,6 +86,13 @@ def save_case(eval_key: str, case: dict, *, create: bool = False) -> list[dict]:
             if isinstance(existing, dict) and existing.get("key") == key:
                 if create:
                     raise CaseValidationError("A case with this key already exists. Choose a new key.")
+                current = existing
+                if judge_edit:
+                    current = {**existing, "metadata": {**existing["metadata"], "pass": eval_key}}
+                # Replaying an already accepted edit after a lost reply is safe.
+                current_hash = fingerprint(current)
+                if original is None or (current_hash != fingerprint(original) and current_hash != fingerprint(case)):
+                    raise CaseEditConflict("This case changed. Your draft is still here. Copy the changes you want to keep, then reopen the latest case.")
                 cases[i] = case
                 replaced = True
                 break
@@ -93,7 +105,7 @@ def save_case(eval_key: str, case: dict, *, create: bool = False) -> list[dict]:
         # golden file keeps ``_comment`` first by insertion order, and case field order is
         # meaningful for readability in the diff.
         write_json(path, data)
-        return [c for c in cases if isinstance(c, dict) and "key" in c]
+    return list_cases("judge") if judge_edit else [c for c in cases if isinstance(c, dict) and "key" in c]
 
 
 # The passes the judge audits — each has its own golden file (a subset of _FIXTURES: every

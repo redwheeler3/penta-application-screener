@@ -63,7 +63,7 @@ def test_save_existing_key_upserts_in_place(golden_file) -> None:
         "metadata": {"expected": {"score_min": -0.1, "score_max": 0.1}},
         "given": {"applicant": {"facts": {"x": 1}}, "dimension": {"key": "d", "name": "D", "definition": "Synthetic", "high_end": "High", "low_end": "Low"}},
     }
-    cases = case_store.save_case("scoring", edited)
+    cases = case_store.save_case("scoring", edited, original=case_store.list_cases("scoring")[0])
     assert len(cases) == 1  # replaced, not appended
     assert cases[0]["given"]["applicant"]["facts"] == {"x": 1}
 
@@ -91,7 +91,7 @@ def test_save_judge_case_routes_to_its_pass_file(golden_file) -> None:
         "metadata": {"pass": "scoring", "expected": {"score_min": 0.9}},
         "given": {"applicant": {"facts": {"y": 2}}, "dimension": {"key": "d", "name": "D", "definition": "Synthetic", "high_end": "High", "low_end": "Low"}},
     }
-    result = case_store.save_case("judge", edited)
+    result = case_store.save_case("judge", edited, original=next(c for c in case_store.list_cases("judge") if c["key"] == "a" and c["metadata"]["pass"] == "scoring"))
     # Written to the (temp) scoring file, upserted in place.
     on_disk = json.loads(golden_file.read_text())
     saved = next(c for c in on_disk["cases"] if c["key"] == "a")
@@ -207,7 +207,7 @@ def test_valid_family_case_preserves_captured_input_and_metadata(tmp_path, monke
     case = json.loads(path.read_text(encoding="utf-8"))["cases"][0]
     case["metadata"]["note"] = "Changed synthetic note"
     case["metadata"]["extra_capture"] = {"kept": True}
-    assert case_store.save_case(family, case)[0] == case
+    assert case_store.save_case(family, case, original=case_store.list_cases(family)[0])[0] == case
     assert any(item.key == case["key"] and item.pass_name == family for item in load_cases())
 
 
@@ -256,3 +256,34 @@ def test_competing_new_cases_cannot_overwrite_the_winner(golden_file):
     assert len(stored) == 2
     assert stored[0] == base
     assert stored[1]["metadata"]["expected"]["score_min"] == winners[0]
+
+
+@pytest.mark.parametrize("surface", ["scoring", "judge"])
+def test_stale_editor_refuses_to_overwrite_an_independent_label_or_note(golden_file, surface):
+    import copy
+
+    def current():
+        return next(case for case in case_store.list_cases(surface)
+            if case["key"] == "a" and case["metadata"].get("pass", "scoring") == "scoring")
+
+    original = current()
+    labelled = copy.deepcopy(original)
+    labelled["metadata"]["expected"] = {"score_min": 0.8}
+    case_store.save_case(surface, labelled, original=original)
+    # Reconcile a lost acknowledgement when the exact submitted change is on disk.
+    case_store.save_case(surface, labelled, original=original)
+    note = copy.deepcopy(original)
+    note["metadata"]["note"] = "Editorial correction"
+    stable = golden_file.read_bytes()
+    with pytest.raises(case_store.CaseEditConflict):
+        case_store.save_case(surface, note, original=original)
+    assert golden_file.read_bytes() == stable
+    assert current() == labelled
+    updated = copy.deepcopy(labelled)
+    updated["metadata"]["note"] = note["metadata"]["note"]
+    case_store.save_case(surface, updated, original=labelled)
+    another = copy.deepcopy(labelled)
+    another["metadata"]["note"] = "Other editorial edit"
+    with pytest.raises(case_store.CaseEditConflict):
+        case_store.save_case(surface, another, original=labelled)
+    assert current() == updated

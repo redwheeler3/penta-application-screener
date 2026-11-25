@@ -57,15 +57,20 @@ async def test_label_changes_expire_coverage_but_editorial_notes_do_not(tmp_path
         result = events[-1]["result"]
         assert result["experimentId"]
         original = result["cases"][0]["inputFingerprint"]
+        opened_case = copy.deepcopy(data["cases"][0])
         data["cases"][0]["metadata"]["note"] = "Editorial explanation"
         data["cases"][0]["metadata"]["label_rationale"] = "Editorial rationale"
-        acknowledged = await client.put("/evals/cases/scoring", json={"create": False, "case": data["cases"][0]})
+        acknowledged = await client.put("/evals/cases/scoring", json={"create": False, "original": json.loads(path.read_text(encoding="utf-8"))["cases"][0], "case": data["cases"][0]})
         assert acknowledged.status_code == 200
         assert acknowledged.json()["caseFingerprints"][key] == original
         restored = (await client.get("/evals/last-run?keys=scoring")).json()
         assert restored["current"]["scoring"]["caseFingerprints"][key] == original
+        stale = await client.put("/evals/cases/scoring", json={"create": False, "original": opened_case,
+            "case": {**opened_case, "metadata": {**opened_case["metadata"], "note": "Other tab"}}})
+        assert stale.status_code == 409
+        assert stale.json()["code"] == "stale_eval_case"
         data["cases"][0]["metadata"]["expected"] = {"score_min": 0.7, "score_max": 1}
-        acknowledged = await client.put("/evals/cases/scoring", json={"create": False, "case": data["cases"][0]})
+        acknowledged = await client.put("/evals/cases/scoring", json={"create": False, "original": json.loads(path.read_text(encoding="utf-8"))["cases"][0], "case": data["cases"][0]})
         assert acknowledged.status_code == 200
         assert acknowledged.json()["caseFingerprints"][key] != original
         restored = (await client.get("/evals/last-run?keys=scoring")).json()

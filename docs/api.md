@@ -160,7 +160,7 @@ consolidation audits expose captured configuration where it was recorded.
 | --- | --- | --- | --- |
 | POST | `/evals/baseline` | Rebaseline | Local admin |
 | GET | `/evals/cases/{eval_key}` | An eval's cases, straight from its committed fixture (free). 404 for an eval with no editable case set (invariants; stability reads the judge set). | Admin |
-| PUT | `/evals/cases/{eval_key}` | Send the case and a required `create` boolean. Creation requires an unused key. Editing requires an existing key. Validated server-side; a bad payload is refused (422). | Local admin |
+| PUT | `/evals/cases/{eval_key}` | Send the case and a required `create` boolean. Creation requires an unused key. For edits, send the full case as originally opened in `original`. A concurrent change returns `409 stale_eval_case` and preserves the newer file. Validated server-side; a bad payload is refused (422). | Local admin |
 | GET | `/evals/catalog` | Run repetition counts and local editing policy, independent of fixture contents. | Admin |
 | POST | `/evals/consolidation` | Run Consolidation | Admin |
 | POST | `/evals/decomposition` | Run Decomposition | Admin |

@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { NumberInput } from "../components/shared/NumberInput";
 import { ApplicantToday } from "../components/shared/DateInput";
 import { DateField, MoneyField, validateFormFields } from "./ApplicantFormFields";
 
@@ -35,4 +36,16 @@ describe("applicant form date validation", () => {
     expect(limited.max).toBe("2026-11-25");
     expect(form.checkValidity()).toBe(true);
   });
+});
+
+it("does not join ambiguous pasted digits in numeric settings and still accepts leading decimals", () => {
+  const changed = vi.fn();
+  const { container } = render(<NumberInput value={2} onChange={changed} />);
+  const input = container.querySelector("input")!;
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: "2-5" } });
+  expect(changed).not.toHaveBeenCalled();
+  expect(input).toHaveValue("2");
+  fireEvent.change(input, { target: { value: ".7" } });
+  expect(changed).toHaveBeenLastCalledWith(0.7);
 });

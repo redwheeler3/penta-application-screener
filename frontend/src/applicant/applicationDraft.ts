@@ -80,9 +80,10 @@ export function newChild(): ChildDraft {
   };
 }
 
-export function householdIncome(draft: ApplicantDraft): number {
-  const coApplicantIncome = draft.hasCoApplicant ? numberValue(draft.coApplicantIncome) : 0;
-  return numberValue(draft.applicantIncome) + coApplicantIncome;
+export function householdIncome(draft: ApplicantDraft): number | null {
+  const primary = draft.applicantIncome === "" ? 0 : wholeDollarAmount(draft.applicantIncome);
+  const co = !draft.hasCoApplicant || draft.coApplicantIncome === "" ? 0 : wholeDollarAmount(draft.coApplicantIncome);
+  return primary === null || co === null ? null : primary + co;
 }
 
 export function residenceHistoryCutoff(
@@ -117,10 +118,10 @@ export function previousResidencesForCutoff(
     : draft.previousResidences.slice(0, oldestRequiredIndex + 1);
 }
 
-export function canonicalAnswers(
+function applicableAnswers(
   draft: ApplicantDraft,
   residenceCutoff: string | null = null,
-): CanonicalApplicationAnswers {
+) {
   const currentRenter = draft.ownsCurrentHome === "no";
   const previousResidences = previousResidencesForCutoff(draft, residenceCutoff);
   return {
@@ -154,24 +155,29 @@ export function canonicalAnswers(
     coApplicantEmployment: draft.hasCoApplicant
       ? canonicalEmployment(draft.coApplicantEmployment)
       : null,
-    applicantIncome: numberValue(draft.applicantIncome),
-    coApplicantIncome: draft.hasCoApplicant ? numberValue(draft.coApplicantIncome) : null,
   };
+}
+
+export function canonicalAnswers(draft: ApplicantDraft, residenceCutoff: string | null = null): CanonicalApplicationAnswers {
+  const primary = wholeDollarAmount(draft.applicantIncome);
+  const co = draft.hasCoApplicant ? wholeDollarAmount(draft.coApplicantIncome) : null;
+  if (primary === null || (draft.hasCoApplicant && co === null)) throw new Error("Enter one whole-dollar income per applicant.");
+  return { ...applicableAnswers(draft, residenceCutoff), applicantIncome: primary, coApplicantIncome: co };
 }
 
 export function workingAnswers(draft: ApplicantDraft): WorkingApplicationAnswers {
   const currentRenter = draft.ownsCurrentHome !== "yes";
   return {
-    ...canonicalAnswers(draft),
+    ...applicableAnswers(draft),
     ownsCurrentHome: yesNoValue(draft.ownsCurrentHome),
     ownsOtherRealEstate: yesNoValue(draft.ownsOtherRealEstate),
     applicantEmployment: workingEmployment(draft.applicantEmployment),
     coApplicantEmployment: draft.hasCoApplicant
       ? workingEmployment(draft.coApplicantEmployment)
       : null,
-    applicantIncome: optionalNumberValue(draft.applicantIncome),
+    applicantIncome: wholeDollarAmount(draft.applicantIncome),
     coApplicantIncome: draft.hasCoApplicant
-      ? optionalNumberValue(draft.coApplicantIncome)
+      ? wholeDollarAmount(draft.coApplicantIncome)
       : null,
     currentLandlord: currentRenter ? draft.currentLandlord : null,
     previousLandlord: currentRenter ? draft.previousLandlord : null,
@@ -259,11 +265,9 @@ function yesNoDraft(value: boolean | null): YesNo {
   return value ? "yes" : "no";
 }
 
-function optionalNumberValue(value: string): number | null {
-  return value.trim() ? numberValue(value) : null;
-}
-
-function numberValue(value: string): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+export function wholeDollarAmount(value: string): number | null {
+  const text = value.trim().replace(/^\$\s*/, "");
+  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.0+)?$/.test(text)) return null;
+  const amount = Number(text.replaceAll(",", ""));
+  return Number.isSafeInteger(amount) ? amount : null;
 }

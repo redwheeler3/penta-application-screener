@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { wholeDollarAmount } from "./applicationDraft";
 import { DateInput } from "../components/shared/DateInput";
 import { NumberInput } from "../components/shared/NumberInput";
 
@@ -69,6 +70,7 @@ export function DateField(props: {
   required?: boolean;
   autoComplete?: string;
   notFuture?: boolean;
+  residenceDate?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -79,6 +81,7 @@ export function DateField(props: {
         value={props.value}
         required={props.required}
         notFuture={props.notFuture}
+        data-residence-date={props.residenceDate || undefined}
         onChange={props.onChange}
       />
     </label>
@@ -224,7 +227,12 @@ export function MoneyField(props: { label: string; value: string; required?: boo
   return (
     <label className="applicant-field money-field">
       <span>{props.label}{props.required ? <Required /> : null}</span>
-      <div><span>$</span><NumberInput data-money="true" value={props.value === "" ? null : Number(props.value)} required={props.required} onInput={(event) => event.currentTarget.setCustomValidity("")} onChange={(value) => props.onChange(value === null ? "" : String(value))} /></div>
+      <div><span>$</span><NumberInput data-money="true" textValue={props.value} required={props.required}
+        onChange={(event) => { validateIncomeField(event.currentTarget); props.onChange(event.currentTarget.value); }}
+        onBlur={() => {
+          const amount = wholeDollarAmount(props.value);
+          if (amount !== null) props.onChange(String(amount));
+        }} /></div>
     </label>
   );
 }
@@ -310,14 +318,22 @@ export function validateFormFields(form: HTMLFormElement | null): void {
       value && !isValidWebUrl(value) ? "Enter a valid link beginning with http:// or https://." : "",
     );
   });
-  form?.querySelectorAll<HTMLInputElement>("input[data-money]").forEach((input) => {
-    const amount = Number(input.value);
-    input.setCustomValidity(
-      input.value && (!Number.isInteger(amount) || amount < 0)
-        ? "Enter a whole-dollar amount of zero or more."
-        : "",
-    );
+  form?.querySelectorAll<HTMLInputElement>("input[data-money]").forEach(validateIncomeField);
+  form?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+    'textarea[required], input[type="text"][required]:not([data-email],[data-phone],[data-url],[data-money])',
+  ).forEach((field) => field.setCustomValidity(field.value && !field.value.trim() ? "Please complete this field." : ""));
+  let newer = "";
+  form?.querySelectorAll<HTMLInputElement>("input[data-residence-date]").forEach((field) => {
+    if (newer && field.value && field.value >= newer) {
+      field.setCustomValidity("Enter a move-in date earlier than the address above.");
+    }
+    newer = field.value;
   });
+}
+
+export function validateIncomeField(input: HTMLInputElement): void {
+  input.setCustomValidity(input.value !== "" && wholeDollarAmount(input.value) === null
+    ? "Enter one whole-dollar amount of zero or more." : "");
 }
 
 function isValidWebUrl(value: string): boolean {

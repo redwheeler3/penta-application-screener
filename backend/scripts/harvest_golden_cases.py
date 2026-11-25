@@ -82,12 +82,10 @@ def matching_candidates(crit: dict, defs: dict[str, dict]) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    from sqlalchemy import select
-
-    from app.db.models import Analysis
     from app.db.session import SessionLocal
     from app.evals.synthetic_guard import require_synthetic_pool
     from app.services.applications.scope import opening_ai_applications
+    from app.services.ranking.analysis import get_current_analysis
 
     parser = argparse.ArgumentParser(description="Propose categorical eval cases for one opening.")
     parser.add_argument("which", choices=["all", "decomposition", "matching"], nargs="?", default="all")
@@ -98,7 +96,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         # Read the stamp, cohort and audit from one SQLite snapshot.
         db.connection().exec_driver_sql("BEGIN")
-        run = db.scalars(select(Analysis).where(Analysis.opening_id == args.opening_id).order_by(Analysis.id.desc())).first()
+        run = get_current_analysis(db, args.opening_id)
         if run is None:
             print("No ranking runs to harvest from.")
             return

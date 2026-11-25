@@ -582,14 +582,15 @@ def test_post_write_drain_sends_new_mail_but_waits_for_scheduled_failure_retries
 
 
 def test_attempted_recipient_survives_identity_change_and_tracks_rebuilt_retry():
-    from app.services.email.transactional import send_email_change_notice
+    from app.services.email.transactional import queue_email_change_notice
     db = _db()
     now = datetime.now(UTC)
     application = Application(primary_email="new@example.com", raw_row={}, raw_row_hash="synthetic")
     db.add(application)
     db.commit()
-    send_email_change_notice(db, QuotaBlockedSender(), application=application,
-        old_email="old@example.com", now=now)
+    queue_email_change_notice(db, application, old_email="old@example.com", link_id=1)
+    db.commit()
+    retry_queued_emails(db, QuotaBlockedSender(), now=now)
     issue = outbox.email_delivery_issues(db)[0]
     assert issue.recipient_email == "old@example.com"
     sender = CapturedEmailSender()
@@ -618,3 +619,33 @@ def test_email_change_confirmation_records_the_requested_address():
         purpose=MagicLinkPurpose.EMAIL_CHANGE, email="requested@example.com",
         recipient_id=application.id, application_id=application.id)
     assert outbox.email_delivery_issues(db)[0].recipient_email == "requested@example.com"
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_delayed_email_change_notice_preserves_each_transition(legacy):
+    from app.services.email.transactional import queue_email_change_notice
+
+    db = _db()
+    now = datetime.now(UTC)
+    application = Application(primary_email="b@example.com", raw_row={}, raw_row_hash="fixture")
+    db.add(application)
+    db.flush()
+    queue_email_change_notice(db, application, old_email="a@example.com", link_id=1)
+    if legacy:
+        first = db.scalar(select(EmailDelivery))
+        first.retry_intent = {"type": "email_change_notice", "old_email": "a@example.com"}
+    db.commit()
+    retry_queued_emails(db, QuotaBlockedSender(), now=now)
+    application.primary_email = "c@example.com"
+    queue_email_change_notice(db, application, old_email="b@example.com", link_id=2)
+    db.commit()
+    sender = CapturedEmailSender()
+    retry_queued_emails(db, sender, now=now + timedelta(days=1))
+    by_address = {m.to[0]: m for m in sender.messages}
+    assert set(by_address) == {"a@example.com", "b@example.com"}
+    for attr in ("text_body", "html_body"):
+        first_body = getattr(by_address["a@example.com"], attr)
+        assert "c@example.com" not in first_body
+        assert ("b@example.com" in first_body) == (not legacy)
+        assert "c@example.com" in getattr(by_address["b@example.com"], attr)
+    assert all(row.retry_intent is None for row in db.scalars(select(EmailDelivery)))

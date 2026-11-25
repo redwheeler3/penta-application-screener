@@ -175,30 +175,15 @@ def queue_submission_confirmation(
     )
 
 
-def send_email_change_notice(
-    db: Session,
-    sender: EmailSender,
-    application: Application,
-    *,
-    old_email: str,
-    now: datetime | None = None,
-) -> bool:
-    """Notify the previous address after a verified identity change."""
-    now = now or datetime.now(UTC)
-    message = email_change_notice_email(
-        application_id=application.id,
-        old_email=old_email,
-        new_email=application.primary_email,
-    )
-    return deliver_email(
-        db,
-        sender,
-        message,
-        recipient_kind=PasswordlessIdentityKind.APPLICANT,
-        application_id=application.id,
-        retry_intent=EmailChangeNoticeRetryIntent(type="email_change_notice", old_email=old_email),
-        now=now,
-    )
+def queue_email_change_notice(
+    db: Session, application: Application, *, old_email: str, link_id: int,
+) -> None:
+    """Stage the confirmed transition in the same transaction as the mailbox change."""
+    new_email = application.primary_email
+    message = email_change_notice_email(application_id=application.id, old_email=old_email, new_email=new_email)
+    queue_email(db, message, recipient_kind=PasswordlessIdentityKind.APPLICANT, application_id=application.id,
+        idempotency_key=f"email-change:{link_id}",
+        retry_intent=EmailChangeNoticeRetryIntent(type="email_change_notice", old_email=old_email, new_email=new_email))
 
 
 def send_application_unavailable(

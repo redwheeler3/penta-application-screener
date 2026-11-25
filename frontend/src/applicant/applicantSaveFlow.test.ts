@@ -13,6 +13,8 @@ it.each(["during submission", "before submission"])("preserves another tab's rem
   vi.stubGlobal("navigator", { locks: { request: async (_name: string, operation: () => unknown) => operation() } });
   const consent = (await setRememberDevice(true))!;
   const submitted = emptyApplicantDraft();
+  submitted.applicantIncome = "80000";
+  submitted.hasCoApplicant = false;
   submitted.applicant.email = "synthetic@example.test";
   const newer = { ...submitted, pets: "Newer synthetic answer" };
   await saveApplicationDraft(7, timing === "before submission" ? newer : submitted, [], 1, consent);

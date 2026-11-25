@@ -66,7 +66,7 @@ export function EvalCaseEditor(props: {
   evalKey: EvalFixtureKey;
   existing: Record<string, unknown> | null;
   onCancel: () => void;
-  onSave: (c: FieldObject) => Promise<string | null>;
+  onSave: (c: FieldObject, original: FieldObject | null) => Promise<string | null>;
   onSaved: (key: string) => void;
 }): ReactNode {
   const [value, setValue] = useState<FieldObject>(
@@ -76,13 +76,14 @@ export function EvalCaseEditor(props: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
+  const baseline = useRef(props.existing as FieldObject | null);
   const currentValue = useRef(value);
   currentValue.current = value;
   const requests = useRequestScope();
 
-  const isNew = props.existing === null;
+  const isNew = baseline.current === null;
   // `key` is read-only when editing an existing case; editable (required) for a new one.
-  const readOnlyKeys = isNew ? ["metadata.pass"] : ["key", "metadata.pass"];
+  const readOnlyKeys = isNew && !saving ? ["metadata.pass"] : ["key", "metadata.pass"];
 
   async function save() {
     if (pending.current) return;
@@ -98,10 +99,13 @@ export function EvalCaseEditor(props: {
     setSaving(true);
     setError(null);
     try {
-      const problem = await props.onSave(value);
+      const problem = await props.onSave(value, baseline.current);
       if (!isCurrent()) return;
       if (problem !== null) setError(problem);
-      else if (JSON.stringify(currentValue.current) === snapshot) props.onSaved(String(value.key));
+      else {
+        baseline.current = value;
+        if (JSON.stringify(currentValue.current) === snapshot) props.onSaved(String(value.key));
+      }
     } catch {
       if (isCurrent()) setError("Could not confirm the save. Your draft is still here; try again.");
     } finally {
@@ -113,7 +117,7 @@ export function EvalCaseEditor(props: {
   return (
     <div className="eval-editor">
       <div className="eval-editor-head">
-        <strong>{isNew ? "Add case" : `Edit case: ${String(props.existing?.key ?? "")}`}</strong>
+        <strong>{isNew ? "Add case" : `Edit case: ${String(baseline.current?.key ?? "")}`}</strong>
         <span className="eval-hint">
           Saves to the committed fixture file — commit it to git afterward.
         </span>

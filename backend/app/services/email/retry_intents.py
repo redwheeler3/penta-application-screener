@@ -27,6 +27,7 @@ class ApplicationConfirmationRetryIntent(TypedDict):
 class EmailChangeNoticeRetryIntent(TypedDict):
     type: Literal["email_change_notice"]
     old_email: str
+    new_email: NotRequired[str]
 
 
 class ApplicationUnavailableRetryIntent(TypedDict):

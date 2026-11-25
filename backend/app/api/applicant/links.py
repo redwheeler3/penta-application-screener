@@ -1,8 +1,9 @@
 """Applicant access-link inspection, exchange, conflict resolution, and renewal."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.applicant.dependencies import (
@@ -50,11 +51,12 @@ from app.services.auth.passwordless import (
 from app.services.email.sender import EmailSender, get_email_sender
 from app.services.email.transactional import (
     EmailSendOutcome,
+    queue_email_change_notice,
     send_application_unavailable,
-    send_email_change_notice,
     send_magic_link,
     send_selected_application_locked,
 )
+from app.services.maintenance import get_outbox_runner
 
 router = APIRouter()
 
@@ -72,11 +74,13 @@ def inspect_applicant_access_link(
 @router.post("/access-links/open", response_model=AccessLinkResponse)
 def open_applicant_access_link(
     body: OpenAccessLinkRequest,
+    background_tasks: BackgroundTasks,
     request: Request,
     response: Response,
     current: Application | None = Depends(optional_current_application),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
+    outbox_runner: Callable[[EmailSender], None] = Depends(get_outbox_runner),
 ) -> AccessLinkResponse:
     inspected = applicant_link(db, body.token)
     preview = access_link_response(db, inspected, current)
@@ -101,6 +105,7 @@ def open_applicant_access_link(
 
     current_token = session_token(request, PasswordlessIdentityKind.APPLICANT)
     if claimed.previous_email is not None:
+        queue_email_change_notice(db, target, old_email=claimed.previous_email, link_id=link.id)
         revoke_identity_sessions(
             db,
             identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -133,12 +138,7 @@ def open_applicant_access_link(
         persistent=body.remember_device,
     )
     if claimed.previous_email is not None:
-        send_email_change_notice(
-            db,
-            sender,
-            target,
-            old_email=claimed.previous_email,
-        )
+        background_tasks.add_task(outbox_runner, sender)
     return AccessLinkResponse(
         state=claimed.state,
         purpose=link.purpose,

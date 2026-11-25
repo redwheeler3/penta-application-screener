@@ -358,8 +358,8 @@ def _build_retry(
         return PreparedRetry(
             email_change_notice_email(
                 application_id=application.id,
-                old_email=str(intent["old_email"]),
-                new_email=application.primary_email,
+                old_email=intent["old_email"],
+                new_email=intent.get("new_email"),
             ),
             None,
         )

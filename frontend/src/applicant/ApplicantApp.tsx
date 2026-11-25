@@ -21,6 +21,7 @@ import {
   type DraftUpdater,
   validateEmailField,
   validateFormFields,
+  validateIncomeField,
 } from "./ApplicantFormFields";
 import {
   EmploymentSection,
@@ -170,6 +171,10 @@ export function ApplicantApp() {
       emailInput?.reportValidity();
       emailInput?.focus();
       return;
+    }
+    for (const input of formRef.current?.querySelectorAll<HTMLInputElement>("input[data-money]") ?? []) {
+      validateIncomeField(input);
+      if (input.value && !input.reportValidity()) return;
     }
     void persistence.start("save");
   }
@@ -383,6 +388,7 @@ export function ApplicantApp() {
           <form
             ref={formRef}
             className="application-form"
+            noValidate
             onSubmit={review}
             onInvalid={revealInvalidField}
           >

@@ -117,9 +117,10 @@ def _email_change_confirmation_email(
 
 
 def email_change_notice_email(
-    *, application_id: int, old_email: str, new_email: str
+    *, application_id: int, old_email: str, new_email: str | None
 ) -> OutboundEmail:
-    introduction = f"Your Penta application email address was changed to {new_email}."
+    introduction = (f"Your Penta application email address was changed to {new_email}." if new_email
+                    else "Your Penta application email address was changed.")
     notice = (
         "If you made this change, no action is needed. If you didn't, email Penta "
         "Tech Support at techsupport@pentacoop.com."

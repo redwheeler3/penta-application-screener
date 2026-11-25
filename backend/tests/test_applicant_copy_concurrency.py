@@ -134,9 +134,10 @@ def test_email_confirmation_merges_with_a_save_after_link_inspection(monkeypatch
 
     monkeypatch.setattr(links, "consume_magic_link", overlapping_save)
     with factory() as db:
+        from fastapi import BackgroundTasks
         result = links.open_applicant_access_link(
             OpenAccessLinkRequest(token=credential, switchCurrent=False, rememberDevice=False),
-            Request({"type": "http", "headers": []}), Response(), current=None, db=db, sender=CapturedEmailSender(),
+            BackgroundTasks(), Request({"type": "http", "headers": []}), Response(), current=None, db=db, sender=CapturedEmailSender(),
         )
         assert result.state == "valid"
     with factory() as db:

@@ -12,6 +12,7 @@ from app.core.problems import Problem
 from app.db.models import User
 from app.db.session import get_db
 from app.evals.case_store import (
+    CaseEditConflict,
     CaseValidationError,
     UnknownEvalError,
     list_cases,
@@ -57,9 +58,11 @@ def put_case(
     """Create a new key or update an existing case in the local golden fixture."""
     try:
         require_local_fixture_write(db, user.id)
-        cases = save_case(eval_key, body.case, create=body.create)
+        cases = save_case(eval_key, body.case, create=body.create, original=body.original)
     except UnknownEvalError as exc:
         raise Problem("not_found", detail=f"No editable cases for eval {eval_key!r}.") from exc
+    except CaseEditConflict as exc:
+        raise Problem("stale_eval_case", detail=str(exc)) from exc
     except CaseValidationError as exc:
         raise Problem("invalid_case", detail=str(exc)) from exc
     return _case_response(eval_key, cases)

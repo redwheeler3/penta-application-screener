@@ -316,6 +316,7 @@ class SaveCaseRequest(RequestModel):
     """Save an existing case, or require a new key when creating one."""
 
     create: bool
+    original: dict | None = None
 
     case: dict
 

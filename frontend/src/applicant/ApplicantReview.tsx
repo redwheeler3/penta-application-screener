@@ -98,7 +98,7 @@ export function ApplicationReview(props: {
         ) : null}
       </ReviewSection>
       <ReviewSection title="Income">
-        <ReviewRow label="Yearly household income" value={householdIncome(d).toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })} />
+        <ReviewRow label="Yearly household income" value={householdIncome(d)?.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }) ?? "—"} />
       </ReviewSection>
       <section className="declaration-card">
         <ShieldCheck size={24} />

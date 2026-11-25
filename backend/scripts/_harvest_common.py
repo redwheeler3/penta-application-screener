@@ -15,17 +15,10 @@ Run by hand from ``backend/``: ``python -m scripts.harvest_scoring_cases`` /
 
 from __future__ import annotations
 
-from app.db.models import Analysis
 from app.db.session import SessionLocal
 from app.evals.synthetic_guard import require_synthetic_pool
 from app.services.applications.scope import opening_ai_applications
-
-
-def latest_analysis(db) -> Analysis | None:
-    """The newest analysis (harvest reads the most recent analysis's cached output)."""
-    from sqlalchemy import select
-
-    return db.scalars(select(Analysis).order_by(Analysis.id.desc())).first()
+from app.services.ranking.analysis import get_latest_analysis
 
 
 def opaque_index(application_ids: list[int]) -> dict[int, int]:
@@ -40,7 +33,7 @@ def open_synthetic_analysis():
     if the pool isn't stamped synthetic — the fail-safe that keeps real applicant evidence
     out of committed fixtures. Returns ``(db, None, "")`` if there is no analysis yet."""
     db = SessionLocal()
-    analysis = latest_analysis(db)
+    analysis = get_latest_analysis(db)
     if analysis is None:
         return db, None, ""
     try:

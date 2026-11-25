@@ -55,7 +55,7 @@ export function RunnableEval(props: {
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
-  const { saveEvalCase } = useCommitteeApi(evalsApi);
+  const { saveEvalCase, fetchEvalCases } = useCommitteeApi(evalsApi);
 
   const { caseEvalKey, modes } = props;
   const editable = props.editable ?? true;
@@ -78,17 +78,22 @@ export function RunnableEval(props: {
 
   if (casesLoadState === "error") return <RetryLoadError message="Could not load eval cases." onRetry={retryCases} />;
 
-  function persistCase(evalCase: FieldObject): Promise<string | null> {
+  function persistCase(evalCase: FieldObject, original: FieldObject | null): Promise<string | null> {
     const isCurrent = saveScope.capture();
     // Responses contain the whole fixture: serialize saves so an older list cannot
     // replace the result of a later save. Editor lifetime owns closing or keeping drafts.
     const result = saves.current.then(async () => {
       if (!isCurrent()) return "This case tab is no longer active.";
       try {
-        const response = await saveEvalCase(caseEvalKey, evalCase, editing?.existing === null);
+        const response = await saveEvalCase(caseEvalKey, evalCase, original);
         if (!isCurrent()) return "This case tab is no longer active.";
         if (!response.ok) {
-          const problem = await readProblem(response) ?? `Save failed (${response.status})`;
+          let problem = await readProblem(response) ?? `Save failed (${response.status})`;
+          if (response.status === 409 && isCurrent()) {
+            const latest = await fetchEvalCases(caseEvalKey).catch(() => null);
+            if (latest && isCurrent()) setCases(latest);
+            else if (isCurrent()) problem = "This case changed and the latest copy could not be loaded. Keep a copy of your draft, then reload.";
+          }
           if (isCurrent()) props.onError(`Could not save case “${String(evalCase.key)}”: ${problem}`);
           return problem;
         }

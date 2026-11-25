@@ -59,6 +59,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "run_in_progress": (409, "Another run is in progress"),
     "cap_exceeded": (402, "Spending cap exceeded"),
     "unknown_dimension_key": (400, "Unknown dimension key"),
+    "stale_eval_case": (409, "Eval case changed"),
     "invalid_case": (422, "Invalid eval case"),
 }
 

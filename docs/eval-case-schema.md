@@ -15,6 +15,11 @@ The per-pass `given`/`expected` shapes match what each pass's real `build_prompt
 schema send and return. The judge owns no case files; it reads the per-pass golden files through
 this shared schema.
 
+When editing through the cockpit, the save request includes the original whole case. The fixture
+writer compares it with the stored case under the file lock. A conflict keeps the draft available
+and refreshes the case list. Notes and rationales participate in this edit check independently of
+the fingerprint used to decide whether an eval result is current.
+
 ## The envelope
 
 Every case, for every pass, is exactly three top-level keys — no per-case judge or produced

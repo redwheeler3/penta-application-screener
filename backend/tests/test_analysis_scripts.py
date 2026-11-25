@@ -63,3 +63,39 @@ def test_categorical_harvest_guards_evidence_before_printing(mode, verified, sou
         with pytest.raises(NonSyntheticPoolError):
             harvest_golden_cases.main([mode, "--opening-id", str(opening.id)])
         assert not capsys.readouterr().out
+
+
+def test_harvest_entrypoints_materialize_one_analysis(monkeypatch, capsys):
+    from sqlalchemy import event
+
+    from app.db.models import UserRole
+    from scripts import _harvest_common
+    from tests.application_support import current_opening_id
+    from tests.ranking_support import setup_app
+
+    _, db, _ = setup_app(UserRole.ADMIN)
+    opening_id = current_opening_id(db)
+    db.add_all([Analysis(opening_id=opening_id, dimension_report={}, source_application_ids=[], synthetic_data=True)
+        for _ in range(40)])
+    db.commit()
+    factory = sessionmaker(bind=db.get_bind())
+    loaded = []
+
+    @event.listens_for(factory, "loaded_as_persistent")
+    def count_analysis(_session, obj):
+        if isinstance(obj, Analysis):
+            loaded.append(obj.id)
+
+    monkeypatch.setattr(_harvest_common, "SessionLocal", factory)
+    session, latest, _label = _harvest_common.open_synthetic_analysis()
+    latest_id = latest.id
+    session.close()
+    assert loaded == [latest_id]
+    loaded.clear()
+    monkeypatch.setattr("app.db.session.SessionLocal", factory)
+    harvest_golden_cases.main(["--opening-id", str(opening_id)])
+    assert loaded == [latest_id]
+    loaded.clear()
+    harvest_golden_cases.main(["--opening-id", str(opening_id + 1)])
+    assert loaded == []
+    assert "No ranking runs" in capsys.readouterr().out

@@ -63,7 +63,7 @@ it("acknowledges the submitted case while retaining text typed during its save",
   expect(editor).toHaveValue("Newer A draft");
   expect(screen.getByRole("button", { name: "Save case" })).toBeEnabled();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save case" })); });
-  expect(api.saveEvalCase).toHaveBeenLastCalledWith("scoring", { ...cases[0], metadata: { note: "Newer A draft" } }, false);
+  expect(api.saveEvalCase).toHaveBeenLastCalledWith("scoring", { ...cases[0], metadata: { note: "Newer A draft" } }, cases[0]);
   expect(screen.queryByText("Edit case: a")).not.toBeInTheDocument();
 });
 
@@ -132,7 +132,7 @@ it("orders fixture saves without replacing the active editor with an older ackno
   await waitFor(() => expect(api.saveEvalCase).toHaveBeenCalledOnce());
   await act(async () => { first.resolve(Response.json({ cases, caseFingerprints: {} })); });
   expect(api.saveEvalCase).toHaveBeenCalledTimes(2);
-  expect(api.saveEvalCase).toHaveBeenLastCalledWith("scoring", cases[1], false);
+  expect(api.saveEvalCase).toHaveBeenLastCalledWith("scoring", cases[1], cases[1]);
   expect(screen.getByText("Edit case: b")).toBeInTheDocument();
   await act(async () => { second.resolve(Response.json({ cases, caseFingerprints: {} })); });
   expect(screen.queryByText("Edit case: b")).not.toBeInTheDocument();
@@ -156,7 +156,7 @@ it("selects, edits and runs a Judge case by family and key", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   expect(screen.getByDisplayValue("Note for consolidation")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Save case" }));
-  await waitFor(() => expect(api.saveEvalCase).toHaveBeenCalledWith("judge", shared[1], false));
+  await waitFor(() => expect(api.saveEvalCase).toHaveBeenCalledWith("judge", shared[1], shared[1]));
 });
 
 it("uses current fixture size for whole runs and the same K for a row request", async () => {
@@ -186,5 +186,20 @@ it("keeps a duplicate Add draft open for correction without switching to edit", 
   fireEvent.click(screen.getByRole("button", { name: "Save case" }));
   await screen.findByText("A case with this key already exists.");
   expect(key).toHaveValue("a");
-  expect(api.saveEvalCase).toHaveBeenCalledWith("scoring", expect.objectContaining({ key: "a" }), true);
+  expect(api.saveEvalCase).toHaveBeenCalledWith("scoring", expect.objectContaining({ key: "a" }), null);
+});
+
+it("keeps a stale case draft visible and reopens the latest saved case", async () => {
+  const latest = { ...cases[0], metadata: { note: "Changed in another tab" } };
+  setup();
+  await edit("a");
+  fireEvent.change(screen.getByDisplayValue("Original A"), { target: { value: "Unsent correction" } });
+  api.fetchEvalCases.mockResolvedValue({ cases: [latest, cases[1]], caseFingerprints: {} });
+  api.saveEvalCase.mockResolvedValue(Response.json({ detail: "Case changed." }, { status: 409 }));
+  fireEvent.click(screen.getByRole("button", { name: "Save case" }));
+  await screen.findByText("Case changed.");
+  expect(screen.getByDisplayValue("Unsent correction")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await edit("a");
+  expect(screen.getByDisplayValue("Changed in another tab")).toBeVisible();
 });

@@ -55,6 +55,9 @@ Opening cards state the applicable household-size requirements:
 - 3 bedroom: 1 or 2 adults plus 2 or more children under 18
 
 Applicants enter the first name, last name and date of birth of every child who would live in the unit.
+Declaration review requires meaningful text in required fields and move-in dates in strictly descending
+order. Income entry accepts a single nonnegative whole-dollar amount, including grouped thousands
+and zero cents. An ambiguous amount stays visible for correction before saving or submitting.
 The server supplies the co-op's Pacific date for birth dates and employment start dates. The form refreshes it at midnight and when the applicant returns.
 
 The housing section asks for the current address and move-in date, then collects earlier addresses
@@ -235,8 +238,8 @@ is new or already known, so it does not reveal which people have applications.
 After sign-in, the verified primary email is read-only in the application form. **Change email
 address** sends a seven-day, single-use confirmation link to the proposed address and leaves the current
 identity unchanged until that link is consumed. Confirmation atomically updates the application
-identity and private working answers, sends the previous address a security notice naming the new
-address and directing an unexpected change to Penta Tech Support, revokes other application
+identity and private working answers, queues a security notice from that transition for the previous
+address naming the confirmed destination and directing an unexpected change to Penta Tech Support, revokes other application
 sessions and unused links, and establishes a session in the confirmation tab.
 The session that initiated the change remains valid so its original tab can
 refresh the identity when it next becomes visible; there is no polling dependency. If the proposed
