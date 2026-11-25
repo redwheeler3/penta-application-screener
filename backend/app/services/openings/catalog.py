@@ -57,19 +57,6 @@ def list_openings(db: Session) -> list[tuple[Opening, int]]:
     )
 
 
-def published_openings(db: Session) -> list[Opening]:
-    return list(
-        db.scalars(
-            select(Opening)
-            .where(
-                Opening.published_at.is_not(None),
-                Opening.intake_mode == OpeningIntakeMode.APPLICATIONS,
-            )
-            .order_by(Opening.move_in_date.desc(), Opening.id.desc())
-        )
-    )
-
-
 def create_opening(
     db: Session,
     values: OpeningCreate,

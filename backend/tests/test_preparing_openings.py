@@ -17,7 +17,6 @@ from app.services.applications.retention import (
 from app.services.openings.catalog import (
     create_opening,
     opening_phase,
-    published_openings,
 )
 from tests.db_support import memory_session
 
@@ -44,7 +43,8 @@ def test_preparation_protects_through_deadline_without_enrolling_or_publishing()
     opening = prepare(db, today+timedelta(days=37), now=now)
     db.commit()
     assert opening_phase(opening).value == "preparing"
-    assert published_openings(db) == []
+    from app.services.openings.participation import applicant_opening_states
+    assert applicant_opening_states(db, None) == []
     assert db.scalar(select(ApplicationParticipation)) is None
     assert row.retention_due_on == today+timedelta(days=2)
     for offset in (2, 36, 37):

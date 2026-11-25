@@ -1,13 +1,11 @@
 """Public signup and narrow administrator operations for vacancy notifications."""
 
 from datetime import timedelta
-from ipaddress import ip_address
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin
-from app.core.config import get_settings
 from app.core.problems import Problem
 from app.core.time import as_utc
 from app.db.models import User
@@ -22,7 +20,7 @@ from app.schemas.vacancy_subscriptions import (
     VacancySubscriptionWrite,
 )
 from app.services.auth.authority import require_admin_write
-from app.services.auth.rate_limit import PublicRateLimiter
+from app.services.auth.rate_limit import PublicRateLimiter, public_client_key
 from app.services.openings.subscriptions import (
     VALID_UNIT_SIZES,
     delete_subscription,
@@ -44,25 +42,6 @@ def _validate_unit_sizes(values: set[int]) -> None:
         )
 
 
-def _client_key(request: Request) -> str:
-    # Our deployed HTTP ingress is Fly Proxy; Cloudflare is DNS-only. Never trust
-    # arbitrary CF/X-Forwarded-For headers, or Fly headers on a direct local server.
-    candidates = []
-    if get_settings().fly_app_name:
-        candidates.append(request.headers.get("fly-client-ip"))
-    candidates.append(request.client.host if request.client is not None else None)
-    for candidate in candidates:
-        if candidate is None or len(candidate) > 45:
-            continue
-        try:
-            address = ip_address(candidate.strip())
-            if address.version == 6 and address.ipv4_mapped is not None:
-                address = address.ipv4_mapped
-            return str(address)
-        except ValueError:
-            continue
-    return "unknown"
-
 
 def _out(subscription) -> VacancySubscriptionOut:
     return VacancySubscriptionOut(
@@ -81,7 +60,7 @@ def subscribe(
     db: Session = Depends(get_db),
 ) -> VacancySubscriptionPublicOut:
     _validate_unit_sizes(body.unit_sizes)
-    if not signup_limiter.allow(_client_key(request)):
+    if not signup_limiter.allow(public_client_key(request)):
         raise Problem(
             "rate_limited",
             detail="Too many signup attempts. Please wait a few minutes and try again.",

@@ -2,6 +2,7 @@ import pytest
 from fastapi import BackgroundTasks
 from sqlalchemy import event, func, select
 from sqlalchemy.orm import sessionmaker
+from starlette.requests import Request
 
 from app.api.applicant import application as routes
 from app.api.applicant import guest
@@ -74,6 +75,7 @@ def test_return_link_acknowledges_its_revision_before_provider_wait():
         acknowledged = guest.request_applicant_access_link(
             RequestAccessLinkRequest.model_validate({"answers": sample_answers("synthetic@example.com"),
                 "openingIds": [opening_id], "baseRevision": 1}),
+            Request({"type": "http", "headers": [], "client": ("192.0.2.42", 1234)}),
             db.get(Application, applicant_id), db, LaterSaveSender())
         assert acknowledged.current_answers_saved is True
         assert acknowledged.working_revision == 2

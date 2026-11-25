@@ -7,6 +7,7 @@ from threading import Barrier
 import pytest
 from fastapi import BackgroundTasks, Response
 from sqlalchemy import create_engine, event, select
+from starlette.requests import Request
 
 from app.api.applicant.application import save_applicant_application
 from app.api.applicant.guest import delete_applicant_draft, submit_guest_application
@@ -81,7 +82,8 @@ def test_simultaneous_first_identity_claims_create_one_application(database, oth
                 "openingIds": [opening_id], "declarationAccepted": True})
             rejected = None
             try:
-                submit_guest_application(body, BackgroundTasks(), db, CapturedEmailSender(), lambda _sender: None)
+                submit_guest_application(body, Request({"type": "http", "headers": [], "client": ("192.0.2.43", 1234)}),
+                    BackgroundTasks(), db, CapturedEmailSender(), lambda _sender: None)
             except Problem as error:
                 rejected = error.code
             assert rejected in {None, "application_already_exists"}

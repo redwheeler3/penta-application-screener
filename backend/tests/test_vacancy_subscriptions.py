@@ -164,12 +164,12 @@ async def test_forged_forwarding_headers_cannot_bypass_signup_quota(
 def test_fly_client_addresses_are_validated_and_canonicalized(monkeypatch) -> None:
     from starlette.requests import Request
 
-    from app.api.vacancy_subscriptions import _client_key
+    from app.services.auth.rate_limit import public_client_key
 
     monkeypatch.setattr(get_settings(), "fly_app_name", "penta-test")
 
     def client_key(value: str) -> str:
-        return _client_key(Request({
+        return public_client_key(Request({
             "type": "http",
             "headers": [(b"fly-client-ip", value.encode())],
             "client": ("192.0.2.1", 1234),

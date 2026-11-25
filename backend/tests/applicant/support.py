@@ -21,6 +21,8 @@ class FailingEmailSender:
 
 
 def app_and_db() -> tuple:
+    from app.api.applicant.guest import guest_limiter
+    guest_limiter.clear()
     engine = memory_engine(foreign_keys=True)
     test_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = test_session()

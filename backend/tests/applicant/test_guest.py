@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
 
 from app.core.time import pacific_today
 from app.db.models import (
@@ -14,6 +15,7 @@ from app.db.models import (
     Opening,
     OpeningOutcome,
 )
+from app.db.session import get_db
 from app.services.email.sender import get_email_sender
 from tests.applicant.support import (
     FailingEmailSender,
@@ -170,6 +172,11 @@ async def test_guest_with_existing_email_is_stopped_before_review_and_sent_acces
 @pytest.mark.anyio
 async def test_repeated_guest_collision_updates_the_copy_for_the_link_already_sent() -> None:
     app, db, sender = app_and_db()
+    factory = sessionmaker(bind=db.get_bind(), autoflush=False)
+    def request_db():
+        with factory() as session:
+            yield session
+    app.dependency_overrides[get_db] = request_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await save_draft(client)
@@ -565,3 +572,60 @@ async def test_final_identity_collision_preserves_exact_guest_answers_for_reconc
     assert comparison["guestAnswers"]["applicant"]["birthDate"] == guest_answers["applicant"]["birthDate"]
     assert comparison["guestOpeningIds"] == [opening_id]
     assert restored.json()["answers"]["essays"]["householdIntroduction"] == "First tab submitted"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("endpoint", ["submissions/check", "submissions"])
+@pytest.mark.parametrize("mail_state", ["coalesced", "quota", "failed"])
+async def test_collision_copy_commits_independently_of_delivery_with_real_request_sessions(monkeypatch, endpoint, mail_state):
+    from app.db.models import MagicLinkPurpose, PasswordlessIdentityKind
+    from app.schemas.applicant.answers import CanonicalApplicationAnswers
+    from app.services.applications.intake import (
+        create_application,
+        publish_working_copy,
+    )
+    from app.services.auth.passwordless import issue_magic_link
+    app, db, sender = app_and_db()
+    opening = db.scalar(select(Opening))
+    opening_id = opening.id
+    now = datetime.now(UTC)
+    answers = CanonicalApplicationAnswers.model_validate(sample_answers(introduction="Submitted source"))
+    application = create_application(db, str(answers.applicant.email), answers, saved_at=now, opening_ids=[opening_id])
+    publish_working_copy(db, application, answers, [opening], submitted_at=now)
+    db.commit()
+    application_id = application.id
+    factory = sessionmaker(bind=db.get_bind(), autoflush=False)
+    def request_db():
+        with factory() as session:
+            yield session
+    app.dependency_overrides[get_db] = request_db
+    def payload(text):
+        body = {"answers": sample_answers(introduction=text), "openingIds": [opening_id]}
+        if endpoint == "submissions":
+            body["declarationAccepted"] = True
+        return body
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        first = await client.post(f"/applicant/{endpoint}", json=payload("First collision"))
+        assert first.status_code == (409 if endpoint == "submissions" else 200)
+        with factory() as session:
+            draft = session.scalar(select(ApplicantDraft))
+            if mail_state != "coalesced":
+                token = session.scalar(select(MagicLinkToken))
+                token.created_at = now - timedelta(minutes=2)
+                if mail_state == "quota":
+                    for minutes in [3, 4]:
+                        issue_magic_link(session, identity_kind=PasswordlessIdentityKind.APPLICANT,
+                            purpose=MagicLinkPurpose.APPLICANT_ACCESS, email=draft.email,
+                            applicant_draft_id=draft.id, now=now - timedelta(minutes=minutes))
+                session.commit()
+        if mail_state == "failed":
+            app.dependency_overrides[get_email_sender] = lambda: FailingEmailSender()
+        second = await client.post(f"/applicant/{endpoint}", json=payload("Latest collision"))
+        assert second.status_code == first.status_code
+        if endpoint == "submissions/check":
+            assert second.json()["emailStatus"] == ("failed" if mail_state == "failed" else "recent")
+    with factory() as observer:
+        draft = observer.scalar(select(ApplicantDraft))
+        assert draft.working_answers["essays"]["household_introduction"] == "Latest collision"
+        assert observer.get(Application, application_id).raw_row["essays"]["household_introduction"] == "Submitted source"
+    assert len(sender.messages) == 1

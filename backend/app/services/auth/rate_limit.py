@@ -2,7 +2,12 @@
 
 from collections import OrderedDict, deque
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address
 from threading import Lock
+
+from fastapi import Request
+
+from app.core.config import get_settings
 
 
 class PublicRateLimiter:
@@ -54,3 +59,23 @@ class PublicRateLimiter:
         with self._lock:
             self._attempts.clear()
             self._last_check = None
+
+
+def public_client_key(request: Request) -> str:
+    # Our deployed HTTP ingress is Fly Proxy; Cloudflare is DNS-only. Never trust
+    # arbitrary CF/X-Forwarded-For headers, or Fly headers on a direct local server.
+    candidates = []
+    if get_settings().fly_app_name:
+        candidates.append(request.headers.get("fly-client-ip"))
+    candidates.append(request.client.host if request.client is not None else None)
+    for candidate in candidates:
+        if candidate is None or len(candidate) > 45:
+            continue
+        try:
+            address = ip_address(candidate.strip())
+            if address.version == 6 and address.ipv4_mapped is not None:
+                address = address.ipv4_mapped
+            return str(address)
+        except ValueError:
+            continue
+    return "unknown"

@@ -1,9 +1,9 @@
 """Guest application entry, private-draft saving, and access-link requests."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -64,6 +64,7 @@ from app.services.applications.locking import lock_application_identity
 from app.services.applications.purge import purge_draft
 from app.services.applications.retention import current_retention_clause
 from app.services.applications.selected import application_is_selected
+from app.services.auth.rate_limit import PublicRateLimiter, public_client_key
 from app.services.auth.tokens import token_hash
 from app.services.email.sender import EmailSender, get_email_sender
 from app.services.email.transactional import (
@@ -82,6 +83,12 @@ from app.services.openings.participation import (
 )
 
 router = APIRouter()
+guest_limiter = PublicRateLimiter(limit=30, window=timedelta(minutes=15))
+
+
+def require_guest_capacity(request: Request) -> None:
+    if not guest_limiter.allow(public_client_key(request)):
+        raise Problem("rate_limited", detail="Too many application requests. Please wait a few minutes and try again.")
 
 
 @router.get("/openings", response_model=ApplicantOpeningsResponse)
@@ -97,10 +104,12 @@ def read_applicant_openings(db: Session = Depends(get_db)) -> ApplicantOpeningsR
 @router.post("/submissions/check", response_model=GuestSubmissionCheckResponse)
 def check_guest_submission(
     body: GuestSubmissionCheckRequest,
+    request: Request,
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> GuestSubmissionCheckResponse:
     """Stop an existing application at the pre-review boundary and email its owner."""
+    require_guest_capacity(request)
     now = datetime.now(UTC)
     email = normalize_email(str(body.answers.applicant.email))
     application = db.scalar(
@@ -140,7 +149,7 @@ def preserve_collision_and_send_access(
         sent = send_selected_application_locked(db, sender, application, now=now)
         return EmailSendOutcome.SENT if sent else EmailSendOutcome.FAILED
     revoke_other_pending_drafts(db, draft, now=now)
-    return send_magic_link(
+    outcome = send_magic_link(
         db,
         sender,
         identity_kind=PasswordlessIdentityKind.APPLICANT,
@@ -150,13 +159,18 @@ def preserve_collision_and_send_access(
         applicant_draft=draft,
         now=now,
     )
+    db.commit()
+    return outcome
+
 
 @router.post("/drafts", response_model=PendingDraftResponse, status_code=status.HTTP_202_ACCEPTED)
 def save_applicant_draft(
     body: PendingDraftRequest,
+    request: Request,
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
 ) -> PendingDraftResponse:
+    require_guest_capacity(request)
     lock_application_identity(db, str(body.answers.applicant.email))
     require_new_applications_open(db)
     now = datetime.now(UTC)
@@ -200,6 +214,7 @@ def save_applicant_draft(
 )
 def submit_guest_application(
     body: GuestSubmitApplicationRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
@@ -208,6 +223,7 @@ def submit_guest_application(
     """Publish a first application without making email access a submission gate."""
     if not body.declaration_accepted:
         raise Problem("declaration_required", detail="Accept the declaration before submitting.")
+    require_guest_capacity(request)
     lock_application_identity(db, str(body.answers.applicant.email))
     require_new_applications_open(db)
     now = datetime.now(UTC)
@@ -272,6 +288,7 @@ def delete_applicant_draft(
 )
 def request_applicant_access_link(
     body: RequestAccessLinkRequest,
+    request: Request,
     current: Application | None = Depends(optional_current_application),
     db: Session = Depends(get_db),
     sender: EmailSender = Depends(get_email_sender),
@@ -282,6 +299,8 @@ def request_applicant_access_link(
     pending draft. The response shape is identical in every branch so an address cannot be
     used to enumerate applicants.
     """
+    if current is None or body.base_revision is None:
+        require_guest_capacity(request)
     now = datetime.now(UTC)
     email = normalize_email(str(body.answers.applicant.email))
 
