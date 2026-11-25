@@ -12,6 +12,11 @@ The Penta Application Screener collects housing co-op applications, applies dete
 
 The project is also a deliberate learning and portfolio project for Jeff to build practical expertise in AI product management, agentic workflows, evals, cost-aware model use, human-in-the-loop product design, and AI-assisted software delivery. The code may eventually be made public as part of Jeff's AI product management portfolio, so the implementation should be understandable, well-documented, and credible as a real product artifact while preserving applicant privacy.
 
+Anonymous draft saves, submission checks, submissions and access-email requests share a
+source-address quota of 30 requests per 15 minutes. It uses the same validated Fly ingress-address
+policy as vacancy signup and retains only transient in-process counters. Recipient coalescing
+still applies; authenticated revision saves are unaffected.
+
 The application API serves the browser surfaces and our manual tests. It is not an external
 integration API. Endpoints and contracts can evolve with their browser callers and tests;
 unused alternatives do not need to remain available for hypothetical external clients.
@@ -761,8 +766,13 @@ deletion-preserving restore ledger. The built-in local restore path does reapply
 hard-purge ledger. Local restoration uses SQLite's backup API so leftover WAL pages cannot
 override the selected snapshot, retains a pre-restore recovery point, and checks the reopened
 database's integrity. Only a non-identifying audit fact that a record was deleted under a named
-retention rule may remain in the live database. Audit finding 2 below records the current gap
-for pool-level AI prose that is not erased with an applicant.
+retention rule may remain in the live database. At the first contributing applicant purge,
+whole pool-level AI narratives and applicant-specific justifications are erased, including inherited
+copies. Generic criterion names/definitions/poles, retained applicants' own evidence and numeric
+cost history remain. Captured source application IDs use the existing application identity;
+`pool_text_purged` prevents a late consolidation reply from recreating an expired explanation.
+Historical analyses with unknown sources use conservative opening scope; local restores apply
+the same cleanup, including when only a deletion receipt and the pool text remain.
 
 Integer record IDs use persistent, monotonic SQLite allocation. Existing IDs remain unchanged;
 future allocation skips the legacy range and remains representable by browser numbers. Local
@@ -1184,7 +1194,7 @@ A clean automatic verdict is `eligible / untouched`. Rule reasons take precedenc
 reason or an active integrity flag is attributed to `ai`. Automatic status can change when its
 findings change. A human override takes precedence in either direction until explicitly cleared.
 
-There is no third status. The UI surfaces the `status_source = ai` group as an "AI Flagged" view, composed client-side as a filter over the real columns. This keeps status binary while distinguishing high-trust deterministic exclusions from AI exclusions. The labeling is deliberately factual ("AI Flagged" — what happened), not prescriptive. The backend returns derived status/source counts and filters, faceted so impossible combinations
+There is no third status. The UI surfaces the `status_source = ai` group as an "AI Flagged" view, composed client-side as a filter over the derived response fields. This keeps status binary while distinguishing high-trust deterministic exclusions from AI exclusions. The labeling is deliberately factual ("AI Flagged" — what happened), not prescriptive. The backend returns derived status/source counts and filters, faceted so impossible combinations
 read zero; these are response fields rather than `Application` columns.
 
 **Findings are separate from human decisions.** Members do not edit machine evidence:
@@ -1320,9 +1330,12 @@ The pipeline makes real, non-deterministic model judgments, so it is instrumente
   - **Live per-pass evals** — each pass's golden cases fed through the *real* production prompt and graded by a grader matched to the output shape (categorical → exact-match; scoring → a band; screening → per-category), with a `?mode=stability` K-repeat run measuring verdict flips. See ADR 0008.
   - **Judge** — a blind label-auditor: an independent model reproduces each pass's output from an editable per-pass brief + the case's input, blind to the label; the harness grades it against the human label with that pass's own grader. Decisive-case agreement and separate contested counts summarize the corpus; a consistent disagreement flags the *label*. Run occasionally, not per-run. See ADR 0002.
 
-Applicant-facing eval cases are protected by persisted synthetic provenance: `require_synthetic_pool` refuses any analysis unless every application in its pool was explicitly stamped synthetic. Fixtures must be PII-safe. Opaque column indices and removal of top-level narratives and
-`why_it_differentiates` reduce exposure, but nested prose and current-cohort export guards have
-known gaps recorded in audit finding 1 below. Golden sets are grown with the harvest scripts under `backend/scripts/` (co-authored, then labelled by hand).
+Applicant-facing eval exports require verified captured synthetic provenance and a wholly synthetic
+actual export cohort. The assurance is captured before provider work and includes inherited criterion
+history. Later arrivals are checked by both harvesters and baseline capture; unknown historical
+sources fail closed. A baseline refusal reports Synthetic evidence required and preserves the file.
+Fixtures use opaque applicant columns and omit top-level narrative and pool justifications; nested
+prose is committable only behind the same synthetic boundary. Golden sets are grown with the harvest scripts under `backend/scripts/` (co-authored, then labelled by hand).
 
 ### Operator access and versioned eval data
 
@@ -1739,8 +1752,9 @@ provider catalog and configured runtime settings take precedence over historical
 **Status: implementation authorized November 24, 2026.** Jeff approved all 13 recommendations
 and local commits. He also approved conservative deletion of affected pool-level narratives and
 applicant-specific justifications at the first contributing applicant purge, retaining numeric
-costs and demonstrably non-identifying criteria. Implementation and verification are in progress;
-the findings below preserve the pre-fix audit evidence. Application baseline:
+costs and demonstrably non-identifying criteria. All 13 findings are implemented and locally verified; the completion record below distinguishes
+automated checks from real-provider observations and bounded Chrome verification.
+The findings below preserve the pre-fix audit evidence. Application baseline:
 `220a3b60c72f8438b48d3c18f8e60ec986963dc5`. All passes used unchanged application code.
 
 **What this repo does:** Penta collects and retains housing applications, manages opening outcomes
@@ -2001,7 +2015,7 @@ Verification results against the unchanged baseline:
 Recommended discussion order: **export safety and retention (1–2), criterion identity (3), public
 intake abuse (4), then proposal/recovery correctness (5–7)**. Restore green frontend checks (8)
 before implementing frontend fixes. Accounting and scale wording (9–10) are bounded follow-ups;
-11–13 are small shared-component/tooling cleanup. No finding above has been implemented.
+11–13 are small shared-component/tooling cleanup. Implementation is complete; the findings above describe the audited baseline.
 
 Keep the current FastAPI/SQLite/React architecture, the explicit pipeline, shared cached evidence,
 short write transactions and human priorities. The audit found no justification at this load for
@@ -2018,8 +2032,8 @@ unknown scores are not treated as neutral by the ranker; failed/contested eval o
 and use distinct summary rules; per-applicant shared-result deletion already waits for the last
 retained producer/consumer. None is an additional recommendation.
 
-**Verdict:** the core consumer/transaction design is well defended by tests, but close the
-privacy/export and identity gaps before broad cleanup. **Lean:** about 15 production lines and
+**Audit verdict at discovery:** the core consumer/transaction design was well defended by tests,
+but privacy/export and identity gaps required correction before broad cleanup. **Lean:** about 15 production lines and
 the unused preview fixture can be deleted; **0 dependencies** need adding or replacing.
 
 **Not checked:** live provider quality/prices/terms, dependency vulnerability advisories, public
@@ -2028,3 +2042,66 @@ full browser accessibility/visual/print/drag behavior, and every migration/scrip
 Existing migration/script checks passed; that does not substitute for a production rehearsal.
 These are explicit limits, not silent green checks. Only synthetic inputs were used; real local
 or production applicant records were not inspected, changed, restored, emailed or exported.
+
+
+### Implementation and verification closeout
+
+Jeff authorized all findings and local commits, including conservative pool-text deletion, on
+November 24, 2026. Existing application/result/cost data was preserved; the additive migration
+`b69f7e31d425` adds captured source IDs and the text-purge marker. Local SQLite is verified at that
+revision, with 104 applications, 21 analyses, 18,611 AI results and 79 cost runs unchanged by the
+schema check/upgrade, and valid foreign keys. Production deployment remains an operator action.
+
+| Finding | Implemented behavior and verification |
+| --- | --- |
+| 1 | Baseline and both actual harvest paths require captured and current synthetic inputs. Unknown/mixed history is refused; a withdrawal cannot rewrite captured assurance. Regression tests cover stale stamps, inherited unknown history, late arrivals, expired sources and unchanged destination files. |
+| 2 | Source-aware purge removes whole affected audits and copied pool explanations, preserves generic criteria/retained applicants/costs, and fences late consolidation text. Normal purge, legacy scope, cross-opening inheritance and SQLite restore are covered, including a restore without the source row. |
+| 3 | A fresh colliding key with different frozen meaning receives a distinct key before matching. Proven kept keys and identical frozen definitions retain identity; semantic matching may still adopt an established concept. Production criteria-path regressions cover refusal and kept identity. |
+| 4 | One 30-per-15-minute anonymous quota runs before records/mail for all four public intake paths. The shared ingress helper rejects forged forwarding identities. Endpoint tests use rotating mailboxes, shared quota and saturated-quota authenticated saves. |
+| 5 | Failure of a worker carrying proposals aborts criteria publication and leaves prior proposals/board intact. Blind-worker degradation remains tolerated. HTTP run tests inspect terminal events, unchanged member state and persisted known spend. |
+| 6 | Remembered records are shape-checked before use; malformed copies fall back to server answers. Clearing uses the captured record and existing browser lock. Tests cover nested malformed data, invalid revision/opening IDs, valid siblings and a newer concurrent replacement. |
+| 7 | The collision owner commits the latest comparison copy independently of mail delivery. Its existing repeated-collision regression now uses real per-request sessions; submission-collision and delivery-failure paths remain covered. |
+| 8 | Date controls use accessible label queries and the unused preview fixture/import is deleted. Frontend suite, lint and build are green. |
+| 9 | Degraded discovery carries failed workers into the pass ledger/metrics without invented usage. HTTP regressions verify failed/successful call counts for degraded completion and proposal failure. |
+| 10 | Both dimension schemas and discovery instructions define −1..+1 with neutral zero. Discovery/decomposition versions include their static output schemas. Retained scores remain valid; rediscovery stays explicit. Real-provider checks exercise the revised producers and signed-score boundaries. |
+| 11 | Applicant income uses the shared NumberInput. Tests preserve blank/zero and reject negative/fractional amounts at review; no native number widget remains in production entry code. |
+| 12 | Existing scalar controls offer explicit null/text/number/Boolean choices; new fields and copied null list entries preserve JSON null. A nested case round-trip verifies the saved JSON, not only the displayed control. |
+| 13 | The unused published_openings helper is deleted. The preparing-opening test now checks the real applicant projection and preserves its retention/publication checks. |
+
+Automated verification: **1,356 backend tests passed, 1 skipped**, complete Ruff check passed;
+**486 frontend tests passed**, frontend lint and production build passed. The watchdog code was
+unchanged; its audit baseline had 43 passing tests plus a passing TypeScript check.
+
+Real-provider evidence is preserved in
+[the synthetic validation snapshot](docs/archive/ponytail-audit-validation-2026-11-24.json).
+The successful direct Terra-low/Haiku run screened three fictional households, completed discovery,
+decomposition, scoring and consolidation with **19 criteria, 3 scored applicants and 0 failures**,
+and passed deterministic invariant checks. Rank's ledger recorded **$0.2633**; the retained full
+probe including Screen recorded **$0.291312** known usage at application prices. No production
+model setting was changed.
+
+The direct Sonnet attempt timed out during decomposition at the normal 90-second idle policy;
+the earlier shorter probe also timed out. The initial restricted process did not discover AWS
+credentials. In the normal Windows user context the default shared-credentials-file profile resolved
+and **Bedrock Haiku/Sonnet completed the full run: 24 criteria, 3 scored applicants, 0 failures**,
+with **$0.4577** recorded Rank cost and **$0.577205** known probe usage including Screen and scoring
+stability checks. Invariants passed. The existing bounded missing-dimension re-asks recovered one
+omitted dimension for each applicant without losing returned usage or complete-vector publication.
+No credential or production model configuration was changed.
+
+Both Haiku routes measured the same two sensitive goldens over five repetitions per case: absence
+confidence passed 4/5 and the modest-evidence band passed 3/5. The other four goldens were stable.
+Absence scored zero every time; the high and demonstrated-negative boundaries held 5/5. The scoring
+prompt and golden labels were unchanged. These observed sensitivities remain visible; neither labels
+nor unrelated instructions were weakened to make a clean sweep. Provider billing without returned
+usage is unknown; the evidence notes the first in-memory probe's missing durable usage receipt.
+
+After Jeff restarted the Chrome integration, signed-in local Evals and the applicant form were
+reachable. Actual applicant income controls rendered as text inputs with decimal input mode. In a
+separate preview tab, the real shared components were exercised using isolated fictional state:
+blank/zero/negative/fractional income validity, ArrowUp without changing 80000, number → text → null,
+and copying null list entries. At desktop width the editor was 980 px wide; at a 390 px mobile
+viewport it was 366 px wide, with controls contained and an 8 px label-row gap. The mobile screenshot
+was visually inspected. No applicant answer or fixture was saved by those checks, and the scratch
+tab was closed. Physical mouse-wheel, drag, complete application and print journeys remain outside
+this verification. No dev server was started and no production deployment performed.

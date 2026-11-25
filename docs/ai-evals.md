@@ -272,9 +272,9 @@ Application database
 - score vectors whose application IDs are replaced by opaque positions.
 
 It omits application IDs, top-level narratives and settled-dimension justifications.
-Nested audit prose remains and may quote applicants; baseline capture is not a guarantee
-that arbitrary real applicant data is committable. Keep fixtures free of real applicant
-content. Vectors use the source analysis's current opening cohort and criteria. Provenance
+Nested audit prose remains, so baseline capture requires verified captured synthetic provenance
+and a wholly synthetic actual cohort before file publication. Real, mixed and unknown sources
+are refused; the prior file stays unchanged. Vectors use the source analysis's current opening cohort and criteria. Provenance
 comes from captured configuration and selected score producers, with unknown/mixed history
 left unknown. Evals consume this snapshot; they never feed a verdict back into the application.
 
@@ -484,15 +484,17 @@ committable only when its pool is wholly synthetic. Production intake defaults e
 to non-synthetic; the local fixture loader can stamp canonical applications synthetic only when
 the runtime explicitly sets `APPLICATION_DATA_IS_SYNTHETIC=true`. Creating an `Analysis` stamps it
 synthetic only when every application in its pool carries that provenance. The evidence harvesters
-call `require_synthetic_pool(analysis)` and fail closed otherwise—filenames, email domains, and the
+call `require_synthetic_pool(analysis, applications)` and fail closed otherwise—filenames, email domains, and the
 current environment setting cannot retroactively make a run safe. `python -m
 scripts.harvest_scoring_cases` proposes opaque-indexed candidate cases from a guard-gated analysis;
 a human labels `metadata.expected` (a band) + rationale before they land in
 `scoring_golden.json` (harvest never labels; the screening harvester mirrors it into
 `screening_golden.json`).
 
-That guard checks the historical analysis stamp; harvesters read current candidates.
-The stamp alone does not establish synthetic provenance for later arrivals or replacements.
+Both harvesters validate the actual candidate cohort as well as captured source assurance.
+Baseline capture uses the same guard. Rank freezes assurance before model work, including inherited
+criterion history; unknown historical source cohorts fail closed. A later arrival cannot inherit
+an earlier analysis's synthetic assurance.
 
 Seeded scoring cases span the basic spectrum — an unaddressed dimension against an
 absence-defined pole (neutral band straddling 0), a strongly-evidenced high case, and the

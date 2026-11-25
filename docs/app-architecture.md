@@ -663,3 +663,17 @@ change the documented Fly snapshot policy. Windows wrappers stop on failed nativ
 and `AnalysisAudit` owners. Each requires `--opening-id OPENING_ID`; they do not combine
 unrelated openings or reinstate the removed ranking model. They remain manual diagnostics,
 with synthetic-data restrictions where applicant content could be exported.
+
+
+## Pool-text retention and synthetic exports
+
+Analysis captures contributing application IDs and synthetic assurance before provider calls,
+including retained criterion-history inputs. Publishing rechecks captured source retention under
+the writer. Purging a first contributor removes the whole affected AnalysisAudit and pool-specific
+justifications, including copied criterion explanations, while retaining generic criteria and numeric
+costs. The explicit pool_text_purged marker prevents a late consolidation from restoring text.
+Legacy unknown cohorts use conservative opening scope. Local restore uses the same erasure owner.
+
+Both harvesters and baseline capture check their actual current inputs as well as captured synthetic
+assurance. Non-synthetic and unknown-source exports are refused before publishing or printing cases;
+local baseline refusal has its own non_synthetic_pool problem, rather than suggesting another paid run.

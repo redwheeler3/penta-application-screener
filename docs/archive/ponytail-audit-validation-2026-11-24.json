@@ -1,0 +1,2118 @@
+{
+  "date": "2026-11-24 America/Vancouver",
+  "source": "Committed fictional intake fixture and hand-authored synthetic scoring goldens; no production applicant data.",
+  "notes": [
+    "Initial in-memory six-applicant probe used a 60-second idle timeout and did not retain a usage receipt. Billing for timed-out calls is unknown.",
+    "The retained Anthropic synthesis attempt used the normal 90-second idle policy and failed during decomposition. It then measured all six scoring goldens five times.",
+    "The retained Terra-low synthesis / Haiku scoring attempt completed the full Rank pipeline and invariant checks.",
+    "Known USD values use the application pricing table and exclude provider billing without returned usage. These are validation observations, not relabelled goldens.",
+    "The initial restricted process did not discover AWS credentials. The normal Windows user context resolved the default shared-credentials-file profile and completed Bedrock Screen/Rank and five-repeat scoring checks."
+  ],
+  "runs": [
+    {
+      "source": "committed fictional intake fixture",
+      "route": "direct Anthropic",
+      "applicants": 3,
+      "rank": [
+        {
+          "type": "error",
+          "phase": "criteria",
+          "message": "Finding criteria failed: TimeoutError: claude-sonnet-4-6 produced no response event for 90 seconds."
+        }
+      ],
+      "stability": [
+        {
+          "case": "absence_scores_neutral",
+          "marker": "[UNSTABLE]",
+          "tally": {
+            "pass": 4,
+            "fail": 1
+          },
+          "range": [
+            0.0,
+            0.0
+          ],
+          "details": [
+            "score +0.00 (high): The applicant does not mention holding or offering any licensed trade skills.",
+            "score +0.00 (low): The applicant makes no mention of any licensed or certified trades held by either household member.",
+            "score +0.00 (low): The applicant does not mention holding or offering any licensed trade skills.",
+            "score +0.00 (low): The applicant makes no mention of holding or possessing any licensed or certified trade skills.",
+            "score +0.00 (low): The applicant makes no mention of any licensed or certified trade held by either household adult."
+          ]
+        },
+        {
+          "case": "strong_evidence_scores_high",
+          "marker": "[stable]",
+          "tally": {
+            "pass": 5
+          },
+          "range": [
+            1.0,
+            1.0
+          ],
+          "details": [
+            "score +1.00 (high): The applicant is a Red Seal licensed electrician who explicitly commits to handling the co-op's electrical maintenance and safety checks.",
+            "score +1.00 (high): The applicant holds a current Red Seal electrician licence and explicitly commits to providing electrical maintenance and safety checks for the co-op.",
+            "score +1.00 (high): The applicant holds a current Red Seal electrician licence and explicitly commits to providing electrical maintenance and safety checks for the co-op.",
+            "score +1.00 (high): The applicant is a Red Seal licensed electrician who explicitly offers to handle the co-op's electrical maintenance and safety checks.",
+            "score +1.00 (high): The applicant is a Red Seal licensed electrician who explicitly commits to handling the co-op's electrical maintenance and safety checks."
+          ]
+        },
+        {
+          "case": "demonstrated_low_scores_negative",
+          "marker": "[stable]",
+          "tally": {
+            "pass": 5
+          },
+          "range": [
+            -0.8,
+            -0.8
+          ],
+          "details": [
+            "score -0.80 (high): The applicant directly states a genuinely packed schedule with touring most weekends and two other board commitments, leaving only the bare minimum capacity for co-op duties.",
+            "score -0.80 (high): The applicant directly states a packed calendar from touring most weekends and two other board commitments, explicitly limiting themselves to bare minimum co-op hours.",
+            "score -0.80 (high): The applicant directly reports a packed calendar from touring most weekends and two other board commitments, explicitly stating they can only manage the bare minimum co-op hours.",
+            "score -0.80 (high): The applicant explicitly describes a packed calendar with touring commitments and multiple board positions, acknowledging they can only manage the bare minimum co-op hours.",
+            "score -0.80 (high): The applicant explicitly describes a packed calendar due to touring most weekends and multiple board commitments, stating they could only manage bare minimum co-op hours."
+          ]
+        },
+        {
+          "case": "absence_worded_low_pole_still_neutral",
+          "marker": "[stable]",
+          "tally": {
+            "pass": 5
+          },
+          "range": [
+            0.0,
+            0.0
+          ],
+          "details": [
+            "score +0.00 (low): The applicant does not mention any board, council, or committee experience in their essays or structured facts.",
+            "score +0.00 (low): The applicant provides no information about board, council, or committee service in either their structured facts or essays.",
+            "score +0.00 (low): The applicant does not mention any board, council, or committee experience in either their structured facts or essays.",
+            "score +0.00 (low): The applicant does not mention any board, council, or committee service in either their structured facts or essays.",
+            "score +0.00 (low): The applicant does not mention any board, council, or committee experience in either their structured facts or essays."
+          ]
+        },
+        {
+          "case": "modest_evidence_scores_mid",
+          "marker": "[UNSTABLE]",
+          "tally": {
+            "pass": 3,
+            "fail": 2
+          },
+          "range": [
+            0.7,
+            0.75
+          ],
+          "details": [
+            "score +0.70 (high): The applicant demonstrates practical handiness through tool-share organization and small repairs, and expresses explicit willingness to pitch in on co-op upkeep.",
+            "score +0.75 (high): The applicant demonstrates practical hands-on experience through tool-share organization and small repairs, and explicitly states both willingness and a household philosophy around fixing things themselves.",
+            "score +0.70 (high): The applicant has demonstrated practical handiness through organising a tool-share and performing small repairs, and expresses a clear preference for hands-on problem-solving and sharing resources.",
+            "score +0.70 (high): The applicant demonstrates practical hands-on experience, explicit willingness to pitch in on repairs, and an ethos aligned with shared maintenance.",
+            "score +0.75 (high): The applicant demonstrates practical hands-on experience through tool-share organization and small repair work, and explicitly states willingness to pitch in on maintenance without requiring licensing."
+          ]
+        },
+        {
+          "case": "missing_employment_dates_score_neutral_from_rank",
+          "marker": "[stable]",
+          "tally": {
+            "pass": 5
+          },
+          "range": [
+            0.0,
+            0.0
+          ],
+          "details": [
+            "score +0.00 (low): Both applicant_employment_start and co_applicant_employment_start are null, and all essay responses are 'No.', leaving employment tenure unaddressed.",
+            "score +0.00 (low): No employment tenure information was provided; both applicant and co-applicant employment start dates are null and essays contain no discussion of employment history.",
+            "score +0.00 (low): No employment tenure information was provided; both applicant and co-applicant employment start dates are null, and essay responses contain no details about employment history or continuity.",
+            "score +0.00 (low): The applicant's employment start dates are not provided in the structured facts, and all essay responses are marked as 'No' without substantive detail.",
+            "score +0.00 (low): The applicant did not provide employment start dates or tenure information in structured fields or essays, leaving no basis to assess continuous employment length for either adult."
+          ]
+        }
+      ],
+      "screen": {
+        "successful": 3,
+        "failed": 0,
+        "flags": [
+          [],
+          [],
+          []
+        ]
+      },
+      "usage": {
+        "calls": 35,
+        "known_usd": 0.272258,
+        "input_tokens": 89418,
+        "output_tokens": 15930
+      }
+    },
+    {
+      "source": "committed fictional intake fixture",
+      "route": "direct Terra synthesis / Haiku scoring",
+      "applicants": 3,
+      "rank": [
+        {
+          "type": "summary",
+          "dimensions": 19,
+          "scored": 3,
+          "failed": 0,
+          "totalCostUsd": 0.2633
+        }
+      ],
+      "stability": [],
+      "screen": {
+        "successful": 3,
+        "failed": 0,
+        "flags": [
+          [],
+          [],
+          []
+        ]
+      },
+      "usage": {
+        "calls": 10,
+        "known_usd": 0.2913115,
+        "input_tokens": 57017,
+        "output_tokens": 20427
+      },
+      "captured_models": {
+        "pass_models": {
+          "Pattern discovery": "openai:gpt-5.6-terra",
+          "Dimension decomposition": "openai:gpt-5.6-terra",
+          "Dimension matching": "openai:gpt-5.6-terra",
+          "Dimension consolidation": "openai:gpt-5.6-terra",
+          "Dimension scoring": "claude-haiku-4-5-20251001"
+        },
+        "pass_prompt_versions": {
+          "Pattern discovery": "17753a7174fe",
+          "Dimension decomposition": "affb14ec4b74",
+          "Dimension matching": "2a463a1f6443",
+          "Dimension consolidation": "d73b755d3075",
+          "Dimension scoring": "d05026e73450"
+        }
+      }
+    },
+    {
+      "source": "committed fictional intake fixture",
+      "route": "Bedrock Haiku/Sonnet",
+      "applicants": 3,
+      "rank": [
+        {
+          "type": "summary",
+          "dimensions": 24,
+          "scored": 3,
+          "failed": 0,
+          "totalCostUsd": 0.4577
+        }
+      ],
+      "stability": [
+        {
+          "case": "absence_scores_neutral",
+          "marker": "[UNSTABLE]",
+          "tally": {
+            "pass": 4,
+            "fail": 1
+          },
+          "range": [
+            0.0,
+            0.0
+          ],
+          "details": [
+            "score +0.00 (low): The applicant makes no mention of any licensed trade or offer to contribute trade skills to co-op maintenance.",
+            "score +0.00 (low): The applicant does not mention any licensed or certified trade skills among household adults.",
+            "score +0.00 (low): The applicant makes no mention of any licensed or certified trade held by household members.",
+            "score +0.00 (low): The applicant does not mention any licensed or certified trade skills among household adults.",
+            "score +0.00 (high): The applicant does not mention any licensed or certified trade skills."
+          ]
+        },
+        {
+          "case": "strong_evidence_scores_high",
+          "marker": "[stable]",
+          "tally": {
+            "pass": 5
+          },
+          "range": [
+            1.0,
+            1.0
+          ],
+          "details": [
+            "score +1.00 (high): The applicant holds a current Red Seal electrician licence and explicitly commits to providing electrical maintenance and safety checks for the co-op.",
+            "score +1.00 (high): The applicant explicitly states they are a Red Seal electrician and will handle the co-op's electrical maintenance and safety checks themselves.",
+            "score +1.00 (high): The applicant explicitly holds a Red Seal electrician licence and directly offers to perform electrical maintenance and safety checks for the co-op.",
+            "score +1.00 (high): The applicant holds a Red Seal electrician license and explicitly offers to handle the co-op's electrical maintenance and safety checks themselves.",
+            "score +1.00 (high): The applicant is a Red Seal licensed electrician who explicitly offers to handle the co-op's electrical maintenance and safety checks themselves."
+          ]
+        },
+        {
+          "case": "demonstrated_low_scores_negative",
+          "marker": "[stable]",
+          "tally": {
+            "pass": 5
+          },
+          "range": [
+            -0.8,
+            -0.8
+          ],
+          "details": [
+            "score -0.80 (high): The applicant explicitly states they tour most weekends, serve on two other boards, and can only manage the bare minimum co-op hours.",
+            "score -0.80 (high): The applicant directly states a packed calendar with touring most weekends and two board commitments, leaving only the bare minimum co-op hours available.",
+            "score -0.80 (high): The applicant directly states a packed schedule from touring most weekends and two other board commitments, explicitly saying they could only manage bare minimum co-op hours.",
+            "score -0.80 (high): The applicant reports touring most weekends, serving on two other boards, and explicitly states their calendar is packed such that they could only manage bare minimum co-op hours.",
+            "score -0.80 (high): The applicant explicitly states a packed calendar from touring most weekends and two other board commitments, with only capacity for minimum co-op hours."
+          ]
+        },
+        {
+          "case": "absence_worded_low_pole_still_neutral",
+          "marker": "[stable]",
+          "tally": {
+            "pass": 5
+          },
+          "range": [
+            0.0,
+            0.0
+          ],
+          "details": [
+            "score +0.00 (low): The applicant does not mention any board, council, or committee service in their essays or structured facts.",
+            "score +0.00 (low): The applicant does not mention any board, council, or committee experience in their application materials.",
+            "score +0.00 (low): The applicant makes no mention of board, council, or committee service in either their structured profile or essays.",
+            "score +0.00 (low): The applicant does not mention any board, council, or committee experience in their responses.",
+            "score +0.00 (low): The applicant does not mention any board, council, or committee experience in either their structured facts or their essays."
+          ]
+        },
+        {
+          "case": "modest_evidence_scores_mid",
+          "marker": "[UNSTABLE]",
+          "tally": {
+            "pass": 3,
+            "fail": 2
+          },
+          "range": [
+            0.7,
+            0.75
+          ],
+          "details": [
+            "score +0.75 (high): The applicant demonstrates practical hands-on experience through tool-share organization and small repairs, and explicitly states both handiness and willingness to pitch in without claiming licensure.",
+            "score +0.70 (high): The applicant demonstrates practical hands-on experience through tool-share organization and small repairs, and expresses explicit willingness to pitch in on maintenance work for the co-op.",
+            "score +0.70 (high): The applicant demonstrates hands-on experience through organizing a tool-share and states readiness to pitch in on small repairs, with both household members having practical work backgrounds.",
+            "score +0.70 (high): The applicant demonstrates practical hands-on experience through tool-share organization and small repairs, plus explicit enthusiasm for fixing things themselves.",
+            "score +0.75 (high): The applicant demonstrates practical hands-on experience through tool-share organization and small repairs, and explicitly states willingness to pitch in on maintenance work."
+          ]
+        },
+        {
+          "case": "missing_employment_dates_score_neutral_from_rank",
+          "marker": "[stable]",
+          "tally": {
+            "pass": 5
+          },
+          "range": [
+            0.0,
+            0.0
+          ],
+          "details": [
+            "score +0.00 (low): The applicant provided no information about employment tenure for either adult, leaving the dimension unaddressed.",
+            "score +0.00 (low): Employment start dates are not provided, and essay responses do not address employment tenure or history.",
+            "score +0.00 (low): No employment start dates were provided for either adult, and essay responses did not address employment tenure or history.",
+            "score +0.00 (low): The applicant did not provide employment start dates or tenure information in either structured fields or essays.",
+            "score +0.00 (low): Employment start dates are not provided in structured data, and the applicant's essays do not address employment tenure or stability."
+          ]
+        }
+      ],
+      "screen": {
+        "successful": 3,
+        "failed": 0,
+        "flags": [
+          [],
+          [],
+          []
+        ]
+      },
+      "fixture": {
+        "dimensions": [
+          {
+            "key": "employment_tenure_stability",
+            "name": "Employment Tenure Stability",
+            "definition": "How long each adult in the household has held their current role, taken jointly, as a proxy for income reliability and risk of near-term employment disruption.",
+            "high_end": "Both adults have long, unbroken employment histories with their current employers, signalling strong income continuity.",
+            "low_end": "One or both adults began their current role recently, leaving income tenure short and less proven.",
+            "from_committee_request": false
+          },
+          {
+            "key": "income_cushion_above_floor",
+            "name": "Household Income Cushion",
+            "definition": "The household's total gross income relative to the assumed minimum needed to carry co-op housing costs, measuring how much financial headroom exists.",
+            "high_end": "Household income is well above the housing-cost floor, providing a large cushion for unexpected expenses or arrears risk.",
+            "low_end": "Household income sits close to the minimum threshold, leaving little buffer for income disruption or unplanned costs.",
+            "from_committee_request": false
+          },
+          {
+            "key": "income_resilience_dual_earner",
+            "name": "Dual-Earner Income Resilience",
+            "definition": "How evenly household income is split between both adults, measuring how much of total income survives the loss of either earner.",
+            "high_end": "Income is split roughly equally, so losing one income still leaves the household with roughly half its earnings.",
+            "low_end": "Income is heavily concentrated in one earner, so losing that earner would critically impair ability to meet housing charges.",
+            "from_committee_request": false
+          },
+          {
+            "key": "trade_and_maintenance_skills",
+            "name": "Hands-On Trades & Maintenance Skills",
+            "definition": "Whether the household holds licensed trade qualifications or demonstrated practical maintenance skills directly applicable to building upkeep.",
+            "high_end": "At least one adult holds a recognized trade licence or equivalent and explicitly offers it for building maintenance tasks.",
+            "low_end": "No trade or technical skills claimed; household self-describes as unable to perform physical building repairs.",
+            "from_committee_request": false
+          },
+          {
+            "key": "administrative_and_governance_skills",
+            "name": "Administrative & Governance Skills",
+            "definition": "The household's demonstrated competence in co-op administrative functions — scheduling, minutes, correspondence, meeting facilitation — based on stated roles and past practice.",
+            "high_end": "Adults have concretely practiced core administrative co-op functions (running meetings, writing minutes, coordinating schedules) and can describe specific past instances.",
+            "low_end": "Administrative capability is asserted but not grounded in specific past roles or examples, or not mentioned at all.",
+            "from_committee_request": false
+          },
+          {
+            "key": "systems_documentation_discipline",
+            "name": "Systems Documentation Discipline",
+            "definition": "The degree to which the household demonstrates a practice of writing things down, maintaining records, and ensuring institutional knowledge transfers smoothly to future volunteers or committee members.",
+            "high_end": "An adult explicitly describes writing documentation so future volunteers aren't lost, grounded in prior governance practice.",
+            "low_end": "No mention of documentation habits; skills and processes are described without reference to recording or transferring knowledge.",
+            "from_committee_request": false
+          },
+          {
+            "key": "financial_oversight_experience",
+            "name": "Financial Oversight Experience",
+            "definition": "The household's demonstrated history of managing or scrutinizing budgets, financial reporting, or fiscal accountability in an organizational or committee setting.",
+            "high_end": "An adult has directly managed or reviewed organizational budgets in a governance role and explicitly offers budget transparency and financial oversight to the co-op.",
+            "low_end": "No financial oversight experience mentioned; offers to contribute financially are absent or stated without supporting experience.",
+            "from_committee_request": false
+          },
+          {
+            "key": "social_and_community_services_skills",
+            "name": "Social-Service Navigation Skill",
+            "definition": "Whether the household can professionally connect neighbours with external city services, benefits, or social support systems — a soft-infrastructure contribution distinct from trades or governance.",
+            "high_end": "An adult works in a relevant field (e.g., social work, community development) and explicitly offers to help residents access city services and benefits they may not know they qualify for.",
+            "low_end": "No professional background or stated capacity in social services, resident advocacy, or external resource navigation.",
+            "from_committee_request": false
+          },
+          {
+            "key": "depth_of_co_op_experience",
+            "name": "Co-op Governance Experience",
+            "definition": "How much direct, substantive experience the household has with co-operative or collective housing governance structures — committees, work-hour systems, shared decision-making.",
+            "high_end": "Grew up inside a housing co-op and/or held active roles in co-op governance (committees, work scheduling, member decisions) with fluent understanding of how co-ops actually function.",
+            "low_end": "No prior housing co-op experience; closest analogue is strata or similar body, or experience is entirely abstract or second-hand.",
+            "from_committee_request": false
+          },
+          {
+            "key": "work_shift_reliability_commitment",
+            "name": "Work-Shift & Unglamorous-Task Commitment",
+            "definition": "How explicitly and credibly the household commits to fulfilling unglamorous, recurring co-op labour obligations — cleaning, sorting, maintenance days — based on stated intent and demonstrated prior behaviour.",
+            "high_end": "Household explicitly volunteers for the least-desirable tasks, names specific jobs they will take on, and frames reliability and follow-through as core personal values backed by prior behaviour.",
+            "low_end": "Willingness to do required labour is not specifically stated, implied only generically, or entirely absent.",
+            "from_committee_request": false
+          },
+          {
+            "key": "emergency_on_call_availability",
+            "name": "Emergency / On-Call Availability",
+            "definition": "Whether the household explicitly offers to be available for unscheduled small emergencies or on-call maintenance needs in the building.",
+            "high_end": "Household explicitly states both adults are comfortable being on the on-call list for small emergencies.",
+            "low_end": "Household does not mention on-call or emergency availability; contribution framing is entirely scheduled or planned.",
+            "from_committee_request": false
+          },
+          {
+            "key": "co_op_philosophy_articulation",
+            "name": "Co-op Philosophy Articulation",
+            "definition": "How clearly and substantively the household articulates a personal understanding of cooperative living as a value system, beyond just describing practical contributions.",
+            "high_end": "Essay articulates a coherent co-op philosophy (mutual aid, shared responsibility, collective problem-solving) grounded in lived values and specific reasoning.",
+            "low_end": "Motivation for co-op living is thin or instrumental; no developed account of why the co-op model matters to the household.",
+            "from_committee_request": false
+          },
+          {
+            "key": "community_building_proactivity",
+            "name": "Community-Building Proactivity",
+            "definition": "The degree to which the household actively initiates social infrastructure within the co-op — events, clubs, welcome programs, kids activities — rather than simply participating in what already exists.",
+            "high_end": "Household describes running or founding community activities (book clubs, new-member welcome events, kids programming) with no prompt, framing initiation as a core contribution.",
+            "low_end": "Household does not describe initiating community activities; contributions are reactive (showing up, being available) rather than proactive social creation.",
+            "from_committee_request": false
+          },
+          {
+            "key": "social_integration_orientation",
+            "name": "Social Integration Orientation",
+            "definition": "The degree to which the household frames its motivation in terms of building personal social relationships and belonging among neighbours — beyond fulfilling functional obligations.",
+            "high_end": "Household describes concrete social practices (book clubs, baking for neighbours, knowing people on the street) and explicitly articulates wanting to be embedded in a community of neighbours.",
+            "low_end": "Motivation is framed primarily in functional or values-based terms without emphasis on personal social relationship-building.",
+            "from_committee_request": false
+          },
+          {
+            "key": "external_community_involvement",
+            "name": "External Community Involvement",
+            "definition": "The household's active participation in community organisations or activities outside the co-op, reflecting a broader pattern of civic engagement.",
+            "high_end": "Adults are actively involved in named external community organisations and take organising or leadership roles within them.",
+            "low_end": "No external community involvement mentioned; civic engagement is framed only in the context of the co-op itself.",
+            "from_committee_request": false
+          },
+          {
+            "key": "existing_social_ties_to_coop",
+            "name": "Existing Ties to This Co-op",
+            "definition": "Whether the household has pre-existing personal connections to current members of this specific co-op, which may ease integration and signal informed motivation.",
+            "high_end": "Household has a close personal relationship with a current member of this specific co-op who actively informed their decision to apply.",
+            "low_end": "No stated personal connection to any current member; knowledge of the community is entirely external.",
+            "from_committee_request": false
+          },
+          {
+            "key": "environmental_stewardship_practice",
+            "name": "Environmental Stewardship Practice",
+            "definition": "The degree to which the household demonstrates concrete, habitual environmental stewardship behaviours in their personal lives, beyond general stated values.",
+            "high_end": "Household describes specific, habitual eco-conscious practices (e.g., packing out trash on outdoor trips, low-waste habits) integrated into daily or recreational life, volunteered without prompting.",
+            "low_end": "No environmental practices mentioned, or reference is only to compliance with standard co-op recycling duties.",
+            "from_committee_request": false
+          },
+          {
+            "key": "child_inclusive_contribution",
+            "name": "Children's Program Coordination Capacity",
+            "definition": "The household's demonstrated ability and stated willingness to organise and run children's or family-focused programming during co-op work weekends or community events.",
+            "high_end": "An adult explicitly offers to coordinate kids' programs during work events and has relevant professional experience (e.g., teaching, childcare coordination) supporting that offer.",
+            "low_end": "No offer or capacity for children's programming mentioned; household does not connect their skills to family-community activities.",
+            "from_committee_request": false
+          },
+          {
+            "key": "new_member_integration_role",
+            "name": "New-Member Orientation & Integration Role",
+            "definition": "Whether the household explicitly offers to run or support new-member onboarding, orientation, and welcome processes.",
+            "high_end": "An adult has concretely run new-member orientation programs in a co-op or similar setting with specific practices described, and explicitly offers to continue this role.",
+            "low_end": "Willingness to welcome members is mentioned only in passing or not at all, without supporting experience.",
+            "from_committee_request": false
+          },
+          {
+            "key": "mentorship_and_peer_support_orientation",
+            "name": "Mentorship & Peer Support Orientation",
+            "definition": "The degree to which the household explicitly frames its co-op contribution in terms of mentoring newer members, sharing knowledge, and supporting peers through difficulty.",
+            "high_end": "An adult explicitly offers to mentor new members, share institutional knowledge, and support peers, framing this as a primary contribution.",
+            "low_end": "No mention of mentorship or peer-support roles; contributions are framed in task-completion or administrative terms.",
+            "from_committee_request": false
+          },
+          {
+            "key": "household_size_long_term_anchor",
+            "name": "Household Size as Long-Term Stability Anchor",
+            "definition": "The number of household members as a signal of how invested the family is in long-term stable housing — larger families with school-age children typically have stronger incentives to remain.",
+            "high_end": "Large household with multiple school-age children, creating strong roots and high relocation cost — powerful reasons to remain a stable, long-term member.",
+            "low_end": "Smaller household with one young child or no children, leaving more flexibility to exit — fewer structural anchors to long-term tenancy.",
+            "from_committee_request": false
+          },
+          {
+            "key": "household_size_and_space_demand",
+            "name": "Household Size & Space Demand",
+            "definition": "The total number of people in the household, bearing on unit size requirements, demand on shared amenities, and the household's footprint within the co-op.",
+            "high_end": "Smaller household placing lower demands on unit size, shared spaces, and common facilities.",
+            "low_end": "Larger household requiring more space and generating higher usage of shared infrastructure and common areas.",
+            "from_committee_request": false
+          },
+          {
+            "key": "essay_engagement_depth",
+            "name": "Application Essay Engagement Depth",
+            "definition": "The thoroughness and specificity with which the household engages with application prompts — whether answers are detailed and prompt-specific or brief and generic.",
+            "high_end": "Every prompt receives a substantive, specific answer drawing on personal experience, named examples, and tailored reasoning for this co-op.",
+            "low_end": "Most prompts receive only one or two generic sentences without named examples, specific practices, or tailored reasoning.",
+            "from_committee_request": false
+          },
+          {
+            "key": "pet_complexity",
+            "name": "Pet Complexity & Co-habitation Considerations",
+            "definition": "The number and type of pets the household keeps, relevant to co-op rules, neighbour comfort, shared space use, and inter-pet compatibility with other residents.",
+            "high_end": "No pets or a single low-impact pet, minimising friction with co-op pet policies and neighbour sensitivities.",
+            "low_end": "Multiple pets of mixed types (e.g., both a dog and a cat), requiring more accommodation and potentially creating neighbour-interaction or policy challenges.",
+            "from_committee_request": false
+          }
+        ],
+        "decompose": {
+          "input_report_count": 2,
+          "input_dimension_count": 38,
+          "settled_count": 25,
+          "merge_count": 13,
+          "settled": [
+            {
+              "key": "employment_tenure_stability",
+              "name": "Employment Tenure Stability",
+              "source_keys": [
+                "income_stability_via_tenure",
+                "employment_tenure_stability"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure the same thing — length of current employment as a proxy for income reliability — using the same direction (longer = more stable = higher fit). An applicant with long joint tenure scores high on both. Merged.",
+              "source_report_map": {
+                "income_stability_via_tenure": [
+                  0
+                ],
+                "employment_tenure_stability": [
+                  1
+                ]
+              },
+              "source_names": {
+                "income_stability_via_tenure": "Employment Tenure / Income Stability",
+                "employment_tenure_stability": "Employment Tenure Stability"
+              }
+            },
+            {
+              "key": "income_cushion_above_floor",
+              "name": "Household Income Cushion",
+              "source_keys": [
+                "income_cushion_above_floor",
+                "household_income_level"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure total household income as a financial buffer against co-op costs — same applicant ranks the same on both, and higher income is the desirable end for both. Merged.",
+              "source_report_map": {
+                "income_cushion_above_floor": [
+                  0
+                ],
+                "household_income_level": [
+                  1
+                ]
+              },
+              "source_names": {
+                "income_cushion_above_floor": "Household Income Cushion",
+                "household_income_level": "Household Income Level"
+              }
+            },
+            {
+              "key": "income_resilience_dual_earner",
+              "name": "Dual-Earner Income Resilience",
+              "source_keys": [
+                "income_resilience_dual_earner",
+                "income_dual_earner_stability"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure income distribution between earners as resilience to job loss — identical concept, identical direction. An applicant with a balanced split scores high on both. Merged.",
+              "source_report_map": {
+                "income_resilience_dual_earner": [
+                  0
+                ],
+                "income_dual_earner_stability": [
+                  1
+                ]
+              },
+              "source_names": {
+                "income_resilience_dual_earner": "Dual-Earner Income Resilience",
+                "income_dual_earner_stability": "Dual-Earner Income Stability"
+              }
+            },
+            {
+              "key": "trade_and_maintenance_skills",
+              "name": "Hands-On Trades & Maintenance Skills",
+              "source_keys": [
+                "trade_and_maintenance_skills",
+                "hands_on_trade_skill"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure possession of licensed or demonstrable trade/technical skills for building maintenance. Same applicant scores the same on both; more skill = higher fit in both. Merged.",
+              "source_report_map": {
+                "trade_and_maintenance_skills": [
+                  0
+                ],
+                "hands_on_trade_skill": [
+                  1
+                ]
+              },
+              "source_names": {
+                "trade_and_maintenance_skills": "Hands-On Trades & Maintenance Skills",
+                "hands_on_trade_skill": "Hands-On Trade / Technical Skill"
+              }
+            },
+            {
+              "key": "administrative_and_governance_skills",
+              "name": "Administrative & Governance Skills",
+              "source_keys": [
+                "administrative_and_governance_skills",
+                "administrative_organizational_skill"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure the same general administrative and meeting-management competence in a co-op governance context, with more demonstrated competence as the desirable end. Financial oversight and documentation discipline are carved out separately in R1 and kept distinct (see those axes). Merged only the core admin/organizational overlap here.",
+              "source_report_map": {
+                "administrative_and_governance_skills": [
+                  0
+                ],
+                "administrative_organizational_skill": [
+                  1
+                ]
+              },
+              "source_names": {
+                "administrative_and_governance_skills": "Administrative & Governance Skills",
+                "administrative_organizational_skill": "Administrative & Organizational Skill"
+              }
+            },
+            {
+              "key": "systems_documentation_discipline",
+              "name": "Systems Documentation Discipline",
+              "source_keys": [
+                "systems_documentation_discipline"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from general administrative skills: a person can run excellent meetings yet never document for successors, so a plausible applicant can score high on admin skills and low here. Single source key, kept as-is.",
+              "source_report_map": {
+                "systems_documentation_discipline": [
+                  1
+                ]
+              },
+              "source_names": {
+                "systems_documentation_discipline": "Systems Documentation Discipline"
+              }
+            },
+            {
+              "key": "financial_oversight_experience",
+              "name": "Financial Oversight Experience",
+              "source_keys": [
+                "financial_documentation_and_budgeting_skills",
+                "financial_oversight_experience"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure demonstrated experience managing or scrutinizing budgets in a governance context, with hands-on financial oversight as the desirable end. An applicant who has reviewed co-op financial statements and volunteered to keep numbers honest scores high on both. Merged.",
+              "source_report_map": {
+                "financial_documentation_and_budgeting_skills": [
+                  0
+                ],
+                "financial_oversight_experience": [
+                  1
+                ]
+              },
+              "source_names": {
+                "financial_documentation_and_budgeting_skills": "Financial Documentation & Budgeting Skills",
+                "financial_oversight_experience": "Financial Oversight Experience"
+              }
+            },
+            {
+              "key": "social_and_community_services_skills",
+              "name": "Social-Service Navigation Skill",
+              "source_keys": [
+                "social_and_community_services_skills",
+                "community_navigation_support_skill"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes describe the same competency: a professional background enabling residents to navigate external services and benefits. Same applicant (e.g., a social worker who volunteers this role) scores high on both. Merged.",
+              "source_report_map": {
+                "social_and_community_services_skills": [
+                  0
+                ],
+                "community_navigation_support_skill": [
+                  1
+                ]
+              },
+              "source_names": {
+                "social_and_community_services_skills": "Social Services & Resident-Support Skills",
+                "community_navigation_support_skill": "Community & Social-Service Navigation Skill"
+              }
+            },
+            {
+              "key": "depth_of_co_op_experience",
+              "name": "Co-op Governance Experience",
+              "source_keys": [
+                "depth_of_co_op_experience",
+                "formal_coop_governance_experience"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure direct housing co-op governance experience, with more hands-on co-op-specific experience as the desirable end. An applicant who served on a co-op membership committee scores high on both. Merged.",
+              "source_report_map": {
+                "depth_of_co_op_experience": [
+                  0
+                ],
+                "formal_coop_governance_experience": [
+                  1
+                ]
+              },
+              "source_names": {
+                "depth_of_co_op_experience": "Depth of Co-op / Shared-Governance Experience",
+                "formal_coop_governance_experience": "Formal Co-op Governance Experience"
+              }
+            },
+            {
+              "key": "work_shift_reliability_commitment",
+              "name": "Work-Shift & Unglamorous-Task Commitment",
+              "source_keys": [
+                "unglamorous_task_orientation",
+                "work_shift_reliability_commitment"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure the same thing — enthusiasm and credible commitment to unglamorous, recurring co-op labour — with explicit, specific, behaviour-backed commitment as the desirable end. Same applicant scores alike on both. Merged.",
+              "source_report_map": {
+                "unglamorous_task_orientation": [
+                  0
+                ],
+                "work_shift_reliability_commitment": [
+                  1
+                ]
+              },
+              "source_names": {
+                "unglamorous_task_orientation": "Willingness for Unglamorous Tasks",
+                "work_shift_reliability_commitment": "Work-Shift Reliability Commitment"
+              }
+            },
+            {
+              "key": "emergency_on_call_availability",
+              "name": "Emergency / On-Call Availability",
+              "source_keys": [
+                "emergency_on_call_availability"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from work-shift commitment: scheduled labour and unscheduled on-call availability are different obligations. A plausible applicant eagerly signs up for work weekends yet explicitly declines an on-call list (or vice versa). Single source key, kept as-is.",
+              "source_report_map": {
+                "emergency_on_call_availability": [
+                  0
+                ]
+              },
+              "source_names": {
+                "emergency_on_call_availability": "Emergency / On-Call Availability"
+              }
+            },
+            {
+              "key": "co_op_philosophy_articulation",
+              "name": "Co-op Philosophy Articulation",
+              "source_keys": [
+                "co_op_philosophy_articulation"
+              ],
+              "from_committee_request": false,
+              "decision": "Distinct from essay engagement depth (which measures thoroughness of answering prompts) and social integration orientation (which measures relationship-building motivation). An applicant can write a brief but philosophically rich statement or a lengthy application with no articulated values. Kept as-is.",
+              "source_report_map": {
+                "co_op_philosophy_articulation": [
+                  0
+                ]
+              },
+              "source_names": {
+                "co_op_philosophy_articulation": "Articulation of Co-op Philosophy"
+              }
+            },
+            {
+              "key": "community_building_proactivity",
+              "name": "Community-Building Proactivity",
+              "source_keys": [
+                "community_building_proactivity"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from social integration orientation (which is about wanting to form personal relationships) and external community involvement (which is about outside civic engagement). An applicant can be a keen event organiser inside the co-op yet be socially reserved in personal relationship-building, or heavily involved outside but not a self-starter inside. Kept as-is.",
+              "source_report_map": {
+                "community_building_proactivity": [
+                  0
+                ]
+              },
+              "source_names": {
+                "community_building_proactivity": "Community-Building Proactivity"
+              }
+            },
+            {
+              "key": "social_integration_orientation",
+              "name": "Social Integration Orientation",
+              "source_keys": [
+                "social_integration_orientation"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from community-building proactivity (initiating infrastructure for others) and co-op philosophy articulation (articulating values). A person can deeply value personal neighbourhood relationships yet never organise an event. Single source key, kept as-is.",
+              "source_report_map": {
+                "social_integration_orientation": [
+                  1
+                ]
+              },
+              "source_names": {
+                "social_integration_orientation": "Social Integration & Community-Building Orientation"
+              }
+            },
+            {
+              "key": "external_community_involvement",
+              "name": "External Community Involvement",
+              "source_keys": [
+                "external_community_involvement"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from community-building proactivity (which is internal to the co-op) and social integration orientation (personal relationships). An applicant can be heavily externally civically engaged yet never initiate anything inside the co-op. Single source key, kept as-is.",
+              "source_report_map": {
+                "external_community_involvement": [
+                  1
+                ]
+              },
+              "source_names": {
+                "external_community_involvement": "External Community Involvement"
+              }
+            },
+            {
+              "key": "existing_social_ties_to_coop",
+              "name": "Existing Ties to This Co-op",
+              "source_keys": [
+                "existing_social_ties_to_coop",
+                "existing_coop_network_connection"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure the same thing — a pre-existing personal relationship with a current member of this specific co-op. Same applicant scores identically on both; having that relationship is the desirable end for both. Merged.",
+              "source_report_map": {
+                "existing_social_ties_to_coop": [
+                  0
+                ],
+                "existing_coop_network_connection": [
+                  1
+                ]
+              },
+              "source_names": {
+                "existing_social_ties_to_coop": "Existing Social Ties to This Co-op",
+                "existing_coop_network_connection": "Existing Connection to This Co-op's Network"
+              }
+            },
+            {
+              "key": "environmental_stewardship_practice",
+              "name": "Environmental Stewardship Practice",
+              "source_keys": [
+                "environmental_stewardship_ethos",
+                "environmental_stewardship_practice"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure the same concept — demonstrated environmental behaviours as a lifestyle practice — with concrete habitual action as the desirable end. The R0 label 'ethos' and R1 label 'practice' describe the same measurement. Merged.",
+              "source_report_map": {
+                "environmental_stewardship_ethos": [
+                  0
+                ],
+                "environmental_stewardship_practice": [
+                  1
+                ]
+              },
+              "source_names": {
+                "environmental_stewardship_ethos": "Environmental Stewardship Ethos",
+                "environmental_stewardship_practice": "Environmental Stewardship Practice"
+              }
+            },
+            {
+              "key": "child_inclusive_contribution",
+              "name": "Children's Program Coordination Capacity",
+              "source_keys": [
+                "child_inclusive_contribution",
+                "children_program_coordination_capacity"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure whether the household proposes and has capacity to run children's programming for the co-op community. Same applicant scores alike; explicit offer backed by relevant experience is the desirable end. Merged.",
+              "source_report_map": {
+                "child_inclusive_contribution": [
+                  0
+                ],
+                "children_program_coordination_capacity": [
+                  1
+                ]
+              },
+              "source_names": {
+                "child_inclusive_contribution": "Child-Inclusive / Family Programming Contribution",
+                "children_program_coordination_capacity": "Children's Program Coordination Capacity"
+              }
+            },
+            {
+              "key": "new_member_integration_role",
+              "name": "New-Member Orientation & Integration Role",
+              "source_keys": [
+                "new_member_integration_role",
+                "member_orientation_and_onboarding_capacity"
+              ],
+              "from_committee_request": false,
+              "decision": "Both axes measure the same capacity and willingness to run new-member orientation and onboarding. Same applicant scores alike on both. Merged.",
+              "source_report_map": {
+                "new_member_integration_role": [
+                  0
+                ],
+                "member_orientation_and_onboarding_capacity": [
+                  1
+                ]
+              },
+              "source_names": {
+                "new_member_integration_role": "New-Member Orientation & Integration Role",
+                "member_orientation_and_onboarding_capacity": "Member Orientation & Onboarding Capacity"
+              }
+            },
+            {
+              "key": "mentorship_and_peer_support_orientation",
+              "name": "Mentorship & Peer Support Orientation",
+              "source_keys": [
+                "mentorship_and_peer_support_orientation"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from new-member orientation role (which is about structured onboarding processes) and community-building proactivity (which is about initiating events). Mentorship is a sustained relational investment in an individual, not a programme or event. Single source key, kept as-is.",
+              "source_report_map": {
+                "mentorship_and_peer_support_orientation": [
+                  1
+                ]
+              },
+              "source_names": {
+                "mentorship_and_peer_support_orientation": "Mentorship & Peer Support Orientation"
+              }
+            },
+            {
+              "key": "household_size_long_term_anchor",
+              "name": "Household Size as Long-Term Stability Anchor",
+              "source_keys": [
+                "household_size_long_term_anchor"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from household_size_and_space_demand (R1), which has the OPPOSITE desirable end (smaller = higher fit due to lower space demands). Merging would flip one axis's direction and lose a committee distinction. Kept as-is with its own desirable end (larger = more anchored).",
+              "source_report_map": {
+                "household_size_long_term_anchor": [
+                  0
+                ]
+              },
+              "source_names": {
+                "household_size_long_term_anchor": "Household Size as Long-Term Stability Anchor"
+              }
+            },
+            {
+              "key": "household_size_and_space_demand",
+              "name": "Household Size & Space Demand",
+              "source_keys": [
+                "household_size_and_space_demand"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from household_size_long_term_anchor (R0), which has the OPPOSITE desirable end (larger = more stable). The same underlying fact (household size) generates two legitimately opposing fit stories; both are kept so the committee can decide which matters more for their context.",
+              "source_report_map": {
+                "household_size_and_space_demand": [
+                  1
+                ]
+              },
+              "source_names": {
+                "household_size_and_space_demand": "Household Size & Space Demand"
+              }
+            },
+            {
+              "key": "children_school_age_community_participation",
+              "name": "Children's School-Age Community Engagement Potential",
+              "source_keys": [
+                "children_school_age_community_participation"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from child-inclusive contribution capacity (which is about what the household's adults do for children's programming) and from household-size axes (which measure space demands or stability). This axis measures what the children themselves bring to community vitality. Single source key, kept as-is.",
+              "source_report_map": {
+                "children_school_age_community_participation": [
+                  1
+                ]
+              },
+              "source_names": {
+                "children_school_age_community_participation": "Children's School-Age Community Engagement Potential"
+              }
+            },
+            {
+              "key": "essay_engagement_depth",
+              "name": "Application Essay Engagement Depth",
+              "source_keys": [
+                "essay_engagement_depth"
+              ],
+              "from_committee_request": false,
+              "decision": "Kept distinct from co-op philosophy articulation (depth of values statement) and from all skills axes. Essay engagement measures application effort and specificity as a process signal, regardless of content domain. Single source key, kept as-is.",
+              "source_report_map": {
+                "essay_engagement_depth": [
+                  1
+                ]
+              },
+              "source_names": {
+                "essay_engagement_depth": "Application Essay Engagement Depth"
+              }
+            },
+            {
+              "key": "pet_complexity",
+              "name": "Pet Complexity & Co-habitation Considerations",
+              "source_keys": [
+                "pet_complexity"
+              ],
+              "from_committee_request": false,
+              "decision": "No counterpart in R0. Kept as-is — a household with multiple mixed pets is a meaningfully different co-habitation consideration from one with no pets, and this is not captured by any other axis. Single source key, kept as-is.",
+              "source_report_map": {
+                "pet_complexity": [
+                  1
+                ]
+              },
+              "source_names": {
+                "pet_complexity": "Pet Complexity & Co-habitation Considerations"
+              }
+            }
+          ],
+          "folded_requests": []
+        },
+        "match": {
+          "raw_discovery_dimensions": [
+            {
+              "key": "employment_tenure_stability",
+              "name": "Employment Tenure Stability",
+              "from_committee_request": false
+            },
+            {
+              "key": "income_cushion_above_floor",
+              "name": "Household Income Cushion",
+              "from_committee_request": false
+            },
+            {
+              "key": "income_resilience_dual_earner",
+              "name": "Dual-Earner Income Resilience",
+              "from_committee_request": false
+            },
+            {
+              "key": "trade_and_maintenance_skills",
+              "name": "Hands-On Trades & Maintenance Skills",
+              "from_committee_request": false
+            },
+            {
+              "key": "administrative_and_governance_skills",
+              "name": "Administrative & Governance Skills",
+              "from_committee_request": false
+            },
+            {
+              "key": "systems_documentation_discipline",
+              "name": "Systems Documentation Discipline",
+              "from_committee_request": false
+            },
+            {
+              "key": "financial_oversight_experience",
+              "name": "Financial Oversight Experience",
+              "from_committee_request": false
+            },
+            {
+              "key": "social_and_community_services_skills",
+              "name": "Social-Service Navigation Skill",
+              "from_committee_request": false
+            },
+            {
+              "key": "depth_of_co_op_experience",
+              "name": "Co-op Governance Experience",
+              "from_committee_request": false
+            },
+            {
+              "key": "work_shift_reliability_commitment",
+              "name": "Work-Shift & Unglamorous-Task Commitment",
+              "from_committee_request": false
+            },
+            {
+              "key": "emergency_on_call_availability",
+              "name": "Emergency / On-Call Availability",
+              "from_committee_request": false
+            },
+            {
+              "key": "co_op_philosophy_articulation",
+              "name": "Co-op Philosophy Articulation",
+              "from_committee_request": false
+            },
+            {
+              "key": "community_building_proactivity",
+              "name": "Community-Building Proactivity",
+              "from_committee_request": false
+            },
+            {
+              "key": "social_integration_orientation",
+              "name": "Social Integration Orientation",
+              "from_committee_request": false
+            },
+            {
+              "key": "external_community_involvement",
+              "name": "External Community Involvement",
+              "from_committee_request": false
+            },
+            {
+              "key": "existing_social_ties_to_coop",
+              "name": "Existing Ties to This Co-op",
+              "from_committee_request": false
+            },
+            {
+              "key": "environmental_stewardship_practice",
+              "name": "Environmental Stewardship Practice",
+              "from_committee_request": false
+            },
+            {
+              "key": "child_inclusive_contribution",
+              "name": "Children's Program Coordination Capacity",
+              "from_committee_request": false
+            },
+            {
+              "key": "new_member_integration_role",
+              "name": "New-Member Orientation & Integration Role",
+              "from_committee_request": false
+            },
+            {
+              "key": "mentorship_and_peer_support_orientation",
+              "name": "Mentorship & Peer Support Orientation",
+              "from_committee_request": false
+            },
+            {
+              "key": "household_size_long_term_anchor",
+              "name": "Household Size as Long-Term Stability Anchor",
+              "from_committee_request": false
+            },
+            {
+              "key": "household_size_and_space_demand",
+              "name": "Household Size & Space Demand",
+              "from_committee_request": false
+            },
+            {
+              "key": "children_school_age_community_participation",
+              "name": "Children's School-Age Community Engagement Potential",
+              "from_committee_request": false
+            },
+            {
+              "key": "essay_engagement_depth",
+              "name": "Application Essay Engagement Depth",
+              "from_committee_request": false
+            },
+            {
+              "key": "pet_complexity",
+              "name": "Pet Complexity & Co-habitation Considerations",
+              "from_committee_request": false
+            }
+          ],
+          "new_to_old": {},
+          "prior_dimension_count": 0,
+          "discovered_count": 25,
+          "matched_count": 0,
+          "new_count": 25,
+          "carry_forward_rate": null
+        },
+        "consolidate": {
+          "merges": {
+            "children_school_age_community_participation": "household_size_long_term_anchor"
+          },
+          "pairs": [
+            {
+              "keep": "emergency_on_call_availability",
+              "drop": "existing_social_ties_to_coop",
+              "r": 1.0,
+              "merged": false,
+              "reason": "A retired tradesperson with no prior connections to this co-op scores high on emergency availability but zero on existing social ties — these are entirely distinct axes (capability/availability vs. prior relationship).",
+              "definition_keep": "Whether the household explicitly offers to be available for unscheduled small emergencies or on-call maintenance needs in the building.",
+              "definition_drop": "Whether the household has pre-existing personal connections to current members of this specific co-op, which may ease integration and signal informed motivation.",
+              "name_keep": "Emergency / On-Call Availability",
+              "name_drop": "Existing Ties to This Co-op",
+              "keep_name": "Emergency / On-Call Availability",
+              "drop_name": "Existing Ties to This Co-op"
+            },
+            {
+              "keep": "income_cushion_above_floor",
+              "drop": "environmental_stewardship_practice",
+              "r": 1.0,
+              "merged": false,
+              "reason": "A high-earning household with no particular green habits scores high on income cushion but low on environmental stewardship — financial headroom and personal ecological behaviour are unrelated axes.",
+              "definition_keep": "The household's total gross income relative to the assumed minimum needed to carry co-op housing costs, measuring how much financial headroom exists.",
+              "definition_drop": "The degree to which the household demonstrates concrete, habitual environmental stewardship behaviours in their personal lives, beyond general stated values.",
+              "name_keep": "Household Income Cushion",
+              "name_drop": "Environmental Stewardship Practice",
+              "keep_name": "Household Income Cushion",
+              "drop_name": "Environmental Stewardship Practice"
+            },
+            {
+              "keep": "emergency_on_call_availability",
+              "drop": "mentorship_and_peer_support_orientation",
+              "r": 1.0,
+              "merged": false,
+              "reason": "A household available for emergency plumbing fixes but not interested in mentoring newer members scores high on on-call availability and low on mentorship orientation — operational responsiveness vs. knowledge-sharing are distinct contributions.",
+              "definition_keep": "Whether the household explicitly offers to be available for unscheduled small emergencies or on-call maintenance needs in the building.",
+              "definition_drop": "The degree to which the household explicitly frames its co-op contribution in terms of mentoring newer members, sharing knowledge, and supporting peers through difficulty.",
+              "name_keep": "Emergency / On-Call Availability",
+              "name_drop": "Mentorship & Peer Support Orientation",
+              "keep_name": "Emergency / On-Call Availability",
+              "drop_name": "Mentorship & Peer Support Orientation"
+            },
+            {
+              "keep": "community_building_proactivity",
+              "drop": "social_integration_orientation",
+              "r": 1.0,
+              "merged": false,
+              "reason": "A household that warmly wants to befriend neighbours and belong (high social integration) but prefers to join rather than initiate events scores low on proactivity — initiating social infrastructure is distinct from seeking personal belonging.",
+              "definition_keep": "The degree to which the household actively initiates social infrastructure within the co-op — events, clubs, welcome programs, kids activities — rather than simply participating in what already exists.",
+              "definition_drop": "The degree to which the household frames its motivation in terms of building personal social relationships and belonging among neighbours — beyond fulfilling functional obligations.",
+              "name_keep": "Community-Building Proactivity",
+              "name_drop": "Social Integration Orientation",
+              "keep_name": "Community-Building Proactivity",
+              "drop_name": "Social Integration Orientation"
+            },
+            {
+              "keep": "community_building_proactivity",
+              "drop": "essay_engagement_depth",
+              "r": 1.0,
+              "merged": false,
+              "reason": "A highly engaged planner who organises events but writes terse, generic application answers scores high on proactivity but low on essay depth — event-initiation capacity and application-writing thoroughness are distinct axes.",
+              "definition_keep": "The degree to which the household actively initiates social infrastructure within the co-op — events, clubs, welcome programs, kids activities — rather than simply participating in what already exists.",
+              "definition_drop": "The thoroughness and specificity with which the household engages with application prompts — whether answers are detailed and prompt-specific or brief and generic.",
+              "name_keep": "Community-Building Proactivity",
+              "name_drop": "Application Essay Engagement Depth",
+              "keep_name": "Community-Building Proactivity",
+              "drop_name": "Application Essay Engagement Depth"
+            },
+            {
+              "keep": "social_integration_orientation",
+              "drop": "essay_engagement_depth",
+              "r": 1.0,
+              "merged": false,
+              "reason": "A household motivated by neighbourly belonging may still write brief, generic answers, while a detail-oriented applicant could write exhaustively about functional obligations rather than social connection — motivation and application thoroughness diverge.",
+              "definition_keep": "The degree to which the household frames its motivation in terms of building personal social relationships and belonging among neighbours — beyond fulfilling functional obligations.",
+              "definition_drop": "The thoroughness and specificity with which the household engages with application prompts — whether answers are detailed and prompt-specific or brief and generic.",
+              "name_keep": "Social Integration Orientation",
+              "name_drop": "Application Essay Engagement Depth",
+              "keep_name": "Social Integration Orientation",
+              "drop_name": "Application Essay Engagement Depth"
+            },
+            {
+              "keep": "existing_social_ties_to_coop",
+              "drop": "mentorship_and_peer_support_orientation",
+              "r": 1.0,
+              "merged": false,
+              "reason": "A household with a friend already in the co-op (high social ties) may have no inclination to mentor others, while an experienced mentor may apply with no prior connections — prior relationship and peer-support disposition are unrelated.",
+              "definition_keep": "Whether the household has pre-existing personal connections to current members of this specific co-op, which may ease integration and signal informed motivation.",
+              "definition_drop": "The degree to which the household explicitly frames its co-op contribution in terms of mentoring newer members, sharing knowledge, and supporting peers through difficulty.",
+              "name_keep": "Existing Ties to This Co-op",
+              "name_drop": "Mentorship & Peer Support Orientation",
+              "keep_name": "Existing Ties to This Co-op",
+              "drop_name": "Mentorship & Peer Support Orientation"
+            },
+            {
+              "keep": "co_op_philosophy_articulation",
+              "drop": "child_inclusive_contribution",
+              "r": 1.0,
+              "merged": false,
+              "reason": "A childless household with deep cooperative philosophy scores high on articulation but low on child-inclusive contribution — value-system literacy and family-programming capacity are orthogonal axes.",
+              "definition_keep": "How clearly and substantively the household articulates a personal understanding of cooperative living as a value system, beyond just describing practical contributions.",
+              "definition_drop": "The household's demonstrated ability and stated willingness to organise and run children's or family-focused programming during co-op work weekends or community events.",
+              "name_keep": "Co-op Philosophy Articulation",
+              "name_drop": "Children's Program Coordination Capacity",
+              "keep_name": "Co-op Philosophy Articulation",
+              "drop_name": "Children's Program Coordination Capacity"
+            },
+            {
+              "keep": "income_resilience_dual_earner",
+              "drop": "child_inclusive_contribution",
+              "r": 0.999,
+              "merged": false,
+              "reason": "A dual-income couple without children scores high on income resilience but low on child-inclusive contribution — income distribution and family-programming willingness are entirely distinct.",
+              "definition_keep": "How evenly household income is split between both adults, measuring how much of total income survives the loss of either earner.",
+              "definition_drop": "The household's demonstrated ability and stated willingness to organise and run children's or family-focused programming during co-op work weekends or community events.",
+              "name_keep": "Dual-Earner Income Resilience",
+              "name_drop": "Children's Program Coordination Capacity",
+              "keep_name": "Dual-Earner Income Resilience",
+              "drop_name": "Children's Program Coordination Capacity"
+            },
+            {
+              "keep": "income_resilience_dual_earner",
+              "drop": "co_op_philosophy_articulation",
+              "r": 0.999,
+              "merged": false,
+              "reason": "A dual-income household that fills in the application perfunctorily scores high on income resilience but low on philosophy articulation — financial structure and philosophical depth are unrelated.",
+              "definition_keep": "How evenly household income is split between both adults, measuring how much of total income survives the loss of either earner.",
+              "definition_drop": "How clearly and substantively the household articulates a personal understanding of cooperative living as a value system, beyond just describing practical contributions.",
+              "name_keep": "Dual-Earner Income Resilience",
+              "name_drop": "Co-op Philosophy Articulation",
+              "keep_name": "Dual-Earner Income Resilience",
+              "drop_name": "Co-op Philosophy Articulation"
+            },
+            {
+              "keep": "financial_oversight_experience",
+              "drop": "new_member_integration_role",
+              "r": 0.997,
+              "merged": false,
+              "reason": "A treasurer with no interest in onboarding scores high on financial oversight and low on new-member integration — budget scrutiny and welcome-process facilitation are distinct governance contributions.",
+              "definition_keep": "The household's demonstrated history of managing or scrutinizing budgets, financial reporting, or fiscal accountability in an organizational or committee setting.",
+              "definition_drop": "Whether the household explicitly offers to run or support new-member onboarding, orientation, and welcome processes.",
+              "name_keep": "Financial Oversight Experience",
+              "name_drop": "New-Member Orientation & Integration Role",
+              "keep_name": "Financial Oversight Experience",
+              "drop_name": "New-Member Orientation & Integration Role"
+            },
+            {
+              "keep": "administrative_and_governance_skills",
+              "drop": "work_shift_reliability_commitment",
+              "r": 0.995,
+              "merged": false,
+              "reason": "A skilled minutes-taker who is unreliable about showing up for cleaning shifts scores high on governance skills but low on work-shift reliability — procedural competence and recurring labour commitment are distinct.",
+              "definition_keep": "The household's demonstrated competence in co-op administrative functions — scheduling, minutes, correspondence, meeting facilitation — based on stated roles and past practice.",
+              "definition_drop": "How explicitly and credibly the household commits to fulfilling unglamorous, recurring co-op labour obligations — cleaning, sorting, maintenance days — based on stated intent and demonstrated prior behaviour.",
+              "name_keep": "Administrative & Governance Skills",
+              "name_drop": "Work-Shift & Unglamorous-Task Commitment",
+              "keep_name": "Administrative & Governance Skills",
+              "drop_name": "Work-Shift & Unglamorous-Task Commitment"
+            },
+            {
+              "keep": "household_size_and_space_demand",
+              "drop": "essay_engagement_depth",
+              "r": 0.995,
+              "merged": false,
+              "reason": "Household size is a structural demographic fact, while essay depth is a measure of application effort — a large family may write a perfunctory application, scoring high on one and low on the other.",
+              "definition_keep": "The total number of people in the household, bearing on unit size requirements, demand on shared amenities, and the household's footprint within the co-op.",
+              "definition_drop": "The thoroughness and specificity with which the household engages with application prompts — whether answers are detailed and prompt-specific or brief and generic.",
+              "name_keep": "Household Size & Space Demand",
+              "name_drop": "Application Essay Engagement Depth",
+              "keep_name": "Household Size & Space Demand",
+              "drop_name": "Application Essay Engagement Depth"
+            },
+            {
+              "keep": "community_building_proactivity",
+              "drop": "household_size_and_space_demand",
+              "r": 0.995,
+              "merged": false,
+              "reason": "A large family may be passive participants rather than initiators of community events, while a small household could be highly proactive — household headcount and event-initiation drive are independent.",
+              "definition_keep": "The degree to which the household actively initiates social infrastructure within the co-op — events, clubs, welcome programs, kids activities — rather than simply participating in what already exists.",
+              "definition_drop": "The total number of people in the household, bearing on unit size requirements, demand on shared amenities, and the household's footprint within the co-op.",
+              "name_keep": "Community-Building Proactivity",
+              "name_drop": "Household Size & Space Demand",
+              "keep_name": "Community-Building Proactivity",
+              "drop_name": "Household Size & Space Demand"
+            },
+            {
+              "keep": "social_integration_orientation",
+              "drop": "household_size_and_space_demand",
+              "r": 0.995,
+              "merged": false,
+              "reason": "A single person with intense desire for social belonging scores low on household size but high on social integration — these are categorically different axes (demographics vs. relational motivation).",
+              "definition_keep": "The degree to which the household frames its motivation in terms of building personal social relationships and belonging among neighbours — beyond fulfilling functional obligations.",
+              "definition_drop": "The total number of people in the household, bearing on unit size requirements, demand on shared amenities, and the household's footprint within the co-op.",
+              "name_keep": "Social Integration Orientation",
+              "name_drop": "Household Size & Space Demand",
+              "keep_name": "Social Integration Orientation",
+              "drop_name": "Household Size & Space Demand"
+            },
+            {
+              "keep": "household_size_long_term_anchor",
+              "drop": "children_school_age_community_participation",
+              "r": 0.993,
+              "merged": true,
+              "reason": "Both definitions use the same underlying fact — a household with school-age children — to score the same applicants alike: one framing it as stability signal, the other as community animation, but both reduce to the same child-composition variable.",
+              "definition_keep": "The number of household members as a signal of how invested the family is in long-term stable housing — larger families with school-age children typically have stronger incentives to remain.",
+              "definition_drop": "The degree to which the household includes school-age or near-school-age children who are likely to participate in and animate shared community spaces and programs.",
+              "name_keep": "Household Size as Long-Term Stability Anchor",
+              "name_drop": "Children's School-Age Community Engagement Potential",
+              "applied_keep": "household_size_long_term_anchor",
+              "keep_name": "Household Size as Long-Term Stability Anchor",
+              "drop_name": "Children's School-Age Community Engagement Potential"
+            },
+            {
+              "keep": "administrative_and_governance_skills",
+              "drop": "financial_oversight_experience",
+              "r": 0.993,
+              "merged": false,
+              "reason": "A skilled meeting facilitator with no budgeting background scores high on administrative skills but low on financial oversight — scheduling/minutes competence and fiscal accountability experience are distinct governance sub-skills.",
+              "definition_keep": "The household's demonstrated competence in co-op administrative functions — scheduling, minutes, correspondence, meeting facilitation — based on stated roles and past practice.",
+              "definition_drop": "The household's demonstrated history of managing or scrutinizing budgets, financial reporting, or fiscal accountability in an organizational or committee setting.",
+              "name_keep": "Administrative & Governance Skills",
+              "name_drop": "Financial Oversight Experience",
+              "keep_name": "Administrative & Governance Skills",
+              "drop_name": "Financial Oversight Experience"
+            },
+            {
+              "keep": "co_op_philosophy_articulation",
+              "drop": "household_size_and_space_demand",
+              "r": 0.99,
+              "merged": false,
+              "reason": "These are categorically unrelated — one is an intellectual/values measure, the other a household demographic — a large family can be philosophically inarticulate and vice versa.",
+              "definition_keep": "How clearly and substantively the household articulates a personal understanding of cooperative living as a value system, beyond just describing practical contributions.",
+              "definition_drop": "The total number of people in the household, bearing on unit size requirements, demand on shared amenities, and the household's footprint within the co-op.",
+              "name_keep": "Co-op Philosophy Articulation",
+              "name_drop": "Household Size & Space Demand",
+              "keep_name": "Co-op Philosophy Articulation",
+              "drop_name": "Household Size & Space Demand"
+            },
+            {
+              "keep": "employment_tenure_stability",
+              "drop": "depth_of_co_op_experience",
+              "r": 0.989,
+              "merged": false,
+              "reason": "A long-tenured employee who has never lived in a co-op scores high on tenure stability but low on co-op experience — job stability and cooperative housing history are independent dimensions.",
+              "definition_keep": "How long each adult in the household has held their current role, taken jointly, as a proxy for income reliability and risk of near-term employment disruption.",
+              "definition_drop": "How much direct, substantive experience the household has with co-operative or collective housing governance structures — committees, work-hour systems, shared decision-making.",
+              "name_keep": "Employment Tenure Stability",
+              "name_drop": "Co-op Governance Experience",
+              "keep_name": "Employment Tenure Stability",
+              "drop_name": "Co-op Governance Experience"
+            },
+            {
+              "keep": "child_inclusive_contribution",
+              "drop": "household_size_and_space_demand",
+              "r": 0.987,
+              "merged": false,
+              "reason": "A large household without children, or without willingness to run kids' programming, scores high on household size but low on child-inclusive contribution — headcount and family-programming disposition diverge.",
+              "definition_keep": "The household's demonstrated ability and stated willingness to organise and run children's or family-focused programming during co-op work weekends or community events.",
+              "definition_drop": "The total number of people in the household, bearing on unit size requirements, demand on shared amenities, and the household's footprint within the co-op.",
+              "name_keep": "Children's Program Coordination Capacity",
+              "name_drop": "Household Size & Space Demand",
+              "keep_name": "Children's Program Coordination Capacity",
+              "drop_name": "Household Size & Space Demand"
+            },
+            {
+              "keep": "trade_and_maintenance_skills",
+              "drop": "emergency_on_call_availability",
+              "r": 0.986,
+              "merged": false,
+              "reason": "A licensed electrician who works long shifts and cannot commit to being on-call scores high on trade skills but low on emergency availability — having the skill vs. offering availability are distinct axes.",
+              "definition_keep": "Whether the household holds licensed trade qualifications or demonstrated practical maintenance skills directly applicable to building upkeep.",
+              "definition_drop": "Whether the household explicitly offers to be available for unscheduled small emergencies or on-call maintenance needs in the building.",
+              "name_keep": "Hands-On Trades & Maintenance Skills",
+              "name_drop": "Emergency / On-Call Availability",
+              "keep_name": "Hands-On Trades & Maintenance Skills",
+              "drop_name": "Emergency / On-Call Availability"
+            },
+            {
+              "keep": "trade_and_maintenance_skills",
+              "drop": "existing_social_ties_to_coop",
+              "r": 0.986,
+              "merged": false,
+              "reason": "A skilled tradesperson applying with no prior connections scores high on trade skills and low on social ties — craft competence and prior relationships are unrelated.",
+              "definition_keep": "Whether the household holds licensed trade qualifications or demonstrated practical maintenance skills directly applicable to building upkeep.",
+              "definition_drop": "Whether the household has pre-existing personal connections to current members of this specific co-op, which may ease integration and signal informed motivation.",
+              "name_keep": "Hands-On Trades & Maintenance Skills",
+              "name_drop": "Existing Ties to This Co-op",
+              "keep_name": "Hands-On Trades & Maintenance Skills",
+              "drop_name": "Existing Ties to This Co-op"
+            },
+            {
+              "keep": "trade_and_maintenance_skills",
+              "drop": "mentorship_and_peer_support_orientation",
+              "r": 0.986,
+              "merged": false,
+              "reason": "A tradesperson who prefers to work alone without sharing knowledge scores high on skills but low on mentorship orientation — technical capability and knowledge-sharing disposition are distinct.",
+              "definition_keep": "Whether the household holds licensed trade qualifications or demonstrated practical maintenance skills directly applicable to building upkeep.",
+              "definition_drop": "The degree to which the household explicitly frames its co-op contribution in terms of mentoring newer members, sharing knowledge, and supporting peers through difficulty.",
+              "name_keep": "Hands-On Trades & Maintenance Skills",
+              "name_drop": "Mentorship & Peer Support Orientation",
+              "keep_name": "Hands-On Trades & Maintenance Skills",
+              "drop_name": "Mentorship & Peer Support Orientation"
+            },
+            {
+              "keep": "employment_tenure_stability",
+              "drop": "pet_complexity",
+              "r": 0.985,
+              "merged": false,
+              "reason": "These are categorically unrelated — a long-tenured employee may keep multiple complex pets, or none — job stability and pet ownership are independent facts.",
+              "definition_keep": "How long each adult in the household has held their current role, taken jointly, as a proxy for income reliability and risk of near-term employment disruption.",
+              "definition_drop": "The number and type of pets the household keeps, relevant to co-op rules, neighbour comfort, shared space use, and inter-pet compatibility with other residents.",
+              "name_keep": "Employment Tenure Stability",
+              "name_drop": "Pet Complexity & Co-habitation Considerations",
+              "keep_name": "Employment Tenure Stability",
+              "drop_name": "Pet Complexity & Co-habitation Considerations"
+            },
+            {
+              "keep": "income_resilience_dual_earner",
+              "drop": "household_size_and_space_demand",
+              "r": 0.981,
+              "merged": false,
+              "reason": "A dual-income couple with no children scores high on income resilience and low on household size — income distribution and family headcount are independent demographic axes.",
+              "definition_keep": "How evenly household income is split between both adults, measuring how much of total income survives the loss of either earner.",
+              "definition_drop": "The total number of people in the household, bearing on unit size requirements, demand on shared amenities, and the household's footprint within the co-op.",
+              "name_keep": "Dual-Earner Income Resilience",
+              "name_drop": "Household Size & Space Demand",
+              "keep_name": "Dual-Earner Income Resilience",
+              "drop_name": "Household Size & Space Demand"
+            },
+            {
+              "keep": "administrative_and_governance_skills",
+              "drop": "new_member_integration_role",
+              "r": 0.981,
+              "merged": false,
+              "reason": "A skilled administrator focused on finances and minutes who has no interest in onboarding programs scores high on governance skills and low on new-member integration — procedural governance and welcome facilitation are distinct roles.",
+              "definition_keep": "The household's demonstrated competence in co-op administrative functions — scheduling, minutes, correspondence, meeting facilitation — based on stated roles and past practice.",
+              "definition_drop": "Whether the household explicitly offers to run or support new-member onboarding, orientation, and welcome processes.",
+              "name_keep": "Administrative & Governance Skills",
+              "name_drop": "New-Member Orientation & Integration Role",
+              "keep_name": "Administrative & Governance Skills",
+              "drop_name": "New-Member Orientation & Integration Role"
+            },
+            {
+              "keep": "financial_oversight_experience",
+              "drop": "work_shift_reliability_commitment",
+              "r": 0.976,
+              "merged": false,
+              "reason": "A finance-committee veteran who routinely skips cleaning shifts scores high on financial oversight and low on work-shift reliability — organizational fiscal experience and recurring labour commitment are distinct.",
+              "definition_keep": "The household's demonstrated history of managing or scrutinizing budgets, financial reporting, or fiscal accountability in an organizational or committee setting.",
+              "definition_drop": "How explicitly and credibly the household commits to fulfilling unglamorous, recurring co-op labour obligations — cleaning, sorting, maintenance days — based on stated intent and demonstrated prior behaviour.",
+              "name_keep": "Financial Oversight Experience",
+              "name_drop": "Work-Shift & Unglamorous-Task Commitment",
+              "keep_name": "Financial Oversight Experience",
+              "drop_name": "Work-Shift & Unglamorous-Task Commitment"
+            },
+            {
+              "keep": "co_op_philosophy_articulation",
+              "drop": "essay_engagement_depth",
+              "r": 0.971,
+              "merged": false,
+              "reason": "A household that writes long, detailed answers about practical matters without articulating cooperative values scores high on essay depth but low on philosophy articulation — thoroughness of response and depth of values-discourse are distinct axes.",
+              "definition_keep": "How clearly and substantively the household articulates a personal understanding of cooperative living as a value system, beyond just describing practical contributions.",
+              "definition_drop": "The thoroughness and specificity with which the household engages with application prompts — whether answers are detailed and prompt-specific or brief and generic.",
+              "name_keep": "Co-op Philosophy Articulation",
+              "name_drop": "Application Essay Engagement Depth",
+              "keep_name": "Co-op Philosophy Articulation",
+              "drop_name": "Application Essay Engagement Depth"
+            },
+            {
+              "keep": "co_op_philosophy_articulation",
+              "drop": "community_building_proactivity",
+              "r": 0.971,
+              "merged": false,
+              "reason": "A household that articulately discusses cooperative values but prefers to join existing activities rather than initiate them scores high on philosophy and low on proactivity — intellectual framing and action-initiation are distinct.",
+              "definition_keep": "How clearly and substantively the household articulates a personal understanding of cooperative living as a value system, beyond just describing practical contributions.",
+              "definition_drop": "The degree to which the household actively initiates social infrastructure within the co-op — events, clubs, welcome programs, kids activities — rather than simply participating in what already exists.",
+              "name_keep": "Co-op Philosophy Articulation",
+              "name_drop": "Community-Building Proactivity",
+              "keep_name": "Co-op Philosophy Articulation",
+              "drop_name": "Community-Building Proactivity"
+            },
+            {
+              "keep": "co_op_philosophy_articulation",
+              "drop": "social_integration_orientation",
+              "r": 0.971,
+              "merged": false,
+              "reason": "A household motivated primarily by personal belonging rather than cooperative ideology scores high on social integration but may articulate little cooperative philosophy — friendship-seeking and value-system literacy are distinct drivers.",
+              "definition_keep": "How clearly and substantively the household articulates a personal understanding of cooperative living as a value system, beyond just describing practical contributions.",
+              "definition_drop": "The degree to which the household frames its motivation in terms of building personal social relationships and belonging among neighbours — beyond fulfilling functional obligations.",
+              "name_keep": "Co-op Philosophy Articulation",
+              "name_drop": "Social Integration Orientation",
+              "keep_name": "Co-op Philosophy Articulation",
+              "drop_name": "Social Integration Orientation"
+            },
+            {
+              "keep": "community_building_proactivity",
+              "drop": "child_inclusive_contribution",
+              "r": 0.966,
+              "merged": false,
+              "reason": "A childless household that proactively organises adult social events scores high on proactivity but low on child-inclusive contribution — general event-initiation and family-programming capacity are distinct contributions.",
+              "definition_keep": "The degree to which the household actively initiates social infrastructure within the co-op — events, clubs, welcome programs, kids activities — rather than simply participating in what already exists.",
+              "definition_drop": "The household's demonstrated ability and stated willingness to organise and run children's or family-focused programming during co-op work weekends or community events.",
+              "name_keep": "Community-Building Proactivity",
+              "name_drop": "Children's Program Coordination Capacity",
+              "keep_name": "Community-Building Proactivity",
+              "drop_name": "Children's Program Coordination Capacity"
+            },
+            {
+              "keep": "social_integration_orientation",
+              "drop": "child_inclusive_contribution",
+              "r": 0.966,
+              "merged": false,
+              "reason": "A household seeking adult social belonging with no children and no interest in running kids' activities scores high on social integration and low on child-inclusive contribution — personal belonging motivation and family-programming willingness are distinct.",
+              "definition_keep": "The degree to which the household frames its motivation in terms of building personal social relationships and belonging among neighbours — beyond fulfilling functional obligations.",
+              "definition_drop": "The household's demonstrated ability and stated willingness to organise and run children's or family-focused programming during co-op work weekends or community events.",
+              "name_keep": "Social Integration Orientation",
+              "name_drop": "Children's Program Coordination Capacity",
+              "keep_name": "Social Integration Orientation",
+              "drop_name": "Children's Program Coordination Capacity"
+            },
+            {
+              "keep": "child_inclusive_contribution",
+              "drop": "essay_engagement_depth",
+              "r": 0.966,
+              "merged": false,
+              "reason": "A family with children and clear programming skills may still write a terse application, while a childless household writes exhaustively — family-programming capacity and application thoroughness are independent.",
+              "definition_keep": "The household's demonstrated ability and stated willingness to organise and run children's or family-focused programming during co-op work weekends or community events.",
+              "definition_drop": "The thoroughness and specificity with which the household engages with application prompts — whether answers are detailed and prompt-specific or brief and generic.",
+              "name_keep": "Children's Program Coordination Capacity",
+              "name_drop": "Application Essay Engagement Depth",
+              "keep_name": "Children's Program Coordination Capacity",
+              "drop_name": "Application Essay Engagement Depth"
+            },
+            {
+              "keep": "work_shift_reliability_commitment",
+              "drop": "new_member_integration_role",
+              "r": 0.957,
+              "merged": false,
+              "reason": "A household highly committed to cleaning and maintenance shifts but with no interest in running orientation programs scores high on work-shift reliability and low on new-member integration — labour reliability and onboarding facilitation are distinct roles.",
+              "definition_keep": "How explicitly and credibly the household commits to fulfilling unglamorous, recurring co-op labour obligations — cleaning, sorting, maintenance days — based on stated intent and demonstrated prior behaviour.",
+              "definition_drop": "Whether the household explicitly offers to run or support new-member onboarding, orientation, and welcome processes.",
+              "name_keep": "Work-Shift & Unglamorous-Task Commitment",
+              "name_drop": "New-Member Orientation & Integration Role",
+              "keep_name": "Work-Shift & Unglamorous-Task Commitment",
+              "drop_name": "New-Member Orientation & Integration Role"
+            },
+            {
+              "keep": "income_resilience_dual_earner",
+              "drop": "community_building_proactivity",
+              "r": 0.956,
+              "merged": false,
+              "reason": "A dual-income couple with little interest in organising community events scores high on income resilience and low on proactivity — financial structure and community-initiation drive are unrelated.",
+              "definition_keep": "How evenly household income is split between both adults, measuring how much of total income survives the loss of either earner.",
+              "definition_drop": "The degree to which the household actively initiates social infrastructure within the co-op — events, clubs, welcome programs, kids activities — rather than simply participating in what already exists.",
+              "name_keep": "Dual-Earner Income Resilience",
+              "name_drop": "Community-Building Proactivity",
+              "keep_name": "Dual-Earner Income Resilience",
+              "drop_name": "Community-Building Proactivity"
+            },
+            {
+              "keep": "income_resilience_dual_earner",
+              "drop": "social_integration_orientation",
+              "r": 0.956,
+              "merged": false,
+              "reason": "A dual-income household applying for financial stability with little emphasis on social belonging scores high on income resilience and low on social integration — income distribution and relational motivation are distinct.",
+              "definition_keep": "How evenly household income is split between both adults, measuring how much of total income survives the loss of either earner.",
+              "definition_drop": "The degree to which the household frames its motivation in terms of building personal social relationships and belonging among neighbours — beyond fulfilling functional obligations.",
+              "name_keep": "Dual-Earner Income Resilience",
+              "name_drop": "Social Integration Orientation",
+              "keep_name": "Dual-Earner Income Resilience",
+              "drop_name": "Social Integration Orientation"
+            },
+            {
+              "keep": "income_resilience_dual_earner",
+              "drop": "essay_engagement_depth",
+              "r": 0.956,
+              "merged": false,
+              "reason": "A financially resilient dual-income couple may write a minimal application, while a single-income household may write exhaustively — income structure and application effort are independent.",
+              "definition_keep": "How evenly household income is split between both adults, measuring how much of total income survives the loss of either earner.",
+              "definition_drop": "The thoroughness and specificity with which the household engages with application prompts — whether answers are detailed and prompt-specific or brief and generic.",
+              "name_keep": "Dual-Earner Income Resilience",
+              "name_drop": "Application Essay Engagement Depth",
+              "keep_name": "Dual-Earner Income Resilience",
+              "drop_name": "Application Essay Engagement Depth"
+            },
+            {
+              "keep": "depth_of_co_op_experience",
+              "drop": "pet_complexity",
+              "r": 0.949,
+              "merged": false,
+              "reason": "These are categorically unrelated — cooperative housing experience and pet ownership are independent facts with no logical link.",
+              "definition_keep": "How much direct, substantive experience the household has with co-operative or collective housing governance structures — committees, work-hour systems, shared decision-making.",
+              "definition_drop": "The number and type of pets the household keeps, relevant to co-op rules, neighbour comfort, shared space use, and inter-pet compatibility with other residents.",
+              "name_keep": "Co-op Governance Experience",
+              "name_drop": "Pet Complexity & Co-habitation Considerations",
+              "keep_name": "Co-op Governance Experience",
+              "drop_name": "Pet Complexity & Co-habitation Considerations"
+            },
+            {
+              "keep": "depth_of_co_op_experience",
+              "drop": "external_community_involvement",
+              "r": 0.93,
+              "merged": false,
+              "reason": "A household deeply embedded in co-op governance but not active in outside community organisations scores high on co-op experience and low on external involvement — housing-specific governance history and broader civic engagement are distinct axes.",
+              "definition_keep": "How much direct, substantive experience the household has with co-operative or collective housing governance structures — committees, work-hour systems, shared decision-making.",
+              "definition_drop": "The household's active participation in community organisations or activities outside the co-op, reflecting a broader pattern of civic engagement.",
+              "name_keep": "Co-op Governance Experience",
+              "name_drop": "External Community Involvement",
+              "keep_name": "Co-op Governance Experience",
+              "drop_name": "External Community Involvement"
+            },
+            {
+              "keep": "social_and_community_services_skills",
+              "drop": "children_school_age_community_participation",
+              "r": 0.915,
+              "merged": false,
+              "reason": "A social-services professional without school-age children scores high on community-services skills and low on child community participation — professional soft-infrastructure capacity and child demographics are independent.",
+              "definition_keep": "Whether the household can professionally connect neighbours with external city services, benefits, or social support systems — a soft-infrastructure contribution distinct from trades or governance.",
+              "definition_drop": "The degree to which the household includes school-age or near-school-age children who are likely to participate in and animate shared community spaces and programs.",
+              "name_keep": "Social-Service Navigation Skill",
+              "name_drop": "Children's School-Age Community Engagement Potential",
+              "keep_name": "Social-Service Navigation Skill",
+              "drop_name": "Children's School-Age Community Engagement Potential"
+            },
+            {
+              "keep": "social_and_community_services_skills",
+              "drop": "environmental_stewardship_practice",
+              "r": 0.911,
+              "merged": false,
+              "reason": "A social worker with no particular green habits scores high on community-services skills and low on environmental stewardship — professional service capacity and personal ecological behaviour are unrelated.",
+              "definition_keep": "Whether the household can professionally connect neighbours with external city services, benefits, or social support systems — a soft-infrastructure contribution distinct from trades or governance.",
+              "definition_drop": "The degree to which the household demonstrates concrete, habitual environmental stewardship behaviours in their personal lives, beyond general stated values.",
+              "name_keep": "Social-Service Navigation Skill",
+              "name_drop": "Environmental Stewardship Practice",
+              "keep_name": "Social-Service Navigation Skill",
+              "drop_name": "Environmental Stewardship Practice"
+            },
+            {
+              "keep": "income_cushion_above_floor",
+              "drop": "social_and_community_services_skills",
+              "r": 0.911,
+              "merged": false,
+              "reason": "A high-earning household with no social-services background scores high on income cushion and low on community-services skills — financial headroom and professional service capacity are unrelated.",
+              "definition_keep": "The household's total gross income relative to the assumed minimum needed to carry co-op housing costs, measuring how much financial headroom exists.",
+              "definition_drop": "Whether the household can professionally connect neighbours with external city services, benefits, or social support systems — a soft-infrastructure contribution distinct from trades or governance.",
+              "name_keep": "Household Income Cushion",
+              "name_drop": "Social-Service Navigation Skill",
+              "keep_name": "Household Income Cushion",
+              "drop_name": "Social-Service Navigation Skill"
+            },
+            {
+              "keep": "systems_documentation_discipline",
+              "drop": "work_shift_reliability_commitment",
+              "r": 0.901,
+              "merged": false,
+              "reason": "A meticulous record-keeper who nevertheless skips unglamorous physical labour shifts scores high on documentation discipline and low on work-shift reliability — record-keeping practice and recurring labour commitment are distinct.",
+              "definition_keep": "The degree to which the household demonstrates a practice of writing things down, maintaining records, and ensuring institutional knowledge transfers smoothly to future volunteers or committee members.",
+              "definition_drop": "How explicitly and credibly the household commits to fulfilling unglamorous, recurring co-op labour obligations — cleaning, sorting, maintenance days — based on stated intent and demonstrated prior behaviour.",
+              "name_keep": "Systems Documentation Discipline",
+              "name_drop": "Work-Shift & Unglamorous-Task Commitment",
+              "keep_name": "Systems Documentation Discipline",
+              "drop_name": "Work-Shift & Unglamorous-Task Commitment"
+            },
+            {
+              "keep": "emergency_on_call_availability",
+              "drop": "external_community_involvement",
+              "r": 0.866,
+              "merged": false,
+              "reason": "A household available for building emergencies but not involved in outside civic organisations scores high on on-call availability and low on external community involvement — reactive building support and proactive civic engagement are distinct.",
+              "definition_keep": "Whether the household explicitly offers to be available for unscheduled small emergencies or on-call maintenance needs in the building.",
+              "definition_drop": "The household's active participation in community organisations or activities outside the co-op, reflecting a broader pattern of civic engagement.",
+              "name_keep": "Emergency / On-Call Availability",
+              "name_drop": "External Community Involvement",
+              "keep_name": "Emergency / On-Call Availability",
+              "drop_name": "External Community Involvement"
+            },
+            {
+              "keep": "external_community_involvement",
+              "drop": "existing_social_ties_to_coop",
+              "r": 0.866,
+              "merged": false,
+              "reason": "A household active in outside organisations but with no personal connections to this co-op scores high on external involvement and low on existing social ties — broad civic engagement and specific prior relationships are distinct.",
+              "definition_keep": "The household's active participation in community organisations or activities outside the co-op, reflecting a broader pattern of civic engagement.",
+              "definition_drop": "Whether the household has pre-existing personal connections to current members of this specific co-op, which may ease integration and signal informed motivation.",
+              "name_keep": "External Community Involvement",
+              "name_drop": "Existing Ties to This Co-op",
+              "keep_name": "External Community Involvement",
+              "drop_name": "Existing Ties to This Co-op"
+            },
+            {
+              "keep": "employment_tenure_stability",
+              "drop": "external_community_involvement",
+              "r": 0.866,
+              "merged": false,
+              "reason": "A long-tenured employee who is not civically active outside work scores high on tenure stability and low on external community involvement — job stability and community engagement are independent axes.",
+              "definition_keep": "How long each adult in the household has held their current role, taken jointly, as a proxy for income reliability and risk of near-term employment disruption.",
+              "definition_drop": "The household's active participation in community organisations or activities outside the co-op, reflecting a broader pattern of civic engagement.",
+              "name_keep": "Employment Tenure Stability",
+              "name_drop": "External Community Involvement",
+              "keep_name": "Employment Tenure Stability",
+              "drop_name": "External Community Involvement"
+            },
+            {
+              "keep": "external_community_involvement",
+              "drop": "mentorship_and_peer_support_orientation",
+              "r": 0.866,
+              "merged": false,
+              "reason": "A household active in outside organisations but not framing its co-op contribution in mentorship terms scores high on external involvement and low on mentorship orientation — civic breadth and peer-support disposition are distinct.",
+              "definition_keep": "The household's active participation in community organisations or activities outside the co-op, reflecting a broader pattern of civic engagement.",
+              "definition_drop": "The degree to which the household explicitly frames its co-op contribution in terms of mentoring newer members, sharing knowledge, and supporting peers through difficulty.",
+              "name_keep": "External Community Involvement",
+              "name_drop": "Mentorship & Peer Support Orientation",
+              "keep_name": "External Community Involvement",
+              "drop_name": "Mentorship & Peer Support Orientation"
+            },
+            {
+              "keep": "social_and_community_services_skills",
+              "drop": "household_size_long_term_anchor",
+              "r": 0.862,
+              "merged": false,
+              "reason": "A social-services professional living alone scores high on community-services skills and low on household-size anchor — professional capacity and family-size stability signal are unrelated.",
+              "definition_keep": "Whether the household can professionally connect neighbours with external city services, benefits, or social support systems — a soft-infrastructure contribution distinct from trades or governance.",
+              "definition_drop": "The number of household members as a signal of how invested the family is in long-term stable housing — larger families with school-age children typically have stronger incentives to remain.",
+              "name_keep": "Social-Service Navigation Skill",
+              "name_drop": "Household Size as Long-Term Stability Anchor",
+              "keep_name": "Social-Service Navigation Skill",
+              "drop_name": "Household Size as Long-Term Stability Anchor"
+            },
+            {
+              "keep": "administrative_and_governance_skills",
+              "drop": "systems_documentation_discipline",
+              "r": 0.854,
+              "merged": false,
+              "reason": "A skilled meeting facilitator who never writes up records or maintains institutional documentation scores high on governance skills but low on documentation discipline — facilitating processes and ensuring written continuity are distinct sub-competencies.",
+              "definition_keep": "The household's demonstrated competence in co-op administrative functions — scheduling, minutes, correspondence, meeting facilitation — based on stated roles and past practice.",
+              "definition_drop": "The degree to which the household demonstrates a practice of writing things down, maintaining records, and ensuring institutional knowledge transfers smoothly to future volunteers or committee members.",
+              "name_keep": "Administrative & Governance Skills",
+              "name_drop": "Systems Documentation Discipline",
+              "keep_name": "Administrative & Governance Skills",
+              "drop_name": "Systems Documentation Discipline"
+            },
+            {
+              "keep": "income_resilience_dual_earner",
+              "drop": "pet_complexity",
+              "r": 0.839,
+              "merged": false,
+              "reason": "These are categorically unrelated — income distribution between earners and pet ownership type/number share no logical connection.",
+              "definition_keep": "How evenly household income is split between both adults, measuring how much of total income survives the loss of either earner.",
+              "definition_drop": "The number and type of pets the household keeps, relevant to co-op rules, neighbour comfort, shared space use, and inter-pet compatibility with other residents.",
+              "name_keep": "Dual-Earner Income Resilience",
+              "name_drop": "Pet Complexity & Co-habitation Considerations",
+              "keep_name": "Dual-Earner Income Resilience",
+              "drop_name": "Pet Complexity & Co-habitation Considerations"
+            },
+            {
+              "keep": "child_inclusive_contribution",
+              "drop": "pet_complexity",
+              "r": 0.819,
+              "merged": false,
+              "reason": "A family willing to run kids' programming may have no pets, while a pet-heavy household may have no children — family-programming capacity and pet complexity are independent.",
+              "definition_keep": "The household's demonstrated ability and stated willingness to organise and run children's or family-focused programming during co-op work weekends or community events.",
+              "definition_drop": "The number and type of pets the household keeps, relevant to co-op rules, neighbour comfort, shared space use, and inter-pet compatibility with other residents.",
+              "name_keep": "Children's Program Coordination Capacity",
+              "name_drop": "Pet Complexity & Co-habitation Considerations",
+              "keep_name": "Children's Program Coordination Capacity",
+              "drop_name": "Pet Complexity & Co-habitation Considerations"
+            },
+            {
+              "keep": "co_op_philosophy_articulation",
+              "drop": "pet_complexity",
+              "r": 0.808,
+              "merged": false,
+              "reason": "These are categorically unrelated — cooperative value articulation and pet ownership are independent facts with no logical link.",
+              "definition_keep": "How clearly and substantively the household articulates a personal understanding of cooperative living as a value system, beyond just describing practical contributions.",
+              "definition_drop": "The number and type of pets the household keeps, relevant to co-op rules, neighbour comfort, shared space use, and inter-pet compatibility with other residents.",
+              "name_keep": "Co-op Philosophy Articulation",
+              "name_drop": "Pet Complexity & Co-habitation Considerations",
+              "keep_name": "Co-op Philosophy Articulation",
+              "drop_name": "Pet Complexity & Co-habitation Considerations"
+            },
+            {
+              "keep": "new_member_integration_role",
+              "drop": "essay_engagement_depth",
+              "r": 0.803,
+              "merged": false,
+              "reason": "A household explicitly offering to run onboarding may still write brief, generic application answers, while a detailed essayist may not mention onboarding at all — specific role-offer and application thoroughness are distinct.",
+              "definition_keep": "Whether the household explicitly offers to run or support new-member onboarding, orientation, and welcome processes.",
+              "definition_drop": "The thoroughness and specificity with which the household engages with application prompts — whether answers are detailed and prompt-specific or brief and generic.",
+              "name_keep": "New-Member Orientation & Integration Role",
+              "name_drop": "Application Essay Engagement Depth",
+              "keep_name": "New-Member Orientation & Integration Role",
+              "drop_name": "Application Essay Engagement Depth"
+            },
+            {
+              "keep": "community_building_proactivity",
+              "drop": "new_member_integration_role",
+              "r": 0.803,
+              "merged": false,
+              "reason": "A household that organises events and clubs but has no interest in formal onboarding processes scores high on proactivity and low on new-member integration — broad community initiation and specific welcome facilitation are distinct contributions.",
+              "definition_keep": "The degree to which the household actively initiates social infrastructure within the co-op — events, clubs, welcome programs, kids activities — rather than simply participating in what already exists.",
+              "definition_drop": "Whether the household explicitly offers to run or support new-member onboarding, orientation, and welcome processes.",
+              "name_keep": "Community-Building Proactivity",
+              "name_drop": "New-Member Orientation & Integration Role",
+              "keep_name": "Community-Building Proactivity",
+              "drop_name": "New-Member Orientation & Integration Role"
+            },
+            {
+              "keep": "social_integration_orientation",
+              "drop": "new_member_integration_role",
+              "r": 0.803,
+              "merged": false,
+              "reason": "A household seeking its own social belonging has no particular obligation to facilitate others' onboarding — personal belonging motivation and offering to run welcome processes for newcomers are distinct axes.",
+              "definition_keep": "The degree to which the household frames its motivation in terms of building personal social relationships and belonging among neighbours — beyond fulfilling functional obligations.",
+              "definition_drop": "Whether the household explicitly offers to run or support new-member onboarding, orientation, and welcome processes.",
+              "name_keep": "Social Integration Orientation",
+              "name_drop": "New-Member Orientation & Integration Role",
+              "keep_name": "Social Integration Orientation",
+              "drop_name": "New-Member Orientation & Integration Role"
+            }
+          ],
+          "nominated_count": 55,
+          "merged_count": 1,
+          "configuration": {
+            "ai": {
+              "region": "us-east-1",
+              "screening_model": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+              "screening_reasoning_effort": "low",
+              "dimension_scoring_model": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+              "dimension_scoring_reasoning_effort": "low",
+              "discovery_model": "global.anthropic.claude-sonnet-4-6",
+              "discovery_reasoning_effort": "low",
+              "decompose_model": "global.anthropic.claude-sonnet-4-6",
+              "decompose_reasoning_effort": "low",
+              "match_model": "global.anthropic.claude-sonnet-4-6",
+              "match_reasoning_effort": "low",
+              "consolidate_model": "global.anthropic.claude-sonnet-4-6",
+              "consolidate_reasoning_effort": "low",
+              "discovery_fan_out": 2,
+              "consolidate_correlation_threshold": 0.8,
+              "spending_cap_usd": 2.0,
+              "max_workers": 3
+            },
+            "strategy": {
+              "discovery_fan_out": 2,
+              "consolidate_correlation_threshold": 0.8
+            },
+            "passes": {
+              "discovery": {
+                "prompt_version": "17753a7174fe",
+                "model": "anthropic:claude-sonnet-4-6",
+                "reasoning_effort": null
+              },
+              "decompose": {
+                "prompt_version": "affb14ec4b74",
+                "model": "anthropic:claude-sonnet-4-6",
+                "reasoning_effort": null
+              },
+              "match": {
+                "prompt_version": "2a463a1f6443",
+                "model": "anthropic:claude-sonnet-4-6",
+                "reasoning_effort": null
+              },
+              "scoring": {
+                "prompt_version": "d05026e73450",
+                "model": "anthropic:claude-haiku-4-5-20251001",
+                "reasoning_effort": null
+              },
+              "consolidate": {
+                "prompt_version": "d73b755d3075",
+                "model": "anthropic:claude-sonnet-4-6",
+                "reasoning_effort": null
+              }
+            }
+          }
+        },
+        "score_vectors": {
+          "employment_tenure_stability": [
+            0.75,
+            0.75,
+            0.5
+          ],
+          "income_cushion_above_floor": [
+            0.5,
+            0.5,
+            0.6
+          ],
+          "income_resilience_dual_earner": [
+            0.9,
+            0.55,
+            0.4
+          ],
+          "trade_and_maintenance_skills": [
+            -0.8,
+            0.9,
+            -0.5
+          ],
+          "administrative_and_governance_skills": [
+            0.85,
+            0.4,
+            0.75
+          ],
+          "systems_documentation_discipline": [
+            0.7,
+            0.6,
+            0.75
+          ],
+          "financial_oversight_experience": [
+            0.65,
+            0.5,
+            0.6
+          ],
+          "social_and_community_services_skills": [
+            -0.6,
+            0.0,
+            0.85
+          ],
+          "depth_of_co_op_experience": [
+            0.7,
+            0.85,
+            -0.1
+          ],
+          "work_shift_reliability_commitment": [
+            0.8,
+            0.4,
+            0.75
+          ],
+          "emergency_on_call_availability": [
+            0.0,
+            0.9,
+            0.0
+          ],
+          "co_op_philosophy_articulation": [
+            0.85,
+            0.7,
+            0.65
+          ],
+          "community_building_proactivity": [
+            0.75,
+            0.5,
+            0.5
+          ],
+          "social_integration_orientation": [
+            0.9,
+            0.4,
+            0.4
+          ],
+          "external_community_involvement": [
+            0.5,
+            0.6,
+            0.4
+          ],
+          "existing_social_ties_to_coop": [
+            0.0,
+            0.85,
+            0.0
+          ],
+          "environmental_stewardship_practice": [
+            0.0,
+            0.0,
+            0.8
+          ],
+          "child_inclusive_contribution": [
+            0.75,
+            0.2,
+            0.0
+          ],
+          "new_member_integration_role": [
+            0.9,
+            0.4,
+            0.7
+          ],
+          "mentorship_and_peer_support_orientation": [
+            0.5,
+            0.75,
+            0.5
+          ],
+          "household_size_long_term_anchor": [
+            0.3,
+            0.75,
+            0.8
+          ],
+          "household_size_and_space_demand": [
+            0.7,
+            -0.5,
+            -0.65
+          ],
+          "essay_engagement_depth": [
+            0.8,
+            0.5,
+            0.5
+          ],
+          "pet_complexity": [
+            0.85,
+            0.6,
+            -0.5
+          ]
+        },
+        "provenance": {
+          "pass_models": {
+            "Pattern discovery": "anthropic:claude-sonnet-4-6",
+            "Dimension decomposition": "anthropic:claude-sonnet-4-6",
+            "Dimension matching": "anthropic:claude-sonnet-4-6",
+            "Dimension consolidation": "anthropic:claude-sonnet-4-6",
+            "Dimension scoring": "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+          },
+          "pass_prompt_versions": {
+            "Pattern discovery": "17753a7174fe",
+            "Dimension decomposition": "affb14ec4b74",
+            "Dimension matching": "2a463a1f6443",
+            "Dimension consolidation": "d73b755d3075",
+            "Dimension scoring": "d05026e73450"
+          }
+        }
+      },
+      "usage": {
+        "calls": 43,
+        "known_usd": 0.5772050000000001,
+        "input_tokens": 131846,
+        "output_tokens": 37829
+      }
+    }
+  ],
+  "browser": {
+    "checks": "Isolated synthetic component state; no applicant or fixture saves",
+    "income": {
+      "blank": false,
+      "zero": true,
+      "whole_dollars": true,
+      "negative": false,
+      "fractional": false,
+      "arrow_up_preserved_80000": true,
+      "type": "text"
+    },
+    "json_round_trip": {
+      "number": 2,
+      "text": "sample",
+      "null": null,
+      "copied_list": [
+        null,
+        null
+      ]
+    },
+    "desktop": {
+      "editor_width": 980,
+      "controls_contained": true,
+      "label_gap_px": 8
+    },
+    "mobile": {
+      "viewport_width": 390,
+      "editor_width": 366,
+      "income_width": 343.375,
+      "controls_contained": true,
+      "label_gap_px": 8
+    },
+    "limits": "Physical mouse-wheel gesture and a complete application/print workflow were not exercised."
+  }
+}
