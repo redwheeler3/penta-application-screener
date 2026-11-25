@@ -66,8 +66,8 @@ def test_large_opening_archive_uses_two_queries_and_no_answer_blobs():
     assert all("raw_row" not in statement and "normalized" not in statement for statement in statements)
 
 
-@pytest.mark.parametrize("state", ["active", "empty", "withdrawn-entry", "withdrawn-app", "unsubmitted", "expired", "future", "decided"])
-def test_overdue_openings_only_need_an_active_participant(state):
+@pytest.mark.parametrize("state", ["active", "empty", "withdrawn-entry", "withdrawn-app", "unsubmitted", "expired", "future", "decided", "preparing"])
+def test_overdue_decisions_remain_visible_without_active_participants(state):
     from app.services.openings.selection import overdue_openings_needing_decision
     db = memory_session()
     opening = seed(db)[0]
@@ -88,8 +88,10 @@ def test_overdue_openings_only_need_an_active_participant(state):
         opening.move_in_date = pacific_today() + timedelta(days=1)
     elif state == "decided":
         opening.decided_at = datetime.now(UTC)
+    elif state == "preparing":
+        opening.published_at = None
     db.commit()
-    assert [o.id for o in overdue_openings_needing_decision(db)] == ([opening.id] if state == "active" else [])
+    assert [o.id for o in overdue_openings_needing_decision(db)] == ([] if state in {"future", "decided", "preparing"} else [opening.id])
 
 
 def test_overdue_openings_use_one_query_without_answers():

@@ -154,7 +154,7 @@ async def test_score_current_fills_only_missing_scores_without_replacing_run() -
         calls_before = len(provider.calls)
         summary = next(
             event
-            for event in await stream_events(client, "/ranking/score-current")
+            for event in await stream_events(client, f"/ranking/score-current?analysis_id={estimate['analysisId']}")
             if event["type"] == "summary"
         )
         assert summary["scored"] == 1
@@ -185,7 +185,7 @@ async def test_score_current_requires_existing_criteria() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         assert (await client.get("/ranking/score-current/estimate")).status_code == 409
-        assert (await client.post("/ranking/score-current")).status_code == 409
+        assert (await client.post("/ranking/score-current?analysis_id=1")).status_code == 409
 
 
 @pytest.mark.anyio

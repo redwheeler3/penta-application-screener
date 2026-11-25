@@ -117,3 +117,42 @@ def test_expired_captured_source_cannot_publish_pool_text():
             source_application_ids=[application.id], synthetic_data=False)
     db.rollback()
     assert db.scalar(select(Analysis)) is None
+
+
+@pytest.mark.parametrize("initial_synthetic", [False, True])
+@pytest.mark.parametrize("runtime_synthetic", [False, True])
+def test_published_answers_refresh_assurance_and_actual_fixture_export(monkeypatch, initial_synthetic, runtime_synthetic):
+    from app.core.config import get_settings
+    from app.evals.fixture import build_fixture
+    from app.schemas.applicant.answers import CanonicalApplicationAnswers
+    from app.services.applications.intake import (
+        create_application,
+        publish_working_copy,
+        save_working_copy,
+    )
+    from tests.applicant.support import app_and_db, sample_answers
+    from tests.application_support import current_opening
+
+    _app, db, _sender = app_and_db()
+    opening = current_opening(db)
+    monkeypatch.setattr("app.services.applications.intake.get_settings", lambda: get_settings().model_copy(
+        update={"application_data_is_synthetic": runtime_synthetic}))
+    now = datetime.now(UTC)
+    answers = CanonicalApplicationAnswers.model_validate(sample_answers())
+    application = create_application(db, str(answers.applicant.email), answers, saved_at=now, opening_ids=[opening.id])
+    assert application.synthetic_data == runtime_synthetic
+    application.synthetic_data = initial_synthetic
+    save_working_copy(db, application, answers, saved_at=now, opening_ids=[opening.id])
+    assert application.synthetic_data == initial_synthetic
+    publish_working_copy(db, application, answers, [opening], submitted_at=now)
+    db.commit()
+    assert application.synthetic_data == runtime_synthetic
+    source_ids, verified = capture_rank_sources(db, [application])
+    analysis = Analysis(opening_id=opening.id, dimension_report={}, synthetic_data=verified, source_application_ids=source_ids)
+    db.add(analysis)
+    db.commit()
+    if runtime_synthetic:
+        assert build_fixture(db, analysis) is not None
+    else:
+        with pytest.raises(NonSyntheticPoolError):
+            build_fixture(db, analysis)

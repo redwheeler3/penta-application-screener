@@ -19,6 +19,17 @@ function setup() {
 }
 beforeEach(() => vi.resetAllMocks());
 
+it("keeps applicant-specific feedback unsent when its context is no longer available", async () => {
+  vi.mocked(api.submitFeedback).mockResolvedValue(Response.json({ detail: "This application is no longer available for feedback." }, { status: 404 }));
+  const { onError, onToast } = setup();
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Synthetic applicant quote" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+  expect(screen.getByRole("textbox")).toHaveValue("Synthetic applicant quote");
+  expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  expect(onError).toHaveBeenCalledOnce();
+  expect(onToast).not.toHaveBeenCalled();
+});
+
 it("retains newer feedback typed while an earlier submission is pending", async () => {
   const pending = deferred<Response>();
   vi.mocked(api.submitFeedback).mockReturnValue(pending.promise);

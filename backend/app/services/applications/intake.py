@@ -131,6 +131,7 @@ def publish_working_copy(
         else None
     )
     application.raw_row = stored
+    application.synthetic_data = get_settings().application_data_is_synthetic
     application.raw_row_hash = content_hash(stored)
     application.normalized = normalize_answers(
         answers,

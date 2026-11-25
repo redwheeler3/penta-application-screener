@@ -1,0 +1,22 @@
+{
+  "source": "committed fictional applicant fixture and scoring-golden criterion",
+  "model": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "summary": {
+    "type": "summary",
+    "dimensions": 1,
+    "scored": 1,
+    "failed": 0,
+    "totalCostUsd": 0.0036
+  },
+  "scores": [
+    {
+      "dimension_key": "licensed_trade_skills",
+      "score": -1.0,
+      "rationale": "The applicant explicitly states that neither household member is a tradesperson and will not be the ones handling electrical, boiler, or similar technical work.",
+      "evidence": "\"We'll be honest: neither of us is a tradesperson, so we won't be the ones rewiring a panel or fixing the boiler.\"",
+      "confidence": "high"
+    }
+  ],
+  "staleRefusedWithoutCall": true,
+  "knownCostUsd": 0.0035570000000000003
+}

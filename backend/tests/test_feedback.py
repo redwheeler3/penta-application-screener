@@ -121,13 +121,11 @@ async def test_private_draft_context_never_enriches_submission_or_admin_list(rol
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         response = await client.post("/feedback", json={"body": "Keep this report",
             "applicantId": draft.id, "openingId": 999, "analysisId": 999, "retainedReview": retained})
-        assert response.status_code == 201
-        stored = db.query(Feedback).one()
-        assert response.json() == {"id": stored.id}
-        assert stored.body == "Keep this report"
-        assert (stored.applicant_id, stored.opening_id, stored.analysis_id) == (None, None, None)
-        # Also protect older stored contexts at read time.
-        stored.applicant_id = draft.id
+        assert response.status_code == 404
+        assert db.query(Feedback).count() == 0
+        # Stored invalid references must still not enrich the admin projection.
+        stored = Feedback(user_id=user.id, body="Stored report", app_version="test", applicant_id=draft.id)
+        db.add(stored)
         user.role = UserRole.ADMIN
         db.commit()
         item = (await client.get("/feedback")).json()["items"][0]
@@ -163,8 +161,10 @@ async def test_contextless_links_use_only_retained_scope_and_members_cannot_forg
     applicant, opening, _ = reviewable_context(db)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         # Ordinary undecided records are not retained-review targets.
-        await client.post("/feedback", json={"body": "ordinary", "applicantId": applicant.id})
-        assert db.query(Feedback).one().applicant_id is None
+        ordinary = await client.post("/feedback", json={"body": "ordinary", "applicantId": applicant.id})
+        assert ordinary.status_code == 404
+        assert db.query(Feedback).count() == 0
+        db.rollback()
         applicant.retention_due_on = pacific_today() + timedelta(days=30)
         db.commit()
         await client.post("/feedback", json={"body": "retained", "applicantId": applicant.id})
@@ -174,9 +174,10 @@ async def test_contextless_links_use_only_retained_scope_and_members_cannot_forg
         assert item["openingId"] is None
         user.role = UserRole.MEMBER
         db.commit()
-        await client.post("/feedback", json={"body": "forged", "applicantId": applicant.id,
+        forged = await client.post("/feedback", json={"body": "forged", "applicantId": applicant.id,
             "openingId": opening.id, "retainedReview": True})
-        assert db.query(Feedback).filter_by(body="forged").one().applicant_id is None
+        assert forged.status_code == 404
+        assert db.query(Feedback).filter_by(body="forged").count() == 0
 
 
 @pytest.mark.anyio
@@ -202,6 +203,55 @@ async def test_mismatched_and_withdrawn_context_is_discarded_without_losing_feed
         item = (await client.get("/feedback")).json()["items"][0]
         assert item["applicantId"] is None
         assert item["applicantName"] is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("state", ["expired", "withdrawn", "purged"])
+async def test_unavailable_applicant_feedback_is_rejected_instead_of_becoming_general(state):
+    from app.services.applications.purge import erase_application
+
+    app, db, _ = setup_app(UserRole.ADMIN)
+    applicant, opening, _ = reviewable_context(db)
+    applicant_id, opening_id = applicant.id, opening.id
+    if state == "expired":
+        applicant.retention_due_on = pacific_today()
+    elif state == "withdrawn":
+        applicant.withdrawn_at = datetime.now(UTC)
+    else:
+        erase_application(db, applicant)
+    db.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post("/feedback", json={"body": "Synthetic applicant quote", "applicantId": applicant_id, "openingId": opening_id})
+    assert response.status_code == 404
+    assert db.query(Feedback).count() == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("purge_first", [False, True])
+async def test_linked_feedback_and_purge_observe_the_application_write_boundary(monkeypatch, purge_first):
+    from app.services import feedback
+    from app.services.applications.purge import erase_application
+
+    app, db, _ = setup_app(UserRole.ADMIN)
+    applicant, opening, _ = reviewable_context(db)
+    applicant_id, opening_id = applicant.id, opening.id
+    original = feedback.lock_application
+    if purge_first:
+        def purge_then_lock(session, identity):
+            with sessionmaker(bind=db.bind)() as other:
+                erase_application(other, other.get(Application, identity))
+                other.commit()
+            return original(session, identity)
+        monkeypatch.setattr(feedback, "lock_application", purge_then_lock)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post("/feedback", json={"body": "Synthetic applicant quote", "applicantId": applicant_id, "openingId": opening_id})
+    assert response.status_code == (404 if purge_first else 201)
+    db.rollback()
+    if not purge_first:
+        with sessionmaker(bind=db.bind)() as other:
+            erase_application(other, other.get(Application, applicant_id))
+            other.commit()
+    assert db.query(Feedback).count() == 0
 
 
 @pytest.mark.anyio

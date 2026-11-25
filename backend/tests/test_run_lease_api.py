@@ -47,7 +47,7 @@ async def test_preflight_rechecks_finality_after_lease_acquisition(monkeypatch, 
         return original(session, **kwargs)
 
     monkeypatch.setattr(module, "acquire_run_lock", finalize_then_claim)
-    route = {"rank": "/ranking/run", "screen": "/screening/run", "score-current": "/ranking/score-current"}[kind]
+    route = {"rank": "/ranking/run", "screen": "/screening/run", "score-current": "/ranking/score-current?analysis_id=1"}[kind]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         response = await client.post(route)
     assert response.status_code == 409
@@ -78,9 +78,9 @@ async def test_superseded_runs_report_failure_and_cannot_persist_results(monkeyp
     else:
         module = importlib.import_module("app.ai.dimension_scoring")
         function = "stage_result"
-        route = "/ranking/score-current"
-        create_analysis(db, user=db.scalar(select(User).where(User.id != other_user_id)),
+        analysis = create_analysis(db, user=db.scalar(select(User).where(User.id != other_user_id)),
             opening_id=current_opening_id(db), report=a_pattern_report(), narrative=None, inputs_fingerprint="original")
+        route = f"/ranking/score-current?analysis_id={analysis.id}"
         provider.queue(a_scoring_report())
     original = getattr(module, function)
     replacement = []

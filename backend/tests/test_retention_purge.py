@@ -92,14 +92,31 @@ def test_due_application_is_completely_purged(lifecycle, expected_rule) -> None:
     assert result.applications_purged == 1
     assert db.get(Application, application_id) is None
     assert db.scalar(select(ApplicationAIResult)) is None
-    feedback = db.scalar(select(Feedback))
-    assert feedback is not None
-    assert feedback.applicant_id is None
+    assert db.scalar(select(Feedback)) is None
     deletion = db.scalar(select(RetentionDeletion))
     assert deletion is not None
     assert deletion.record_kind == "application"
     assert deletion.record_id == application_id
     assert deletion.retention_rule == expected_rule
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+def test_purge_removes_linked_feedback_without_erasing_general_or_other_applicant_feedback(resolved):
+    db = _db()
+    _due_application(db)
+    linked = db.scalar(select(Feedback))
+    linked.resolved_at = datetime.now(UTC) if resolved else None
+    other = Application(primary_email="retained@example.com", raw_row={}, raw_row_hash="retained", normalized={})
+    db.add(other)
+    db.flush()
+    for applicant_id in (None, other.id):
+        db.add(Feedback(user_id=linked.user_id, applicant_id=applicant_id, body="Unrelated synthetic feedback", app_version="test"))
+    db.commit()
+    purge_due_applicant_data(db, now=datetime(2026, 8, 26, 18, tzinfo=UTC))
+    remaining = list(db.scalars(select(Feedback)))
+    assert len(remaining) == 2
+    assert {item.applicant_id for item in remaining} == {None, other.id}
+    assert all(item.body == "Unrelated synthetic feedback" for item in remaining)
 
 
 def test_due_unclaimed_draft_is_completely_purged() -> None:

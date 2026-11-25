@@ -9,13 +9,11 @@ from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import (
     Analysis,
     AnalysisAudit,
-    Application,
     DimensionAlias,
     MemberRanking,
     User,
 )
 from app.schemas.settings import AppSettings
-from app.services.applications.retention import current_retention_clause
 from app.services.ranking.dimensions import alias_map, current_dimension_report
 from app.services.ranking.identity import flatten_merges
 from app.services.ranking.member_state import (
@@ -26,6 +24,7 @@ from app.services.ranking.member_state import (
     reconcile_consolidated_members,
     tier_history,
 )
+from app.services.ranking.provenance import rank_sources_are_retained
 from app.services.run_lock import lock_run_state
 
 
@@ -63,9 +62,7 @@ def create_analysis(
     layout = tier_layout if tier_layout is not None else default_tier_layout()
     lock_run_state(db)
     if source_application_ids is not None:
-        retained = set(db.scalars(select(Application.id).where(
-            Application.id.in_(source_application_ids), current_retention_clause())))
-        if retained != set(source_application_ids):
+        if not rank_sources_are_retained(db, source_application_ids):
             raise ValueError("Ranking inputs expired during analysis; no pool text was published.")
     analysis = Analysis(
         opening_id=opening_id,

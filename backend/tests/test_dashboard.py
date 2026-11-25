@@ -220,7 +220,8 @@ async def test_email_delivery_report_requires_admin() -> None:
 
 
 @pytest.mark.anyio
-async def test_admin_dashboard_flags_overdue_opening_without_decision() -> None:
+@pytest.mark.parametrize("withdrawn", [False, True])
+async def test_admin_dashboard_flags_overdue_opening_without_decision(withdrawn) -> None:
     app, db = _logged_in_app(UserRole.ADMIN)
     today = pacific_today()
     opening = Opening(
@@ -253,6 +254,12 @@ async def test_admin_dashboard_flags_overdue_opening_without_decision() -> None:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get("/dashboard")
 
+    if withdrawn:
+        application.withdrawn_at = datetime.now(UTC)
+        db.scalar(select(ApplicationParticipation).where(ApplicationParticipation.application_id == application.id)).withdrawn_at = datetime.now(UTC)
+        db.commit()
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/dashboard")
     actions = response.json()["adminActions"]["overdueOpeningsNeedingDecision"]
     assert actions == [
         {

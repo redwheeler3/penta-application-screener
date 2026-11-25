@@ -9,7 +9,7 @@ export function RankingRunConfirmation(props: {
   hasCurrentCriteria: boolean;
   pendingProposals: string[];
   running: boolean;
-  onRun: (mode: "discover" | "score-current") => void;
+  onRun: (mode: "discover" | "score-current", analysisId?: number) => void;
   onCancel: () => void;
 }): ReactNode {
   const { estimate, scoreCurrentEstimate, hasCurrentCriteria, pendingProposals, running, onRun, onCancel } = props;
@@ -67,7 +67,7 @@ export function RankingRunConfirmation(props: {
           <button
             className={preferScoring ? "primary-button" : "secondary-button"}
             type="button"
-            onClick={() => onRun("score-current")}
+            onClick={() => onRun("score-current", scoreCurrentEstimate.analysisId)}
             disabled={running || !scoreCurrentEstimate.withinCap}
           >
             {running ? "Running…" : "Score missing applicants"}

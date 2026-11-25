@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
@@ -162,7 +162,7 @@ def erase_application(db: Session, application: Application, *, now: datetime | 
     """
     if application.submitted_at is not None:
         erase_pool_text(db, application.id)
-    db.execute(update(Feedback).where(Feedback.applicant_id == application.id).values(applicant_id=None))
+    db.execute(delete(Feedback).where(Feedback.applicant_id == application.id))
     affected_results = application_result_ids(db, application.id)
     db.delete(application)
     db.flush()

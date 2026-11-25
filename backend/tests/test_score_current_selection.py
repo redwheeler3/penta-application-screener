@@ -52,11 +52,11 @@ async def test_score_only_restores_cached_choices_for_the_entire_pool(new_applic
         assert estimate["toAnalyze"] == int(new_applicant)
         if not new_applicant:
             assert estimate["estimatedUsd"] == 0
-        summary = (await stream_events(client, "/ranking/score-current"))[-1]
+        summary = (await stream_events(client, f"/ranking/score-current?analysis_id={estimate['analysisId']}"))[-1]
         assert summary["scored"] == int(new_applicant)
         assert (await client.get("/dashboard")).json()["workflow"]["rankingCurrent"] is True
         assert (await client.get("/ranking/score-current/estimate")).json()["toAnalyze"] == 0
-        assert (await client.post("/ranking/score-current")).status_code == 409
+        assert (await client.post(f"/ranking/score-current?analysis_id={estimate['analysisId']}")).status_code == 409
     assert len(provider.calls) == calls_before + int(new_applicant)
     assert [score.score for score in candidate_scores(db, analysis)[0].scores] == [0.8, 0.8]
     assert {row.model_id for row in selected_application_scores(db, applicant.id, report)} == {original_model}
@@ -64,11 +64,11 @@ async def test_score_only_restores_cached_choices_for_the_entire_pool(new_applic
 
 
 @pytest.mark.anyio
-async def test_score_only_uses_criteria_current_after_claiming_the_lease(monkeypatch) -> None:
+async def test_score_only_refuses_criteria_changed_while_claiming_the_lease(monkeypatch) -> None:
     app, db, provider = setup_app(UserRole.MEMBER)
     add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
     user, opening_id = db.scalar(select(User)), current_opening_id(db)
-    create_analysis(db, user=user, opening_id=opening_id, report=a_pattern_report(), narrative=None, inputs_fingerprint="first")
+    confirmed = create_analysis(db, user=user, opening_id=opening_id, report=a_pattern_report(), narrative=None, inputs_fingerprint="first")
     module = importlib.import_module("app.api.ranking.score_current")
     acquire = module.acquire_run_lock
     report = a_pattern_report_v2()
@@ -82,10 +82,36 @@ async def test_score_only_uses_criteria_current_after_claiming_the_lease(monkeyp
     base_score = a_scoring_report().scores[0]
     provider.queue(DimensionScoringReport(scores=[base_score.model_copy(update={"dimension_key": dim.key}) for dim in report.dimensions]))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
-        await stream_events(client, "/ranking/score-current")
-    assert {score.dimension_key for score in candidate_scores(db, later[0])[0].scores} == {dim.key for dim in report.dimensions}
-    assert "financial_stability" in provider.calls[-1].prompt
-    assert "participation_commitment" not in provider.calls[-1].prompt
+        response = await client.post(f"/ranking/score-current?analysis_id={confirmed.id}")
+    assert response.status_code == 409
+    assert response.json()["code"] == "stale_analysis"
+    assert provider.calls == []
+    assert candidate_scores(db, later[0]) == []
+    assert db.get(RunLock, 1, populate_existing=True).holder_user_id is None
+
+
+@pytest.mark.anyio
+async def test_estimate_waits_for_in_place_consolidation_and_confirmation_is_required():
+    from app.services.run_lock import acquire_run_lock, release_run_lock
+
+    app, db, provider = setup_app(UserRole.MEMBER)
+    add_eligible(db, email="fictional@example.com", raw_hash="fictional")
+    user = db.scalar(select(User))
+    analysis = create_analysis(db, user=user, opening_id=current_opening_id(db), report=a_pattern_report(),
+        narrative=None, inputs_fingerprint="fictional")
+    lease = acquire_run_lock(db, user_id=user.id, kind="rank")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        busy = await client.get("/ranking/score-current/estimate")
+        assert busy.status_code == 409
+        assert busy.json()["code"] == "run_in_progress"
+        db.rollback()
+        analysis.dimension_report = a_pattern_report_v2().model_dump(mode="json")
+        db.commit()
+        release_run_lock(db, lease)
+        estimate = (await client.get("/ranking/score-current/estimate")).json()
+        assert estimate["analysisId"] == analysis.id
+        assert (await client.post("/ranking/score-current")).status_code == 422
+    assert provider.calls == []
 
 
 @pytest.mark.anyio
@@ -106,7 +132,7 @@ async def test_reasoning_cache_coverage_matches_execution() -> None:
         estimate = (await client.get("/ranking/score-current/estimate")).json()
         assert estimate["toAnalyze"] == 1
         assert estimate["cached"] == 1
-        summary = (await stream_events(client, "/ranking/score-current"))[-1]
+        summary = (await stream_events(client, f"/ranking/score-current?analysis_id={estimate['analysisId']}"))[-1]
         assert summary["scored"] == 1
     assert len(provider.calls) == calls_before + 1
     rows = selected_application_scores(db, applicant.id, report)

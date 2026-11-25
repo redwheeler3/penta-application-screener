@@ -145,7 +145,7 @@ export function WorkflowBar(props: {
   // proposal seems to vanish. It drives the amber nudge + the card's Discover-first copy.
   pendingProposals: string[];
   onRequestRank: () => void;
-  onRunRank: (mode: "discover" | "score-current") => void;
+  onRunRank: (mode: "discover" | "score-current", analysisId?: number) => void;
   onCancelRank: () => void;
   openings: CommitteeOpening[];
   selectedOpeningId: number | null;

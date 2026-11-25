@@ -1,5 +1,6 @@
 """Rebuild and retry queued email intents without storing rendered credentials."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import cast
@@ -91,6 +92,7 @@ VACANCY_FAILURE_RETENTION = timedelta(days=30)
 
 def retry_queued_emails(
     db: Session, sender: EmailSender, *, now: datetime | None = None, retry_failures: bool = True,
+    before_attempt: Callable[[], None] | None = None,
 ) -> RetrySummary:
     """Send waiting intents; provider failures retry only in a scheduled pass."""
     accepted = 0
@@ -107,6 +109,8 @@ def retry_queued_emails(
         .order_by(EmailDelivery.id)
     ).all()
     for delivery_id in delivery_ids:
+        if before_attempt is not None:
+            before_attempt()
         attempt_time = now or datetime.now(UTC)
         attempt = claim_delivery_attempt(
             db, delivery_id, now=attempt_time, commit=False, retry_failures=retry_failures,

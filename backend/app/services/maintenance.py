@@ -29,6 +29,10 @@ class MaintenanceLease:
     attempt_count: int
 
 
+class MaintenanceLeaseLost(RuntimeError):
+    """Stop dispatching work after this acquisition expires or is replaced."""
+
+
 def get_outbox_runner() -> Callable[[EmailSender], None]:
     return run_email_outbox
 
@@ -60,16 +64,35 @@ def run_due_maintenance_with(
     lease = _claim_daily_run(db, now=now)
     if lease is None:
         return False
+
+    def checkpoint() -> None:
+        checked_at = retry_time or datetime.now(UTC)
+        renewed = db.execute(update(DailyMaintenanceRun).where(
+            DailyMaintenanceRun.id == lease.run_id,
+            DailyMaintenanceRun.attempt_count == lease.attempt_count,
+            DailyMaintenanceRun.status == "running",
+            DailyMaintenanceRun.lease_expires_at > checked_at,
+        ).values(lease_expires_at=checked_at + LEASE_DURATION).execution_options(synchronize_session=False))
+        db.commit()
+        if renewed.rowcount != 1:
+            raise MaintenanceLeaseLost
+
     try:
         purge_due_applicant_data(db, now=now)
+        checkpoint()
         queue_due_unsuccessful_notices(db, now=now)
-        retry_queued_emails(db, sender or get_email_sender(), now=retry_time)
+        checkpoint()
+        retry_queued_emails(db, sender or get_email_sender(), now=retry_time, before_attempt=checkpoint)
+        checkpoint()
         purge_expired_vacancy_delivery_failures(db, now=now)
+    except MaintenanceLeaseLost:
+        db.rollback()
+        return False
     except Exception as error:
         db.rollback()
-        _finish_daily_run(db, lease, now=now, error_code=type(error).__name__[:120])
+        _finish_daily_run(db, lease, now=retry_time or datetime.now(UTC), error_code=type(error).__name__[:120])
         return False
-    return _finish_daily_run(db, lease, now=now)
+    return _finish_daily_run(db, lease, now=retry_time or datetime.now(UTC))
 
 
 def _finish_daily_run(

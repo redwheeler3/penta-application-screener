@@ -759,7 +759,11 @@ the application is purged without preserving personal information solely to deli
 Deletion covers the working and submitted answers, dated application versions,
 application participation, AI outputs and caches, eligibility and
 ranking data tied to the applicant, committee notes, sessions and unused login tokens, and
-applicant-identifying delivery records. Production uses daily Fly volume snapshots retained for
+applicant-identifying delivery records. Applicant-linked feedback is deleted in full, including
+resolved items, because its body can quote personal details; general product feedback remains.
+Linked feedback submission shares the applicant write boundary with purge. An unavailable target
+is rejected with the unsent browser draft preserved, rather than saving its text without a link.
+Production uses daily Fly volume snapshots retained for
 30 days. A snapshot restore may reintroduce data deleted after that snapshot; the bounded backup
 window is the accepted disaster-recovery tradeoff, and production does not maintain a separate
 deletion-preserving restore ledger. The built-in local restore path does reapply its current
@@ -791,7 +795,9 @@ Retention is enforced automatically and opportunistically at most once per Pacif
 when the deployed service receives ordinary browser or API traffic. Health checks, static assets,
 and CORS preflight requests do not wake the sweep, and no external scheduler exists solely to wake
 a suspended Fly Machine. A durable lease prevents concurrent requests from running the
-same sweep. The ordered pass purges due applicant data, queues due unsuccessful notices, retries
+same sweep. The acquisition is renewed between lifecycle stages and before each email attempt;
+an expired or replaced worker stops dispatching. Provider waits hold no database writer.
+The ordered pass purges due applicant data, queues due unsuccessful notices, retries
 queued email, and deletes expired list-only delivery failures. A record may remain somewhat past its
 scheduled date while the service is unused; the first subsequent real use starts the due work in the background.
 
@@ -1277,6 +1283,14 @@ Then the ranked list is **pure deterministic math** (`app/domain/ranking.py`): f
 
 **Two Rank modes.** *Discover new criteria* runs the full chain and may replace the criteria set. *Score missing applicants* runs only scoring, for eligible applicants missing a current-dimension result — preserving the run's dimensions and tier layout, independently cap-gated. Complete score coverage makes the retained criteria current for the changed pool.
 
+Score-current estimates identify the confirmed analysis. They wait while a full Rank may still
+consolidate criteria, using a short database transaction to capture settled state. The action
+requires that analysis identity and rejects a superseded confirmation before model work. The
+browser clears the rejected confirmation and refreshes the board for a new estimate. Rank also
+checks inherited source retention before paid work: the existing purge removes expired history
+first, and unresolved missing sources stop the run. Publication still rechecks retention under
+the writer lock in case an input expires during provider work.
+
 **Cost gating and readiness.** Screen is ready when its in-scope applicants have valid cached screening results. Rank is ready when every eligible applicant has valid scores for every current criterion, with no pending proposed criteria for that member. Answer, scoring-model, effective reasoning, scoring-prompt or criterion changes can cause real cache gaps and amber the step. Ignored existing criteria are not pending proposals. Discovery remains optional even with complete scores and always requires cost confirmation. `Analysis.rank_inputs_fingerprint` records the inputs captured before explicit AI work for provenance; it does not determine button colour. Discovery-only model, prompt or strategy changes do not invalidate scores for retained criteria. Switching between certified-equivalent routes preserves cached work. Rank streams phase-aware progress and model reasoning for its pool-level calls, then opens the ranked view.
 
 ### Cache evidence and cost projections
@@ -1332,7 +1346,9 @@ The pipeline makes real, non-deterministic model judgments, so it is instrumente
 
 Applicant-facing eval exports require verified captured synthetic provenance and a wholly synthetic
 actual export cohort. The assurance is captured before provider work and includes inherited criterion
-history. Later arrivals are checked by both harvesters and baseline capture; unknown historical
+history. Publishing replacement answers refreshes their assurance from the trusted runtime setting;
+private saves do not restamp the submitted projection. Later arrivals are checked by both harvesters
+and baseline capture; unknown historical
 sources fail closed. A baseline refusal reports Synthetic evidence required and preserves the file.
 Fixtures use opaque applicant columns and omit top-level narrative and pool justifications; nested
 prose is committable only behind the same synthetic boundary. Golden sets are grown with the harvest scripts under `backend/scripts/` (co-authored, then labelled by hand).
@@ -2108,7 +2124,7 @@ this verification. No dev server was started and no production deployment perfor
 
 ## Follow-up full-codebase audit — November 24, 2026
 
-**Status: discovery complete; seven findings verified. Jeff authorized implementation and push.**
+**Status: all seven findings implemented and verified. Jeff authorized commits and push.**
 Baseline: `c19d4b6edd3f65e2c398fe68e920dc45e3184ea5`. Review current behavior across the full
 system, including areas unaffected by the previous fixes. Expected load remains one Fly process,
 about five committee members, 300 applicants and 1,500 vacancy subscribers. Only isolated synthetic
@@ -2233,7 +2249,8 @@ recorded below. The application baseline stayed unchanged throughout all seven p
      at application prices. Such rows are possible between expiry/protection release and maintenance.
    - **Fix:** Validate captured historical sources before paid work; fail with actionable recovery or
      run the existing safe cleanup before proceeding. Preserve the late writer-time check for expiry
-     during work. Test both pre-existing expiry (zero provider calls) and mid-run expiry (no prose publish).
+     during work. Test pre-existing expiry (cleanup before provider inputs, or zero calls on refusal)
+     and mid-run expiry (no prose publish).
    - **If we skip it:** Retrying the known-invalid inputs repeats paid work that cannot be published.
    - **Owner/cost/deletion:** Rank/provenance owns preflight, analysis owns final fencing. One bounded
      retention query before calls; consolidate the predicate, do not add another source registry.
@@ -2296,3 +2313,42 @@ the previously measured model variability. No additional smaller style findings 
 **Not checked:** Production deployment/snapshots, live Google/email flows, fresh paid-model judgment,
 physical drag/wheel/print journeys, third-party vulnerability advisories and a production-scale load
 test. One intermittent frontend test remains an explicit verification limit.
+
+### Implementation and closeout
+
+Jeff approved all seven remedies and explicitly accepted deletion of the entire applicant-linked
+feedback item. Implementation began only after the seven discovery passes finished on `c19d4b6`.
+No new dependency, migration, identifier, scheduler or database replacement was required.
+
+| Finding | Final behavior and regression evidence |
+| --- | --- |
+| 1 | Publication stamps the replacement submitted answers from the explicit runtime assurance; private saves preserve the submitted stamp. All four old/new assurance combinations exercise creation, private save, publication and the actual fixture exporter. Ordinary replacement answers are refused. |
+| 2 | Aggregate erasure deletes linked feedback rather than orphaning its body. Resolved/unresolved linked items, general feedback and another applicant's items are distinguished. A real isolated SQLite backup/restore replay removes the expired quoted feedback and preserves general feedback. Submission serializes with purge and rejects unavailable applicant targets, covering both save/purge orders and expired/withdrawn/missing inputs; the actual composer retains its unsent draft after rejection. The composer reminds members to omit applicant details from general feedback. |
+| 3 | The same daily acquisition renews before each email attempt and between stages, and a lost acquisition stops dispatch. Both 100-item virtual batches (one- and ten-second sends) make exactly 100 attempts with one daily owner. Replacement during an accepted or failed send stops the old worker before its second dispatch; existing obsolete-completion tests stay green. |
+| 4 | Rank preflight shares the retention predicate with final publication. Expired known sources go through normal purge before discovery; the expired marker never reaches a prompt. An unresolved missing source returns 409 without calls and releases the lease. Expiry during paid work still prevents analysis publication. |
+| 5 | Estimate/types/client/confirmation/action carry the existing `analysisId`. Both client-known drift and drift while claiming the server lease are refused; the board refreshes and no success is announced. Estimates take a short writer snapshot and refuse a live full Rank, covering in-place consolidation without another version token. The required ID is enforced; successful score-current, cache, failure-cost and lease-loss consumers remain covered. |
+| 6 | Every overdue published undecided opening remains an admin action, including empty/all-withdrawn histories. Future, Preparing and decided openings do not. Dashboard and one-query summary tests cover the projection; human decisions and retention anchors are unchanged. |
+| 7 | Shared form date maxima and validation use the existing Vancouver/Pacific timezone policy. Actual fields are checked on both sides of winter and summer Pacific midnight, including a separate Tokyo-process run; unrestricted dates retain their behavior. Date-only answers are not shifted. |
+
+Final checks: **1,377 backend tests passed, 1 skipped**, Ruff clean; **494 frontend tests passed**,
+frontend lint and production build passed. The six date-field checks also passed with
+`TZ=Asia/Tokyo`. Watchdog code is unchanged; its 43-test/typecheck audit baseline remains applicable.
+The previously intermittent visibility-refresh test passed in the final full suite; its initial
+failure is retained in the audit evidence above.
+
+A fresh [live Bedrock smoke receipt](docs/archive/followup-audit-live-score-2026-11-24.json) records
+one fictional applicant from the committed intake fixture scored against one committed golden
+criterion through the estimate and score-current HTTP endpoints: **1 scored, 0 failed**. The
+Haiku result scored explicit lack of licensed-trade experience at −1 with high confidence and quoted
+the fictional applicant's statement that neither adult is a tradesperson; the stated low pole
+supports this result. A superseded confirmation then returned 409 without another model call.
+Known provider usage was **$0.003557** (display/ledger rounding: $0.0036). This verifies the revised
+path and one inspected output, not a new model-quality benchmark or a change to golden labels.
+
+Operational cost: maintenance adds short renewal writes between sends; score-current estimation
+holds a short SQLite writer transaction while reading its plan, never across network/model work.
+Rank adds a retained-source query and invokes existing cleanup only when necessary. No additional
+successful-path browser round trip was added. Linked feedback takes a short application writer
+lock before checking context and storing the body. The real local DB, credentials and provider settings
+were untouched. Production deployment, live mail/Google flows and full browser/print journeys
+remain outside this implementation verification.

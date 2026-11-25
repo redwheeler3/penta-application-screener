@@ -21,7 +21,7 @@ function setup() {
   const hook = renderHook((props) => useAiRuns(props), { initialProps: options });
   return { ...hook, options,
     run: (mode: Mode) => mode === "screening"
-      ? hook.result.current.runScreening() : hook.result.current.runRank(mode) };
+      ? hook.result.current.runScreening() : hook.result.current.runRank(mode, 1) };
 }
 
 function stalledRequest() {

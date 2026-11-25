@@ -3,7 +3,7 @@
 import time
 from collections.abc import Generator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.ai.analysis import SpendingCapExceeded, enforce_cap, exception_type_name
@@ -33,7 +33,13 @@ from app.services.ranking.analysis import get_current_analysis, record_rank_inpu
 from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.pipeline import SCORES, ScoreTally
 from app.services.ranking.provenance import rank_inputs_fingerprint
-from app.services.run_lock import RunLeaseLost, acquire_run_lock, release_run_lock
+from app.services.run_lock import (
+    RunLeaseLost,
+    acquire_run_lock,
+    lock_run_state,
+    rank_run_in_progress,
+    release_run_lock,
+)
 from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings
 
@@ -47,6 +53,11 @@ def score_current_estimate(
     db: Session = Depends(get_db),
 ) -> ScoreCurrentEstimateResponse:
     opening_id = resolve_visible_opening_id(db, opening_id)
+    # A live Rank can still consolidate this analysis in place. Estimate settled criteria
+    # under the same short writer boundary that admits a new Rank acquisition.
+    lock_run_state(db)
+    if rank_run_in_progress(db):
+        raise Problem("run_in_progress", detail="Wait for ranking to finish before estimating current criteria.")
     require_ai_actions_available(db, opening_id)
     settings = get_app_settings(db)
     analysis = get_current_analysis(db, opening_id)
@@ -56,7 +67,8 @@ def score_current_estimate(
     plan = plan_dimension_scoring(db, applications=applications_to_score(db, opening_id), report=report, settings=settings)
     result = estimate_scoring_plan(db, plan)
     estimated_usd = float(result["estimated_usd"])
-    return ScoreCurrentEstimateResponse(
+    response = ScoreCurrentEstimateResponse(
+        analysis_id=analysis.id,
         eligible=int(result["total"]),
         to_analyze=int(result["to_analyze"]),
         cached=int(result["cached"]),
@@ -65,10 +77,13 @@ def score_current_estimate(
         cap_usd=settings.ai.spending_cap_usd,
         within_cap=estimated_usd <= settings.ai.spending_cap_usd,
     )
+    db.commit()
+    return response
 
 
 @router.post("/score-current")
 def score_current(
+    analysis_id: int = Query(gt=0),
     opening_id: int | None = None,
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
@@ -86,6 +101,8 @@ def score_current(
         report = current_dimension_report(analysis) if analysis is not None else None
         if report is None:
             raise Problem("run_required", detail="Discover ranking criteria before scoring applicants against them.")
+        if analysis.id != analysis_id:
+            raise Problem("stale_analysis", detail="Ranking criteria changed. Review the refreshed board and request a new estimate before scoring.")
         pool = applications_to_score(db, opening_id)
         inputs_fingerprint = rank_inputs_fingerprint(db, opening_id, settings, applications=pool)
         plan = plan_dimension_scoring(db, applications=pool, report=report, settings=settings)

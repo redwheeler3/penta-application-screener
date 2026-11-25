@@ -67,6 +67,93 @@ def test_obsolete_maintenance_cannot_finish_its_replacement(monkeypatch, fails) 
         assert run.last_error_code is None
 
 
+@pytest.mark.parametrize("send_seconds", [1, 10])
+def test_daily_owner_is_renewed_through_long_retry_batches(monkeypatch, send_seconds):
+    from app.db.models import Opening
+    from app.services.email import outbox
+    from app.services.email.sender import EmailRetryableError
+    from app.services.openings.subscriptions import save_subscription
+    from app.services.openings.vacancy_notifications import (
+        opening_audience,
+        queue_opening_notifications,
+    )
+    from tests.applicant.support import app_and_db
+
+    _app, db, _sender = app_and_db()
+    opening = db.scalar(select(Opening))
+    for index in range(100):
+        save_subscription(db, email=f"fiction-{index}@example.com", unit_sizes={2}, source="test")
+    queue_opening_notifications(db, opening, opening_audience(db, 2))
+    db.commit()
+
+    class Clock(datetime):
+        value = datetime.now(UTC)
+        @classmethod
+        def now(cls, tz=None):
+            return cls.value if tz else cls.value.replace(tzinfo=None)
+
+    class SlowFailure:
+        calls = 0
+        second_claimed = None
+        def send(self, _message):
+            self.calls += 1
+            Clock.value += timedelta(seconds=send_seconds)
+            if self.calls == 65:
+                with sessionmaker(bind=db.bind)() as other:
+                    self.second_claimed = maintenance._claim_daily_run(other, now=Clock.value)
+            raise EmailRetryableError("Synthetic timeout")
+
+    monkeypatch.setattr(maintenance, "datetime", Clock)
+    monkeypatch.setattr(outbox, "datetime", Clock)
+    sender = SlowFailure()
+    assert run_due_maintenance_with(db, sender)
+    assert sender.calls == 100
+    assert sender.second_claimed is None
+    run = db.scalar(select(DailyMaintenanceRun).execution_options(populate_existing=True))
+    assert run.attempt_count == 1
+    assert run.status == "completed"
+    assert run.completed_at == Clock.value.replace(tzinfo=None)
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_replaced_daily_owner_stops_before_dispatching_another_email(accepted):
+    from app.db.models import Opening
+    from app.services.email.sender import EmailRetryableError
+    from app.services.openings.subscriptions import save_subscription
+    from app.services.openings.vacancy_notifications import (
+        opening_audience,
+        queue_opening_notifications,
+    )
+    from tests.applicant.support import app_and_db
+
+    _app, db, _sender = app_and_db()
+    now = datetime.now(UTC)
+    opening = db.scalar(select(Opening))
+    for index in range(2):
+        save_subscription(db, email=f"fiction-{index}@example.com", unit_sizes={2}, source="test")
+    queue_opening_notifications(db, opening, opening_audience(db, 2))
+    db.commit()
+    calls = []
+    replacement = []
+
+    class ReplacedDuringSend:
+        def send(self, message):
+            calls.append(message.to)
+            with sessionmaker(bind=db.bind)() as other:
+                replacement.append(maintenance._claim_daily_run(other, now=now + timedelta(minutes=11)))
+            if accepted:
+                return "captured"
+            raise EmailRetryableError("Synthetic failure")
+
+    assert not run_due_maintenance_with(db, ReplacedDuringSend(), now=now)
+    assert replacement[0] is not None
+    assert len(calls) == 1
+    run = db.scalar(select(DailyMaintenanceRun).execution_options(populate_existing=True))
+    assert run.attempt_count == 2
+    assert run.status == "running"
+    assert run.last_error_code is None
+
+
 @pytest.mark.anyio
 async def test_real_request_triggers_maintenance_but_inert_requests_do_not() -> None:
     calls = 0

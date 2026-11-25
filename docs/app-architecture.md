@@ -324,6 +324,10 @@ Ordinary application traffic claims a durable once-per-Pacific-day maintenance l
 background task. The pass purges due applicant data, queues due unsuccessful notices, retries queued
 mail, and deletes expired list-only vacancy failures. Health checks, static
 assets, and CORS preflight requests do not trigger it.
+The daily acquisition renews between stages and before every email attempt. An expired or
+replaced acquisition stops dispatch; provider waits hold no writer lock. Applicant-linked feedback
+shares the application write boundary, is refused if its target becomes unavailable, and is erased
+in full when that applicant is purged. General feedback remains separate from applicant retention.
 Administrators see queued, provider-quota-blocked, and recent unexpected failure counts in the
 action banner. SocketLabs, not the application, owns bounce, complaint, suppression, plan
 reporting, and account notifications.
@@ -464,6 +468,11 @@ answer attached to the content actually analyzed and keeps the newer content unc
 Full Rank and score-current capture the eligible pool's fingerprint before AI work begins and
 persist that original identity. Recorded fingerprints retain the starting inputs for audit;
 current cache coverage determines whether further screening/scoring work is needed.
+Full Rank checks captured source retention before paid work, using the normal purge for expired
+history and refusing unresolved missing sources. The publication check remains fenced against
+expiry during calls. Score-current estimates carry the existing analysis ID into confirmation
+and POST; the action refuses a superseded ID before calls. A short writer snapshot excludes an
+unfinished full Rank from estimation, including its in-place criterion consolidation.
 Dimension scoring carries each applicant's input, cache keys, pending dimensions, and cached
 scores in a named `ScoringPlan`; worker calls read its captured input without touching the ORM.
 
@@ -547,6 +556,9 @@ application not already stamped synthetic.
 Synthetic provenance is persisted on applications and copied onto each analysis when the entire
 pool is synthetic. Evidence-harvesting tools fail closed unless the analysis carries that stamp;
 filenames and email domains never establish safety.
+Publication refreshes assurance from the explicit runtime setting for the replacement submitted
+answers; private saves preserve the submitted projection's assurance. Exporters also check their
+actual current inputs and captured history rather than trusting an old analysis stamp alone.
 
 ## Configuration
 

@@ -2,7 +2,7 @@
 
 A member submits free text; the caller stamps identity, app version, and the context
 the member was in (route/tab/analysis). Reads are admin-only (enforced at the router).
-Resolved items are retained, not deleted, so the friction history survives for mining.
+Resolving preserves history; applicant-linked items are deleted with their applicant.
 """
 
 from __future__ import annotations
@@ -10,7 +10,9 @@ from __future__ import annotations
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.problems import Problem
 from app.db.models import Analysis, Application, Feedback, User, UserRole
+from app.services.applications.locking import lock_application
 from app.services.applications.retained_review import retained_review_applications_query
 from app.services.applications.scope import (
     opening_applications_query,
@@ -33,6 +35,9 @@ def create_feedback(
 ) -> Feedback:
     """Persist one feedback item. Identity, version, and context come from the router
     (identity/version stamped server-side; context is what the client reported)."""
+    if applicant_id is not None:
+        # Serialize linked text with purge so an expired target cannot become general feedback.
+        lock_application(db, applicant_id)
     opening_id, analysis_id, applicant_id, retained_review = normalize_context(
         db, user, opening_id, analysis_id, applicant_id, retained_review,
     )
@@ -66,7 +71,7 @@ def normalize_context(
     db: Session, user: User, opening_id: int | None, analysis_id: int | None,
     applicant_id: int | None, retained_review: bool,
 ) -> tuple[int | None, int | None, int | None, bool]:
-    """Discard unusable references without rejecting the member's feedback text."""
+    """Normalize navigation references; applicant-linked text requires a reviewable target."""
     visible_ids = {opening.id for opening in visible_committee_openings(db)}
     submitted_opening = opening_id
     opening_id = opening_id if opening_id in visible_ids else None
@@ -87,7 +92,7 @@ def normalize_context(
                 .where(Application.id == applicant_id)
             ) is not None
         if not allowed:
-            applicant_id = None
+            raise Problem("not_found", detail="This application is no longer available for feedback. Your feedback has not been saved.")
     if applicant_id is None:
         retained_review = False
     if retained_review:

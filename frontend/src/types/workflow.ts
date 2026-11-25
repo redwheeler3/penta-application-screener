@@ -43,6 +43,7 @@ export type RankEstimateResponse = {
 };
 
 export type ScoreCurrentEstimateResponse = {
+  analysisId: number;
   eligible: number;
   toAnalyze: number;
   cached: number;

@@ -22,11 +22,16 @@ from app.schemas.ranking import (
     RankEstimateResponse,
 )
 from app.schemas.settings import AppSettings
+from app.services.applications.purge import purge_due_applicant_data
 from app.services.applications.scope import resolve_visible_opening_id
 from app.services.cost_report import RunCostRecorder
 from app.services.openings.selection import require_ai_actions_available
 from app.services.ranking.estimates import build_rank_estimate
 from app.services.ranking.pipeline import stream_rank
+from app.services.ranking.provenance import (
+    capture_rank_sources,
+    rank_sources_are_retained,
+)
 from app.services.run_lock import acquire_run_lock, release_run_lock
 from app.services.run_stream import RunStreamingResponse
 from app.services.settings import get_app_settings
@@ -95,6 +100,14 @@ def rank_run(
         pool = eligible_applications(db, opening_id)
         if not pool:
             raise Problem("no_eligible_applications", detail="No eligible applications to rank.")
+
+        source_ids, _ = capture_rank_sources(db, pool)
+        if not rank_sources_are_retained(db, source_ids):
+            # Expired inherited prose must be erased before any paid worker reads history.
+            purge_due_applicant_data(db)
+            source_ids, _ = capture_rank_sources(db, pool)
+            if not rank_sources_are_retained(db, source_ids):
+                raise Problem("rank_inputs_unavailable", detail="Ranking history refers to unavailable inputs. Ask an administrator to review retention cleanup before retrying.")
 
         # An unchanged pool needs no re-rank, but one is allowed: discovery is nondeterministic,
         # so re-running deliberately gives the committee a fresh set of criteria. The

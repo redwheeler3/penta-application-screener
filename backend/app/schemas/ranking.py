@@ -199,6 +199,7 @@ class RankEstimateResponse(ResponseModel):
 class ScoreCurrentEstimateResponse(ResponseModel):
     """Cost projection for filling missing scores on the current dimension set."""
 
+    analysis_id: int
     eligible: int
     to_analyze: int
     cached: int

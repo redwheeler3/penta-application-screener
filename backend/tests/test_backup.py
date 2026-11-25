@@ -212,6 +212,7 @@ def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
         conn.exec_driver_sql("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized, working_revision, created_at) VALUES (42, 'synthetic@example.test', '{}', 'synthetic', '{}', 1, '2026-08-01 12:00:00')")
         conn.exec_driver_sql("INSERT INTO users (id, email, display_name, role, is_active) VALUES (1, 'author@example.test', 'Author', 'member', 1)")
         conn.exec_driver_sql("INSERT INTO application_notes (application_id, user_id, note) VALUES (42, 1, 'Synthetic private note')")
+        conn.exec_driver_sql("INSERT INTO feedback (applicant_id, user_id, body, app_version) VALUES (42, 1, 'Synthetic applicant quote', 'test'), (NULL, 1, 'General feedback', 'test')")
         conn.exec_driver_sql("INSERT INTO application_committee_notes (application_id, author_user_id, body, creation_key, deleted_at) VALUES (42, 1, '', 'synthetic-receipt', '2026-08-20 12:00:00')")
     saved = backup.create_backup(engine=temp_engine)
     with temp_engine.begin() as conn:
@@ -221,6 +222,7 @@ def test_restore_does_not_resurrect_a_retention_deletion(temp_engine):
         for table in ("applications", "application_notes", "application_committee_notes"):
             assert conn.exec_driver_sql(f"SELECT count(*) FROM {table}").scalar_one() == 0
         assert conn.exec_driver_sql("SELECT count(*) FROM retention_deletions").scalar_one() == 1
+        assert conn.exec_driver_sql("SELECT body FROM feedback").scalars().all() == ["General feedback"]
         assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
 
 

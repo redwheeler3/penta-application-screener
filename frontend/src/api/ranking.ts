@@ -45,8 +45,8 @@ export function createApi(client: ApiClient) {
   const fetchScoreCurrentEstimate = (openingId: number, signal?: AbortSignal) =>
     getJson<ScoreCurrentEstimateResponse>(`/ranking/score-current/estimate${openingQuery(openingId)}`, signal);
 
-  const scoreCurrent = (openingId: number, signal?: AbortSignal) =>
-    streamRequest(`/ranking/score-current${openingQuery(openingId)}`, signal);
+  const scoreCurrent = (openingId: number, analysisId: number, signal?: AbortSignal) =>
+    streamRequest(`/ranking/score-current${openingQuery(openingId)}&analysis_id=${analysisId}`, signal);
 
   const fetchRankingBoard = (openingId: number) =>
     getJson<RankingBoardResponse>(`/ranking/board${openingQuery(openingId)}`);

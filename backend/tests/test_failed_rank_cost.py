@@ -119,7 +119,7 @@ async def test_single_pass_storage_failure_retains_known_reply_cost(monkeypatch,
         raise ValueError("Synthetic storage failure")
 
     monkeypatch.setattr("app.ai.analysis.store_result" if kind == "screen" else "app.ai.dimension_scoring.stage_result", fail)
-    route = "/screening/run" if kind == "screen" else "/ranking/score-current"
+    route = "/screening/run" if kind == "screen" else f"/ranking/score-current?analysis_id={db.scalar(select(Analysis.id))}"
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         events = await stream_events(client, route)
     ledger = db.scalar(select(RunCostLedger))

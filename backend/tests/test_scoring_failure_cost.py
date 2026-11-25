@@ -30,7 +30,7 @@ async def test_incomplete_retries_keep_usage_and_only_successes_count_as_scored(
     if mixed:
         add_eligible(db, email="complete@example.com", raw_hash="complete")
     report, settings = a_pattern_report(), AppSettings()
-    create_analysis(db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
+    analysis = create_analysis(db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
         report=report, narrative=None, inputs_fingerprint="synthetic")
     model = settings.ai.dimension_scoring_model
     incomplete = DimensionScoringReport(scores=[a_scoring_report().scores[0]])
@@ -40,7 +40,7 @@ async def test_incomplete_retries_keep_usage_and_only_successes_count_as_scored(
     known_calls = MAX_SCORING_RETRIES + 1 + int(mixed)
     expected_cost = known_calls * cost_usd(model, Usage(input_tokens=1000, output_tokens=200))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
-        events = await stream_events(client, "/ranking/score-current")
+        events = await stream_events(client, f"/ranking/score-current?analysis_id={analysis.id}")
         summary = events[-1]
         assert summary["scored"] == int(mixed)
         assert summary["failed"] == 1

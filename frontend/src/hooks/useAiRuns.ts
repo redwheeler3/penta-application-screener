@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { streamNdjson } from "../api/client";
 import * as rankingApi from "../api/ranking";
 import * as screeningApi from "../api/screening";
-import { readProblem } from "../api/problems";
+import { problemMessage, readProblem, readProblemBody } from "../api/problems";
 import { money } from "../format";
 import { useRequestScope } from "./useRequestScope";
 import type {
@@ -238,8 +238,14 @@ export function useAiRuns(options: {
     }
   }
 
-  async function runRank(mode: "discover" | "score-current") {
+  async function runRank(mode: "discover" | "score-current", analysisId?: number) {
     if (options.openingId === null || !refreshes.isFor(options.openingId) || activeRun.current) return;
+    if (mode === "score-current" && (analysisId == null || analysisId !== options.ranking.currentRun?.analysisId)) {
+      cancelRankEstimate();
+      options.notifications.warning("Ranking criteria changed. Review the refreshed board and request a new estimate before scoring.");
+      refreshRankingViews();
+      return;
+    }
     const controller = new AbortController();
     activeRun.current = controller;
     const inScope = refreshes.capture();
@@ -256,13 +262,15 @@ export function useAiRuns(options: {
     try {
       const response = mode === "discover"
         ? await startRankRequest(options.openingId, controller.signal)
-        : await startScoreCurrentRequest(options.openingId, controller.signal);
+        : await startScoreCurrentRequest(options.openingId, analysisId!, controller.signal);
       if (!inScope()) { controller.abort(); return; }
       if (!response.ok || !response.body) {
-        const problem = await readProblem(response);
+        const body = await readProblemBody(response);
+        const problem = problemMessage(body);
         if (!inScope()) return;
         options.notifications.error(problem ? `Ranking failed: ${problem}` : "Ranking failed.");
-        if (response.ok || response.status >= 500) refreshRankingViews();
+        const stale = response.status === 409 && body?.code === "stale_analysis";
+        if (response.ok || response.status >= 500 || stale) refreshRankingViews();
         else if (mode === "discover" && priorProposals.length > 0) {
           options.ranking.setDisplayedProposals(priorProposals);
         }

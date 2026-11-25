@@ -11,6 +11,7 @@ const props: ComponentProps<typeof RankingRunConfirmation> = {
     estimatedUsd: 0.8, approximate: true, capUsd: 2, withinCap: true,
   },
   scoreCurrentEstimate: {
+    analysisId: 17,
     eligible: 8, toAnalyze: 2, cached: 6, dimensions: 4, estimatedUsd: 0.05, capUsd: 2, withinCap: true,
   },
   hasCurrentCriteria: true,
@@ -41,7 +42,7 @@ describe("ranking confirmation", () => {
     expect(screen.getByRole("button", { name: "Score missing applicants" })).toHaveClass("primary-button");
     expect(screen.getByRole("button", { name: "Discover new criteria" })).toHaveClass("secondary-button");
     await user.click(screen.getByRole("button", { name: "Score missing applicants" }));
-    expect(onRun).toHaveBeenLastCalledWith("score-current");
+    expect(onRun).toHaveBeenLastCalledWith("score-current", 17);
 
     rerender(<RankingRunConfirmation {...props} onRun={onRun} onCancel={onCancel} pendingProposals={["Participation"]} />);
     expect(screen.getByRole("button", { name: "Score missing applicants" })).toHaveClass("secondary-button");

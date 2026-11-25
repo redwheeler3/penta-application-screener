@@ -33,7 +33,7 @@ function setup(mode: Mode, events: unknown[], finalNewline = true) {
   const options = {
     openingId: 1,
     ranking: {
-      currentRun: null, refreshCurrentRun: vi.fn().mockResolvedValue(null),
+      currentRun: { analysisId: 1, dimensions: [], proposedDimensions: [] }, refreshCurrentRun: vi.fn().mockResolvedValue(null),
       load: vi.fn().mockResolvedValue(true), setDisplayedProposals: vi.fn(), invalidateReads: vi.fn(),
     },
     notifications: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -42,11 +42,29 @@ function setup(mode: Mode, events: unknown[], finalNewline = true) {
   const { result, unmount } = renderHook(() => useAiRuns(options));
   return {
     result, options, unmount,
-    run: () => mode === "screening" ? result.current.runScreening() : result.current.runRank(mode),
+    run: () => mode === "screening" ? result.current.runScreening() : result.current.runRank(mode, 1),
   };
 }
 
 beforeEach(() => vi.resetAllMocks());
+
+it.each([undefined, 2])("refuses a score confirmation for an unconfirmed or different board (%s)", async (analysisId) => {
+  const { result, options } = setup("score-current", []);
+  await act(() => result.current.runRank("score-current", analysisId));
+  expect(rankingApi.scoreCurrent).not.toHaveBeenCalled();
+  expect(options.notifications.warning).toHaveBeenCalledOnce();
+  expect(options.ranking.load).toHaveBeenCalledOnce();
+});
+
+it("sends the confirmed analysis and refreshes after server-side criteria drift", async () => {
+  const { options, run } = setup("score-current", []);
+  rankingApi.scoreCurrent.mockResolvedValue(Response.json({ code: "stale_analysis", detail: "Request a new estimate." }, { status: 409 }));
+  await act(run);
+  expect(rankingApi.scoreCurrent).toHaveBeenCalledWith(1, 1, expect.any(AbortSignal));
+  expect(options.notifications.error).toHaveBeenCalledExactlyOnceWith("Ranking failed: Request a new estimate.");
+  expect(options.ranking.load).toHaveBeenCalledOnce();
+  expect(options.notifications.success).not.toHaveBeenCalled();
+});
 
 it.each(modes)("cancels pending %s work when the authenticated workspace closes", async (mode) => {
   const { options, run, unmount } = setup(mode, []);
@@ -56,7 +74,7 @@ it.each(modes)("cancels pending %s work when the authenticated workspace closes"
   vi.mocked(request).mockReturnValue(pending.promise);
   let running!: Promise<void>;
   act(() => { running = run(); });
-  const signal = vi.mocked(request).mock.calls[0][1]!;
+  const signal = vi.mocked(request).mock.calls[0][mode === "score-current" ? 2 : 1]! as AbortSignal;
   unmount();
   expect(signal.aborted).toBe(true);
   await act(async () => { pending.resolve(new Response('{"type":"summary","dimensions":1,"scored":1}\n')); await running; });

@@ -89,7 +89,7 @@ def resolve_feedback(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> FeedbackOut:
-    """Mark an item handled (idempotent). It leaves the open list but is retained."""
+    """Mark an item handled (idempotent). Applicant retention still applies."""
     require_admin_write(db, _admin.id)
     feedback = feedback_service.resolve_feedback(db, feedback_id)
     if feedback is None:

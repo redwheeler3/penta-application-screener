@@ -24,6 +24,16 @@ validate opening ownership. Dashboard responses include `analysisId` for passive
 Tier changes use cached scores without model calls. The eval catalog exposes `fixtureEditingEnabled`; hosted corpus writes return
 `eval_fixtures_read_only`. Eval runs have no spending cap and read the committed image corpus.
 
+Score-current estimates return `analysisId` and wait for any full Rank to finish consolidating.
+Send that ID as the required `analysis_id` query parameter on `POST /ranking/score-current`.
+A changed analysis returns `409 stale_analysis` before provider calls; review the refreshed board
+and request a new estimate. Full Rank cleans expired inherited sources before paid work and returns
+`409 rank_inputs_unavailable` if captured source references remain unresolved.
+
+Applicant-linked feedback requires a currently reviewable target and is serialized with purge.
+An unavailable target returns 404 without saving its body as general feedback. Linked feedback,
+including resolved items, is deleted when the applicant is purged; general product feedback remains.
+
 `/evals/last-run` returns `runs` and independent `current` configuration/fingerprint metadata for
 every requested mode, including modes without stored history. Each saved aggregate supplies
 `caseRunIds` so clients compare receipts with a case's actual source, not the aggregate run ID.
@@ -170,7 +180,7 @@ consolidation audits expose captured configuration where it was recorded.
 | GET | `/feedback` | List feedback newest-first. Open items only by default; `includeResolved=true` widens to the full history. | Admin |
 | POST | `/feedback` | Record a member's feedback. Identity + app version are stamped here (not trusted from the body); route/tab/analysis are the context the client reported. | Committee session |
 | POST | `/feedback/{feedback_id}/reopen` | Move a resolved item back to the open list (idempotent). | Admin |
-| POST | `/feedback/{feedback_id}/resolve` | Mark an item handled (idempotent). It leaves the open list but is retained. | Admin |
+| POST | `/feedback/{feedback_id}/resolve` | Mark an item handled (idempotent). Applicant retention still applies. | Admin |
 
 ## Health
 

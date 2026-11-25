@@ -12,7 +12,14 @@ from app.ai.input_evidence import input_fingerprint
 from app.ai.model_catalog import model_identity
 from app.db.models import Analysis, Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
+from app.services.applications.retention import current_retention_clause
 from app.services.eligibility.evaluation import union_eligible_application_ids
+
+
+def rank_sources_are_retained(db: Session, source_ids: list[int]) -> bool:
+    retained = set(db.scalars(select(Application.id).where(
+        Application.id.in_(source_ids), current_retention_clause())))
+    return retained == set(source_ids)
 
 
 def capture_rank_sources(db: Session, applications: list[Application]) -> tuple[list[int], bool]:

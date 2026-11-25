@@ -1,6 +1,7 @@
 """A run's provenance records its starting inputs, including edits made during AI work."""
 
 import json
+from datetime import UTC, datetime
 from threading import Event
 
 import pytest
@@ -92,11 +93,80 @@ async def test_score_current_keeps_its_starting_fingerprint_after_an_edit(monkey
 
     monkeypatch.setattr("app.api.ranking.score_current.score_planned_dimensions", delayed_scores)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
-        response = await client.post(f"/ranking/score-current?opening_id={opening_id}")
+        response = await client.post(f"/ranking/score-current?opening_id={opening_id}&analysis_id={analysis.id}")
     assert response.status_code == 200
     assert seen_hashes == ["ready-for-scoring"]
     assert analysis.rank_inputs_fingerprint == scoring_fingerprint
     assert analysis.rank_inputs_fingerprint != rank_inputs_fingerprint(db, opening_id, settings)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("source_present", [False, True])
+async def test_rank_cleans_expired_history_or_refuses_missing_sources_before_provider_work(source_present):
+    from app.ai.schemas import DimensionMatchReport
+    from app.core.time import pacific_today
+    from app.db.models import Analysis, AnalysisAudit, Application, RunLock
+    from tests.ranking_support import a_scoring_report, route_criteria
+
+    app, db, provider = setup_app(UserRole.ADMIN)
+    add_eligible(db, email="retained@example.com", raw_hash="retained")
+    marker = "Expired synthetic explanation marker"
+    if source_present:
+        expired = Application(primary_email="expired@example.com", raw_row={}, raw_row_hash="expired", normalized={},
+            submitted_at=datetime.now(UTC), retention_due_on=pacific_today())
+        db.add(expired)
+        db.flush()
+        source_id = expired.id
+    else:
+        source_id = 123456
+    report = a_pattern_report()
+    report.dimensions[0].why_it_differentiates = marker
+    history = Analysis(dimension_report=report.model_dump(mode="json"), source_application_ids=[source_id],
+        audit=AnalysisAudit(discovery_narrative=marker))
+    db.add(history)
+    db.commit()
+    route_criteria(provider, a_pattern_report())
+    provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))
+    provider.route("applicant_id", a_scoring_report())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post("/ranking/run")
+    if source_present:
+        assert response.status_code == 200
+        assert json.loads(response.text.splitlines()[-1])["type"] == "summary"
+        assert provider.calls
+        assert all(marker not in call.prompt for call in provider.calls)
+        assert db.get(Application, source_id) is None
+        assert history.audit is None
+        assert history.pool_text_purged
+    else:
+        assert response.status_code == 409
+        assert response.json()["code"] == "rank_inputs_unavailable"
+        assert provider.calls == []
+    assert db.get(RunLock, 1, populate_existing=True).holder_user_id is None
+
+
+@pytest.mark.anyio
+async def test_rank_still_fences_source_expiry_during_paid_work(monkeypatch):
+    from app.core.time import pacific_today
+    from app.db.models import Analysis, RunLock
+    from app.services.ranking import pipeline
+    from tests.ranking_support import route_criteria, stream_events
+
+    app, db, provider = setup_app(UserRole.ADMIN)
+    application = add_eligible(db, email="fictional@example.com", raw_hash="fictional")
+    original = pipeline.create_analysis
+    def expire_then_publish(*args, **kwargs):
+        application.retention_due_on = pacific_today()
+        db.commit()
+        return original(*args, **kwargs)
+    monkeypatch.setattr(pipeline, "create_analysis", expire_then_publish)
+    route_criteria(provider, a_pattern_report())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        events = await stream_events(client, "/ranking/run")
+    assert provider.calls
+    assert events[-1]["type"] == "error"
+    assert db.scalar(select(Analysis)) is None
+    assert db.get(RunLock, 1, populate_existing=True).holder_user_id is None
 
 
 @pytest.mark.parametrize(("field", "value"), [("discovery_fan_out", 6),

@@ -52,6 +52,7 @@ PROBLEM_TITLES: dict[str, tuple[int, str]] = {
     "ai_provider_not_configured": (409, "AI provider not configured"),
     # Screening / ranking preconditions and gates.
     "no_eligible_applications": (409, "No eligible applications"),
+    "rank_inputs_unavailable": (409, "Ranking inputs unavailable"),
     "run_required": (409, "Screening run required"),
     "stale_analysis": (409, "Ranking was refreshed"),
     "unchanged_pool": (409, "Screening already up to date"),

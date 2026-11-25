@@ -88,7 +88,7 @@ export function FeedbackButton(props: {
             className="feedback-composer-input"
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="What's working, what's confusing, what's missing?"
+            placeholder="What's working, what's confusing, what's missing? Keep general feedback free of applicant details."
             rows={4}
             maxLength={5000}
             autoFocus
