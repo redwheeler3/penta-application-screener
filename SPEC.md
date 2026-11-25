@@ -48,9 +48,9 @@ The applicant/co-applicant section asks for applicant name, date of birth, phone
 co-applicant name, date of birth, relationship, phone, and email; and the children who will live in
 the unit. Ages are calculated from those birth dates as of the application's last submitted edit.
 
-Opening cards state the applicable household-size requirements:
+Household-size defaults for openings:
 
-- 1 bedroom: 1 or 2 adults
+- 1 bedroom: 1 or 2 adults and no children
 - 2 bedroom: 1 or 2 adults plus 1 or more children under 18
 - 3 bedroom: 1 or 2 adults plus 2 or more children under 18
 
