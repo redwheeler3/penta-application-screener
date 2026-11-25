@@ -332,3 +332,38 @@ def test_settled_why_is_carried_from_source_not_decomposer() -> None:
     dim = out.dimensions[0]
     # The primary source's real why is carried forward — NOT an empty/decomposer string.
     assert dim.why_it_differentiates == "Applicants range from eager volunteers to vague."
+
+
+def test_fresh_same_label_different_concept_cannot_adopt_old_scores():
+    from app.ai.dimension_discovery import DiscoverySeeds
+    from app.ai.mock_provider import MockProvider
+    from app.schemas.settings import AppSettings
+    from app.services.ranking.criteria import run_criteria_passes
+    from app.services.ranking.identity import adopt_matched_keys
+    old = PoolDimensionReport(dimensions=[PoolDimension(key="community_skills", name="Gardening",
+        definition="Growing a shared garden", high_end="Skilled gardener", low_end="Damages plants", why_it_differentiates="Synthetic")])
+    new = PoolDimensionReport(dimensions=[old.dimensions[0].model_copy(update={"name": "Mediation", "definition": "Resolving interpersonal disputes"})])
+    provider = MockProvider()
+    provider.route("<applicant_pool>", new)
+    provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))
+    settings = AppSettings()
+    settings.ai.discovery_fan_out = 1
+    result = run_criteria_passes(provider, applications=[], settings=settings, seeds=DiscoverySeeds(),
+        kept=[], match_history=old, on_delta=lambda _: None)
+    adopted = adopt_matched_keys(result.report, result.new_to_old, old)
+    assert adopted.dimensions[0].key != "community_skills"
+    assert adopted.dimensions[0].definition == "Resolving interpersonal disputes"
+    assert result.new_to_old == {}
+
+
+def test_reworded_kept_axis_preserves_its_proven_input_identity():
+    from app.ai.dimension_matching import match_dimensions
+    from app.ai.mock_provider import MockProvider
+    from app.schemas.settings import AppSettings
+    old = PoolDimensionReport(dimensions=[PoolDimension(key="kept", name="Kept", definition="Frozen meaning",
+        high_end="High", low_end="Low", why_it_differentiates="Synthetic")])
+    provider = MockProvider()
+    provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))
+    new = old.model_copy(update={"dimensions": [old.dimensions[0].model_copy(update={"definition": "Reworded"})]})
+    mapping, _, _ = match_dimensions(provider, old=old, new=new, settings=AppSettings(), kept_keys={"kept"})
+    assert mapping == {"kept": "kept"}

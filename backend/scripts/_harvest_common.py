@@ -18,6 +18,7 @@ from __future__ import annotations
 from app.db.models import Analysis
 from app.db.session import SessionLocal
 from app.evals.synthetic_guard import require_synthetic_pool
+from app.services.applications.scope import opening_ai_applications
 
 
 def latest_analysis(db) -> Analysis | None:
@@ -42,5 +43,9 @@ def open_synthetic_analysis():
     analysis = latest_analysis(db)
     if analysis is None:
         return db, None, ""
-    source_label = require_synthetic_pool(analysis)
+    try:
+        source_label = require_synthetic_pool(analysis, opening_ai_applications(db, analysis.opening_id))
+    except BaseException:
+        db.close()
+        raise
     return db, analysis, source_label

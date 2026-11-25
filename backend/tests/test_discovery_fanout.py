@@ -58,6 +58,8 @@ def test_fanout_tolerates_a_minority_of_failed_workers() -> None:
 
     assert len(result.passes) == 3
     assert result.failed_count == 2
+    assert result.cost.failed_calls == 2
+    assert result.cost.calls == 3
     assert len(result.reports) == 3
 
 

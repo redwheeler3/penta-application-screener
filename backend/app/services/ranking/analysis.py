@@ -9,12 +9,13 @@ from app.ai.schemas import PoolDimension, PoolDimensionReport
 from app.db.models import (
     Analysis,
     AnalysisAudit,
+    Application,
     DimensionAlias,
     MemberRanking,
     User,
 )
 from app.schemas.settings import AppSettings
-from app.services.applications.scope import opening_ai_applications
+from app.services.applications.retention import current_retention_clause
 from app.services.ranking.dimensions import alias_map, current_dimension_report
 from app.services.ranking.identity import flatten_merges
 from app.services.ranking.member_state import (
@@ -25,6 +26,7 @@ from app.services.ranking.member_state import (
     reconcile_consolidated_members,
     tier_history,
 )
+from app.services.run_lock import lock_run_state
 
 
 def create_analysis(
@@ -41,6 +43,8 @@ def create_analysis(
     fan_out_audit: dict | None = None,
     decompose_audit: dict | None = None,
     configuration: dict | None = None,
+    source_application_ids: list[int] | None = None,
+    synthetic_data: bool = False,
 ) -> Analysis:
     """Persist a freshly discovered pattern report as a new shared ``Analysis`` and seed the
     triggering member's ``MemberRanking`` view of it.
@@ -57,12 +61,16 @@ def create_analysis(
     The run consumes pending ``proposed_dimensions``, so the new view starts with an empty list.
     """
     layout = tier_layout if tier_layout is not None else default_tier_layout()
-    applications = opening_ai_applications(db, opening_id)
+    lock_run_state(db)
+    if source_application_ids is not None:
+        retained = set(db.scalars(select(Application.id).where(
+            Application.id.in_(source_application_ids), current_retention_clause())))
+        if retained != set(source_application_ids):
+            raise ValueError("Ranking inputs expired during analysis; no pool text was published.")
     analysis = Analysis(
         opening_id=opening_id,
-        synthetic_data=bool(applications) and all(
-            application.synthetic_data for application in applications
-        ),
+        synthetic_data=synthetic_data,
+        source_application_ids=source_application_ids,
         dimension_report=report.model_dump(mode="json"),
         # Captured before discovery, so edits made during the run keep it out of date.
         rank_inputs_fingerprint=inputs_fingerprint,
@@ -139,6 +147,8 @@ def apply_consolidation(
     """
     lock_member_state(db, member_ranking)
     db.refresh(analysis)
+    if analysis.pool_text_purged:
+        return analysis
     report_json = dict(analysis.dimension_report or {})
 
     # A single run's merges can form a chain: if C→B correlates higher than B→A, the

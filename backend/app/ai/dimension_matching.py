@@ -99,6 +99,7 @@ def match_dimensions(
     new: PoolDimensionReport,
     settings: AppSettings,
     on_delta: DeltaSink | None = None,
+    kept_keys: set[str] | None = None,
 ) -> tuple[dict[str, str], str | None, PassCost]:
     """Map new dimension keys to prior ones at a high confidence bar.
 
@@ -145,17 +146,13 @@ def match_dimensions(
             continue
         mapping[m.new_key] = m.old_key
 
-    # Deterministic self-match: any key present in BOTH lists IS its own prior axis by the
-    # frozen-key invariant (a key is its frozen concept — definition/poles/scores never
-    # change under a key). So force key→key, overriding any LLM opinion for those keys. This
-    # is the strongest possible identity signal (exact key equality), stronger than any
-    # definitional judgement, so we assert it in code rather than trust the model. Two
-    # guarantees ride on it: (1) a committee-KEPT axis (injected at decomposition, so present
-    # in both lists) can never be matched onto a DIFFERENT prior key and vanish; (2) a scored
-    # key the decomposer reworded still adopts its FROZEN prior text wholesale downstream
-    # (adopt_matched_keys), so text and cached score stay consistent. The LLM still governs
-    # every DRIFTED key (its real job — mapping reworded keys back to canonical).
-    for key in new_keys & old_keys:
+    # Only carried input identity or identical frozen wording proves a self-match.
+    old_by_key = {dimension.key: dimension for dimension in old.dimensions}
+    fields = {"definition", "high_end", "low_end"}
+    known_keys = {dimension.key for dimension in new.dimensions if dimension.key in old_by_key
+        and (dimension.key in (kept_keys or set()) or dimension.model_dump(include=fields)
+             == old_by_key[dimension.key].model_dump(include=fields))}
+    for key in known_keys:
         mapping[key] = key
 
     return mapping, result.narrative, PassCost.from_usage(result.model_id, result.usage)

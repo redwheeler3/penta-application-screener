@@ -25,8 +25,13 @@ from tests.ranking_support import a_pattern_report, add_eligible, setup_app
 
 
 def analysis(db, *, configuration=None):
+    applications = list(db.scalars(select(Application)))
+    for application in applications:
+        application.synthetic_data = True
+    db.commit()
     return create_analysis(db, user=db.scalar(select(User)), opening_id=current_opening_id(db),
-        report=a_pattern_report(), narrative=None, inputs_fingerprint="synthetic", configuration=configuration)
+        report=a_pattern_report(), narrative=None, inputs_fingerprint="synthetic", configuration=configuration, synthetic_data=True,
+        source_application_ids=[application.id for application in applications])
 
 
 def score(db, application, key, value, *, model="synthetic-model", version="synthetic-version"):
@@ -151,3 +156,41 @@ def test_fixture_reader_closes_its_handle_before_replacement(tmp_path, monkeypat
         assert reader.result(timeout=5) == {"version": 1}
         writer.result(timeout=5)
     assert fixture_files.read_json(path) == {"version": 2}
+
+
+@pytest.mark.parametrize("unsafe", ["analysis", "arrival"])
+def test_baseline_refuses_unsafe_prose_before_replacing_a_file(tmp_path, unsafe):
+    from app.evals.synthetic_guard import NonSyntheticPoolError
+    _app, db, _provider = setup_app(UserRole.ADMIN)
+    add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    current = analysis(db)
+    current.audit.decompose = {"settled": [{"decision": "Synthetic identifying marker"}]}
+    if unsafe == "analysis":
+        current.synthetic_data = False
+    else:
+        add_eligible(db, email="ordinary@example.com", raw_hash="ordinary")
+    db.commit()
+    path = tmp_path / "baseline.json"
+    path.write_text('{"preserved": true}', encoding="utf-8")
+    with pytest.raises(NonSyntheticPoolError):
+        fixture.record(db, path)
+    assert path.read_text(encoding="utf-8") == '{"preserved": true}'
+
+
+@pytest.mark.anyio
+async def test_baseline_api_reports_a_privacy_refusal_without_suggesting_another_paid_run(monkeypatch):
+    from unittest.mock import Mock
+
+    from httpx2 import ASGITransport, AsyncClient
+    app, db, _provider = setup_app(UserRole.ADMIN)
+    add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    current = analysis(db)
+    current.synthetic_data = False
+    db.commit()
+    publish = Mock()
+    monkeypatch.setattr(fixture, "write_json", publish)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.post("/evals/baseline")
+    assert response.status_code == 409
+    assert response.json()["code"] == "non_synthetic_pool"
+    publish.assert_not_called()

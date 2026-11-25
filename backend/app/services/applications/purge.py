@@ -9,10 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.core.time import pacific_today
 from app.db.models import (
+    Analysis,
     ApplicantDraft,
     Application,
     ApplicationParticipation,
     BrowserSession,
+    DimensionAlias,
     Feedback,
     OpeningOutcome,
     RetentionDeletion,
@@ -158,8 +160,41 @@ def erase_application(db: Session, application: Application, *, now: datetime | 
     The caller owns policy, deletion receipts and the transaction. The same current
     schema applies to ordinary purges and an upgraded isolated recovery candidate.
     """
+    if application.submitted_at is not None:
+        erase_pool_text(db, application.id)
     db.execute(update(Feedback).where(Feedback.applicant_id == application.id).values(applicant_id=None))
     affected_results = application_result_ids(db, application.id)
     db.delete(application)
     db.flush()
     prune_unowned_results(db, affected_results, now=now)
+
+
+def erase_pool_text(db: Session, application_id: int) -> None:
+    """Expire whole pool explanations at their first source purge, including inherited prose."""
+    opening_ids = set(db.scalars(select(ApplicationParticipation.opening_id).where(
+        ApplicationParticipation.application_id == application_id)))
+    unknown_scope = db.get(Application, application_id) is None
+    keys = set()
+    analyses = list(db.scalars(select(Analysis)))
+    for analysis in analyses:
+        sources = analysis.source_application_ids
+        affected = application_id in (sources or []) or (
+            sources is None and (unknown_scope or analysis.opening_id is None or analysis.opening_id in opening_ids))
+        if not affected:
+            continue
+        keys.update(dimension["key"] for dimension in (analysis.dimension_report or {}).get("dimensions", []))
+        analysis.audit = None
+        analysis.pool_text_purged = True
+        analysis.source_application_ids = []
+        analysis.synthetic_data = False
+    # A frozen criterion's pool explanation can have been copied into another opening.
+    for analysis in analyses:
+        report = analysis.dimension_report or {}
+        if any(dimension.get("key") in keys and dimension.get("why_it_differentiates")
+               for dimension in report.get("dimensions", [])):
+            analysis.dimension_report = {**report, "dimensions": [
+                {**dimension, "why_it_differentiates": ""} if dimension.get("key") in keys else dimension
+                for dimension in report.get("dimensions", [])]}
+    if keys:
+        db.execute(update(DimensionAlias).where(or_(DimensionAlias.alias_key.in_(keys),
+            DimensionAlias.canonical_key.in_(keys))).values(reason=None))

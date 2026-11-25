@@ -39,13 +39,13 @@ export function InvariantsEval({ editable = true }: { editable?: boolean }): Rea
       <p className="eval-card-desc">
         Deterministic checks over the committed baseline fixture — every dimension defines
         both poles, and none scores on a protected attribute. Free and instant; a breach is
-        always a bug (these gate CI). {editable ? "Re-baseline records the latest Rank across openings." : null}
+        always a bug (these gate CI). {editable ? "Re-baseline records the latest Rank across openings; all contributing and current applicant inputs must be verified synthetic." : null}
       </p>
 
       {editable && confirming ? (
         <InlineConfirm
           title="Re-baseline from the latest Rank?"
-          body="This overwrites the committed baseline fixture (rank_baseline.json) with the current run's output. Do it only after confirming that output is good — then commit the file to git."
+          body="This overwrites the committed baseline fixture (rank_baseline.json) with the latest verified synthetic run's output. Confirm that output is good, then commit the file to git. Real, mixed, or unknown applicant inputs are refused."
           confirmLabel="Re-baseline"
           onConfirm={rebaseline}
           onCancel={() => setConfirming(false)}

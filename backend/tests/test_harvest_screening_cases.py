@@ -44,7 +44,7 @@ def test_candidates_use_only_current_opening_cache_identity(
     monkeypatch.setattr(harvest_screening_cases, "cached_outcome", cached)
 
     candidates = harvest_screening_cases.screening_candidates(
-        object(), Analysis(opening_id=4, synthetic_data=True)
+        object(), Analysis(opening_id=4, synthetic_data=True, source_application_ids=[])
     )
 
     assert candidates == [
@@ -53,3 +53,10 @@ def test_candidates_use_only_current_opening_cache_identity(
     assert seen["kind"] == "screening"
     assert seen["prompt_version"] == harvest_screening_cases.screening_prompt_version()
     assert seen["model_id"] == AppSettings().ai.screening_model
+
+
+    application.synthetic_data = False
+    from app.evals.synthetic_guard import NonSyntheticPoolError
+    with pytest.raises(NonSyntheticPoolError):
+        harvest_screening_cases.screening_candidates(
+            object(), Analysis(opening_id=4, synthetic_data=True, source_application_ids=[]))

@@ -40,7 +40,11 @@ from app.db.models import (
     RunLock,
 )
 from app.db.session import engine as default_engine
-from app.services.applications.purge import erase_application, erase_draft
+from app.services.applications.purge import (
+    erase_application,
+    erase_draft,
+    erase_pool_text,
+)
 from app.services.applications.result_retention import prune_unowned_results
 
 # Keep this many most-recent backups; older ones are pruned. A snapshot is a few MB and
@@ -290,6 +294,8 @@ def _reapply_deletion_ledger(
                         application = db.get(Application, record_id)
                         if application is not None:
                             erase_application(db, application)
+                        else:
+                            erase_pool_text(db, record_id)
                     elif kind == "applicant_draft":
                         draft = db.get(ApplicantDraft, record_id)
                         if draft is not None:

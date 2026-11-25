@@ -24,6 +24,7 @@ from app.core.work_cancellation import WorkCancelled
 from app.db.models import Application
 from app.schemas.events import CriteriaStage
 from app.schemas.settings import AppSettings
+from app.services.ranking.identity import separate_fresh_keys
 
 
 @dataclass(frozen=True)
@@ -133,11 +134,14 @@ def run_criteria_passes(
         match_narrative: str | None = None
         match_cost = PassCost()
         if match_history is not None:
+            kept_keys = {dimension.key for dimension in kept}
+            report = separate_fresh_keys(report, match_history, kept_keys)
             failed_pass = "Dimension matching"
             on_delta(CriteriaStageChange("matching"))
             started = time.perf_counter()
             new_to_old, match_narrative, match_cost = match_dimensions(
                 meters[failed_pass], old=match_history, new=report, settings=settings, on_delta=on_delta,
+                kept_keys=kept_keys,
             )
             durations["Dimension matching"] = round((time.perf_counter() - started) * 1000)
 

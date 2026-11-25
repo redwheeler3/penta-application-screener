@@ -10,9 +10,19 @@ from sqlalchemy.orm import Session
 
 from app.ai.input_evidence import input_fingerprint
 from app.ai.model_catalog import model_identity
-from app.db.models import Application
+from app.db.models import Analysis, Application
 from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.eligibility.evaluation import union_eligible_application_ids
+
+
+def capture_rank_sources(db: Session, applications: list[Application]) -> tuple[list[int], bool]:
+    """Freeze source identity and synthetic assurance before provider work can change the pool."""
+    ids = {application.id for application in applications}
+    synthetic = bool(applications) and all(application.synthetic_data for application in applications)
+    for sources, verified in db.execute(select(Analysis.source_application_ids, Analysis.synthetic_data)):
+        ids.update(sources or [])
+        synthetic = synthetic and verified and sources is not None
+    return sorted(ids), bool(synthetic)
 
 
 def pool_fingerprint(

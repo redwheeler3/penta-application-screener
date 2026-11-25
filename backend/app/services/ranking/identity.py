@@ -2,7 +2,32 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from app.ai.schemas import PoolDimensionReport
+
+
+def separate_fresh_keys(report: PoolDimensionReport, prior: PoolDimensionReport,
+                        kept_keys: set[str]) -> PoolDimensionReport:
+    """A new label cannot claim stored scores for a different frozen definition."""
+    prior_by_key = {dimension.key: dimension for dimension in prior.dimensions}
+    occupied = set(prior_by_key) | {dimension.key for dimension in report.dimensions}
+    dimensions = []
+    fields = {"definition", "high_end", "low_end"}
+    for dimension in report.dimensions:
+        previous = prior_by_key.get(dimension.key)
+        if previous is not None and dimension.key not in kept_keys and (
+            dimension.model_dump(include=fields) != previous.model_dump(include=fields)
+        ):
+            digest = hashlib.sha256(json.dumps(dimension.model_dump(include=fields), sort_keys=True).encode()).hexdigest()[:12]
+            key = f"{dimension.key}_{digest}"
+            while key in occupied:
+                key += "_new"
+            occupied.add(key)
+            dimension = dimension.model_copy(update={"key": key})
+        dimensions.append(dimension)
+    return report.model_copy(update={"dimensions": dimensions})
 
 
 def adopt_matched_keys(

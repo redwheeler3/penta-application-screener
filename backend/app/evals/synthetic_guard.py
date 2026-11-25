@@ -5,13 +5,15 @@ that quote is the thing under test, so unlike every other eval category it can't
 stripped. That's only committable when the pool is SYNTHETIC (fictional test data), never
 real applicants.
 
-Each analysis records whether its data was explicitly configured as synthetic when the
-run was created. The default is false, so copied or production databases fail closed.
+Rank captures synthetic assurance and contributing identities before provider work. Exporters
+also check the actual current cohort; unknown history and ordinary applicant inputs fail closed.
 """
 
 from __future__ import annotations
 
-from app.db.models import Analysis
+from collections.abc import Sequence
+
+from app.db.models import Analysis, Application
 
 
 class NonSyntheticPoolError(RuntimeError):
@@ -20,14 +22,14 @@ class NonSyntheticPoolError(RuntimeError):
 
 def is_synthetic_pool(analysis: Analysis) -> bool:
     """True only when the run was explicitly stamped as synthetic."""
-    return analysis.synthetic_data
+    return bool(analysis.synthetic_data and analysis.source_application_ids is not None)
 
 
-def require_synthetic_pool(analysis: Analysis) -> str:
+def require_synthetic_pool(analysis: Analysis, applications: Sequence[Application]) -> str:
     """Assert that evidence from this run is safe to commit and return its source label."""
-    if not is_synthetic_pool(analysis):
+    if not is_synthetic_pool(analysis) or any(not application.synthetic_data for application in applications):
         raise NonSyntheticPoolError(
-            f"Analysis {analysis.id} is not stamped as synthetic. Committing applicant "
+            f"Analysis {analysis.id} or its exported inputs are not stamped as synthetic. Committing applicant "
             "evidence quotes is refused because it may contain real applicant data."
         )
     return "synthetic application data"

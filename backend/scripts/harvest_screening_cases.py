@@ -24,6 +24,7 @@ from app.ai.schemas import ScreeningReport
 from app.ai.screening import KIND as SCREENING_KIND
 from app.ai.screening import screening_prompt_version
 from app.db.models import Analysis, Application
+from app.evals.synthetic_guard import require_synthetic_pool
 from app.schemas.settings import effective_reasoning_effort
 from app.services.applications.content import extract_essays
 from app.services.applications.scope import opening_ai_applications
@@ -49,6 +50,7 @@ def screening_candidates(db: Session, analysis: Analysis) -> list[ScreeningCandi
     if analysis.opening_id is None:
         return []
     applications = opening_ai_applications(db, analysis.opening_id)
+    require_synthetic_pool(analysis, applications)
     settings = get_app_settings(db)
     model_id = settings.ai.screening_model
     reasoning_effort = effective_reasoning_effort(

@@ -25,6 +25,7 @@ from app.evals.fixture import _to_json, build_fixture, load
 from app.evals.invariants import run_invariants
 from app.schemas.settings import AISettings, effective_reasoning_effort
 from app.services.applications.scope import opening_ai_applications
+from app.services.ranking.provenance import capture_rank_sources
 from app.services.settings import get_app_settings, save_app_settings
 
 CONFIGURATIONS = {
@@ -162,6 +163,9 @@ def run_rank_copy(
                 spec.key: effective_reasoning_effort(getattr(ai, spec.model_attr), getattr(ai, spec.reasoning_attr))
                 for spec in AI_PASS_CATALOG if spec.model_attr in accepted_models
             }
+            sources = opening_ai_applications(db, opening_id)
+            if not capture_rank_sources(db, sources)[1]:
+                raise RuntimeError("The opening and its inherited analysis inputs must be synthetic.")
             provider = StrandsProvider(
                 region=region,
                 max_pool_connections=ai.max_workers,

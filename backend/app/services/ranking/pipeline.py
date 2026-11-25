@@ -55,7 +55,11 @@ from app.services.ranking.member_state import (
     get_or_reconcile_member_ranking,
     tier_history,
 )
-from app.services.ranking.provenance import rank_configuration, rank_inputs_fingerprint
+from app.services.ranking.provenance import (
+    capture_rank_sources,
+    rank_configuration,
+    rank_inputs_fingerprint,
+)
 from app.services.run_lock import RunLeaseLost
 from app.services.stream_worker import StreamWorker
 
@@ -190,6 +194,7 @@ def _stream_criteria(
 
     yield emit(CriteriaPhaseEvent(discovery_workers=settings.ai.discovery_fan_out))
     pool = eligible_applications(db, opening_id)
+    source_application_ids, synthetic_data = capture_rank_sources(db, pool)
     inputs_fingerprint = rank_inputs_fingerprint(db, opening_id, settings, applications=pool)
     configuration = rank_configuration(settings)
     worker: StreamWorker[str | CriteriaStageChange, CriteriaPassResult] = StreamWorker()
@@ -283,6 +288,7 @@ def _stream_criteria(
             fan_out_audit=work.fan_out_audit,
             decompose_audit=work.decompose_audit,
             configuration=configuration,
+            source_application_ids=source_application_ids, synthetic_data=synthetic_data,
         )
         member_ranking = get_or_reconcile_member_ranking(db, analysis, user)
     except (WorkCancelled, RunLeaseLost):

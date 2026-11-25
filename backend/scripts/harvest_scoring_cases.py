@@ -30,6 +30,7 @@ from app.ai.dimension_scoring import (
 )
 from app.ai.schemas import DimensionScore, PoolDimension
 from app.db.models import Analysis, Application
+from app.evals.synthetic_guard import require_synthetic_pool
 from app.schemas.settings import effective_reasoning_effort
 from app.services.applications.content import extract_essays
 from app.services.ranking.dimensions import current_dimension_report
@@ -57,6 +58,7 @@ def scoring_candidates(db: Session, analysis: Analysis) -> list[ScoringCandidate
     if report is None:
         return []
     applications = applications_to_score(db, analysis.opening_id)
+    require_synthetic_pool(analysis, applications)
 
     settings = get_app_settings(db)
     model_id = settings.ai.dimension_scoring_model

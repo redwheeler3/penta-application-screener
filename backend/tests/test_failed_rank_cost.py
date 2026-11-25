@@ -132,3 +132,45 @@ async def test_single_pass_storage_failure_retains_known_reply_cost(monkeypatch,
     assert events[-1]["type"] == "error"
     assert not any(event["type"] == "summary" for event in events)
     assert db.get(RunLock, 1, populate_existing=True).holder_user_id is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("proposed", [False, True])
+async def test_seed_failure_preserves_proposals_or_records_degraded_discovery(monkeypatch, proposed):
+    from app.db.models import MemberRanking
+    from app.services.settings import get_app_settings, save_app_settings
+    app, db, provider = setup_app(UserRole.ADMIN)
+    add_eligible(db, email="synthetic@example.com", raw_hash="synthetic")
+    opening_id = current_opening_id(db)
+    settings = get_app_settings(db)
+    settings.ai.discovery_fan_out = 2
+    save_app_settings(db, settings)
+    prior = None
+    if proposed:
+        prior = create_analysis(db, user=db.scalar(select(User)), opening_id=opening_id,
+            report=a_pattern_report(), narrative=None, inputs_fingerprint="prior")
+        member = db.scalar(select(MemberRanking).where(MemberRanking.analysis_id == prior.id))
+        member.run_state = {**member.run_state, "proposed_dimensions": ["Conflict mediation"]}
+        db.commit()
+    route_criteria(provider, a_pattern_report())
+    provider.route("applicant_id", a_scoring_report())
+    original = provider.structured_output
+    def flaky(**kwargs):
+        if kwargs["schema"].__name__ == "PoolDimensionReport" and kwargs.get("on_delta") is not None:
+            raise TimeoutError("Synthetic seeded worker failure")
+        return original(**kwargs)
+    monkeypatch.setattr(provider, "structured_output", flaky)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        events = await stream_events(client, "/ranking/run")
+    ledger = db.scalar(select(RunCostLedger).order_by(RunCostLedger.id.desc()))
+    discovery = next(row for row in ledger.passes if row.label == "Pattern discovery")
+    assert discovery.failed_calls == 1
+    assert discovery.calls == 1
+    if proposed:
+        assert ledger.status == "failed"
+        assert events[-1]["type"] == "error"
+        assert db.scalar(select(Analysis.id).order_by(Analysis.id.desc())) == prior.id
+        assert member.run_state["proposed_dimensions"] == ["Conflict mediation"]
+    else:
+        assert ledger.status == "completed"
+        assert events[-1]["type"] == "summary"

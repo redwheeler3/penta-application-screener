@@ -28,6 +28,7 @@ from app.evals.dataset import load_dataset
 from app.evals.fixture import FIXTURE_PATH, load, record
 from app.evals.invariants import INVARIANT_DESCRIPTIONS, INVARIANTS, run_invariants
 from app.evals.paths import GOLDEN_FILES
+from app.evals.synthetic_guard import NonSyntheticPoolError
 from app.schemas.evals import (
     EvalCatalogResponse,
     EvalConfiguration,
@@ -96,6 +97,8 @@ def rebaseline(
     try:
         require_local_fixture_write(db, user.id)
         record(db)
+    except NonSyntheticPoolError as exc:
+        raise Problem("non_synthetic_pool", detail=str(exc)) from exc
     except RuntimeError as exc:
         raise Problem("run_required", detail=str(exc)) from exc
     return _invariants_response()

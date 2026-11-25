@@ -54,7 +54,8 @@ def rank_source(tmp_path):
     with Session(engine) as db:
         ensure_lock_row(db)
         db.add(User(email="synthetic-admin@example.com", display_name="Synthetic admin", role=UserRole.ADMIN, is_active=True))
-        add_eligible(db, email="synthetic-applicant@example.com", raw_hash="synthetic")
+        application = add_eligible(db, email="synthetic-applicant@example.com", raw_hash="synthetic")
+        application.synthetic_data = True
         opening_id = current_opening_id(db)
         today = pacific_today()
         other = Opening(unit_size_bedrooms=2, housing_charge_cents=100_000,
@@ -62,7 +63,7 @@ def rank_source(tmp_path):
             move_in_date=today + timedelta(days=30), published_at=datetime.now(UTC))
         db.add(other)
         db.flush()
-        db.add(Analysis(opening_id=other.id, dimension_report=a_pattern_report().model_dump(mode="json")))
+        db.add(Analysis(opening_id=other.id, dimension_report=a_pattern_report().model_dump(mode="json"), synthetic_data=True, source_application_ids=[]))
         db.commit()
     engine.dispose()
     return path, opening_id

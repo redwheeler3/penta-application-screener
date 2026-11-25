@@ -6,9 +6,9 @@ uses persisted configuration and selected producer provenance, not live prompts 
 ledger positions. Baseline recording is local; commit/deploy the versioned file to use it
 in hosted evals.
 
-Top-level narratives and settled-dimension justifications are excluded. Nested audit prose
-is retained, so this exporter does not guarantee that arbitrary real applicant data is safe
-to commit. Review provenance/content before committing a fixture.
+Exports require captured synthetic provenance and a wholly synthetic current cohort.
+Top-level narratives and pool justifications are excluded; remaining nested audit prose
+is allowed only because its source inputs have been verified synthetic.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from app.ai.score_vectors import load_score_vectors
 from app.db.models import Analysis, ApplicationAIResult, ApplicationAISelection
 from app.evals.fixture_files import read_json, write_json
 from app.evals.paths import FIXTURE_PATH
+from app.evals.synthetic_guard import require_synthetic_pool
 from app.services.applications.scope import opening_ai_applications
 from app.services.ranking.analysis import get_latest_analysis
 from app.services.ranking.audit import (
@@ -106,10 +107,12 @@ def build_fixture(db: Session, analysis: Analysis) -> EvalFixture:
     index shared across dimensions (so a candidate is the same column in every axis, and
     correlation still means what it means), then the id mapping is discarded.
     """
+    applications = opening_ai_applications(db, analysis.opening_id) if analysis.opening_id else []
+    require_synthetic_pool(analysis, applications)
     report = current_dimension_report(analysis)
     report_dims = [d.model_dump(mode="json") for d in report.dimensions] if report else []
 
-    application_ids = [app.id for app in opening_ai_applications(db, analysis.opening_id)] if analysis.opening_id else []
+    application_ids = [app.id for app in applications]
     dimension_keys = [d["key"] for d in report_dims]
     raw_vectors = load_score_vectors(db, application_ids=application_ids, dimension_keys=dimension_keys)
     # One shared column order across ALL dimensions: sort the union of scored ids, and

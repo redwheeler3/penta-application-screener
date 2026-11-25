@@ -19,8 +19,9 @@ it("round-trips null through scalar controls, nested lists and the case save", (
   fireEvent.change(nestedType, { target: { value: "text" } });
   fireEvent.change(screen.getByRole("textbox", { name: "Given / Fields / Nested / 0" }), { target: { value: "text" } });
   fireEvent.change(nestedType, { target: { value: "null" } });
+  fireEvent.click(within(nestedType.closest(".eval-fields") as HTMLElement).getByRole("button", { name: "+ Add item" }));
   fireEvent.click(screen.getByRole("button", { name: "Save case" }));
-  expect(onSave.mock.calls[0][0].given.fields).toEqual({ optional: null, nested: [null] });
+  expect(onSave.mock.calls[0][0].given.fields).toEqual({ optional: null, nested: [null, null] });
 });
 
 it("keeps the owning family fixed while adding a case", () => {

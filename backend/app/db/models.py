@@ -1031,6 +1031,9 @@ class Analysis(TimestampMixin, Base):
     synthetic_data: Mapped[bool] = mapped_column(
         default=False, server_default="0", nullable=False
     )
+    # Captured inputs, including inherited pool prose; null means unknown historical sources.
+    source_application_ids: Mapped[list[int] | None] = mapped_column(JSON)
+    pool_text_purged: Mapped[bool] = mapped_column(default=False, server_default="0", nullable=False)
     # The analysis's discovered dimensions (a serialized PoolDimensionReport).
     dimension_report: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict

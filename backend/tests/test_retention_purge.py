@@ -199,3 +199,67 @@ def test_retention_expiry_blocks_sessions_scope_and_direct_selection() -> None:
         assert application.id not in {app.id for app in opening_applications(db, opening_id)}
         assert available_previous_applicant(db, application.id) is None
         assert authenticate_applicant(db, token.token, now=now) is None
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_first_source_purge_removes_pool_text_but_preserves_generic_criteria_and_costs(legacy):
+    from app.db.models import (
+        Analysis,
+        AnalysisAudit,
+        MemberRanking,
+        Opening,
+        RunCostLedger,
+        RunPassCost,
+    )
+    from app.schemas.settings import AppSettings
+    from app.services.applications.purge import purge_expired_application
+    from app.services.ranking.analysis import apply_consolidation
+    from app.services.ranking.audit import fan_out_audit_view
+    from app.services.ranking.dimensions import current_dimension_report
+    from tests.ranking_support import a_pattern_report
+    db = _db()
+    now = datetime.now(UTC)
+    source = _due_application(db)
+    source_id = source.id
+    opening = current_opening(db)
+    retained = Application(primary_email="retained@example.com", raw_row={}, raw_row_hash="retained", normalized={},
+        submitted_at=now, retention_due_on=pacific_today(now=now) + timedelta(days=100))
+    db.add(retained)
+    db.flush()
+    db.add(ApplicationParticipation(application_id=source_id, opening_id=opening.id, applied_at=now))
+    marker = "SYNTHETIC_IDENTIFYING_MARKER"
+    report = a_pattern_report().model_dump(mode="json")
+    report["dimensions"][0]["why_it_differentiates"] = marker
+    sources = None if legacy else [source_id, retained.id]
+    affected = Analysis(opening_id=opening.id, source_application_ids=sources, dimension_report=report,
+        audit=AnalysisAudit(discovery_narrative=marker, fan_out={"passes": [{"narrative": marker}]},
+            decompose={"settled": [{"decision": marker}]}, match={"match_narrative": marker}, consolidate={"narrative": marker}))
+    other = Opening(unit_size_bedrooms=1, housing_charge_cents=100000,
+        application_close_date=opening.application_close_date, move_in_date=opening.move_in_date)
+    db.add(other)
+    db.flush()
+    inherited = Analysis(opening_id=other.id, source_application_ids=[source_id, retained.id], dimension_report=report,
+        audit=AnalysisAudit(discovery_narrative=marker))
+    unrelated = Analysis(opening_id=opening.id, source_application_ids=[retained.id], dimension_report=a_pattern_report().model_dump(mode="json"),
+        audit=AnalysisAudit(discovery_narrative="Unrelated retained trace"))
+    ledger = RunCostLedger(kind="rank", passes=[RunPassCost(label="Pattern discovery", cost_usd=0.25)])
+    db.add_all([affected, inherited, unrelated, ledger])
+    db.commit()
+    assert purge_expired_application(db, source, now=now)
+    db.commit()
+    assert db.get(Application, source_id) is None
+    for analysis in [affected, inherited]:
+        assert analysis.audit is None
+        assert analysis.pool_text_purged
+        assert marker not in str(analysis.dimension_report)
+        assert current_dimension_report(analysis).dimensions[0].definition == a_pattern_report().dimensions[0].definition
+        assert fan_out_audit_view(analysis) is None
+    assert unrelated.audit.discovery_narrative == "Unrelated retained trace"
+    assert db.get(Application, retained.id) is not None
+    assert ledger.passes[0].cost_usd == 0.25
+    # A late consolidation reply must not republish prose into the purged analysis.
+    member = MemberRanking(analysis_id=affected.id, user_id=db.scalar(select(User.id)), run_state={})
+    db.add(member)
+    db.commit()
+    apply_consolidation(db, affected, member, merges={}, audit=[], narrative=marker, settings=AppSettings())
+    assert affected.audit is None

@@ -104,7 +104,7 @@ class PoolDimension(BaseModel):
     )
     low_end: str = Field(
         description=(
-            "What a LOW score (near 0.0) means — the opposite pole from high_end. "
+            "What a LOW score (near -1.0) means — the opposite pole from high_end. "
             "Concrete, and the genuine inverse of the high end."
         ),
     )
@@ -354,7 +354,7 @@ class DecomposedDimension(BaseModel):
         ),
     )
     low_end: str = Field(
-        description="What a LOW score (near 0.0) means — the opposite pole from high_end.",
+        description="What a LOW score (near -1.0) means — the opposite pole from high_end.",
     )
     source_keys: list[str] = Field(
         default_factory=list,

@@ -85,7 +85,7 @@ For each settled axis: `key` (reuse an input key when it's essentially that axis
 - Do not score or name individual applicants. Describe the axes."""
 
 # Prompt identity is derived from the static prompt text and captured in ranking provenance.
-PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS)
+PROMPT_VERSION = derive_prompt_version(SYSTEM_PROMPT, _INSTRUCTIONS, json.dumps(DecompositionReport.model_json_schema(), sort_keys=True))
 
 
 def _reports_block(reports: list[PoolDimensionReport]) -> str:

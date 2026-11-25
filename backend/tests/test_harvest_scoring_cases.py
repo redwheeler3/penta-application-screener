@@ -70,7 +70,7 @@ def test_candidates_use_only_current_cache_identity(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(harvest_scoring_cases, "cached_outcome", cached)
 
     candidates = harvest_scoring_cases.scoring_candidates(
-        object(), Analysis(opening_id=3, synthetic_data=True)
+        object(), Analysis(opening_id=3, synthetic_data=True, source_application_ids=[])
     )
 
     assert candidates == [
@@ -79,3 +79,10 @@ def test_candidates_use_only_current_cache_identity(monkeypatch: pytest.MonkeyPa
     assert seen["kind"] == "dimension_scoring:employment_tenure"
     assert seen["prompt_version"] == harvest_scoring_cases.PROMPT_VERSION
     assert seen["model_id"] == AppSettings().ai.dimension_scoring_model
+
+
+    application.synthetic_data = False
+    from app.evals.synthetic_guard import NonSyntheticPoolError
+    with pytest.raises(NonSyntheticPoolError):
+        harvest_scoring_cases.scoring_candidates(
+            object(), Analysis(opening_id=3, synthetic_data=True, source_application_ids=[]))

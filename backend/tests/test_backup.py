@@ -390,3 +390,30 @@ def test_invalid_recovery_retention_fails_before_creating_backup(temp_engine, ke
     with pytest.raises(ValueError, match="keep"):
         backup.create_and_prune(engine=temp_engine, keep=keep)
     assert backup.list_backups(temp_engine) == []
+
+
+@pytest.mark.parametrize("record_present", [False, True])
+def test_restore_reapplies_pool_text_expiry_even_without_the_source_row(temp_engine, record_present):
+    import json
+
+    from tests.ranking_support import a_pattern_report
+    marker = "SYNTHETIC_POOL_MARKER"
+    report = a_pattern_report().model_dump(mode="json")
+    report["dimensions"][0]["why_it_differentiates"] = marker
+    with temp_engine.begin() as conn:
+        if record_present:
+            conn.exec_driver_sql("INSERT INTO applications (id, primary_email, raw_row, raw_row_hash, normalized, working_revision, submitted_at, created_at) VALUES (42, 'synthetic@example.test', '{}', 'synthetic', '{}', 1, '2026-08-01', '2026-08-01')")
+        conn.execute(text("INSERT INTO analyses (id, dimension_report, source_application_ids) VALUES (1, :report, :sources)"),
+            {"report": json.dumps(report), "sources": json.dumps([42])})
+        conn.execute(text("INSERT INTO analysis_audit (analysis_id, discovery_narrative) VALUES (1, :marker)"), {"marker": marker})
+    saved = backup.create_backup(engine=temp_engine)
+    with temp_engine.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO retention_deletions (record_kind, record_id, retention_rule, due_on, deleted_at) VALUES ('application', 42, 'one_year', '2026-08-26', '2026-08-26 12:00:00')")
+    backup.restore_backup(saved, engine=temp_engine)
+    with temp_engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM applications").scalar_one() == 0
+        assert conn.exec_driver_sql("SELECT count(*) FROM analysis_audit").scalar_one() == 0
+        restored, expired = conn.exec_driver_sql("SELECT dimension_report, pool_text_purged FROM analyses").one()
+        assert marker not in restored
+        assert json.loads(restored)["dimensions"][0]["definition"] == report["dimensions"][0]["definition"]
+        assert expired
