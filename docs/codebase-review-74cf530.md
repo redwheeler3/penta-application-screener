@@ -1,6 +1,17 @@
-# Open findings from the review of 74cf530
+# Codebase review of 74cf530
 
-Reviewed November 24, 2026. Fix the Rank publication race first. It can put an erased explanation back into the database after the normal purge has succeeded.
+Reviewed November 24, 2026. All five findings below describe the original baseline and have been fixed.
+
+Rank now captures history and source identities in one SQLite snapshot before its first progress
+event. The final retention check prevents a concurrent purge from republishing erased text.
+Ranking views and feedback endpoints also enforce expiry before physical deletion. The feedback
+composer displays and retains its original applicant through navigation and retry. The categorical
+harvester checks synthetic provenance before printing candidates, and an incomplete SocketLabs
+page returns the existing unavailable status.
+
+Verification passed with 1,388 backend tests, one skip, 496 frontend tests, lint and the frontend
+production build. A live Bedrock Rank using two fictional applications produced 13 criteria,
+scored both applicants and completed consolidation with zero failures. Recorded cost was $0.0836.
 
 ## Findings
 

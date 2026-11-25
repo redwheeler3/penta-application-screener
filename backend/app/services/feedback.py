@@ -14,6 +14,7 @@ from app.core.problems import Problem
 from app.db.models import Analysis, Application, Feedback, User, UserRole
 from app.services.applications.locking import lock_application
 from app.services.applications.retained_review import retained_review_applications_query
+from app.services.applications.retention import current_retention_clause
 from app.services.applications.scope import (
     opening_applications_query,
     visible_committee_openings,
@@ -58,10 +59,15 @@ def create_feedback(
     return feedback
 
 
+def _retained_feedback():
+    return or_(Feedback.applicant_id.is_(None), Feedback.applicant_id.in_(
+        select(Application.id).where(current_retention_clause())))
+
+
 def list_feedback(db: Session, *, include_resolved: bool) -> list[Feedback]:
     """All feedback, newest first, with the submitting user eager-loaded (the admin list
     shows who sent it). Open-only by default; ``include_resolved`` widens to everything."""
-    query = select(Feedback).options(joinedload(Feedback.user)).order_by(Feedback.id.desc())
+    query = select(Feedback).where(_retained_feedback()).options(joinedload(Feedback.user)).order_by(Feedback.id.desc())
     if not include_resolved:
         query = query.where(Feedback.resolved_at.is_(None))
     return list(db.scalars(query).all())
@@ -127,16 +133,18 @@ def applicant_names_for(db: Session, items: list[Feedback]) -> dict[int, str | N
 def resolve_feedback(db: Session, feedback_id: int) -> Feedback | None:
     """Mark an item handled (idempotent — re-resolving keeps the original timestamp).
     Returns None if the id doesn't exist so the router can 404."""
-    db.execute(update(Feedback).where(Feedback.id == feedback_id, Feedback.resolved_at.is_(None))
+    db.execute(update(Feedback).where(Feedback.id == feedback_id, _retained_feedback(), Feedback.resolved_at.is_(None))
         .values(resolved_at=func.now()).execution_options(synchronize_session=False))
     db.commit()
-    return db.get(Feedback, feedback_id, populate_existing=True)
+    return db.scalar(select(Feedback).where(Feedback.id == feedback_id, _retained_feedback())
+        .execution_options(populate_existing=True))
 
 
 def reopen_feedback(db: Session, feedback_id: int) -> Feedback | None:
     """Clear an item's resolved stamp, moving it back to the open list. Returns None if
     the id doesn't exist."""
-    db.execute(update(Feedback).where(Feedback.id == feedback_id).values(resolved_at=None)
+    db.execute(update(Feedback).where(Feedback.id == feedback_id, _retained_feedback()).values(resolved_at=None)
         .execution_options(synchronize_session=False))
     db.commit()
-    return db.get(Feedback, feedback_id, populate_existing=True)
+    return db.scalar(select(Feedback).where(Feedback.id == feedback_id, _retained_feedback())
+        .execution_options(populate_existing=True))

@@ -6,59 +6,46 @@ import * as feedbackApi from "../../api/feedback";
 import { readProblem } from "../../api/problems";
 import { useRequestScope, type RequestIsCurrent } from "../../hooks/useRequestScope";
 
-// A persistent, low-key corner button available on every page: the member's channel to
-// flag friction. Clicking opens an inline composer —
-// one textarea, submit. The context the member was in (route/tab/current ranking) rides
-// along invisibly (silent capture); identity, app version, and time are stamped
-// server-side. Success closes an unchanged composer; newer text stays available to send.
-export function FeedbackButton(props: {
-  // The context attached to the submission, read from the app's live state. `activeTab`
-  // is the accurate view label — when a candidate detail is open it names the detail, not
-  // the tab behind it. `applicantId` is set only while that detail is open.
+type FeedbackContext = {
+  route: string;
   activeTab: string;
   analysisId: number | null;
   applicantId: number | null;
   openingId: number | null;
   retainedReview: boolean;
+};
+
+export function FeedbackButton(props: Omit<FeedbackContext, "route"> & {
+  applicantName?: string | null;
   onToast: (message: string) => void;
   onError: (message: string) => void;
 }): ReactNode {
   const api = useCommitteeApi(feedbackApi);
 
-  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<{ context: FeedbackContext; label: string } | null>(null);
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const requests = useRequestScope(open);
+  const requests = useRequestScope(draft !== null);
   const currentBody = useRef(body);
   currentBody.current = body;
   const pending = useRef<RequestIsCurrent | null>(null);
 
   function close() {
     requests.reset();
-    setOpen(false);
+    setDraft(null);
     setBody("");
     setSubmitting(false);
   }
 
   async function submit() {
     const text = body.trim();
-    if (!text || pending.current?.()) return;
+    if (!draft || !text || pending.current?.()) return;
     const isCurrent = requests.capture();
     const submitted = body;
     pending.current = isCurrent;
     setSubmitting(true);
     try {
-      const response = await api.submitFeedback({
-        body: text,
-        // The location.pathname is the most stable "where were they" signal; the active
-        // tab names the in-app view (tabs don't change the path).
-        route: window.location.pathname,
-        activeTab: props.activeTab,
-        analysisId: props.analysisId,
-        applicantId: props.applicantId,
-        openingId: props.openingId,
-        retainedReview: props.retainedReview,
-      });
+      const response = await api.submitFeedback({ ...draft.context, body: text });
       if (!isCurrent()) return;
       if (response.ok) {
         const unchanged = currentBody.current === submitted;
@@ -78,10 +65,10 @@ export function FeedbackButton(props: {
 
   return (
     <div className="feedback-widget no-print">
-      {open ? (
+      {draft ? (
         <div className="feedback-composer" role="dialog" aria-label="Send feedback">
           <label className="feedback-composer-label" htmlFor="feedback-body">
-            Send feedback to the admins
+            {draft.label}
           </label>
           <textarea
             id="feedback-body"
@@ -111,7 +98,13 @@ export function FeedbackButton(props: {
         <button
           type="button"
           className="feedback-fab"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            const { activeTab, analysisId, applicantId, openingId, retainedReview } = props;
+            setDraft({
+              context: { route: window.location.pathname, activeTab, analysisId, applicantId, openingId, retainedReview },
+              label: applicantId === null ? "Send feedback to the admins" : `Feedback about ${props.applicantName || `applicant #${applicantId}`}`,
+            });
+          }}
           title="Send feedback to the admins"
         >
           <MessageSquarePlus size={16} />

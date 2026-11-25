@@ -145,14 +145,12 @@ async def test_admin_projection_keeps_exact_opening_and_removes_expired_or_purge
             applicant.id, "Synthetic Applicant", opening.id, False)
         applicant.retention_due_on = pacific_today()
         db.commit()
-        item = (await client.get("/feedback")).json()["items"][0]
-        assert item["applicantId"] is None
-        assert item["applicantName"] is None
+        assert (await client.get("/feedback")).json()["items"] == []
+        for action in ("resolve", "reopen"):
+            assert (await client.post(f"/feedback/{item['id']}/{action}")).status_code == 404
         db.delete(applicant)
         db.commit()
-        item = (await client.get("/feedback")).json()["items"][0]
-        assert item["applicantId"] is None
-        assert item["body"] == "x"
+        assert (await client.get("/feedback")).json()["items"] == []
 
 
 @pytest.mark.anyio

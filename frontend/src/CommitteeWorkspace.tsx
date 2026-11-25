@@ -535,6 +535,7 @@ export function CommitteeWorkspace({ user, logout, sessionChanged = false, onCon
       </section>
       {/* Feedback carries the visible view and applicant context and is hidden in print. */}
       <FeedbackButton
+        applicantName={selectedApp?.applicantName}
         activeTab={selectedApp ? "applicant-detail" : activeTab}
         analysisId={rankingRun?.analysisId ?? null}
         applicantId={selectedApp?.id ?? null}

@@ -27,6 +27,7 @@ from app.services.ranking.dimensions import current_dimension_report
 from app.services.ranking.member_state import (
     get_or_reconcile_member_ranking,
 )
+from app.services.ranking.provenance import pool_text_available
 
 router = APIRouter()
 
@@ -43,15 +44,15 @@ def current(
     analysis = get_current_analysis(db, resolve_visible_opening_id(db, opening_id))
     if analysis is None or current_dimension_report(analysis) is None:
         return None
-    return run_payload(get_or_reconcile_member_ranking(db, analysis, user))
+    return run_payload(db, get_or_reconcile_member_ranking(db, analysis, user))
 
 
-def _viewed_analysis(db: Session, analysis_id: int, opening_id: int | None) -> Analysis:
+def _viewed_analysis(db: Session, analysis_id: int, opening_id: int | None) -> Analysis | None:
     opening = resolve_visible_opening_id(db, opening_id)
     analysis = db.get(Analysis, analysis_id)
     if analysis is None or analysis.opening_id != opening:
         raise Problem("not_found", detail="Analysis not found for this opening.")
-    return analysis
+    return analysis if pool_text_available(db, analysis) else None
 
 
 @router.get("/analyses/{analysis_id}/match-audit", response_model=MatchAuditResponse | None)
@@ -66,6 +67,8 @@ def read_match_audit(
     no analysis or audit exists.
     """
     analysis = _viewed_analysis(db, analysis_id, opening_id)
+    if analysis is None:
+        return None
     view = match_audit_view(analysis)
     if view is None:
         return None
@@ -84,6 +87,8 @@ def read_decompose_audit(
     reasoning, settle-down counts, and folded committee requests. Null when no audit exists.
     """
     analysis = _viewed_analysis(db, analysis_id, opening_id)
+    if analysis is None:
+        return None
     view = decompose_audit_view(analysis)
     if view is None:
         return None
@@ -102,6 +107,8 @@ def read_consolidate_audit(
     them (with its reasoning). Null when no audit exists.
     """
     analysis = _viewed_analysis(db, analysis_id, opening_id)
+    if analysis is None:
+        return None
     view = consolidate_audit_view(db, analysis)
     if view is None:
         return None
@@ -120,6 +127,8 @@ def read_fan_out_audit(
     streamed live. Null when no audit exists.
     """
     analysis = _viewed_analysis(db, analysis_id, opening_id)
+    if analysis is None:
+        return None
     view = fan_out_audit_view(analysis)
     narrative = analysis.audit.discovery_narrative if analysis.audit else None
     if view is None and narrative is None:

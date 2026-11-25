@@ -96,7 +96,9 @@ class SocketLabsQueueClient:
                         oldest_queued_at is None or queued_at < oldest_queued_at
                     ):
                         oldest_queued_at = queued_at
-                if seen >= total or not page:
+                if not page and seen < total:
+                    return None
+                if seen >= total:
                     break
                 params["pageNumber"] = int(params["pageNumber"]) + 1
 

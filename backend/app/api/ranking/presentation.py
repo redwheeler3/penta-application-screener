@@ -23,15 +23,17 @@ from app.services.ranking.member_state import (
     requested_flag_keys,
     revived_flag_keys,
 )
+from app.services.ranking.provenance import pool_text_available
 from app.services.ranking.view import candidate_scores
 
 
-def run_payload(member_ranking: MemberRanking) -> CurrentRunResponse | None:
+def run_payload(db: Session, member_ranking: MemberRanking) -> CurrentRunResponse | None:
     """Shared criteria and this member's pending proposals, without operator traces."""
     analysis = member_ranking.analysis
     report = current_dimension_report(analysis)
     if report is None:
         return None
+    show_pool_text = pool_text_available(db, analysis)
     return CurrentRunResponse(
         analysis_id=analysis.id,
         dimensions=[
@@ -41,7 +43,7 @@ def run_payload(member_ranking: MemberRanking) -> CurrentRunResponse | None:
                 definition=d.definition,
                 high_end=d.high_end,
                 low_end=d.low_end,
-                why_it_differentiates=d.why_it_differentiates,
+                why_it_differentiates=d.why_it_differentiates if show_pool_text else "",
                 from_committee_request=d.from_committee_request,
             )
             for d in report.dimensions

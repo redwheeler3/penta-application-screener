@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.input_evidence import input_fingerprint
 from app.ai.model_catalog import model_identity
-from app.db.models import Analysis, Application
+from app.db.models import Analysis, Application, ApplicationParticipation
 from app.schemas.settings import AppSettings, effective_reasoning_effort
 from app.services.applications.retention import current_retention_clause
 from app.services.eligibility.evaluation import union_eligible_application_ids
@@ -22,13 +22,39 @@ def rank_sources_are_retained(db: Session, source_ids: list[int]) -> bool:
     return retained == set(source_ids)
 
 
+def _legacy_rank_sources(opening_ids: set[int | None]):
+    """Match the scope used by purge for analyses predating captured source IDs."""
+    query = select(Application.id).where(Application.submitted_at.is_not(None))
+    if None not in opening_ids:
+        query = query.where(Application.id.in_(select(ApplicationParticipation.application_id)
+            .where(ApplicationParticipation.opening_id.in_(opening_ids))))
+    return query
+
+
+def pool_text_available(db: Session, analysis: Analysis) -> bool:
+    if analysis.pool_text_purged:
+        return False
+    sources = analysis.source_application_ids
+    if sources is not None:
+        return rank_sources_are_retained(db, sources)
+    # A purge may have removed a legacy participation since this analysis was loaded.
+    expired = _legacy_rank_sources({analysis.opening_id}).where(~current_retention_clause()).exists()
+    return db.scalar(select(Analysis.id).where(
+        Analysis.id == analysis.id, Analysis.pool_text_purged.is_(False), ~expired)) is not None
+
+
 def capture_rank_sources(db: Session, applications: list[Application]) -> tuple[list[int], bool]:
     """Freeze source identity and synthetic assurance before provider work can change the pool."""
     ids = {application.id for application in applications}
     synthetic = bool(applications) and all(application.synthetic_data for application in applications)
-    for sources, verified in db.execute(select(Analysis.source_application_ids, Analysis.synthetic_data)):
+    legacy_openings = set()
+    for sources, verified, opening in db.execute(select(Analysis.source_application_ids, Analysis.synthetic_data, Analysis.opening_id)):
+        if sources is None:
+            legacy_openings.add(opening)
         ids.update(sources or [])
         synthetic = synthetic and verified and sources is not None
+    if legacy_openings:
+        ids.update(db.scalars(_legacy_rank_sources(legacy_openings)))
     return sorted(ids), bool(synthetic)
 
 

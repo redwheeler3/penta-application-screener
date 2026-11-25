@@ -145,3 +145,16 @@ def test_public_status_fails_open_without_exposing_queue_details() -> None:
         "available": False,
         "delayed": False
     }
+
+
+def test_empty_queue_page_only_completes_a_fully_observed_report():
+    for pages in ([{"total": 12, "data": []}], [
+        {"total": 2, "data": [_message("Queued", "2026-09-24T10:00:00Z")]},
+        {"total": 2, "data": []},
+    ], [{"total": 0, "data": []}]):
+        reader = SocketLabsQueueClient(FakeClient(pages), base_url="https://example.invalid", server_id=1, api_key="test")
+        status = reader.fetch()
+        if pages[0]["total"]:
+            assert status is None
+        else:
+            assert status.queued_count == 0

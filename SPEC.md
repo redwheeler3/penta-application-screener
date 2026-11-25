@@ -763,6 +763,9 @@ application participation, AI outputs and caches, eligibility and
 ranking data tied to the applicant, committee notes, sessions and unused login tokens, and
 applicant-identifying delivery records. Applicant-linked feedback is deleted in full, including
 resolved items, because its body can quote personal details; general product feedback remains.
+The composer identifies the applicant when it opens and keeps that context through navigation
+and retry. Linked feedback becomes unavailable for listing, resolution and reopening on the first
+day the applicant is outside retention, even if the daily purge has yet to run.
 Linked feedback submission shares the applicant write boundary with purge. An unavailable target
 is rejected with the unsent browser draft preserved, rather than saving its text without a link.
 Production uses daily Fly volume snapshots retained for
@@ -1292,6 +1295,9 @@ browser clears the rejected confirmation and refreshes the board for a new estim
 checks inherited source retention before paid work: the existing purge removes expired history
 first, and unresolved missing sources stop the run. Publication still rechecks retention under
 the writer lock in case an input expires during provider work.
+Rank captures historical criteria and their contributing applications together before discovery.
+When any contributor expires, ranking views retain generic criteria but hide pool explanations
+and operator traces. Active opening protection extends availability under the usual retention rule.
 
 **Cost gating and readiness.** Screen is ready when its in-scope applicants have valid cached screening results. Rank is ready when every eligible applicant has valid scores for every current criterion, with no pending proposed criteria for that member. Answer, scoring-model, effective reasoning, scoring-prompt or criterion changes can cause real cache gaps and amber the step. Ignored existing criteria are not pending proposals. Discovery remains optional even with complete scores and always requires cost confirmation. `Analysis.rank_inputs_fingerprint` records the inputs captured before explicit AI work for provenance; it does not determine button colour. Discovery-only model, prompt or strategy changes do not invalidate scores for retained criteria. Switching between certified-equivalent routes preserves cached work. Rank streams phase-aware progress and model reasoning for its pool-level calls, then opens the ranked view.
 

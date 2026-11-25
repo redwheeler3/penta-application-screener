@@ -70,3 +70,21 @@ it("does not close or release a new composer when a cancelled submission finishe
   await act(async () => { second.resolve(new Response(null, { status: 201 })); });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+it.each([null, 42])("keeps a draft linked to its original applicant after navigating to %s", async (nextApplicant) => {
+  const props = { activeTab: "detail", analysisId: 2, openingId: 3, retainedReview: false, onError: vi.fn(), onToast: vi.fn() };
+  const view = render(<FeedbackButton {...props} applicantId={17} applicantName="Fictional A" />);
+  fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Synthetic quote" } });
+  view.rerender(<FeedbackButton {...props} openingId={4} analysisId={8} activeTab="ranking" applicantId={nextApplicant} />);
+  expect(screen.getByRole("textbox", { name: "Feedback about Fictional A" })).toHaveValue("Synthetic quote");
+  vi.mocked(api.submitFeedback).mockResolvedValueOnce(new Response(null, { status: 404 })).mockResolvedValueOnce(Response.json({ id: 1 }));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send" })); });
+    expect(api.submitFeedback).toHaveBeenLastCalledWith(expect.objectContaining({
+      applicantId: 17, analysisId: 2, openingId: 3, activeTab: "detail", body: "Synthetic quote",
+    }));
+  }
+  expect(props.onError).toHaveBeenCalledOnce();
+  expect(props.onToast).toHaveBeenCalledOnce();
+});

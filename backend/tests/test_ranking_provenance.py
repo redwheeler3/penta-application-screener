@@ -189,3 +189,76 @@ def test_semantic_strategy_controls_are_part_of_captured_inputs(field, value):
     assert analysis.rank_inputs_fingerprint != rank_inputs_fingerprint(db, opening_id, settings)
     assert analysis.audit.fan_out["configuration"] == captured
     assert captured["strategy"][field] != value
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_purge_after_criteria_capture_cannot_republish_inherited_text(legacy):
+    from sqlalchemy.orm import Session
+
+    from app.ai.schemas import DimensionMatchReport
+    from app.core.time import pacific_today
+    from app.db.models import Analysis, Application
+    from app.services.applications.purge import purge_expired_application
+    from tests.ranking_support import route_criteria
+
+    _, db, provider = setup_app(UserRole.ADMIN)
+    add_eligible(db, email="retained@example.com", raw_hash="keep")
+    old = add_eligible(db, email="old@example.com", raw_hash="old")
+    opening_id = current_opening_id(db)
+    # The historical contributor is no longer in the current AI pool.
+    old.withdrawn_at = datetime.now(UTC)
+    report = a_pattern_report()
+    report.dimensions[0].why_it_differentiates = "Fictional expired quote"
+    analysis = Analysis(opening_id=opening_id, dimension_report=report.model_dump(mode="json"),
+        source_application_ids=None if legacy else [old.id])
+    db.add(analysis)
+    db.commit()
+    stream = _stream_criteria(db, provider, AppSettings(), db.scalar(select(User)), opening_id, estimated_usd=0.1)
+    route_criteria(provider, a_pattern_report())
+    provider.route("<prior_dimensions>", DimensionMatchReport(matches=[]))
+    assert json.loads(next(stream))["type"] == "phase"
+    with Session(db.bind) as other:
+        source = other.get(Application, old.id)
+        source.retention_due_on = pacific_today()
+        other.flush()
+        assert purge_expired_application(other, source, now=datetime.now(UTC))
+        other.commit()
+    assert json.loads(list(stream)[-1])["type"] == "error"
+    db.expire_all()
+    assert db.scalars(select(Analysis)).all() == [analysis]
+    assert "Fictional expired quote" not in json.dumps(analysis.dimension_report)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_current_board_and_traces_hide_expired_pool_text_before_sweep(legacy):
+    from app.core.time import pacific_today
+    from app.db.models import Analysis, AnalysisAudit, OpeningRetentionProtection
+
+    app, db, _ = setup_app(UserRole.ADMIN)
+    add_eligible(db, email="current@example.com", raw_hash="keep")
+    old = add_eligible(db, email="old@example.com", raw_hash="old")
+    opening_id = current_opening_id(db)
+    report = a_pattern_report()
+    marker = "Synthetic retention marker"
+    report.dimensions[0].why_it_differentiates = marker
+    analysis = Analysis(opening_id=opening_id, dimension_report=report.model_dump(mode="json"),
+        source_application_ids=None if legacy else [old.id], audit=AnalysisAudit(discovery_narrative=marker))
+    db.add(analysis)
+    db.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for state in ("retained", "protected", "expired"):
+            if state == "protected":
+                protection = OpeningRetentionProtection(application_id=old.id, opening_id=opening_id)
+                db.add(protection)
+                old.retention_due_on = pacific_today()
+                db.commit()
+            elif state == "expired":
+                db.delete(protection)
+                db.commit()
+            for path in ("/ranking/current", "/ranking/board", f"/ranking/analyses/{analysis.id}/fan-out-audit"):
+                response = await client.get(path)
+                assert response.status_code == 200
+                assert (marker in response.text) == (state != "expired")
+                if "audit" not in path:
+                    assert report.dimensions[0].definition in response.text

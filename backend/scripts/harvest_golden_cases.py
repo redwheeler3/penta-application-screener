@@ -86,6 +86,8 @@ def main(argv: list[str] | None = None) -> None:
 
     from app.db.models import Analysis
     from app.db.session import SessionLocal
+    from app.evals.synthetic_guard import require_synthetic_pool
+    from app.services.applications.scope import opening_ai_applications
 
     parser = argparse.ArgumentParser(description="Propose categorical eval cases for one opening.")
     parser.add_argument("which", choices=["all", "decomposition", "matching"], nargs="?", default="all")
@@ -94,10 +96,13 @@ def main(argv: list[str] | None = None) -> None:
     which = args.which
     db = SessionLocal()
     try:
+        # Read the stamp, cohort and audit from one SQLite snapshot.
+        db.connection().exec_driver_sql("BEGIN")
         run = db.scalars(select(Analysis).where(Analysis.opening_id == args.opening_id).order_by(Analysis.id.desc())).first()
         if run is None:
             print("No ranking runs to harvest from.")
             return
+        require_synthetic_pool(run, opening_ai_applications(db, args.opening_id))
         crit = {
             "dimension_report": run.dimension_report,
             "decompose_audit": run.audit.decompose if run.audit else None,

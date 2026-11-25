@@ -59,6 +59,7 @@ from app.services.ranking.provenance import (
     capture_rank_sources,
     rank_configuration,
     rank_inputs_fingerprint,
+    rank_sources_are_retained,
 )
 from app.services.run_lock import RunLeaseLost
 from app.services.stream_worker import StreamWorker
@@ -159,43 +160,26 @@ def _stream_criteria(
     The worker computes AI passes and audits; database writes stay on this request
     thread. A fatal worker error emits an error event and ends the run.
     """
-    # Capture prior state before discovery. Matching looks across ALL prior analyses (shared
-    # dimension history); tier carry-forward looks across the TRIGGERING member's prior
-    # rankings — a concept that fell out and re-surfaces should re-adopt its existing key
-    # (reusing its cached scores) and restore that member's last tier placement.
-    prior_analysis = get_current_analysis(db, opening_id)
-    prior_report = current_dimension_report(prior_analysis) if prior_analysis else None
-    match_history = all_known_dimensions(db)  # every dimension ever, one per key
-    # The immediately-prior run's keys: a dimension present here is continuous in
-    # the committee's view (never flagged); one absent-then-present is a presence
-    # gap to flag (new or revived). See carry_forward_layout.
-    immediately_prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
-    # Committee asks split by what each needs. Proposals are untested free-text hypotheses,
-    # so they are seeded into discovery
-    # (worker 0 only) so it grounds them in the pool and gates on variance. KEPT axes
-    # (those the committee placed in a working tier) are prior dimensions already
-    # grounded + scored → injected at DECOMPOSITION, not discovery, so all K
-    # discoverers stay blind (seeding them would correlate the samples and cost
-    # coverage). An empty set leaves discovery fully blind (first-run).
-    #
-    # Both are the committee union, not just the triggering member: an
-    # axis survives if ANY member tiered it, and every member's proposals steer the one shared
-    # discovery — so one member's re-rank can't drop another's kept axis or ignore their ask.
-    # Tier carry-forward below stays per-member (the triggering member's own placements).
-    committee_kept = committee_kept_keys(db, opening_id, prior_report)
-    kept_dims = [
-        d
-        for d in (prior_report.dimensions if prior_report else [])
-        if d.key in committee_kept
-    ]
-    seeds = DiscoverySeeds(
-        proposed=committee_proposed_dimensions(db, prior_analysis),
-    )
+    # SQLite's legacy driver needs an explicit BEGIN for a consistent multi-query read.
+    # Close the snapshot before yielding so purge and other writes can proceed during AI work.
+    with Session(db.get_bind()) as snapshot:
+        snapshot.connection().exec_driver_sql("BEGIN")
+        prior_analysis = get_current_analysis(snapshot, opening_id)
+        prior_report = current_dimension_report(prior_analysis) if prior_analysis else None
+        match_history = all_known_dimensions(snapshot)
+        immediately_prior_keys = {d.key for d in prior_report.dimensions} if prior_report else set()
+        committee_kept = committee_kept_keys(snapshot, opening_id, prior_report)
+        kept_dims = [d for d in prior_report.dimensions if d.key in committee_kept] if prior_report else []
+        seeds = DiscoverySeeds(proposed=committee_proposed_dimensions(snapshot, prior_analysis))
+        pool = eligible_applications(snapshot, opening_id)
+        source_application_ids, synthetic_data = capture_rank_sources(snapshot, pool)
+        inputs_fingerprint = rank_inputs_fingerprint(snapshot, opening_id, settings, applications=pool)
+        retained = rank_sources_are_retained(snapshot, source_application_ids)
 
     yield emit(CriteriaPhaseEvent(discovery_workers=settings.ai.discovery_fan_out))
-    pool = eligible_applications(db, opening_id)
-    source_application_ids, synthetic_data = capture_rank_sources(db, pool)
-    inputs_fingerprint = rank_inputs_fingerprint(db, opening_id, settings, applications=pool)
+    if not retained:
+        yield emit(StreamErrorEvent(phase=CRITERIA, message="Ranking inputs expired. Request a fresh estimate and retry."))
+        return None
     configuration = rank_configuration(settings)
     worker: StreamWorker[str | CriteriaStageChange, CriteriaPassResult] = StreamWorker()
     worker.start(lambda put: run_criteria_passes(

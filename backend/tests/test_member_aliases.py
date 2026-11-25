@@ -363,7 +363,7 @@ def test_member_read_returns_coherent_criteria_priorities_and_flags_during_conso
 
         view = _current_member_view(reader, member, opening_id, "ranking")
         assert merged
-        run = run_payload(view)
+        run = run_payload(reader, view)
         ranking = ranking_payload(reader, view, member)
         tiers = display_tiers(view)
         expected = "newer" if merge_at == "after-member-read" else "older"
@@ -417,7 +417,7 @@ def test_resurfaced_review_flags_match_late_views_and_preserve_explicit_acknowle
     for user in [eager, late]:
         view = get_or_reconcile_member_ranking(db, current, user)
         payload = ranking_payload(db, view, user)
-        assert {dimension.key for dimension in run_payload(view).dimensions} == {"older", unrelated.key}
+        assert {dimension.key for dimension in run_payload(db, view).dimensions} == {"older", unrelated.key}
         assert payload.weights == {"older": 0.0 if prior_ignored else 1.0, unrelated.key: 0.0}
         expected_flags = [] if user == eager and acknowledged else ["older"]
         assert payload.new_dimension_keys == payload.revived_dimension_keys == expected_flags
