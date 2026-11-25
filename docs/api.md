@@ -11,7 +11,7 @@ The Access column describes server dependencies. Public entrypoints still valida
 magic-link, draft, consent, or publication facts required by their workflow.
 
 Committee and applicant sessions use opaque server-side credentials in host-specific cookies.
-Applicant responses are not cached. Opening-scoped reads and writes use `opening_id`; mutation
+Applicant responses are not cached. Public openings and signed-in application responses include `calendar.today` and `calendar.millisecondsUntilMidnight` for Pacific date limits. Opening-scoped reads and writes use `opening_id`; mutation
 acknowledgements describe the submitted snapshot, not a later draft in another tab.
 
 Screen, full Rank, score-current, and Evals stream NDJSON progress and a terminal summary/error.
@@ -160,7 +160,7 @@ consolidation audits expose captured configuration where it was recorded.
 | --- | --- | --- | --- |
 | POST | `/evals/baseline` | Rebaseline | Local admin |
 | GET | `/evals/cases/{eval_key}` | An eval's cases, straight from its committed fixture (free). 404 for an eval with no editable case set (invariants; stability reads the judge set). | Admin |
-| PUT | `/evals/cases/{eval_key}` | Upsert one case (by key) into the eval's fixture FILE (the operator commits it to git deliberately). Validated server-side; a bad payload is refused (422). | Local admin |
+| PUT | `/evals/cases/{eval_key}` | Send the case and a required `create` boolean. Creation requires an unused key. Editing requires an existing key. Validated server-side; a bad payload is refused (422). | Local admin |
 | GET | `/evals/catalog` | Run repetition counts and local editing policy, independent of fixture contents. | Admin |
 | POST | `/evals/consolidation` | Run Consolidation | Admin |
 | POST | `/evals/decomposition` | Run Decomposition | Admin |
@@ -271,8 +271,9 @@ consolidation audits expose captured configuration where it was recorded.
 protects the retained pool through the planned deadline and queues no email. Replaying the same
 identity and facts returns the saved result; different facts conflict.
 
-`POST /openings/{id}/open` takes `original` saved facts and `expectedAudienceCount`. It validates
-both, opens applications and atomically queues announcements. Replays do not queue more mail.
+`POST /openings/{id}/open` takes the saved facts in `original` and the preview's `variants` list
+in `expectedVariants`. It compares each email kind and recipient count before publishing and
+queuing announcements in one transaction. Replays do not queue more mail.
 
 `POST /openings/{id}/direct-selection` takes `applicationId` and permanently fills a Preparing
 opening without email. `POST /openings/{id}/selection/no-household` can cancel a Preparing opening.

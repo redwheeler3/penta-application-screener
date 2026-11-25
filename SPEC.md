@@ -55,7 +55,7 @@ Opening cards state the applicable household-size requirements:
 - 3 bedroom: 1 or 2 adults plus 2 or more children under 18
 
 Applicants enter the first name, last name and date of birth of every child who would live in the unit.
-The form and server use the co-op's Pacific calendar date when checking birth dates and employment start dates.
+The server supplies the co-op's Pacific date for birth dates and employment start dates. The form refreshes it at midnight and when the applicant returns.
 
 The housing section asks for the current address and move-in date, then collects earlier addresses
 and their move-in dates until the history reaches two years before the earliest application close
@@ -555,7 +555,7 @@ removed. They do not show an applicant-removal link.
   retention protection. This administrative association is separate from applicant participation.
 - **Open applications** explicitly publishes a Preparing opening, records that day's actual open
   date, and queues the confirmed current notification audience in the same transaction. The saved
-  details and audience are revalidated. Repeating publication cannot queue duplicate announcements.
+  details and participant counts for each email variant are revalidated. Repeating publication cannot queue duplicate announcements.
   An elapsed deadline must be extended before publication. Opening creation is independently
   retry-safe through its creation request identity and original facts.
 - **Fill from previous applicants** finalizes an existing Preparing opening after the administrator
@@ -800,7 +800,7 @@ Retention is enforced automatically and opportunistically at most once per Pacif
 when the deployed service receives ordinary browser or API traffic. Health checks, static assets,
 and CORS preflight requests do not wake the sweep, and no external scheduler exists solely to wake
 a suspended Fly Machine. A durable lease prevents concurrent requests from running the
-same sweep. The acquisition is renewed between lifecycle stages and before each email attempt;
+same sweep. A sweep running across Pacific midnight retains ownership until completion or lease expiry. The acquisition is renewed between lifecycle stages and before each email attempt;
 an expired or replaced worker stops dispatching. Provider waits hold no database writer.
 The ordered pass purges due applicant data, queues due unsuccessful notices, retries
 queued email, and deletes expired list-only delivery failures. A record may remain somewhat past its

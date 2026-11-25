@@ -1,10 +1,11 @@
 """Wire contracts for private applicant drafts, access links, and applications."""
 
-from datetime import datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from pydantic import EmailStr, Field, field_validator
 
+from app.core.time import PACIFIC
 from app.db.models import ApplicantDraftIntent, MagicLinkPurpose, OpeningPhase
 from app.schemas.applicant.answers import (
     CanonicalApplicationAnswers,
@@ -101,7 +102,20 @@ class ApplicantOpeningOut(OpeningDetailsOut):
     can_withdraw: bool
 
 
+class ApplicantCalendar(ResponseModel):
+    today: date
+    milliseconds_until_midnight: int
+
+    @classmethod
+    def current(cls, now: datetime | None = None) -> "ApplicantCalendar":
+        instant = now or datetime.now(UTC)
+        today = instant.astimezone(PACIFIC).date()
+        midnight = datetime.combine(today + timedelta(days=1), time.min, tzinfo=PACIFIC)
+        return cls(today=today, milliseconds_until_midnight=max(1, int((midnight.astimezone(UTC) - instant).total_seconds() * 1000)))
+
+
 class ApplicantApplicationResponse(ResponseModel):
+    calendar: ApplicantCalendar = Field(default_factory=ApplicantCalendar.current)
     application_id: int
     primary_email: str
     google_sign_in_linked: bool
@@ -116,6 +130,7 @@ class ApplicantApplicationResponse(ResponseModel):
 
 
 class ApplicantOpeningsResponse(ResponseModel):
+    calendar: ApplicantCalendar = Field(default_factory=ApplicantCalendar.current)
     can_start_application: bool
     can_sign_in: bool
     openings: list[ApplicantOpeningOut]

@@ -33,7 +33,7 @@ def anyio_backend():
 async def test_member_cannot_use_operator_routes(method, path):
     app, _db, provider = setup_app(UserRole.MEMBER)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
-        response = await client.request(method, path, json={"case": {}, "background": "Synthetic brief"})
+        response = await client.request(method, path, json={"create": False, "case": {}, "background": "Synthetic brief"})
     assert response.status_code == 403
     assert not provider.calls
 
@@ -131,7 +131,7 @@ def test_fixture_editing_is_a_local_runtime_capability(frontend, fly, editable):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(("path", "body"), [
-    ("/evals/cases/scoring", {"case": {"key": "synthetic"}}),
+    ("/evals/cases/scoring", {"create": False, "case": {"key": "synthetic"}}),
     ("/evals/judge-backgrounds/scoring", {"background": "Synthetic brief"}),
     ("/evals/baseline", None),
 ])
@@ -166,7 +166,7 @@ async def test_fixture_write_rechecks_admin_before_touching_the_file(monkeypatch
 
     monkeypatch.setattr("app.api.evals._shared.require_admin_write", revoke_then_check)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
-        response = await client.put("/evals/cases/scoring", json={"case": case})
+        response = await client.put("/evals/cases/scoring", json={"create": False, "case": case})
     assert response.status_code == 403
     touched.assert_not_called()
 

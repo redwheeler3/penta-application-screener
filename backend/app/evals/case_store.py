@@ -51,8 +51,8 @@ def list_cases(eval_key: str) -> list[dict]:
     return [c for c in _read_fixture(eval_key).get("cases", []) if isinstance(c, dict) and "key" in c]
 
 
-def save_case(eval_key: str, case: dict) -> list[dict]:
-    """Upsert one case into its fixture by ``key`` (add if new, replace if the key exists),
+def save_case(eval_key: str, case: dict, *, create: bool = False) -> list[dict]:
+    """Save a new or existing case by key according to the editor intent,
     validate the family shape, and write the file back preserving other top-level keys.
     Returns the full updated case list. Refuses an invalid payload without writing.
 
@@ -66,7 +66,7 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
             raise CaseValidationError(
                 f"judge case metadata.pass must name a known pass ({', '.join(_BACKGROUND_PASSES)}), got {pass_name!r}"
             )
-        save_case(pass_name, case)
+        save_case(pass_name, case, create=create)
         return list_cases("judge")
     if eval_key not in _FIXTURES:
         raise UnknownEvalError(eval_key)
@@ -79,10 +79,14 @@ def save_case(eval_key: str, case: dict) -> list[dict]:
         replaced = False
         for i, existing in enumerate(cases):
             if isinstance(existing, dict) and existing.get("key") == key:
+                if create:
+                    raise CaseValidationError("A case with this key already exists. Choose a new key.")
                 cases[i] = case
                 replaced = True
                 break
         if not replaced:
+            if not create:
+                raise CaseValidationError("This case no longer exists. Reload the cases before editing.")
             cases.append(case)
         data["cases"] = cases
         # Match the on-disk formatting the fixtures already use (indent=2). Not sort_keys: the

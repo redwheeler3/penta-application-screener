@@ -22,7 +22,7 @@ block:
 
 ```jsonc
 {
-  "key": "unique_case_key",          // top-level identity; upsert/dedup/filter key on this
+  "key": "unique_case_key",          // unique within the family and fixed when editing
 
   "metadata": {                      // HARNESS-ONLY — no model, live or judge, ever sees this
     "expected": <verdict|band>,      // REQUIRED. The human label. Type varies by pass (below).

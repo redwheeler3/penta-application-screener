@@ -59,13 +59,13 @@ async def test_label_changes_expire_coverage_but_editorial_notes_do_not(tmp_path
         original = result["cases"][0]["inputFingerprint"]
         data["cases"][0]["metadata"]["note"] = "Editorial explanation"
         data["cases"][0]["metadata"]["label_rationale"] = "Editorial rationale"
-        acknowledged = await client.put("/evals/cases/scoring", json={"case": data["cases"][0]})
+        acknowledged = await client.put("/evals/cases/scoring", json={"create": False, "case": data["cases"][0]})
         assert acknowledged.status_code == 200
         assert acknowledged.json()["caseFingerprints"][key] == original
         restored = (await client.get("/evals/last-run?keys=scoring")).json()
         assert restored["current"]["scoring"]["caseFingerprints"][key] == original
         data["cases"][0]["metadata"]["expected"] = {"score_min": 0.7, "score_max": 1}
-        acknowledged = await client.put("/evals/cases/scoring", json={"case": data["cases"][0]})
+        acknowledged = await client.put("/evals/cases/scoring", json={"create": False, "case": data["cases"][0]})
         assert acknowledged.status_code == 200
         assert acknowledged.json()["caseFingerprints"][key] != original
         restored = (await client.get("/evals/last-run?keys=scoring")).json()

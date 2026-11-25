@@ -84,9 +84,9 @@ export function createApi(client: ApiClient) {
 
   const confirmNoHouseholdSelected = (id: number) =>
     request(`/openings/${id}/selection/no-household`, { method: "POST" });
-  function openApplications(id: number, original: OpeningWrite, expectedAudienceCount: number): Promise<Response> {
+  function openApplications(id: number, original: OpeningWrite, expectedVariants: OpeningPreview["variants"]): Promise<Response> {
     return request(`/openings/${id}/open`, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ original, expectedAudienceCount }) });
+      body: JSON.stringify({ original, expectedVariants }) });
   }
   return {
     openApplications,

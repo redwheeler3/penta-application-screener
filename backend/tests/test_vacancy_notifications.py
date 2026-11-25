@@ -105,7 +105,7 @@ def _application(email: str, *, selected: bool = False) -> Application:
     return application
 
 
-def _opening_payload(expected: int | None = None) -> dict:
+def _opening_payload() -> dict:
     today = pacific_today()
     payload = {
         "unitSizeBedrooms": 2,
@@ -113,9 +113,7 @@ def _opening_payload(expected: int | None = None) -> dict:
         "applicationCloseDate": (today + timedelta(days=20)).isoformat(),
         "moveInDate": (today + timedelta(days=45)).isoformat(),
     }
-    if expected is not None:
-        payload["expectedAudienceCount"] = expected
-        payload["creationRequestId"] = str(uuid4())
+    payload["creationRequestId"] = str(uuid4())
     return payload
 
 
@@ -123,7 +121,7 @@ def _opening_payload(expected: int | None = None) -> dict:
 async def test_publication_replay_preserves_one_opening_and_one_notification() -> None:
     app, db, sender = _app_and_db()
     save_subscription(db, email="synthetic@example.com", unit_sizes={2}, source="synthetic")
-    payload = _opening_payload(expected=1)
+    payload = _opening_payload()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         first = await _prepare_and_open(client, payload)
@@ -144,7 +142,7 @@ async def test_publication_replay_preserves_one_opening_and_one_notification() -
 @pytest.mark.anyio
 async def test_identical_facts_with_distinct_publication_ids_create_distinct_openings() -> None:
     app, db, _sender = _app_and_db()
-    payload = _opening_payload(expected=0)
+    payload = _opening_payload()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         assert (await _prepare_and_open(client, payload)).status_code == 200
@@ -245,7 +243,7 @@ async def test_create_atomically_opens_and_queues_then_delivers_all_variants() -
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await _prepare_and_open(client, _opening_payload(expected=3))
+        response = await _prepare_and_open(client, _opening_payload())
 
     opening = db.scalar(select(Opening))
     deliveries = list(db.scalars(select(EmailDelivery).order_by(EmailDelivery.id)))
@@ -289,7 +287,7 @@ async def test_terminal_vacancy_failure_is_deleted_after_30_days() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await _prepare_and_open(client, _opening_payload(expected=1))
+        response = await _prepare_and_open(client, _opening_payload())
 
     delivery = db.scalar(select(EmailDelivery))
     assert response.status_code == 200
@@ -329,7 +327,7 @@ async def test_create_keeps_subscription_and_intent_when_provider_is_temporary()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await _prepare_and_open(client, _opening_payload(expected=1))
+        response = await _prepare_and_open(client, _opening_payload())
 
     delivery = db.scalar(select(EmailDelivery))
     assert response.status_code == 200
@@ -348,7 +346,7 @@ async def test_create_rejects_a_stale_audience_confirmation() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        response = await _prepare_and_open(client, _opening_payload(expected=0))
+        response = await _prepare_and_open(client, _opening_payload(), stale=True)
 
     assert response.status_code == 409
     assert response.json()["audienceCount"] == 1
@@ -395,12 +393,38 @@ def test_applications_due_for_retention_are_not_notified() -> None:
     assert opening_audience(db, 2).total == 0
 
 
-async def _prepare_and_open(client, payload):
+async def _prepare_and_open(client, payload, *, stale=False):
     prepared = await client.post("/openings", json=payload)
     if prepared.status_code != 200:
         return prepared
     opening = prepared.json()["openings"][0]
     facts = {field: opening[field] for field in (
         "unitSizeBedrooms", "housingChargeCents", "applicationOpenDate", "applicationCloseDate", "moveInDate")}
-    return await client.post(f"/openings/{opening['id']}/open", json={
-        "original": facts, "expectedAudienceCount": payload["expectedAudienceCount"]})
+    variants = (await client.post("/openings/preview", json=facts)).json()["variants"]
+    if stale:
+        variants[0]["recipientCount"] = 0
+    return await client.post(f"/openings/{opening['id']}/open", json={"original": facts, "expectedVariants": variants})
+
+
+@pytest.mark.anyio
+async def test_launch_rejects_changed_email_mix_with_same_total():
+    app, db, sender = _app_and_db()
+    save_subscription(db, email="fiction@example.com", unit_sizes={2}, source="test")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        prepared = await client.post("/openings", json=_opening_payload())
+        opening = prepared.json()["openings"][0]
+        facts = {key: opening[key] for key in ("unitSizeBedrooms", "housingChargeCents", "applicationOpenDate", "applicationCloseDate", "moveInDate")}
+        old = (await client.post("/openings/preview", json=facts)).json()
+        db.add(_application("fiction@example.com"))
+        db.commit()
+        new = (await client.post("/openings/preview", json=facts)).json()
+        assert old["audienceCount"] == new["audienceCount"] == 1
+        assert old["variants"] != new["variants"]
+        path = f"/openings/{opening['id']}/open"
+        refused = await client.post(path, json={"original": facts, "expectedVariants": old["variants"]})
+        assert refused.status_code == 409
+        assert db.get(Opening, opening["id"]).published_at is None
+        assert sender.messages == []
+        confirmed = await client.post(path, json={"original": facts, "expectedVariants": new["variants"]})
+        assert confirmed.status_code == 200
+        assert len(sender.messages) == 1

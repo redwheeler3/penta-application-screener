@@ -526,7 +526,7 @@ async def test_put_case_rejects_invalid_payload_without_writing() -> None:
     app, _db, _p = setup_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        resp = await client.put("/evals/cases/scoring", json={"case": {"key": "x"}})
+        resp = await client.put("/evals/cases/scoring", json={"create": False, "case": {"key": "x"}})
     assert resp.status_code == 422
 
 

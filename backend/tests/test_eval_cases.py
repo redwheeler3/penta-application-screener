@@ -48,7 +48,7 @@ def test_save_new_case_appends(golden_file) -> None:
         "metadata": {"expected": {"score_min": 0.5}},
         "given": {"applicant": {"facts": {}}, "dimension": {"key": "d", "name": "D", "definition": "Synthetic", "high_end": "High", "low_end": "Low"}},
     }
-    cases = case_store.save_case("scoring", new)
+    cases = case_store.save_case("scoring", new, create=True)
     assert [c["key"] for c in cases] == ["a", "b"]
     # Persisted to disk, and both non-cases top-level keys survived.
     on_disk = json.loads(golden_file.read_text())
@@ -121,7 +121,7 @@ def test_overlapping_fixture_edits_preserve_both_changes(golden_file, monkeypatc
     def save_case(key):
         case = json.loads(golden_file.read_text())["cases"][0]
         case["key"] = key
-        return case_store.save_case("scoring", case)
+        return case_store.save_case("scoring", case, create=True)
 
     def save_second():
         competing.set()
@@ -234,3 +234,25 @@ def test_matching_needs_both_sides(field):
     case["given"][field] = []
     with pytest.raises(case_store.CaseValidationError, match=field):
         case_store.save_case("matching", case)
+
+
+def test_competing_new_cases_cannot_overwrite_the_winner(golden_file):
+    base = case_store.list_cases("scoring")[0]
+
+    def create(minimum):
+        case = {**base, "key": "new", "metadata": {"expected": {"score_min": minimum}}}
+        try:
+            case_store.save_case("scoring", case, create=True)
+            return minimum
+        except case_store.CaseValidationError as error:
+            return str(error)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(create, [0.2, 0.9]))
+    assert outcomes.count("A case with this key already exists. Choose a new key.") == 1
+    winners = [v for v in outcomes if isinstance(v, float)]
+    assert len(winners) == 1
+    stored = case_store.list_cases("scoring")
+    assert len(stored) == 2
+    assert stored[0] == base
+    assert stored[1]["metadata"]["expected"]["score_min"] == winners[0]

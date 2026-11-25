@@ -67,8 +67,9 @@ def test_obsolete_maintenance_cannot_finish_its_replacement(monkeypatch, fails) 
         assert run.last_error_code is None
 
 
-@pytest.mark.parametrize("send_seconds", [1, 10])
-def test_daily_owner_is_renewed_through_long_retry_batches(monkeypatch, send_seconds):
+@pytest.mark.parametrize(("send_seconds", "cross_midnight"), [(1, False), (10, False), (10, True)])
+def test_daily_owner_is_renewed_through_long_retry_batches(monkeypatch, send_seconds, cross_midnight):
+    from app.core.time import PACIFIC, pacific_today
     from app.db.models import Opening
     from app.services.email import outbox
     from app.services.email.sender import EmailRetryableError
@@ -87,7 +88,8 @@ def test_daily_owner_is_renewed_through_long_retry_batches(monkeypatch, send_sec
     db.commit()
 
     class Clock(datetime):
-        value = datetime.now(UTC)
+        value = datetime.combine(pacific_today(), datetime.min.time(), tzinfo=PACIFIC).astimezone(UTC) + timedelta(
+            minutes=-1 if cross_midnight else 60)
         @classmethod
         def now(cls, tz=None):
             return cls.value if tz else cls.value.replace(tzinfo=None)
@@ -171,3 +173,13 @@ async def test_real_request_triggers_maintenance_but_inert_requests_do_not() -> 
         await client.get("/dashboard")
 
     assert calls == 1
+
+
+def test_abandoned_previous_day_lease_expires_before_new_day_starts():
+    from app.core.time import PACIFIC
+
+    midnight = datetime(2026, 11, 25, tzinfo=PACIFIC).astimezone(UTC)
+    db = _db()
+    assert maintenance._claim_daily_run(db, now=midnight - timedelta(minutes=1))
+    assert maintenance._claim_daily_run(db, now=midnight) is None
+    assert maintenance._claim_daily_run(db, now=midnight + timedelta(minutes=10))

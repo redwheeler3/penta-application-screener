@@ -98,7 +98,7 @@ export class FlyWatchdog extends DurableObject<Env> {
   }
 
   private async pollMachine(): Promise<void> {
-    let response: Response;
+    let response: { status: number; body: string | null };
     try {
       response = await retryOnce(
         async () => {
@@ -109,7 +109,7 @@ export class FlyWatchdog extends DurableObject<Env> {
           if (shouldRetryLookupStatus(lookup.status)) {
             throw new Error(`HTTP ${lookup.status}.`);
           }
-          return lookup;
+          return { status: lookup.status, body: lookup.ok ? await lookup.text() : null };
         },
         FLY_LOOKUP_RETRY_DELAY_MS,
       );
@@ -118,11 +118,11 @@ export class FlyWatchdog extends DurableObject<Env> {
         cause: error,
       });
     }
-    if (!response.ok) {
+    if (response.body === null) {
       throw new Error(`Machine lookup failed (HTTP ${response.status}).`);
     }
 
-    const machine = appMachine((await response.json()) as FlyMachine[]);
+    const machine = appMachine(JSON.parse(response.body) as FlyMachine[]);
     await this.notifyLookupRecovery();
     await this.ctx.storage.delete(LAST_ERROR_ALERT_AT_KEY);
     if (hostUnavailable(machine)) {

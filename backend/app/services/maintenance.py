@@ -122,6 +122,15 @@ def _claim_daily_run(db: Session, *, now: datetime) -> MaintenanceLease | None:
         existing.status == "completed" or as_utc(existing.lease_expires_at) > now
     ):
         return None
+    # Serialize claims across dates. The completed-day fast path above stays read-only.
+    db.execute(update(DailyMaintenanceRun).where(DailyMaintenanceRun.id == -1)
+        .values(status=DailyMaintenanceRun.status).execution_options(synchronize_session=False))
+    live_owner = db.scalar(select(DailyMaintenanceRun.id).where(
+        DailyMaintenanceRun.task == DAILY_LIFECYCLE_TASK, DailyMaintenanceRun.status == "running",
+        DailyMaintenanceRun.lease_expires_at > now).limit(1))
+    if live_owner is not None:
+        db.rollback()
+        return None
     if existing is not None:
         claimed = db.execute(
             update(DailyMaintenanceRun)

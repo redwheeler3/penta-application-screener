@@ -241,7 +241,7 @@ def open_applications(
     if opening.application_close_date < pacific_today(now=now):
         raise Problem("invalid_settings", detail="Extend the application deadline before opening applications.")
     audience = opening_audience(db, opening.unit_size_bedrooms)
-    if audience.total != body.expected_audience_count:
+    if body.expected_variants != _preview_out(audience).variants:
         raise Problem("opening_audience_changed", detail="The audience changed. Preview the opening again.", audienceCount=audience.total)
     publish_opening(db, opening, now=now)
     queue_opening_notifications(db, opening, audience)

@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useEffect, useMemo, useReducer, useRef } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useEffectEvent, useMemo, useReducer, useRef } from "react";
 
 import { identityClient } from "../api/client";
 import * as applicantApi from "./api";
@@ -73,6 +73,7 @@ export function useApplicantPersistence(
     canEdit,
     canSignIn,
     openingsLoaded,
+    calendar,
     pendingDraftToken,
     accessToken,
     accessEmail,
@@ -136,18 +137,27 @@ export function useApplicantPersistence(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const refreshWhenVisible = useEffectEvent(() => {
+    if (document.visibilityState !== "visible") return;
+    if (applicationId != null) void refreshLifecycleState();
+    else if (openingsLoaded) void restorePublicOpenings(true);
+  });
+
   useEffect(() => {
-    const refreshWhenVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      if (applicationId != null) void refreshLifecycleState();
-      else if (openingsLoaded) void restorePublicOpenings(true);
-    };
-    const changed = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.kind === "applicant" && detail.reason === "mismatch") {
-        markSessionChanged();
-      }
-    };
+    if (!calendar) return;
+    const midnight = window.setTimeout(() => {
+      updatePersistence({ calendar: null });
+      refreshWhenVisible();
+    }, calendar.millisecondsUntilMidnight);
+    return () => window.clearTimeout(midnight);
+  }, [calendar]);
+
+  const changed = useEffectEvent((event: Event) => {
+    const detail = (event as CustomEvent).detail;
+    if (detail?.kind === "applicant" && detail.reason === "mismatch") markSessionChanged();
+  });
+
+  useEffect(() => {
     const stored = (event: StorageEvent) => {
       if (event.key === "penta-session-change:applicant") refreshWhenVisible();
     };
@@ -161,10 +171,7 @@ export function useApplicantPersistence(
       window.removeEventListener("storage", stored);
       window.removeEventListener("penta-session-changed", changed);
     };
-    // The primitive lifecycle keys above own this subscription. The workflow
-    // functions are render-local and would resubscribe on every state transition.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applicationId, openingsLoaded, workingRevision]);
+  }, []);
 
   async function inspectLink(token: string): Promise<void> {
     const inSession = sessionWork.capture();
@@ -330,6 +337,7 @@ export function useApplicantPersistence(
       primaryEmail: body.primaryEmail,
       googleSignInLinked: body.googleSignInLinked,
       pendingEmailChange: body.pendingEmailChange,
+      calendar: body.calendar,
       openings: body.openings,
       canEdit: body.canEdit,
       openingsLoaded: true,
@@ -384,12 +392,14 @@ export function useApplicantPersistence(
     if (response === null || !isCurrent()) return;
     if (!response.ok) return fail(response);
     const body = (await response.json()) as {
+      calendar: ApplicationResponse["calendar"];
       canStartApplication: boolean;
       canSignIn: boolean;
       openings: ApplicantOpening[];
     };
     if (!isCurrent()) return;
     updatePersistence((state) => ({
+      calendar: body.calendar,
       openings: body.openings,
       openingIds: preserveSelection
         ? validBrowserOpeningIds(state.openingIds, body.openings)
@@ -618,6 +628,7 @@ export function useApplicantPersistence(
         pendingEmailChange: body.pendingEmailChange,
         ...(emailChanged ? { emailChangeMessage: "", emailChangeStatus: "confirmed" as const,
           googleDisconnectedByEmailChange: state.googleSignInLinked } : {}),
+        calendar: body.calendar,
         openings: body.openings,
         openingIds: validBrowserOpeningIds(state.openingIds, body.openings),
         canEdit: body.canEdit,
@@ -717,6 +728,7 @@ export function useApplicantPersistence(
     openingIds,
     canEdit,
     openingsLoaded,
+    calendar,
     canSignIn,
     setOpeningSelected: (openingId: number, selected: boolean) => {
       updatePersistence((state) => ({

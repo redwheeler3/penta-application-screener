@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { DateInput } from "../components/shared/DateInput";
-import { pacificDateToday } from "../format";
 import { NumberInput } from "../components/shared/NumberInput";
 
 import type {
@@ -293,13 +292,10 @@ export function validateFormFields(form: HTMLFormElement | null): void {
   form?.querySelectorAll<HTMLInputElement>("input[data-email]").forEach(validateEmailField);
   form?.querySelectorAll<HTMLInputElement>("input[data-date]").forEach((input) => {
     const value = input.value;
-    const today = pacificDateToday();
     input.setCustomValidity(
       value && !isValidIsoDate(value)
         ? "Enter a valid date in YYYY-MM-DD format."
-        : value && input.dataset.notFuture === "true" && value > today
-          ? "Enter today’s date or an earlier date."
-          : "",
+        : "",
     );
   });
   form?.querySelectorAll<HTMLInputElement>("input[data-phone]").forEach((input) => {

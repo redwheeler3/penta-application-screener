@@ -1,5 +1,6 @@
-import type { InputHTMLAttributes } from "react";
-import { pacificDateToday } from "../../format";
+import { createContext, useContext, type InputHTMLAttributes } from "react";
+
+export const ApplicantToday = createContext<string | null>(null);
 
 type Props = {
   value: string;
@@ -8,13 +9,13 @@ type Props = {
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type" | "max">;
 
 export function DateInput({ value, onChange, notFuture, ...rest }: Props) {
+  const today = useContext(ApplicantToday);
   return <input
     {...rest}
     type="date"
     value={value}
-    max={notFuture ? pacificDateToday() : "9999-12-31"}
+    max={notFuture && today ? today : "9999-12-31"}
     data-date="true"
-    data-not-future={notFuture ? "true" : undefined}
     onInput={(event) => {
       event.currentTarget.setCustomValidity("");
       rest.onInput?.(event);

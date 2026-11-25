@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import { ApplicantToday } from "../components/shared/DateInput";
 import { DateField, MoneyField, validateFormFields } from "./ApplicantFormFields";
 
 it("keeps income blank or zero and validates whole dollars through the shared control", () => {
@@ -19,42 +20,19 @@ it("keeps income blank or zero and validates whole dollars through the shared co
 });
 
 describe("applicant form date validation", () => {
-  it.each([
-    ["2026-11-25T07:59:59Z", "2026-11-24", false],
-    ["2026-11-25T08:00:00Z", "2026-11-25", true],
-    ["2026-07-25T06:59:59Z", "2026-07-24", false],
-    ["2026-07-25T07:00:00Z", "2026-07-25", true],
-  ])("agrees with Pacific server limits at %s", (instant, today, valid) => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(new Date(instant));
-      const value = instant.slice(0, 10);
-      const { container } = render(<form>
-        <DateField label="Employment start" value={value} notFuture onChange={() => {}} />
-        <DateField label="Unrestricted date" value={value} onChange={() => {}} />
-      </form>);
-      const form = container.querySelector("form")!;
-      validateFormFields(form);
-      const [limited, unrestricted] = form.querySelectorAll("input");
-      expect(limited.max).toBe(today);
-      expect(limited.checkValidity()).toBe(valid);
-      expect(unrestricted.checkValidity()).toBe(true);
-    } finally { vi.useRealTimers(); }
-  });
-
-  it("rejects future dates only for fields marked as not future", () => {
-    const { container } = render(<form>
-      <DateField label="Birth date" value="2999-01-01" notFuture onChange={() => {}} />
+  it("applies the supplied Pacific day and updates validity when that day advances", () => {
+    const formAt = (day: string) => <ApplicantToday.Provider value={day}><form>
+      <DateField label="Employment start" value="2026-11-25" notFuture onChange={() => {}} />
       <DateField label="Unrestricted date" value="2999-01-01" onChange={() => {}} />
-    </form>);
-    const form = container.querySelector("form")!;
-    const [birthDate, unrestrictedDate] = Array.from(
-      form.querySelectorAll<HTMLInputElement>("input"),
-    );
-
+    </form></ApplicantToday.Provider>;
+    const view = render(formAt("2026-11-24"));
+    const form = view.container.querySelector("form")!;
     validateFormFields(form);
-
-    expect(birthDate.validationMessage).toBe("Enter today’s date or an earlier date.");
-    expect(unrestrictedDate.validationMessage).toBe("");
+    const [limited, unrestricted] = form.querySelectorAll("input");
+    expect(limited.validity.rangeOverflow).toBe(true);
+    expect(unrestricted.checkValidity()).toBe(true);
+    view.rerender(formAt("2026-11-25"));
+    expect(limited.max).toBe("2026-11-25");
+    expect(form.checkValidity()).toBe(true);
   });
 });

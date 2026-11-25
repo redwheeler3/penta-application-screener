@@ -313,8 +313,9 @@ class CasesResponse(ResponseModel):
 
 
 class SaveCaseRequest(RequestModel):
-    """Upsert one case (by its ``key``) into the eval's fixture. The full case object is
-    passed as ``case`` — validated server-side for the family's required fields."""
+    """Save an existing case, or require a new key when creating one."""
+
+    create: bool
 
     case: dict
 

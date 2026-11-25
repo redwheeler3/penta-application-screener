@@ -30,7 +30,10 @@ export type PersistencePhase =
   | "session_expired"
   | "error";
 
+export type ApplicantCalendar = { today: string; millisecondsUntilMidnight: number };
+
 export type ApplicationResponse = {
+  calendar: ApplicantCalendar;
   applicationId: number;
   primaryEmail: string;
   googleSignInLinked: boolean;

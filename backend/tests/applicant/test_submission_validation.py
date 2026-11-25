@@ -123,3 +123,30 @@ async def test_incomplete_publication_cannot_change_durable_answers(authenticate
         assert application.working_revision == revision
     else:
         assert db.scalar(select(Application)) is None
+
+
+def test_applicant_calendar_matches_validation_on_both_sides_of_vancouver_midnight():
+    from datetime import UTC, date, datetime, time, timedelta
+    from unittest.mock import patch
+
+    from pydantic import ValidationError
+
+    from app.core.time import PACIFIC, pacific_today
+    from app.schemas.applicant.answers import EmploymentAnswers
+    from app.schemas.applicant.contracts import ApplicantCalendar
+
+    for day in (date(2026, 7, 25), date(2026, 11, 25)):
+        midnight = datetime.combine(day, time.min, tzinfo=PACIFIC).astimezone(UTC)
+        for offset in (timedelta(milliseconds=-1), timedelta(), timedelta(minutes=30)):
+            instant = midnight + offset
+            calendar = ApplicantCalendar.current(instant)
+            assert calendar.today == pacific_today(now=instant)
+            next_midnight = instant + timedelta(milliseconds=calendar.milliseconds_until_midnight)
+            assert pacific_today(now=next_midnight) == calendar.today + timedelta(days=1)
+            payload = {"status": "self_employed", "jobTitle": "Fiction", "companyName": "Fiction", "startDate": day}
+            with patch("app.schemas.applicant.answers.pacific_today", return_value=calendar.today):
+                if offset < timedelta():
+                    with pytest.raises(ValidationError, match="future"):
+                        EmploymentAnswers.model_validate(payload)
+                else:
+                    assert EmploymentAnswers.model_validate(payload).start_date == day

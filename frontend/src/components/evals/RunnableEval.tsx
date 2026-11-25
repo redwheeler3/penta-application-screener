@@ -85,7 +85,7 @@ export function RunnableEval(props: {
     const result = saves.current.then(async () => {
       if (!isCurrent()) return "This case tab is no longer active.";
       try {
-        const response = await saveEvalCase(caseEvalKey, evalCase);
+        const response = await saveEvalCase(caseEvalKey, evalCase, editing?.existing === null);
         if (!isCurrent()) return "This case tab is no longer active.";
         if (!response.ok) {
           const problem = await readProblem(response) ?? `Save failed (${response.status})`;

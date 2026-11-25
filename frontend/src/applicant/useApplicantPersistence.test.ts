@@ -39,6 +39,7 @@ function initialDraft() {
 function application(workingRevision = 1): ApplicationResponse {
   const draft = initialDraft();
   return {
+    calendar: { today: "2026-11-25", millisecondsUntilMidnight: 86400000 },
     applicationId: 1, primaryEmail: draft.applicant.email, googleSignInLinked: false,
     pendingEmailChange: null, answers: workingAnswers(draft), workingSavedAt: null,
     workingRevision, submitted: false, canEdit: true, openings: [], pendingCopy: null,
@@ -802,4 +803,26 @@ it("shows returning-applicant sign-in while closed opening cards remain hidden",
   render(createElement(ApplicantApp));
   await screen.findByRole("textbox", { name: "Email address" });
   expect(screen.queryByRole("button", { name: "Continue as a guest" })).toBeNull();
+});
+
+it.each([true, false])("refreshes the server date at midnight and on resume (signed in: %s)", async (signedIn) => {
+  vi.useFakeTimers();
+  try {
+    let today = "2026-11-24";
+    const calendar = () => ({ today, millisecondsUntilMidnight: 30000 });
+    vi.mocked(api.fetchApplication).mockImplementation(async () => signedIn
+      ? Response.json({ ...application(), calendar: calendar() }) : new Response(null, { status: 401 }));
+    vi.mocked(api.fetchApplicantOpenings).mockImplementation(async () => Response.json({
+      canStartApplication: true, canSignIn: true, openings: [], calendar: calendar(),
+    }));
+    const { result } = renderPersistence();
+    await act(async () => {});
+    expect(result.current.persistence.calendar?.today).toBe(today);
+    today = "2026-11-25";
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+    expect(result.current.persistence.calendar?.today).toBe(today);
+    today = "2026-11-26";
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(result.current.persistence.calendar?.today).toBe(today);
+  } finally { vi.useRealTimers(); }
 });

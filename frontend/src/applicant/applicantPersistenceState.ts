@@ -1,6 +1,7 @@
 import type { ServiceRecoveryStage } from "../serviceRecovery";
 import type { DraftIntent } from "./api";
 import type {
+  ApplicantCalendar,
   EmailChangeStatus,
   LinkConflict,
   PendingCopy,
@@ -20,6 +21,7 @@ export type ApplicantPersistenceState = {
   canEdit: boolean;
   canSignIn: boolean;
   openingsLoaded: boolean;
+  calendar: ApplicantCalendar | null;
   pendingDraftToken: string | null;
   accessToken: string | null;
   accessEmail: string | null;
@@ -58,6 +60,7 @@ export const INITIAL_APPLICANT_PERSISTENCE_STATE: ApplicantPersistenceState = {
   canEdit: false,
   canSignIn: false,
   openingsLoaded: false,
+  calendar: null,
   pendingDraftToken: null,
   accessToken: null,
   accessEmail: null,
@@ -93,6 +96,7 @@ export function resetApplicantSession(
     ...INITIAL_APPLICANT_PERSISTENCE_STATE,
     openings: state.openings,
     openingsLoaded: state.openingsLoaded,
+    calendar: state.calendar,
     canEdit: state.canEdit,
     canSignIn: state.canSignIn,
     phase,

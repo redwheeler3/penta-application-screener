@@ -66,7 +66,6 @@ def _opening_payload(**overrides) -> dict:
         "applicationOpenDate": today.isoformat(),
         "applicationCloseDate": (today + timedelta(days=14)).isoformat(),
         "moveInDate": (today + timedelta(days=30)).isoformat(),
-        "expectedAudienceCount": 0,
         "creationRequestId": str(uuid4()),
     }
     payload.update(overrides)

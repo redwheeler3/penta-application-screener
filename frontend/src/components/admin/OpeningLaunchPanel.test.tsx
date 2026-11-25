@@ -30,7 +30,7 @@ it("previews the saved opening and allows launch while email usage is pending", 
   await screen.findByText("Ready to open applications");
   expect(screen.getByText(/Checking current email usage/)).toBeInTheDocument();
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Open applications and notify applicants" })));
-  expect(api.openApplications).toHaveBeenCalledWith(7, expect.objectContaining({ applicationOpenDate: null, applicationCloseDate: "2027-01-01" }), 3);
+  expect(api.openApplications).toHaveBeenCalledWith(7, expect.objectContaining({ applicationOpenDate: null, applicationCloseDate: "2027-01-01" }), []);
   expect(props.onSaved).toHaveBeenCalledOnce();
 });
 

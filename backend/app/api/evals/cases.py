@@ -54,11 +54,10 @@ def get_cases(eval_key: str, user: User = Depends(require_admin)) -> CasesRespon
 def put_case(
     eval_key: str, body: SaveCaseRequest, user: User = Depends(require_admin), db: Session = Depends(get_db),
 ) -> CasesResponse:
-    """Upsert one case (by key) into the eval's fixture FILE (the operator commits it to
-    git deliberately). Validated server-side; a bad payload is refused (422)."""
+    """Create a new key or update an existing case in the local golden fixture."""
     try:
         require_local_fixture_write(db, user.id)
-        cases = save_case(eval_key, body.case)
+        cases = save_case(eval_key, body.case, create=body.create)
     except UnknownEvalError as exc:
         raise Problem("not_found", detail=f"No editable cases for eval {eval_key!r}.") from exc
     except CaseValidationError as exc:

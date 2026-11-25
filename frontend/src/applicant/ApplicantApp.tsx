@@ -1,6 +1,7 @@
 import { FileCheck2, Save, Trash2 } from "lucide-react";
 import { type ComponentProps, type FormEvent, type InvalidEvent, useEffect, useRef, useState } from "react";
 
+import { ApplicantToday } from "../components/shared/DateInput";
 import { BrandLockup } from "../components/shared/BrandLockup";
 import { HeaderAccount } from "../components/shared/HeaderAccount";
 import {
@@ -244,6 +245,7 @@ export function ApplicantApp() {
   const hasOpenOpening = persistence.openings.some((opening) => opening.phase === "open");
 
   return (
+    <ApplicantToday.Provider value={persistence.calendar?.today ?? null}>
     <div className="applicant-surface">
       <header className="applicant-header">
         <div className="applicant-header-inner penta-header-inner">
@@ -494,6 +496,7 @@ export function ApplicantApp() {
         </p>
       </footer>
     </div>
+    </ApplicantToday.Provider>
   );
 }
 

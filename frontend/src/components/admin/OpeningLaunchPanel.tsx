@@ -30,7 +30,7 @@ export function OpeningLaunchPanel(props: {
     setBusy(true);
     const isCurrent = requests.capture();
     try {
-      const response = await api.openApplications(props.opening.id, facts, preview.data.audienceCount);
+      const response = await api.openApplications(props.opening.id, facts, preview.data.variants);
       if (!isCurrent()) return;
       if (!response.ok) {
         const problem = await readProblem(response);

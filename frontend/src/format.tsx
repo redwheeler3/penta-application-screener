@@ -32,13 +32,6 @@ export function reasoningEffortLabel(
 
 const PACIFIC_TIME_ZONE = "America/Vancouver";
 
-export function pacificDateToday(): string {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
-    timeZone: PACIFIC_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
 // All app-generated timestamps are stored and returned as UTC. Render them in the
 // co-op's local time rather than inheriting the browser's time zone.
 export function formatPacificDateTime(value: string): string {

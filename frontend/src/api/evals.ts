@@ -52,11 +52,11 @@ export function createApi(client: ApiClient) {
 
   // Upsert one case (by its `key`) into the eval's fixture FILE. Validated server-side;
   // the operator commits the changed file to git deliberately.
-  function saveEvalCase(evalKey: string, evalCase: unknown): Promise<Response> {
+  function saveEvalCase(evalKey: string, evalCase: unknown, create: boolean): Promise<Response> {
     return request(`/evals/cases/${evalKey}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ case: evalCase }),
+      body: JSON.stringify({ case: evalCase, create }),
     });
   }
 

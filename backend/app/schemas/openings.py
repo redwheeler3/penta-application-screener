@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import Field, StringConstraints, model_validator
 
 from app.db.models import OpeningIntakeMode, OpeningPhase
-from app.schemas.base import RequestModel, ResponseModel
+from app.schemas.base import BridgeModel, RequestModel, ResponseModel
 
 
 class OpeningCreate(RequestModel):
@@ -78,7 +78,7 @@ class OpeningUpdatedOut(OpeningsResponse):
     saved: OpeningDetailsOut
 
 
-class OpeningNotificationVariantOut(ResponseModel):
+class OpeningNotificationVariantOut(BridgeModel):
     kind: str
     recipient_count: int
 
@@ -141,4 +141,4 @@ class PreviousApplicantSearchOut(ResponseModel):
 
 class OpeningLaunchRequest(RequestModel):
     original: OpeningWrite
-    expected_audience_count: int = Field(ge=0)
+    expected_variants: list[OpeningNotificationVariantOut]

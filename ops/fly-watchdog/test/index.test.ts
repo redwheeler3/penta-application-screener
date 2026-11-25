@@ -5,7 +5,7 @@ import { FlyWatchdog } from "../src/index";
 function watchdog(machines: unknown[], alertStatus = 204) {
   const values = new Map<string, unknown>();
   const control = {
-    machines, alertStatus, lookupStatus: 200, lookupError: null as Error | null,
+    machines, alertStatus, brokenBodies: 0, lookupStatus: 200, lookupError: null as Error | null,
     restartStatus: 204, restartError: null as Error | null,
   };
   const storage = {
@@ -18,6 +18,10 @@ function watchdog(machines: unknown[], alertStatus = 204) {
   const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
     if (url.endsWith("/machines")) {
       if (control.lookupError) throw control.lookupError;
+      if (control.brokenBodies > 0) {
+        control.brokenBodies--;
+        return new Response(new ReadableStream({ start(c) { c.error(new TypeError("Disconnected response body")); } }));
+      }
       return Response.json(control.machines, { status: control.lookupStatus });
     }
     if (url.endsWith("/restart")) {
@@ -68,6 +72,21 @@ describe("watchdog alarms", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(poll).resolves.toBeUndefined();
   }
+
+  it("retries an interrupted lookup body and requires two exhausted polls to alert", async () => {
+    vi.useFakeTimers();
+    const { instance, control, alerts, fetch } = watchdog([suspended]);
+    control.brokenBodies = 1;
+    await failedLookupPoll(instance);
+    expect(fetch.mock.calls.filter(([url]) => url.endsWith("/machines"))).toHaveLength(2);
+    expect(alerts()).toEqual([]);
+    control.brokenBodies = 4;
+    await failedLookupPoll(instance);
+    expect(alerts()).toEqual([]);
+    await failedLookupPoll(instance);
+    expect(alerts()).toHaveLength(1);
+    expect(alerts()[0]).toContain("two consecutive polls");
+  });
 
   it("waits for the next scheduled host observation and clears isolated failures silently", async () => {
     vi.useFakeTimers();

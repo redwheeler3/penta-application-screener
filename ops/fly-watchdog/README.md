@@ -22,7 +22,7 @@ It calls the Fly Machines API only; it never sends an HTTP request to Penta.
 - A host outage cannot be repaired by restarting its Machine. Its local database volume is
   also unavailable: check Fly incidents/support, then choose between waiting for the host and
   an approved snapshot restore. The watchdog never restores a database automatically.
-- A timed-out or transient HTTP-failed Machine lookup is retried once after one second.
+- A Machine lookup that times out, loses its response body in transit, or returns a transient HTTP failure is retried once after one second.
   Alert only after two consecutive polls exhaust those retries; a successful lookup clears an
   unannounced failure silently. Send one alert per continuous lookup outage and one recovery
   message after two successful lookups. Lookup recovery confirms monitoring visibility, not
