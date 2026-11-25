@@ -21,7 +21,7 @@ record states what replaced it and why.
 | [0008](0008-grader-matched-to-output-shape.md) | Grader matched to output shape + derived prompt versions | accepted |
 | [0009](0009-signed-scoring-scale-silence-neutral.md) | Signed −1..+1 scoring scale, silence = neutral | accepted |
 | [0010](0010-provider-adaptable-ai-interface-cost-controls.md) | Provider-adaptable AI interface (Bedrock first) + cost controls | accepted |
-| [0011](0011-per-member-eligible-pool-shared-content-cache.md) | Per-member eligible pool on a shared content-addressed cache (M15) | accepted (scoping; implementation pending) |
+| [0011](0011-per-member-eligible-pool-shared-content-cache.md) | Per-member eligible pool on a shared content-addressed cache (M15) | accepted and implemented in [M15](../../CHANGELOG.md) |
 | [0012](0012-hosting-platform-m17.md) | Hosting platform for go-live (M17) — Fly.io suspend + volume | deployed & verified |
 | [0013](0013-openai-model-selection.md) | Select Luna/Terra and verify the direct OpenAI route (M20) | accepted; production route verified |
 | [0014](0014-multi-provider-model-routing.md) | Route supported models through Bedrock or direct provider APIs | accepted |

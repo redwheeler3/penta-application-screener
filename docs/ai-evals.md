@@ -491,7 +491,9 @@ a human labels `metadata.expected` (a band) + rationale before they land in
 `scoring_golden.json` (harvest never labels; the screening harvester mirrors it into
 `screening_golden.json`).
 
-Both harvesters validate the actual candidate cohort as well as captured source assurance.
+The screening and scoring harvesters validate the actual candidate cohort and captured source assurance.
+The categorical harvester (`python -m scripts.harvest_golden_cases --opening-id OPENING_ID`)
+checks both before printing decomposition or matching candidates, whose label rationales can include stored audit text.
 Baseline capture uses the same guard. Rank freezes assurance before model work, including inherited
 criterion history; unknown historical source cohorts fail closed. A later arrival cannot inherit
 an earlier analysis's synthetic assurance.

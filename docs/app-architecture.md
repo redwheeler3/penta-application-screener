@@ -686,6 +686,6 @@ justifications, including copied criterion explanations, while retaining generic
 costs. The explicit pool_text_purged marker prevents a late consolidation from restoring text.
 Legacy unknown cohorts use conservative opening scope. Local restore uses the same erasure owner.
 
-Both harvesters and baseline capture check their actual current inputs as well as captured synthetic
+The screening, scoring and categorical case harvesters and baseline capture check their actual current inputs as well as captured synthetic
 assurance. Non-synthetic and unknown-source exports are refused before publishing or printing cases;
 local baseline refusal has its own non_synthetic_pool problem, rather than suggesting another paid run.

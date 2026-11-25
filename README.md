@@ -115,7 +115,7 @@ The spec lives in [SPEC.md](SPEC.md); developer architecture notes in
 [docs/ai-screening.md](docs/ai-screening.md) and [docs/api.md](docs/api.md). The canonical built-in
 application contract is `backend/app/schemas/applicant/answers.py`. Significant design decisions
 live in [docs/adr/](docs/adr/). Shared agent guidance lives in [.clinerules](.clinerules), with
-[AGENTS.md](AGENTS.md) pointing agents there.
+[AGENTS.md](AGENTS.md) pointing agents there. Completed audits, implementation plans and validation evidence live in the [documentation archive](docs/archive/README.md).
 
 ## Observability And Evals
 

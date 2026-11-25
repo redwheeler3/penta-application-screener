@@ -32,7 +32,7 @@ and request a new estimate. Full Rank cleans expired inherited sources before pa
 
 Applicant-linked feedback requires a currently reviewable target and is serialized with purge.
 An unavailable target returns 404 without saving its body as general feedback. Linked feedback,
-including resolved items, is deleted when the applicant is purged; general product feedback remains.
+including resolved items, becomes unavailable on applicant expiry and is deleted at purge. General product feedback remains available.
 
 `/evals/last-run` returns `runs` and independent `current` configuration/fingerprint metadata for
 every requested mode, including modes without stored history. Each saved aggregate supplies
@@ -177,7 +177,7 @@ consolidation audits expose captured configuration where it was recorded.
 
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| GET | `/feedback` | List feedback newest-first. Open items only by default; `includeResolved=true` widens to the full history. | Admin |
+| GET | `/feedback` | List feedback newest-first. Open items only by default; `includeResolved=true` widens to all retained items. | Admin |
 | POST | `/feedback` | Record a member's feedback. Identity + app version are stamped here (not trusted from the body); route/tab/analysis are the context the client reported. | Committee session |
 | POST | `/feedback/{feedback_id}/reopen` | Move a resolved item back to the open list (idempotent). | Admin |
 | POST | `/feedback/{feedback_id}/resolve` | Mark an item handled (idempotent). Applicant retention still applies. | Admin |
