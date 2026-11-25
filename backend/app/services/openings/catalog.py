@@ -15,7 +15,7 @@ from app.db.models import (
 )
 from app.schemas.openings import OpeningCreate, OpeningCreationRequest, OpeningUpdate
 from app.services.applications.retention import refresh_draft_retention_for_opening
-from app.services.eligibility.rules import create_opening_rules
+from app.services.eligibility.rules import create_opening_rules, sync_household_rules
 from app.services.openings.protection import (
     available_protection_ids,
     lock_openings,
@@ -84,7 +84,7 @@ def create_opening(
         creation_request=creation_request,
         **values.model_dump(include={
             "unit_size_bedrooms",
-            "housing_charge_cents",
+            "housing_charge_cents", "min_children", "max_children",
             "application_close_date",
             "move_in_date",
         }),
@@ -124,6 +124,9 @@ def update_opening(db: Session, opening: Opening, values: OpeningUpdate) -> Open
     protected_ids = available_protection_ids(db) if opening.decided_at is None else []
     if values.original.application_open_date != opening.application_open_date:
         raise Problem("stale_opening", detail="Applications opened while you were editing. Reload the saved facts.")
+    changed_limits = (opening.min_children, opening.max_children) != (values.changes.min_children, values.changes.max_children)
+    if opening.published_at is not None and changed_limits:
+        raise Problem("invalid_settings", detail="Household requirements are fixed once applications open.")
     if values.changes.application_open_date != opening.application_open_date:
         raise Problem("invalid_settings", detail="The application open date is set when applications open.")
     expected = values.original.model_dump()
@@ -134,6 +137,8 @@ def update_opening(db: Session, opening: Opening, values: OpeningUpdate) -> Open
     if saved.rowcount != 1:
         raise Problem("stale_opening", detail="This opening changed while you were editing. Reload its saved facts before saving again.")
     db.refresh(opening)
+    if changed_limits:
+        sync_household_rules(db, opening)
     if opening.decided_at is None:
         replace_opening_protection(db, opening.id, protected_ids)
     refresh_draft_retention_for_opening(db, opening.id)
@@ -153,6 +158,7 @@ def publish_opening(db: Session, opening: Opening, *, now: datetime | None = Non
         raise Problem("invalid_settings", detail="Extend the application deadline before opening applications.")
     protected_ids = available_protection_ids(db, now=now)
     opening.application_open_date = pacific_today(now=now)
+    sync_household_rules(db, opening)
     opening.published_at = now
     db.flush()
     replace_opening_protection(db, opening.id, protected_ids)

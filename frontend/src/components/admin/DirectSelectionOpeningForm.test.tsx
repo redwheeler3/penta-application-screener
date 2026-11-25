@@ -14,7 +14,7 @@ vi.mock("../../api/openings", () => ({
   createApi: () => api,
 }));
 const applicant = { applicationId: 1, applicantName: "Synthetic Applicant", primaryEmail: "synthetic@example.com" };
-const opening: Opening = { id: 10, unitSizeBedrooms: 2, housingChargeCents: 100000, moveInDate: "2099-12-31",
+const opening: Opening = { id: 10, unitSizeBedrooms: 2, minChildren: 1, maxChildren: null, householdSummary: "One or two adults plus 1 or more children under 18", housingChargeCents: 100000, moveInDate: "2099-12-31",
   applicationOpenDate: null, applicationCloseDate: "2099-12-01", intakeMode: "applications", phase: "preparing",
   publishedAt: null, submissionCount: 0, selectedApplicationId: null, selectedApplicantName: null,
   noHouseholdSelected: false, needsDecision: false, createdAt: "2026-01-01", updatedAt: "2026-01-01" };

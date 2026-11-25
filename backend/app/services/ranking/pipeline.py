@@ -153,7 +153,8 @@ class _CriteriaResult:
 
 
 def _stream_criteria(
-    db: Session, provider: AIProvider, settings: AppSettings, user: User, opening_id: int, estimated_usd: float
+    db: Session, provider: AIProvider, settings: AppSettings, user: User, opening_id: int, estimated_usd: float,
+    admitted_ids: set[int] | None = None,
 ) -> Generator[str, None, _CriteriaResult | None]:
     """Load prior state, stream the criteria worker, then persist the completed result.
 
@@ -177,6 +178,12 @@ def _stream_criteria(
         retained = rank_sources_are_retained(snapshot, source_application_ids)
 
     yield emit(CriteriaPhaseEvent(discovery_workers=settings.ai.discovery_fan_out))
+    if not pool:
+        yield emit(StreamErrorEvent(phase=CRITERIA, message="No eligible applicants remain. No AI work started."))
+        return None
+    if admitted_ids is not None and admitted_ids != {application.id for application in pool}:
+        yield emit(StreamErrorEvent(phase=CRITERIA, message="The applicant pool changed. Request a fresh estimate before running again."))
+        return None
     if not retained:
         yield emit(StreamErrorEvent(phase=CRITERIA, message="Ranking inputs expired. Request a fresh estimate and retry."))
         return None
@@ -425,9 +432,10 @@ def stream_rank(
     *,
     opening_id: int,
     estimated_usd: float,
+    admitted_ids: set[int],
 ) -> Iterator[str]:
     """Run all Rank phases and yield their NDJSON events."""
-    criteria = yield from _stream_criteria(db, provider, settings, user, opening_id, estimated_usd)
+    criteria = yield from _stream_criteria(db, provider, settings, user, opening_id, estimated_usd, admitted_ids)
     if criteria is None:
         return
     recorded = {"Pattern discovery": criteria.discovery_cost, "Dimension decomposition": criteria.decompose_cost,

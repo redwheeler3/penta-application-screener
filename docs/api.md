@@ -267,7 +267,10 @@ consolidation audits expose captured configuration where it was recorded.
 
 ### Preparing and publishing an opening
 
-`POST /openings` takes vacancy facts and `creationRequestId`. It creates a Preparing opening,
+`POST /openings` takes vacancy facts and `creationRequestId`. The optional `minChildren` and
+`maxChildren` fields default by bedroom count when omitted. Explicit null removes that bound.
+Opening responses include both values and the display-ready `householdSummary`. Preparing
+edits and launch confirmations carry the saved bounds with the other opening facts. It creates a Preparing opening,
 protects the retained pool through the planned deadline and queues no email. Replaying the same
 identity and facts returns the saved result; different facts conflict.
 

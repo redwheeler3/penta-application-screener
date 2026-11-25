@@ -166,10 +166,25 @@ def create_opening_rules(db: Session, opening: Opening) -> OpeningRules:
         if previous is not None
         else EligibilityRules().model_dump(mode="json")
     )
-    record = OpeningRules(opening_id=opening.id, rules=payload)
+    record = OpeningRules(opening_id=opening.id, rules=_with_household_rules(payload, opening))
     db.add(record)
     db.flush()
     return record
+
+
+def _with_household_rules(payload: dict, opening: Opening) -> dict:
+    # Only the public household checks start from this vacancy; other checks inherit normally.
+    household_checks = {"too_few_children", "too_many_children", "child_age_over_max"}
+    return {**payload, "min_children": opening.min_children, "max_children": opening.max_children,
+            "max_child_age": 17, "disabled_checks": [code for code in payload.get("disabled_checks", []) if code not in household_checks]}
+
+
+def sync_household_rules(db: Session, opening: Opening) -> None:
+    record = db.scalar(select(OpeningRules).where(OpeningRules.opening_id == opening.id))
+    if record is None:
+        create_opening_rules(db, opening)
+    else:
+        record.rules = _with_household_rules(record.rules, opening)
 
 
 def _reason_to_payload(reason: Any) -> dict[str, Any]:

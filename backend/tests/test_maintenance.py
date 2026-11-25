@@ -57,7 +57,7 @@ def test_obsolete_maintenance_cannot_finish_its_replacement(monkeypatch, fails) 
     monkeypatch.setattr(maintenance, "queue_due_unsuccessful_notices", replace_worker)
     monkeypatch.setattr(maintenance, "retry_queued_emails", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(maintenance, "purge_due_applicant_data", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(maintenance, "purge_expired_vacancy_delivery_failures", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(maintenance, "purge_expired_ownerless_delivery_failures", lambda *_args, **_kwargs: None)
     with factory() as db:
         assert not run_due_maintenance_with(db, CapturedEmailSender(), now=now)
     with factory() as db:

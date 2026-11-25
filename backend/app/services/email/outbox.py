@@ -13,6 +13,8 @@ from app.core.config import get_settings
 from app.core.text import normalize_email
 from app.core.time import pacific_today
 from app.db.models import (
+    ApplicantDraft,
+    Application,
     EmailDelivery,
     EmailDeliveryState,
     MagicLinkPurpose,
@@ -23,7 +25,10 @@ from app.db.models import (
     VacancySubscription,
 )
 from app.services.applications.drafts import draft_is_available
-from app.services.applications.retention import retention_is_current
+from app.services.applications.retention import (
+    current_retention_clause,
+    retention_is_current,
+)
 from app.services.applications.selected import application_is_selected
 from app.services.auth.passwordless import issue_magic_link
 from app.services.email.delivery import (
@@ -87,7 +92,7 @@ class EmailQueueStatus:
     last_attempt_at: datetime | None = None
 
 
-VACANCY_FAILURE_RETENTION = timedelta(days=30)
+OWNERLESS_FAILURE_RETENTION = timedelta(days=30)
 
 
 def retry_queued_emails(
@@ -184,18 +189,20 @@ def retry_queued_emails(
     )
 
 
-def purge_expired_vacancy_delivery_failures(
+def purge_expired_ownerless_delivery_failures(
     db: Session, *, now: datetime | None = None
 ) -> int:
-    """Delete terminal list-only vacancy failures after the troubleshooting window."""
+    """Delete terminal ownerless notice failures after the troubleshooting window."""
     now = now or datetime.now(UTC)
     result = db.execute(
         delete(EmailDelivery).where(
-            EmailDelivery.message_kind == "vacancy_opening",
+            EmailDelivery.message_kind.in_(("vacancy_opening", "application_unavailable")),
+            EmailDelivery.user_id.is_(None), EmailDelivery.applicant_draft_id.is_(None),
+            EmailDelivery.magic_link_token_id.is_(None),
             EmailDelivery.application_id.is_(None),
             EmailDelivery.state == EmailDeliveryState.FAILED,
             func.coalesce(EmailDelivery.last_attempt_at, EmailDelivery.created_at)
-            <= now - VACANCY_FAILURE_RETENTION,
+            <= now - OWNERLESS_FAILURE_RETENTION,
         )
     )
     db.commit()
@@ -260,6 +267,11 @@ def email_queue_status(
 
 
 def email_delivery_issues(db: Session, *, limit: int = 100) -> list[EmailDeliveryIssue]:
+    retained_apps = select(Application.id).where(current_retention_clause())
+    available_drafts = select(ApplicantDraft.id).where(
+        ApplicantDraft.revoked_at.is_(None), ApplicantDraft.resolved_at.is_(None),
+        ApplicantDraft.expires_on > pacific_today(),
+        or_(ApplicantDraft.application_id.is_(None), ApplicantDraft.application_id.in_(retained_apps)))
     recipient = func.coalesce(func.nullif(EmailDelivery.recipient_email, ""), "Unavailable")
     attempted = func.coalesce(EmailDelivery.last_attempt_at, EmailDelivery.created_at)
     rows = db.execute(select(
@@ -267,7 +279,9 @@ def email_delivery_issues(db: Session, *, limit: int = 100) -> list[EmailDeliver
         EmailDelivery.state, attempted.label("attempted_at"), EmailDelivery.attempt_count,
         EmailDelivery.last_error_code.label("error_code"), EmailDelivery.quota_blocked,
     )
-        .where(or_(EmailDelivery.state == EmailDeliveryState.QUEUED, _unexpected_failure_filter()))
+        .where(or_(EmailDelivery.state == EmailDeliveryState.QUEUED, _unexpected_failure_filter()),
+               or_(EmailDelivery.application_id.is_(None), EmailDelivery.application_id.in_(retained_apps)),
+               or_(EmailDelivery.applicant_draft_id.is_(None), EmailDelivery.applicant_draft_id.in_(available_drafts)))
         .order_by(attempted.desc(), EmailDelivery.id.desc()).limit(limit)).mappings()
     return [EmailDeliveryIssue(**row) for row in rows]
 

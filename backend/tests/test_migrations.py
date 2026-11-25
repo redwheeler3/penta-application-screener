@@ -108,7 +108,7 @@ def test_monotonic_identity_migration_preserves_every_row_and_detaches_compariso
         command.upgrade(config, "head")
         with engine.begin() as connection:
             for name in tables:
-                assert connection.exec_driver_sql(f'SELECT {columns[name] if name == "application_committee_notes" else "*"} FROM "{name}" ORDER BY rowid').all() == before[name]
+                assert connection.exec_driver_sql(f'SELECT {columns[name] if name in {"application_committee_notes", "openings", "run_lock"} else "*"} FROM "{name}" ORDER BY rowid').all() == before[name]
             connection.exec_driver_sql("PRAGMA foreign_keys=ON")
             connection.exec_driver_sql("DELETE FROM applicant_drafts WHERE id=3")
             assert connection.exec_driver_sql("SELECT reconciliation_draft_id FROM browser_sessions WHERE id=4").scalar_one() is None

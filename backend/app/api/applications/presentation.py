@@ -115,6 +115,7 @@ def serialize_summary(
 def committee_opening(opening: Opening) -> CommitteeOpeningOut:
     return CommitteeOpeningOut(
         id=opening.id,
+        min_children=opening.min_children, max_children=opening.max_children,
         unit_size_bedrooms=opening.unit_size_bedrooms,
         housing_charge_cents=opening.housing_charge_cents,
         application_open_date=opening.application_open_date,

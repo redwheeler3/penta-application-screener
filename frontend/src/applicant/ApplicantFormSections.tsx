@@ -102,6 +102,7 @@ export function OpeningSelection(props: {
               />
               <span className="applicant-opening-copy">
                 <strong>{openingLabel(opening)}</strong>
+                <span>{opening.householdSummary}</span>
                 <span className="applicant-opening-phase">{openingPhaseLabel(opening, selected)}</span>
                 <span className="applicant-opening-dates">
                   <span><b>Opens</b>{formatOpeningDate(opening.applicationOpenDate)}</span>

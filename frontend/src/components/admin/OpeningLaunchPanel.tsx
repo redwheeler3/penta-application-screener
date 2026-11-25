@@ -1,6 +1,7 @@
 import { type ReactNode, useRef } from "react";
 import * as openingsApi from "../../api/openings";
 import { useCommitteeApi } from "../../api/identity";
+import { formatDateOnly, formatHousingCharge } from "../../format";
 import { readProblem } from "../../api/problems";
 import { useFetchResource } from "../../hooks/useFetchResource";
 import { useRequestScope } from "../../hooks/useRequestScope";
@@ -16,6 +17,7 @@ export function OpeningLaunchPanel(props: {
 }) {
   const api = useCommitteeApi(openingsApi);
   const facts: OpeningWrite = {
+    minChildren: props.opening.minChildren, maxChildren: props.opening.maxChildren,
     unitSizeBedrooms: props.opening.unitSizeBedrooms, housingChargeCents: props.opening.housingChargeCents,
     applicationOpenDate: props.opening.applicationOpenDate,
     applicationCloseDate: props.opening.applicationCloseDate!, moveInDate: props.opening.moveInDate,
@@ -49,6 +51,13 @@ export function OpeningLaunchPanel(props: {
     }
   }
   return <section className="opening-form opening-launch-panel">
+    <h4>{props.opening.unitSizeBedrooms}-bedroom home</h4>
+    <dl className="opening-preview-variants">
+      <div><dt>Monthly housing charge</dt><dd>{formatHousingCharge(props.opening.housingChargeCents)}</dd></div>
+      <div><dt>Household</dt><dd>{props.opening.householdSummary}</dd></div>
+      <div><dt>Applications close</dt><dd>{formatDateOnly(facts.applicationCloseDate)}</dd></div>
+      <div><dt>Move-in date</dt><dd>{formatDateOnly(facts.moveInDate)}</dd></div>
+    </dl>
     {preview.data ? <OpeningLaunchPreview preview={preview.data} /> : <p>Loading the notification audience…</p>}
     {preview.state === "error" ? <button type="button" onClick={() => void preview.reload()}>Retry preview</button> : null}
     <p>Applicants must review and submit their application for this opening before its deadline.</p>

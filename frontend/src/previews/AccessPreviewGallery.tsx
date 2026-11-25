@@ -403,7 +403,7 @@ function previewOpenings(): ApplicantOpening[] {
   return [
     {
       id: 1,
-      unitSizeBedrooms: 2,
+      unitSizeBedrooms: 2, minChildren: 1, maxChildren: null, householdSummary: "One or two adults plus 1 or more children under 18",
       housingChargeCents: 125000,
       applicationOpenDate: "2026-08-01",
       applicationCloseDate: "2026-08-20",
@@ -417,7 +417,7 @@ function previewOpenings(): ApplicantOpening[] {
     },
     {
       id: 2,
-      unitSizeBedrooms: 3,
+      unitSizeBedrooms: 3, minChildren: 2, maxChildren: null, householdSummary: "One or two adults plus 2 or more children under 18",
       housingChargeCents: 145000,
       applicationOpenDate: "2026-09-01",
       applicationCloseDate: "2026-09-15",

@@ -59,8 +59,8 @@ export type EligibilityRules = {
   incomeMax: number;
   minAdultAge: number;
   maxChildAge: number;
-  minChildren: number;
-  maxChildren: number;
+  minChildren: number | null;
+  maxChildren: number | null;
   maxDogs: number;
   maxCats: number;
   allowOtherPets: boolean;

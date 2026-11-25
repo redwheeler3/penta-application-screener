@@ -41,8 +41,8 @@ class RulesConfig:
     max_income: int = DEFAULT_MAX_INCOME
     min_adult_age: int = DEFAULT_MIN_ADULT_AGE
     max_child_age: int = DEFAULT_MAX_CHILD_AGE
-    min_children: int = DEFAULT_MIN_CHILDREN
-    max_children: int = DEFAULT_MAX_CHILDREN
+    min_children: int | None = DEFAULT_MIN_CHILDREN
+    max_children: int | None = DEFAULT_MAX_CHILDREN
     max_dogs: int = DEFAULT_MAX_DOGS
     max_cats: int = DEFAULT_MAX_CATS
     allow_other_pets: bool = DEFAULT_ALLOW_OTHER_PETS
@@ -149,7 +149,7 @@ def _too_few_children(
     child_count = application.get("child_count")
     if not isinstance(child_count, int):
         return []
-    if child_count < rules.min_children:
+    if rules.min_children is not None and child_count < rules.min_children:
         return [
             FilterReason(
                 code="too_few_children",
@@ -166,7 +166,7 @@ def _too_many_children(
     child_count = application.get("child_count")
     if not isinstance(child_count, int):
         return []
-    if child_count > rules.max_children:
+    if rules.max_children is not None and child_count > rules.max_children:
         return [
             FilterReason(
                 code="too_many_children",

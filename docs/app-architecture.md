@@ -322,7 +322,7 @@ rendered bodies or credentials.
 
 Ordinary application traffic claims a durable once-per-Pacific-day maintenance lease in a response
 background task. The pass purges due applicant data, queues due unsuccessful notices, retries queued
-mail, and deletes expired list-only vacancy failures. Health checks, static
+mail, and deletes expired ownerless vacancy and application-unavailable failures. Health checks, static
 assets, and CORS preflight requests do not trigger it.
 The daily acquisition renews between stages and before every email attempt. An expired or
 replaced acquisition stops dispatch; provider waits hold no writer lock. Applicant-linked feedback

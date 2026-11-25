@@ -29,6 +29,7 @@ from app.services.applications.selected import (
 from app.services.auth.authority import require_admin_write
 from app.services.openings.catalog import opening_phase
 from app.services.openings.notifications import queue_due_unsuccessful_notices
+from app.services.run_lock import opening_has_dispatched_run
 
 
 def active_opening_participants(
@@ -232,6 +233,8 @@ def _lock_opening_decision(db: Session, opening: Opening) -> None:
         .values(decided_at=Opening.decided_at, updated_at=Opening.updated_at)
         .execution_options(synchronize_session=False)
     )
+    if opening_has_dispatched_run(db, opening.id):
+        raise Problem("run_in_progress", detail="AI work is running for this opening. Record the decision after the run finishes.")
     # Re-read after the lock: another request may have finalized this loaded opening.
     db.refresh(opening)
 

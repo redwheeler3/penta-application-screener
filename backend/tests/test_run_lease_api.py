@@ -103,3 +103,62 @@ async def test_superseded_runs_report_failure_and_cannot_persist_results(monkeyp
     assert db.scalar(select(ApplicationAIResult)) is None
     assert len(db.scalars(select(Analysis)).all()) == (1 if kind == "score-current" else 0)
     assert db.get(RunLock, 1, populate_existing=True).holder_user_id == other_user_id
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("kind", ["screen", "rank", "score-current"])
+@pytest.mark.parametrize("change", ["withdraw", "decide", "dispatch-first"])
+async def test_paid_dispatch_is_ordered_against_pool_and_final_decision(kind, change):
+    import json
+
+    from app.api.ranking.run import rank_run
+    from app.api.ranking.score_current import score_current
+    from app.api.screening import run as screen
+    from app.core.problems import Problem
+    from app.core.time import pacific_today
+    from app.db.models import Application
+    from app.services.openings.selection import confirm_no_household_selected
+
+    _, db, provider = setup_app(UserRole.ADMIN)
+    applicant = add_eligible(db, email="fixture@example.com", raw_hash="fixture")
+    aid, oid = applicant.id, current_opening_id(db)
+    db.get(Opening, oid).application_close_date = pacific_today() - timedelta(days=1)
+    db.commit()
+    user = db.scalar(select(User))
+    uid = user.id
+    kwargs = {"opening_id": oid, "user": user, "db": db, "provider": provider}
+    if kind == "screen":
+        provider.queue(ScreeningReport(flags=[]))
+        response = screen(**kwargs)
+    elif kind == "rank":
+        route_criteria(provider, a_pattern_report())
+        provider.route("applicant_id", a_scoring_report())
+        response = rank_run(**kwargs)
+    else:
+        prior = create_analysis(db, user=user, opening_id=oid, report=a_pattern_report(), narrative=None, inputs_fingerprint="fixture")
+        provider.queue(a_scoring_report())
+        response = score_current(analysis_id=prior.id, **kwargs)
+
+    iterator = response.body_iterator
+    if change == "dispatch-first":
+        assert json.loads(await anext(iterator))["type"] == "phase"
+    with Session(db.bind) as other:
+        if change == "withdraw":
+            other.get(Application, aid).withdrawn_at = datetime.now(UTC)
+            other.commit()
+        elif change == "decide":
+            confirm_no_household_selected(other, other.get(Opening, oid), decided_by=other.get(User, uid))
+        else:
+            with pytest.raises(Problem, match="AI work is running"):
+                confirm_no_household_selected(other, other.get(Opening, oid), decided_by=other.get(User, uid))
+            other.rollback()
+    events = [json.loads(line) async for line in iterator]
+    if change == "dispatch-first":
+        assert events[-1]["type"] == "summary"
+        assert provider.calls
+        confirm_no_household_selected(db, db.get(Opening, oid), decided_by=user)
+    else:
+        assert events[-1]["type"] == "error"
+        assert provider.calls == []
+        assert len(db.scalars(select(Analysis)).all()) == int(kind == "score-current")
+    assert db.get(RunLock, 1, populate_existing=True).holder_user_id is None

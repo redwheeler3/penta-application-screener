@@ -13,7 +13,7 @@ from app.db.models import DailyMaintenanceRun
 from app.db.session import SessionLocal
 from app.services.applications.purge import purge_due_applicant_data
 from app.services.email.outbox import (
-    purge_expired_vacancy_delivery_failures,
+    purge_expired_ownerless_delivery_failures,
     retry_queued_emails,
 )
 from app.services.email.sender import EmailSender, get_email_sender
@@ -84,7 +84,7 @@ def run_due_maintenance_with(
         checkpoint()
         retry_queued_emails(db, sender or get_email_sender(), now=retry_time, before_attempt=checkpoint)
         checkpoint()
-        purge_expired_vacancy_delivery_failures(db, now=now)
+        purge_expired_ownerless_delivery_failures(db, now=now)
     except MaintenanceLeaseLost:
         db.rollback()
         return False

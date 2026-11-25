@@ -18,6 +18,7 @@ from app.services.cost_report import RUN_COST_RECORDER_KEY, RunCostRecorder
 from app.services.run_lock import (
     RunLease,
     RunLeaseLost,
+    begin_opening_dispatch,
     release_run_lock,
     renew_run_lock,
 )
@@ -64,8 +65,11 @@ def leased_run_stream(
             raise RunLeaseLost
 
     heartbeat = Thread(target=renew_while_waiting, name="ai-run-lease", daemon=True)
-    event.listen(db, "before_commit", guard_commit)
     try:
+        if lease.opening_id is not None and not begin_opening_dispatch(db, lease, lease.opening_id):
+            yield emit(ErrorEvent(phase=phase, message="The opening or run changed. No AI work started."))
+            return
+        event.listen(db, "before_commit", guard_commit)
         heartbeat.start()
         while True:
             # ASGI may resume a synchronous generator on a different worker thread.
@@ -89,7 +93,8 @@ def leased_run_stream(
             with cancellation_scope(stop):
                 events.close()
         finally:
-            event.remove(db, "before_commit", guard_commit)
+            if event.contains(db, "before_commit", guard_commit):
+                event.remove(db, "before_commit", guard_commit)
             # Release the writer before joining a heartbeat that may be waiting for it.
             db.rollback()
             if heartbeat.ident is not None:

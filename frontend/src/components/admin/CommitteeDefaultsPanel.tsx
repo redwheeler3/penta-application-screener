@@ -70,7 +70,7 @@ export function CommitteeDefaultsPanel(props: {
                 max={field.max}
                 value={draft[field.key] as number}
                 onChange={(value) =>
-                  set({ [field.key]: value ?? 0 } as Partial<EligibilityRules>)
+                  set({ [field.key]: value ?? (field.unboundedWhenBlank ? null : 0) } as Partial<EligibilityRules>)
                 }
               />
             </label>

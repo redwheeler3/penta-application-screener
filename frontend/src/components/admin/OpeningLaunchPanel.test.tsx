@@ -7,7 +7,7 @@ import { OpeningLaunchPanel } from "./OpeningLaunchPanel";
 
 const api = vi.hoisted(() => ({ previewOpening: vi.fn(), fetchOpeningEmailUsage: vi.fn(), openApplications: vi.fn() }));
 vi.mock("../../api/openings", () => ({ createApi: () => api }));
-const opening: Opening = { id: 7, intakeMode: "applications", unitSizeBedrooms: 2, housingChargeCents: 100000,
+const opening: Opening = { id: 7, intakeMode: "applications", unitSizeBedrooms: 2, minChildren: 1, maxChildren: null, householdSummary: "One or two adults plus 1 or more children under 18", housingChargeCents: 100000,
   applicationOpenDate: null, applicationCloseDate: "2027-01-01", moveInDate: "2027-02-01", phase: "preparing",
   publishedAt: null, submissionCount: 0, selectedApplicationId: null, selectedApplicantName: null,
   noHouseholdSelected: false, needsDecision: false, createdAt: "2026-11-14", updatedAt: "2026-11-14" };

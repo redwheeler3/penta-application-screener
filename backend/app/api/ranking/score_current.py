@@ -91,7 +91,7 @@ def score_current(
 ) -> RunStreamingResponse:
     """Fill missing scores without changing the current dimensions or tier layout."""
     opening_id = resolve_visible_opening_id(db, opening_id)
-    lease = acquire_run_lock(db, user_id=user.id, kind=SCORE_CURRENT_KIND)
+    lease = acquire_run_lock(db, user_id=user.id, opening_id=opening_id, kind=SCORE_CURRENT_KIND)
     if lease is None:
         raise Problem("run_in_progress", detail="Another screening or ranking run is in progress. Try again in about 10 minutes.")
     try:
@@ -118,7 +118,12 @@ def score_current(
         release_run_lock(db, lease)
         raise
 
+    admitted_ids = {item.id for item in pool}
+
     def stream() -> Generator[str]:
+        if admitted_ids != {item.id for item in applications_to_score(db, opening_id)}:
+            yield emit(ErrorEvent(phase=SCORES, message="The applicant pool changed. Request a fresh estimate before running again."))
+            return
         yield emit(PhaseEvent(phase=SCORES, total=plan.to_analyze))
         tally = ScoreTally()
         started = time.perf_counter()

@@ -87,7 +87,7 @@ def rank_run(
     Discovery fans out over session-free workers; the stream announces its phase and reasoning.
     """
     opening_id = resolve_visible_opening_id(db, opening_id)
-    lease = acquire_run_lock(db, user_id=user.id, kind="rank")
+    lease = acquire_run_lock(db, user_id=user.id, opening_id=opening_id, kind="rank")
     if lease is None:
         raise Problem(
             "run_in_progress",
@@ -128,13 +128,15 @@ def rank_run(
         release_run_lock(db, lease)
         raise
 
+    admitted_ids = {application.id for application in pool}
+
     def stream() -> Generator[str]:
         yield from stream_rank(
             db,
             provider,
             settings,
             user,
-            opening_id=opening_id,
+            opening_id=opening_id, admitted_ids=admitted_ids,
             estimated_usd=float(estimate["estimated_usd"]),
         )
 

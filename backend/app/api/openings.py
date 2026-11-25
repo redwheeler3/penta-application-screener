@@ -92,6 +92,7 @@ def _opening_out(opening: Opening, submission_count: int, selected: tuple[int, s
     return OpeningOut(
         id=opening.id,
         intake_mode=opening.intake_mode,
+        min_children=opening.min_children, max_children=opening.max_children,
         unit_size_bedrooms=opening.unit_size_bedrooms,
         housing_charge_cents=opening.housing_charge_cents,
         application_open_date=opening.application_open_date,

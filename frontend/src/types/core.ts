@@ -41,6 +41,9 @@ export type OpeningPhase = "preparing" | "upcoming" | "open" | "closed" | "archi
 export type OpeningIntakeMode = "applications" | "direct_selection";
 
 export type OpeningDetails = {
+  minChildren: number | null;
+  maxChildren: number | null;
+  householdSummary: string;
   id: number;
   unitSizeBedrooms: number;
   housingChargeCents: number;
@@ -64,7 +67,7 @@ export type Opening = Omit<OpeningDetails, "applicationOpenDate" | "applicationC
   updatedAt: string;
 };
 
-export type OpeningWrite = Omit<OpeningDetails, "id">;
+export type OpeningWrite = Omit<OpeningDetails, "id" | "householdSummary">;
 
 export type OpeningCreate = Omit<OpeningWrite, "applicationOpenDate">;
 

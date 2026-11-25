@@ -16,9 +16,9 @@ const api = vi.hoisted(() => ({
 vi.mock("../../api/openings", () => ({
   createApi: () => api,
 }));
-const opening = { id: 1, intakeMode: "applications", unitSizeBedrooms: 2, housingChargeCents: 100_000,
+const opening = { id: 1, intakeMode: "applications", unitSizeBedrooms: 2, minChildren: 1, maxChildren: null, householdSummary: "One or two adults plus 1 or more children under 18", housingChargeCents: 100_000,
   applicationOpenDate: "2026-10-01", applicationCloseDate: "2026-10-31", moveInDate: "2026-11-30" } as Opening;
-const values = { unitSizeBedrooms: 2, housingChargeCents: 100_000,
+const values = { unitSizeBedrooms: 2, minChildren: 1, maxChildren: null, housingChargeCents: 100_000,
   applicationOpenDate: "2026-10-01", applicationCloseDate: "2026-10-31", moveInDate: "2026-11-30" };
 function setup(editedOpening: Opening | null = opening) {
   const onSaved = vi.fn();
@@ -102,4 +102,25 @@ it("does not report a save into an editor that has been closed", async () => {
   cleanup();
   await act(async () => { pending.resolve(Response.json({ openings: [], saved: { ...values, id: 1 } })); });
   expect(onSaved).not.toHaveBeenCalled();
+});
+
+it("seeds child limits by size and asks before replacing a custom limit", () => {
+  setup(null);
+  const size = screen.getByRole("combobox", { name: "Unit size" });
+  const min = screen.getByRole("textbox", { name: "Min children" });
+  const max = screen.getByRole("textbox", { name: "Max children" });
+  expect(min).toHaveValue("1");
+  expect(max).toHaveValue("");
+  fireEvent.change(size, { target: { value: "1" } });
+  expect(min).toHaveValue("0");
+  expect(max).toHaveValue("0");
+  fireEvent.change(max, { target: { value: "3" } });
+  fireEvent.change(size, { target: { value: "3" } });
+  expect(screen.getByText("Create opening", {selector:"button"})).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Keep limits" }));
+  expect(max).toHaveValue("3");
+  fireEvent.change(size, { target: { value: "2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Use defaults" }));
+  expect(min).toHaveValue("1");
+  expect(max).toHaveValue("");
 });

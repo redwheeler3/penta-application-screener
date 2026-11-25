@@ -48,6 +48,11 @@ The applicant/co-applicant section asks for applicant name, date of birth, phone
 co-applicant name, date of birth, relationship, phone, and email; and the children who will live in
 the unit. Ages are calculated from those birth dates as of the application's last submitted edit.
 
+The admin opening form prefills **Min children** and **Max children** by bedroom count. Either
+bound may be blank. Zero is an explicit bound. The admin reviews the saved household sentence
+beside the housing charge and dates before publication. Applicant opening cards and both
+announcement emails use that sentence. Publication fixes the household limits for that opening.
+
 Household-size defaults for openings:
 
 - 1 bedroom: 1 or 2 adults and no children
@@ -806,7 +811,7 @@ a suspended Fly Machine. A durable lease prevents concurrent requests from runni
 same sweep. A sweep running across Pacific midnight retains ownership until completion or lease expiry. The acquisition is renewed between lifecycle stages and before each email attempt;
 an expired or replaced worker stops dispatching. Provider waits hold no database writer.
 The ordered pass purges due applicant data, queues due unsuccessful notices, retries
-queued email, and deletes expired list-only delivery failures. A record may remain somewhat past its
+queued email, and deletes terminal ownerless vacancy and application-unavailable notices after 30 days. A record may remain somewhat past its
 scheduled date while the service is unused; the first subsequent real use starts the due work in the background.
 
 Scheduled purge physically removes each due aggregate without depending on email delivery. Explicit
@@ -1298,7 +1303,10 @@ browser clears the rejected confirmation and refreshes the board for a new estim
 checks inherited source retention before paid work: the existing purge removes expired history
 first, and unresolved missing sources stop the run. Publication still rechecks retention under
 the writer lock in case an input expires during provider work.
-Rank captures historical criteria and their contributing applications together before discovery.
+At paid dispatch, a run and a permanent opening decision are ordered under the SQLite writer.
+If the decision wins, no provider work starts. Once dispatch wins, the admin can record the
+decision after the run finishes. Other openings can still be finalized. A changed eligible pool
+at stream start requires a fresh estimate. Rank captures historical criteria and their contributing applications together before discovery.
 When any contributor expires, ranking views retain generic criteria but hide pool explanations
 and operator traces. Active opening protection extends availability under the usual retention rule.
 
@@ -1448,9 +1456,9 @@ administrator audit. Opening rows themselves do not need a new purge policy.
 **Opening-specific human state:**
 
 - Each opening owns a full committee-default `EligibilityRules` document. A newly created
-  application-intake opening copies the committee defaults from the most recently created prior
-  application-intake opening as an independent snapshot; if none exists, it starts from schema
-  defaults. Later edits to either opening do not propagate. The creation/admin flow identifies the
+  application-intake opening seeds its child-count limits from the saved opening and its maximum
+  child age at 17. Other settings copy the most recently created prior application-intake opening's
+  committee defaults, or use schema defaults on first creation. Later edits to either opening do not propagate. The creation/admin flow identifies the
   source opening and makes the copied defaults immediately available for review and editing before
   the committee relies on Screen or Rank. Member overrides, eligibility decisions, shortlist state,
   analyses, rankings, and outcomes never carry forward.

@@ -16,6 +16,7 @@ from app.db.models import (
     PasswordlessIdentityKind,
     VacancySubscription,
 )
+from app.domain.household import household_description
 from app.services.applications.retention import current_retention_clause
 from app.services.email.delivery import queue_email
 from app.services.email.retry_intents import (
@@ -159,17 +160,12 @@ def opening_email_details(opening: Opening) -> dict[str, str]:
     unit = f"{opening.unit_size_bedrooms}-bedroom"
     housing_charge = (opening.housing_charge_cents / 100).is_integer()
     charge = f"${opening.housing_charge_cents / 100:,.0f}" if housing_charge else f"${opening.housing_charge_cents / 100:,.2f}"
-    household = {
-        1: "One or two adults",
-        2: "One or two adults and at least one child under 18",
-        3: "One or two adults and at least two children under 18",
-    }[opening.unit_size_bedrooms]
     return {
         "unit_size": unit,
         "housing_charge": f"{charge} per month",
         "move_in_date": _display_date(opening.move_in_date),
         "close_date": _display_date(opening.application_close_date),
-        "household_summary": household,
+        "household_summary": household_description(opening.min_children, opening.max_children),
     }
 
 

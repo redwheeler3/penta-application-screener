@@ -649,3 +649,72 @@ def test_delayed_email_change_notice_preserves_each_transition(legacy):
         assert ("b@example.com" in first_body) == (not legacy)
         assert "c@example.com" in getattr(by_address["b@example.com"], attr)
     assert all(row.retry_intent is None for row in db.scalars(select(EmailDelivery)))
+
+
+def test_issue_report_respects_due_dates_and_protection_before_sweep():
+    from app.core.time import pacific_today
+    from app.db.models import OpeningRetentionProtection
+    from app.services.email.transactional import send_application_unavailable
+    from tests.application_support import current_opening
+
+    db = _db()
+    today = pacific_today()
+    record = Application(primary_email="mail@example.com", raw_row={}, raw_row_hash="test",
+        normalized={}, submitted_at=datetime.now(UTC), retention_due_on=today + timedelta(days=1))
+    db.add(record)
+    db.commit()
+    send_application_unavailable(db, TerminalFailureSender(), record.primary_email, application=record)
+    assert len(outbox.email_delivery_issues(db)) == 1
+    record.retention_due_on = today
+    db.commit()
+    assert outbox.email_delivery_issues(db) == []
+    protection = OpeningRetentionProtection(application_id=record.id, opening_id=current_opening(db).id)
+    db.add(protection)
+    db.commit()
+    assert outbox.email_delivery_issues(db)[0].recipient_email == record.primary_email
+    db.delete(protection)
+    db.commit()
+    assert outbox.email_delivery_issues(db) == []
+
+
+def test_ownerless_unavailable_failure_expires_only_after_troubleshooting_window():
+    from app.services.email.transactional import send_application_unavailable
+
+    db = _db()
+    now = datetime.now(UTC)
+    for sender, address in [(TerminalFailureSender(), "failed@example.com"), (QuotaBlockedSender(), "waiting@example.com")]:
+        send_application_unavailable(db, sender, address, now=now)
+    assert outbox.purge_expired_ownerless_delivery_failures(db, now=now + timedelta(days=29)) == 0
+    assert outbox.purge_expired_ownerless_delivery_failures(db, now=now + timedelta(days=30)) == 1
+    assert [d.recipient_email for d in db.scalars(select(EmailDelivery))] == ["waiting@example.com"]
+
+
+@pytest.mark.parametrize("draft_state", ["due", "revoked", "resolved", "app-expired"])
+def test_delivery_report_checks_draft_and_parent_retention(draft_state):
+    from app.core.time import pacific_today
+    from app.db.models import ApplicantDraft, ApplicantDraftIntent
+
+    db = _db()
+    now = datetime.now(UTC)
+    today = pacific_today()
+    parent = Application(primary_email="parent@example.com", raw_row={}, raw_row_hash="parent", normalized={})
+    db.add(parent)
+    db.flush()
+    draft = ApplicantDraft(email="draft@example.com", intent=ApplicantDraftIntent.SAVE, application_id=parent.id,
+        draft_token_hash="fixture", created_at=now, saved_at=now, expires_on=today + timedelta(days=1))
+    db.add(draft)
+    db.flush()
+    db.add(EmailDelivery(recipient_kind=PasswordlessIdentityKind.APPLICANT, message_kind="magic_link",
+        recipient_email=draft.email, applicant_draft_id=draft.id, state=EmailDeliveryState.QUEUED))
+    db.commit()
+    assert len(outbox.email_delivery_issues(db)) == 1
+    if draft_state == "app-expired":
+        parent.retention_due_on = today
+    elif draft_state == "due":
+        draft.expires_on = today
+    elif draft_state == "revoked":
+        draft.revoked_at = now
+    else:
+        draft.resolved_at = now
+    db.commit()
+    assert outbox.email_delivery_issues(db) == []

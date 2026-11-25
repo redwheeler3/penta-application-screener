@@ -120,7 +120,7 @@ def run(
     fails fast with a 402.
     """
     opening_id = resolve_visible_opening_id(db, opening_id)
-    lease = acquire_run_lock(db, user_id=user.id, kind="screen")
+    lease = acquire_run_lock(db, user_id=user.id, opening_id=opening_id, kind="screen")
     if lease is None:
         raise Problem(
             "run_in_progress",
@@ -158,7 +158,12 @@ def run(
         release_run_lock(db, lease)
         raise
 
+    admitted_ids = {item.id for item in applications}
+
     def stream() -> Generator[str]:
+        if admitted_ids != {item.id for item in applications_for_screening(db, opening_id)}:
+            yield emit(ErrorEvent(phase=PHASE, message="The applicant pool changed. Request a fresh estimate before running again."))
+            return
         total = len(applications)
         tally = RunTally()
         yield emit(PhaseEvent(phase=PHASE, total=total))

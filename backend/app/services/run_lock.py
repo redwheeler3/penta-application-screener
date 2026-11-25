@@ -17,7 +17,7 @@ from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
 from app.core.time import as_utc
-from app.db.models import RunLock
+from app.db.models import Opening, RunLock
 
 # The single lease row's fixed id (seeded by migration).
 LOCK_ID = 1
@@ -31,6 +31,7 @@ LEASE_TTL = timedelta(minutes=15)
 class RunLease:
     user_id: int
     acquired_at: datetime
+    opening_id: int | None = None
 
 
 class RunLeaseLost(RuntimeError):
@@ -54,7 +55,7 @@ def lock_run_state(db: Session) -> None:
 
 
 def acquire_run_lock(
-    db: Session, *, user_id: int, kind: str, now: datetime | None = None
+    db: Session, *, user_id: int, kind: str, opening_id: int | None = None, now: datetime | None = None
 ) -> RunLease | None:
     """Return the claimed acquisition for ``kind``, or None when another run holds it.
 
@@ -71,10 +72,28 @@ def acquire_run_lock(
             RunLock.id == LOCK_ID,
             (RunLock.holder_user_id.is_(None)) | (RunLock.renewed_at < cutoff),
         )
-        .values(holder_user_id=user_id, kind=kind, held_since=now, renewed_at=now)
+        .values(holder_user_id=user_id, kind=kind, held_since=now, renewed_at=now, dispatched_opening_id=None)
     )
     db.commit()
-    return RunLease(user_id=user_id, acquired_at=now) if result.rowcount == 1 else None
+    return RunLease(user_id=user_id, acquired_at=now, opening_id=opening_id) if result.rowcount == 1 else None
+
+
+def begin_opening_dispatch(db: Session, lease: RunLease, opening_id: int) -> bool:
+    """Order the first paid dispatch against the opening's permanent decision."""
+    live_opening = select(Opening.id).where(Opening.id == opening_id, Opening.decided_at.is_(None)).exists()
+    now = datetime.now(UTC)
+    result = db.execute(update(RunLock).where(RunLock.id == LOCK_ID,
+        RunLock.holder_user_id == lease.user_id, RunLock.held_since == lease.acquired_at,
+        RunLock.renewed_at >= now - LEASE_TTL, live_opening,
+    ).values(dispatched_opening_id=opening_id, renewed_at=now).execution_options(synchronize_session=False))
+    db.commit()
+    return result.rowcount == 1
+
+
+def opening_has_dispatched_run(db: Session, opening_id: int) -> bool:
+    return db.scalar(select(RunLock.id).where(RunLock.id == LOCK_ID,
+        RunLock.dispatched_opening_id == opening_id, RunLock.holder_user_id.is_not(None),
+        RunLock.renewed_at >= datetime.now(UTC) - LEASE_TTL)) is not None
 
 
 def renew_run_lock(db: Session, lease: RunLease, *, now: datetime | None = None, commit: bool = True) -> bool:
@@ -84,8 +103,10 @@ def renew_run_lock(db: Session, lease: RunLease, *, now: datetime | None = None,
     replacement cannot take ownership between verification and persistence.
     """
     now = now or datetime.now(UTC)
+    open_for_work = (select(Opening.id).where(Opening.id == lease.opening_id, Opening.decided_at.is_(None)).exists()
+                     if lease.opening_id is not None else True)
     with db.no_autoflush:
-        result = db.execute(update(RunLock).where(
+        result = db.execute(update(RunLock).where(open_for_work,
             RunLock.id == LOCK_ID, RunLock.holder_user_id == lease.user_id,
             RunLock.held_since == lease.acquired_at, RunLock.renewed_at >= now - LEASE_TTL,
         ).values(renewed_at=case((RunLock.renewed_at > now, RunLock.renewed_at), else_=now))
@@ -104,7 +125,7 @@ def release_run_lock(db: Session, lease: RunLease) -> None:
             RunLock.holder_user_id == lease.user_id,
             RunLock.held_since == lease.acquired_at,
         )
-        .values(holder_user_id=None, kind=None, held_since=None, renewed_at=None)
+        .values(holder_user_id=None, kind=None, held_since=None, renewed_at=None, dispatched_opening_id=None)
     )
     db.commit()
 

@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import * as evalsApi from "../../api/evals";
 import { readProblem } from "../../api/problems";
 import type { InvariantsResult } from "../../types";
+import { useRequestScope } from "../../hooks/useRequestScope";
 import { InlineConfirm } from "./InlineConfirm";
 
 // The free, deterministic invariants over the committed baseline fixture. No run controls
@@ -18,20 +19,29 @@ export function InvariantsEval({ editable = true }: { editable?: boolean }): Rea
   const [rebasing, setRebasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const requests = useRequestScope();
   useEffect(() => {
+    const current = requests.begin();
     fetchEvalInvariants()
-      .then(setResult)
-      .catch(() => setError("Could not load invariants."));
-  }, [fetchEvalInvariants]);
+      .then(value => { if (current()) setResult(value); })
+      .catch(() => { if (current()) setError("Could not load invariants."); });
+  }, [fetchEvalInvariants, requests]);
 
   async function rebaseline() {
+    const current = requests.begin();
     setConfirming(false);
     setRebasing(true);
     setError(null);
-    const resp = await rebaselineEval();
-    setRebasing(false);
-    if (resp.ok) setResult(await resp.json());
-    else setError((await readProblem(resp)) ?? `Re-baseline failed (${resp.status})`);
+    try {
+      const resp = await rebaselineEval();
+      if (!resp.ok) throw new Error((await readProblem(resp)) ?? `Re-baseline failed (${resp.status})`);
+      const next = await resp.json() as InvariantsResult;
+      if (current()) setResult(next);
+    } catch (failure) {
+      if (current()) setError(failure instanceof Error ? failure.message : "Could not confirm re-baseline.");
+    } finally {
+      if (current()) setRebasing(false);
+    }
   }
 
   return (

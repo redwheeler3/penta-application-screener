@@ -39,7 +39,7 @@ const props = {
 const closedOpening: Opening = {
   id: 7,
   intakeMode: "applications",
-  unitSizeBedrooms: 2,
+  unitSizeBedrooms: 2, minChildren: 1, maxChildren: null, householdSummary: "One or two adults plus 1 or more children under 18",
   housingChargeCents: 150_000,
   applicationOpenDate: "2026-07-01",
   applicationCloseDate: "2026-08-01",

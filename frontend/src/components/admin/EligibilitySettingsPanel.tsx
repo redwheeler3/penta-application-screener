@@ -79,7 +79,7 @@ export function EligibilitySettingsPanel(props: {
                 min={f.min}
                 max={f.max}
                 value={draft[f.key] as number}
-                onChange={(v) => setDraft({ ...draft, [f.key]: v ?? 0 })}
+                onChange={(v) => setDraft({ ...draft, [f.key]: v ?? (f.unboundedWhenBlank ? null : 0) })}
               />
             </label>
           ))}
@@ -142,7 +142,8 @@ const RULE_FIELDS: { key: keyof EligibilityRules; label: string }[] = [
   { key: "allowOtherPets", label: "Allow other pets" },
 ];
 
-function fmt(v: number | boolean | string | string[]): string {
+function fmt(v: EligibilityRules[keyof EligibilityRules]): string {
+  if (v === null) return "No limit";
   if (typeof v === "boolean") return v ? "yes" : "no";
   if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
   return String(v);
@@ -164,8 +165,8 @@ function DivergencePanel(props: {
     ? [
         ...RULE_FIELDS.filter((f) => mine[f.key] !== committeeDefault[f.key]).map((f) => ({
           label: f.label,
-          mine: fmt(mine[f.key] as number | boolean | string),
-          def: fmt(committeeDefault[f.key] as number | boolean | string),
+          mine: fmt(mine[f.key]),
+          def: fmt(committeeDefault[f.key]),
         })),
         // disabledChecks is a list — compare as sets, show if they differ.
         ...(sameChecks(mine.disabledChecks, committeeDefault.disabledChecks)

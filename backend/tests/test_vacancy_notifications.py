@@ -24,7 +24,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.services.email.outbox import (
-    purge_expired_vacancy_delivery_failures,
+    purge_expired_ownerless_delivery_failures,
     retry_queued_emails,
 )
 from app.services.email.sender import (
@@ -300,14 +300,14 @@ async def test_terminal_vacancy_failure_is_deleted_after_30_days() -> None:
     assert db.scalar(select(VacancySubscription)) is not None
 
     assert (
-        purge_expired_vacancy_delivery_failures(
+        purge_expired_ownerless_delivery_failures(
             db, now=failed_at + timedelta(days=29)
         )
         == 0
     )
     assert db.get(EmailDelivery, delivery_id) is not None
     assert (
-        purge_expired_vacancy_delivery_failures(
+        purge_expired_ownerless_delivery_failures(
             db, now=failed_at + timedelta(days=30)
         )
         == 1

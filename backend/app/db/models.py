@@ -23,6 +23,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
+from app.domain.household import default_child_limits
+
 
 class Base(DeclarativeBase):
     # Database identities remain unique across deletion, delayed work and restore.
@@ -193,6 +195,7 @@ class RunLock(TimestampMixin, Base):
     holder_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     kind: Mapped[str | None] = mapped_column(String(20))  # screen | rank | rank_scores
     # Stable acquisition identity, retained across renewals. NULL when free.
+    dispatched_opening_id: Mapped[int | None] = mapped_column(Integer)
     held_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Latest heartbeat or guarded commit; leases without activity past the TTL are reclaimable.
     renewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -351,6 +354,10 @@ class Opening(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    min_children: Mapped[int | None] = mapped_column(Integer().evaluates_none(),
+        default=lambda context: default_child_limits(context.get_current_parameters()["unit_size_bedrooms"])[0])
+    max_children: Mapped[int | None] = mapped_column(Integer().evaluates_none(),
+        default=lambda context: default_child_limits(context.get_current_parameters()["unit_size_bedrooms"])[1])
     creation_request_id: Mapped[str | None] = mapped_column(String(36), unique=True)
     creation_request: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     intake_mode: Mapped[OpeningIntakeMode] = mapped_column(

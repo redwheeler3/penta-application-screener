@@ -94,6 +94,7 @@ type EligibilityNumericField = {
   label: string;
   min: string;
   max?: string;
+  unboundedWhenBlank?: boolean;
 };
 
 export const ELIGIBILITY_GENERAL_NUMERIC_FIELDS: EligibilityNumericField[] = [
@@ -101,8 +102,8 @@ export const ELIGIBILITY_GENERAL_NUMERIC_FIELDS: EligibilityNumericField[] = [
   { key: "incomeMax", label: "Income maximum", min: "0" },
   { key: "minAdultAge", label: "Min adult age", min: "1", max: "100" },
   { key: "maxChildAge", label: "Max child age", min: "0", max: "100" },
-  { key: "minChildren", label: "Min children per unit", min: "0", max: "20" },
-  { key: "maxChildren", label: "Max children per unit", min: "0", max: "20" },
+  { key: "minChildren", label: "Min children per unit", min: "0", unboundedWhenBlank: true },
+  { key: "maxChildren", label: "Max children per unit", min: "0", unboundedWhenBlank: true },
 ];
 
 export const ELIGIBILITY_PET_NUMERIC_FIELDS: EligibilityNumericField[] = [

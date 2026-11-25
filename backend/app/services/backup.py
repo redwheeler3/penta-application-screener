@@ -324,7 +324,7 @@ def _reset_restored_authority(db_path: Path) -> None:
                 quota_blocked=False, last_error_code="RecoveryReset"))
             connection.execute(update(EmailDelivery).where(queued).values(last_error_code="RecoveryReset"))
             connection.execute(update(RunLock).values(
-                holder_user_id=None, kind=None, held_since=None, renewed_at=None))
+                holder_user_id=None, kind=None, held_since=None, renewed_at=None, dispatched_opening_id=None))
             connection.execute(update(DailyMaintenanceRun).where(DailyMaintenanceRun.status == "running").values(
                 status="failed", lease_expires_at=now, last_error_code="RecoveryReset"))
     finally:

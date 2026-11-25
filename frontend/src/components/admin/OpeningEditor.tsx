@@ -10,14 +10,21 @@ import { NumberInput } from "../shared/NumberInput";
 
 type OpeningDraft = {
   unitSizeBedrooms: number;
+  minChildren: string;
+  maxChildren: string;
   housingChargeDollars: number | null;
   applicationOpenDate: string;
   applicationCloseDate: string;
   moveInDate: string;
 };
 
+function childDefaults(bedrooms: number) {
+  return { minChildren: String(bedrooms - 1), maxChildren: bedrooms === 1 ? "0" : "" };
+}
+
 const EMPTY_DRAFT: OpeningDraft = {
   unitSizeBedrooms: 2,
+  ...childDefaults(2),
   housingChargeDollars: null,
   applicationOpenDate: "",
   applicationCloseDate: "",
@@ -26,6 +33,7 @@ const EMPTY_DRAFT: OpeningDraft = {
 
 function openingValues(opening: Opening | OpeningDetails): OpeningWrite {
   return {
+    minChildren: opening.minChildren, maxChildren: opening.maxChildren,
     unitSizeBedrooms: opening.unitSizeBedrooms, housingChargeCents: opening.housingChargeCents,
     applicationOpenDate: opening.applicationOpenDate, applicationCloseDate: opening.applicationCloseDate ?? "",
     moveInDate: opening.moveInDate,
@@ -33,7 +41,8 @@ function openingValues(opening: Opening | OpeningDetails): OpeningWrite {
 }
 
 function editableDraft(values: OpeningWrite): OpeningDraft {
-  return { unitSizeBedrooms: values.unitSizeBedrooms, housingChargeDollars: values.housingChargeCents / 100,
+  return { minChildren: String(values.minChildren ?? ""), maxChildren: String(values.maxChildren ?? ""),
+    unitSizeBedrooms: values.unitSizeBedrooms, housingChargeDollars: values.housingChargeCents / 100,
     applicationOpenDate: values.applicationOpenDate ?? "", applicationCloseDate: values.applicationCloseDate, moveInDate: values.moveInDate };
 }
 
@@ -63,6 +72,8 @@ export function OpeningEditor(props: {
 
   function payload(housingChargeDollars: number): OpeningWrite {
     return {
+      minChildren: draft.minChildren === "" ? null : Number(draft.minChildren),
+      maxChildren: draft.maxChildren === "" ? null : Number(draft.maxChildren),
       unitSizeBedrooms: draft.unitSizeBedrooms,
       housingChargeCents: Math.round(housingChargeDollars * 100),
       applicationOpenDate: draft.applicationOpenDate || null,
@@ -143,6 +154,11 @@ export function OpeningEditor(props: {
       return;
     }
     const values = payload(draft.housingChargeDollars);
+    if ([values.minChildren, values.maxChildren].some(n => n !== null && (!Number.isSafeInteger(n) || n < 0))
+      || (values.minChildren !== null && values.maxChildren !== null && values.maxChildren < values.minChildren)) {
+      props.onError("Enter whole numbers. Max children must be at least Min children.");
+      return;
+    }
     const isCurrent = requests.capture();
     pending.current = true;
     setBusy(true);
@@ -168,6 +184,7 @@ export function OpeningEditor(props: {
       <OpeningForm
         draft={draft}
         editing={props.opening !== null}
+        householdLocked={!!props.opening && props.opening.phase !== "preparing"}
         busy={busy}
         fieldsDisabled={creating || creationUnconfirmed || reloading}
         conflict={conflict}
@@ -194,6 +211,7 @@ export function OpeningEditor(props: {
 function OpeningForm(props: {
   draft: OpeningDraft;
   editing: boolean;
+  householdLocked: boolean;
   busy: boolean;
   fieldsDisabled: boolean;
   conflict: boolean;
@@ -201,9 +219,10 @@ function OpeningForm(props: {
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }): ReactNode {
+  const [reviewLimits, setReviewLimits] = useState(false);
   const set = (patch: Partial<OpeningDraft>) => props.onChange({ ...props.draft, ...patch });
   return (
-    <form className="opening-form" onSubmit={props.onSubmit}>
+    <form className="opening-form" onSubmit={(event) => { if (reviewLimits) event.preventDefault(); else props.onSubmit(event); }}>
       <div className="opening-form-heading">
         <h4>{props.editing ? "Edit opening" : "New opening"}</h4>
         <span>{props.editing ? "Update the opening details." : "Create the vacancy now; open applications when you are ready."}</span>
@@ -212,7 +231,13 @@ function OpeningForm(props: {
       <div className="opening-form-grid">
         <label>
           <span>Unit size</span>
-          <select disabled={props.fieldsDisabled} value={props.draft.unitSizeBedrooms} onChange={(event) => set({ unitSizeBedrooms: Number(event.target.value) })}>
+          <select disabled={props.fieldsDisabled} value={props.draft.unitSizeBedrooms} onChange={(event) => {
+            const bedrooms = Number(event.target.value);
+            const prior = childDefaults(props.draft.unitSizeBedrooms);
+            const custom = prior.minChildren !== props.draft.minChildren || prior.maxChildren !== props.draft.maxChildren;
+            setReviewLimits(!props.householdLocked && custom);
+            set({ unitSizeBedrooms: bedrooms, ...(!props.householdLocked && !custom ? childDefaults(bedrooms) : {}) });
+          }}>
             <option value={1}>1 bedroom</option>
             <option value={2}>2 bedrooms</option>
             <option value={3}>3 bedrooms</option>
@@ -225,6 +250,21 @@ function OpeningForm(props: {
             <NumberInput disabled={props.fieldsDisabled} min="0" step="0.01" required value={props.draft.housingChargeDollars} onChange={(value) => set({ housingChargeDollars: value })} />
           </div>
         </label>
+        <label><span>Min children</span>
+          <NumberInput textValue={props.draft.minChildren} pattern="[0-9]+" disabled={props.fieldsDisabled || props.householdLocked}
+            onChange={event => set({ minChildren: event.target.value })} />
+        </label>
+        <label><span>Max children</span>
+          <NumberInput textValue={props.draft.maxChildren} pattern="[0-9]+" disabled={props.fieldsDisabled || props.householdLocked}
+            onChange={event => set({ maxChildren: event.target.value })} />
+        </label>
+        {reviewLimits && <div className="opening-limit-review">
+          <span>Keep these limits for the {props.draft.unitSizeBedrooms}-bedroom home?</span>
+          <button type="button" className="secondary-button" onClick={() => setReviewLimits(false)}>Keep limits</button>
+          <button type="button" className="secondary-button" onClick={() => {
+            set(childDefaults(props.draft.unitSizeBedrooms)); setReviewLimits(false);
+          }}>Use defaults</button>
+        </div>}
         {props.editing && props.draft.applicationOpenDate ? (
           <label>
             <span>Applications opened</span>
@@ -242,7 +282,7 @@ function OpeningForm(props: {
       </div>
       <div className="opening-form-actions">
         <button className="secondary-button" type="button" onClick={props.onCancel} disabled={props.busy}>Cancel</button>
-        <button className="primary-button" type="submit" disabled={props.busy || props.conflict}>
+        <button className="primary-button" type="submit" disabled={props.busy || props.conflict || reviewLimits}>
           {props.busy
             ? "Working…"
             : props.editing
@@ -256,6 +296,7 @@ function OpeningForm(props: {
 
 function createPayload(payload: OpeningWrite): OpeningCreate {
   return {
+    minChildren: payload.minChildren, maxChildren: payload.maxChildren,
     unitSizeBedrooms: payload.unitSizeBedrooms,
     housingChargeCents: payload.housingChargeCents,
     applicationCloseDate: payload.applicationCloseDate,

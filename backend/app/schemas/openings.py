@@ -4,20 +4,25 @@ from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import Field, StringConstraints, model_validator
+from pydantic import Field, StringConstraints, computed_field, model_validator
 
 from app.db.models import OpeningIntakeMode, OpeningPhase
+from app.domain.household import default_child_limits, household_description
 from app.schemas.base import BridgeModel, RequestModel, ResponseModel
 
 
 class OpeningCreate(RequestModel):
     unit_size_bedrooms: int = Field(ge=1, le=3)
+    min_children: int | None = Field(default_factory=lambda data: default_child_limits(data["unit_size_bedrooms"])[0], ge=0, le=2**53 - 1, strict=True)
+    max_children: int | None = Field(default_factory=lambda data: default_child_limits(data["unit_size_bedrooms"])[1], ge=0, le=2**53 - 1, strict=True)
     housing_charge_cents: int = Field(ge=0)
     application_close_date: date
     move_in_date: date
 
     @model_validator(mode="after")
     def dates_are_chronological(self) -> "OpeningCreate":
+        if self.min_children is not None and self.max_children is not None and self.min_children > self.max_children:
+            raise ValueError("Max children must be at least Min children.")
         if self.application_close_date > self.move_in_date:
             raise ValueError("Application close date must be on or before the move-in date.")
         return self
@@ -42,7 +47,17 @@ class OpeningCreationRequest(OpeningCreate):
     creation_request_id: UUID
 
 
-class OpeningDetailsOut(ResponseModel):
+class HouseholdOut(ResponseModel):
+    min_children: int | None
+    max_children: int | None
+
+    @computed_field
+    @property
+    def household_summary(self) -> str:
+        return household_description(self.min_children, self.max_children)
+
+
+class OpeningDetailsOut(HouseholdOut):
     id: int
     unit_size_bedrooms: int
     housing_charge_cents: int
@@ -51,7 +66,7 @@ class OpeningDetailsOut(ResponseModel):
     move_in_date: date
 
 
-class OpeningOut(ResponseModel):
+class OpeningOut(HouseholdOut):
     id: int
     intake_mode: OpeningIntakeMode
     unit_size_bedrooms: int
