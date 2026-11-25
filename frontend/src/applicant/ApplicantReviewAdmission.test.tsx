@@ -154,7 +154,7 @@ async function fillGuest() {
     [/^City/, "Vancouver"], [/^Postal or ZIP code/, "V6R 1A1"], [/^When did you move here/, "2020-01-01"],
     [/^Who is in your household/, "Synthetic answer"], [/^What skills could/, "Synthetic answer"],
     [/^What previous co-op/, "Synthetic answer"], [/^Why does your household/, "Synthetic answer"],
-  ] as const) enter(screen.getByRole("textbox", { name }), value);
+  ] as const) enter(screen.getByLabelText(name), value);
   fireEvent.click(within(screen.getByRole("group", { name: /Do you own the home/ })).getByRole("radio", { name: "Yes" }));
   fireEvent.click(within(screen.getByRole("group", { name: /Do you own another/ })).getByRole("radio", { name: "No" }));
   fireEvent.change(screen.getByRole("combobox", { name: /^Employment status/ }), { target: { value: "unemployed" } });

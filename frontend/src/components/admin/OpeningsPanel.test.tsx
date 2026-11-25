@@ -2,7 +2,7 @@ import { act, fireEvent, screen } from "@testing-library/react";
 import { renderCommittee as render, deferred } from "../../testSupport";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Opening, OpeningPreview, OpeningSelection } from "../../types";
+import type { Opening, OpeningSelection } from "../../types";
 import { OpeningsPanel } from "./OpeningsPanel";
 
 const api = vi.hoisted(() => ({
@@ -53,14 +53,6 @@ const closedOpening: Opening = {
   needsDecision: true,
   createdAt: "2026-06-01T12:00:00Z",
   updatedAt: "2026-08-01T12:00:00Z",
-};
-
-const preview: OpeningPreview = {
-  audienceCount: 2,
-  subscriberOnlyCount: 2,
-  applicationOnlyCount: 0,
-  overlapCount: 0,
-  variants: [{ kind: "notification_list", recipientCount: 2 }],
 };
 
 const selection: OpeningSelection = {

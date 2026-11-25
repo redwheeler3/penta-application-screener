@@ -1736,8 +1736,11 @@ provider catalog and configured runtime settings take precedence over historical
 
 ## Ponytail audit — November 24, 2026
 
-**Status: discovery complete; implementation has not started.** Recommendations below are for
-discussion, not an approved roadmap or claims of fixes. Application baseline:
+**Status: implementation authorized November 24, 2026.** Jeff approved all 13 recommendations
+and local commits. He also approved conservative deletion of affected pool-level narratives and
+applicant-specific justifications at the first contributing applicant purge, retaining numeric
+costs and demonstrably non-identifying criteria. Implementation and verification are in progress;
+the findings below preserve the pre-fix audit evidence. Application baseline:
 `220a3b60c72f8438b48d3c18f8e60ec986963dc5`. All passes used unchanged application code.
 
 **What this repo does:** Penta collects and retains housing applications, manages opening outcomes
